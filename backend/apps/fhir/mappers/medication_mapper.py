@@ -11,7 +11,7 @@ class FHIRMedicationMapper:
     @staticmethod
     def clinical_product_to_fhir(product: ClinicalMedicinalProduct) -> Dict[str, Any]:
         ingredients_fhir = []
-        for item in product.ingredients.select_related("active_substance").all():
+        for item in product.ingredients.all():
             ingredients_fhir.append({
                 "itemCodeableConcept": {
                     "coding": [{

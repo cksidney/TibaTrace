@@ -18,7 +18,7 @@ from apps.medicines.models import (
     SubstitutionGroup,
     SubstitutionPolicy,
 )
-from apps.organizations.models import Location
+from apps.organizations.models import Location, Organization
 from apps.tenancy.models import Tenant
 
 
@@ -90,7 +90,7 @@ class Command(BaseCommand):
         ]
         substances = {}
         for code, c_name, d_name, s_type, ctrl in substances_data:
-            sub, _ = ActiveSubstance.objects.get_or_create(
+            sub, _ = ActiveSubstance.all_objects.get_or_create(
                 code=code,
                 defaults={
                     "is_global": True,
@@ -119,7 +119,7 @@ class Command(BaseCommand):
         ]
         manufacturers = {}
         for code, legal, trading, country in mfg_data:
-            mfg, _ = Manufacturer.objects.get_or_create(
+            mfg, _ = Manufacturer.all_objects.get_or_create(
                 code=code,
                 defaults={"is_global": True, "legal_name": legal, "trading_name": trading, "country": country},
             )
@@ -156,7 +156,7 @@ class Command(BaseCommand):
 
         clinical_products = {}
         for code, c_name, df_code, r_codes, ing_list in clinical_data:
-            cmp_obj, _ = ClinicalMedicinalProduct.objects.get_or_create(
+            cmp_obj, _ = ClinicalMedicinalProduct.all_objects.get_or_create(
                 code=code,
                 defaults={
                     "is_global": True,
@@ -215,7 +215,7 @@ class Command(BaseCommand):
 
         mfg_products = {}
         for code, brand, cmp_code, mfg_code in mfg_prod_data:
-            mp, _ = ManufacturedMedicinalProduct.objects.get_or_create(
+            mp, _ = ManufacturedMedicinalProduct.all_objects.get_or_create(
                 code=code,
                 defaults={
                     "is_global": True,
@@ -265,7 +265,7 @@ class Command(BaseCommand):
             )
 
         for sku_code, disp_name, mp_code, pkg_def, barcode in skus_data:
-            sku, _ = CommercialSKU.objects.get_or_create(
+            sku, _ = CommercialSKU.all_objects.get_or_create(
                 tenant=tenant,
                 sku_code=sku_code,
                 defaults={
@@ -292,26 +292,25 @@ class Command(BaseCommand):
         )
         sub_group.clinical_products.set([clinical_products["CMP-PAR-500-TAB"]])
 
-        SubstitutionPolicy.objects.get_or_create(
+        SubstitutionPolicy.all_objects.get_or_create(
             tenant=tenant,
             substitution_group=sub_group,
             defaults={"policy_type": "GENERIC_EQUIVALENT", "approval_required": True},
         )
 
         # 10. Branch Assortment
-        from apps.organizations.models import Organization
-        org, _ = Organization.objects.get_or_create(
+        org, _ = Organization.all_objects.get_or_create(
             tenant=tenant,
             code="ORG-MAIN",
             defaults={"name": "Main Pharmacy Organization"},
         )
-        location, _ = Location.objects.get_or_create(
+        location, _ = Location.all_objects.get_or_create(
             tenant=tenant,
             code="LOC-MAIN",
             defaults={"organization": org, "name": "Main Hospital Pharmacy Branch"},
         )
-        for sku_obj in CommercialSKU.objects.filter(tenant=tenant)[:10]:
-            BranchAssortment.objects.get_or_create(
+        for sku_obj in CommercialSKU.all_objects.filter(tenant=tenant)[:10]:
+            BranchAssortment.all_objects.get_or_create(
                 tenant=tenant,
                 location=location,
                 sku=sku_obj,
