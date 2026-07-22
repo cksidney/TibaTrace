@@ -1,0 +1,12 @@
+.git
+.github
+.venv
+node_modules
+artifacts/generated
+backend/.pytest_cache
+backend/**/__pycache__
+backend/**/*.pyc
+media
+staticfiles
+*.sqlite3
+*.log

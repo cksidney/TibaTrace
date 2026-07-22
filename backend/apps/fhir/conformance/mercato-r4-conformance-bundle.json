@@ -1,0 +1,779 @@
+{
+  "resourceType": "Bundle",
+  "id": "mercato-r4-conformance-7-2-1",
+  "type": "transaction",
+  "timestamp": "2026-07-21T18:13:58.992960+00:00",
+  "entry": [
+    {
+      "fullUrl": "https://mercato-os.com/fhir/StructureDefinition/mercato-patient",
+      "resource": {
+        "resourceType": "StructureDefinition",
+        "id": "mercato-patient",
+        "url": "https://mercato-os.com/fhir/StructureDefinition/mercato-patient",
+        "version": "7.2.1",
+        "name": "MercatoPatient",
+        "title": "Mercato-OS Patient Profile",
+        "status": "active",
+        "date": "2026-07-21",
+        "publisher": "Mercato-OS Healthcare",
+        "description": "FHIR R4 profile for tenant-scoped Mercato-OS Patient exchange.",
+        "fhirVersion": "4.0.1",
+        "kind": "resource",
+        "abstract": false,
+        "type": "Patient",
+        "baseDefinition": "http://hl7.org/fhir/StructureDefinition/Patient",
+        "derivation": "constraint",
+        "differential": {
+          "element": [
+            {
+              "id": "Patient",
+              "path": "Patient"
+            },
+            {
+              "id": "Patient.identifier",
+              "path": "Patient.identifier",
+              "min": 1,
+              "mustSupport": true
+            }
+          ]
+        }
+      },
+      "request": {
+        "method": "PUT",
+        "url": "StructureDefinition/mercato-patient"
+      }
+    },
+    {
+      "fullUrl": "https://mercato-os.com/fhir/StructureDefinition/mercato-practitioner",
+      "resource": {
+        "resourceType": "StructureDefinition",
+        "id": "mercato-practitioner",
+        "url": "https://mercato-os.com/fhir/StructureDefinition/mercato-practitioner",
+        "version": "7.2.1",
+        "name": "MercatoPractitioner",
+        "title": "Mercato-OS Practitioner Profile",
+        "status": "active",
+        "date": "2026-07-21",
+        "publisher": "Mercato-OS Healthcare",
+        "description": "FHIR R4 profile for tenant-scoped Mercato-OS Practitioner exchange.",
+        "fhirVersion": "4.0.1",
+        "kind": "resource",
+        "abstract": false,
+        "type": "Practitioner",
+        "baseDefinition": "http://hl7.org/fhir/StructureDefinition/Practitioner",
+        "derivation": "constraint",
+        "differential": {
+          "element": [
+            {
+              "id": "Practitioner",
+              "path": "Practitioner"
+            },
+            {
+              "id": "Practitioner.identifier",
+              "path": "Practitioner.identifier",
+              "min": 1,
+              "mustSupport": true
+            }
+          ]
+        }
+      },
+      "request": {
+        "method": "PUT",
+        "url": "StructureDefinition/mercato-practitioner"
+      }
+    },
+    {
+      "fullUrl": "https://mercato-os.com/fhir/StructureDefinition/mercato-practitionerrole",
+      "resource": {
+        "resourceType": "StructureDefinition",
+        "id": "mercato-practitionerrole",
+        "url": "https://mercato-os.com/fhir/StructureDefinition/mercato-practitionerrole",
+        "version": "7.2.1",
+        "name": "MercatoPractitionerRole",
+        "title": "Mercato-OS PractitionerRole Profile",
+        "status": "active",
+        "date": "2026-07-21",
+        "publisher": "Mercato-OS Healthcare",
+        "description": "FHIR R4 profile for tenant-scoped Mercato-OS PractitionerRole exchange.",
+        "fhirVersion": "4.0.1",
+        "kind": "resource",
+        "abstract": false,
+        "type": "PractitionerRole",
+        "baseDefinition": "http://hl7.org/fhir/StructureDefinition/PractitionerRole",
+        "derivation": "constraint",
+        "differential": {
+          "element": [
+            {
+              "id": "PractitionerRole",
+              "path": "PractitionerRole"
+            },
+            {
+              "id": "PractitionerRole.identifier",
+              "path": "PractitionerRole.identifier",
+              "min": 1,
+              "mustSupport": true
+            }
+          ]
+        }
+      },
+      "request": {
+        "method": "PUT",
+        "url": "StructureDefinition/mercato-practitionerrole"
+      }
+    },
+    {
+      "fullUrl": "https://mercato-os.com/fhir/StructureDefinition/mercato-organization",
+      "resource": {
+        "resourceType": "StructureDefinition",
+        "id": "mercato-organization",
+        "url": "https://mercato-os.com/fhir/StructureDefinition/mercato-organization",
+        "version": "7.2.1",
+        "name": "MercatoOrganization",
+        "title": "Mercato-OS Organization Profile",
+        "status": "active",
+        "date": "2026-07-21",
+        "publisher": "Mercato-OS Healthcare",
+        "description": "FHIR R4 profile for tenant-scoped Mercato-OS Organization exchange.",
+        "fhirVersion": "4.0.1",
+        "kind": "resource",
+        "abstract": false,
+        "type": "Organization",
+        "baseDefinition": "http://hl7.org/fhir/StructureDefinition/Organization",
+        "derivation": "constraint",
+        "differential": {
+          "element": [
+            {
+              "id": "Organization",
+              "path": "Organization"
+            },
+            {
+              "id": "Organization.identifier",
+              "path": "Organization.identifier",
+              "min": 1,
+              "mustSupport": true
+            }
+          ]
+        }
+      },
+      "request": {
+        "method": "PUT",
+        "url": "StructureDefinition/mercato-organization"
+      }
+    },
+    {
+      "fullUrl": "https://mercato-os.com/fhir/StructureDefinition/mercato-location",
+      "resource": {
+        "resourceType": "StructureDefinition",
+        "id": "mercato-location",
+        "url": "https://mercato-os.com/fhir/StructureDefinition/mercato-location",
+        "version": "7.2.1",
+        "name": "MercatoLocation",
+        "title": "Mercato-OS Location Profile",
+        "status": "active",
+        "date": "2026-07-21",
+        "publisher": "Mercato-OS Healthcare",
+        "description": "FHIR R4 profile for tenant-scoped Mercato-OS Location exchange.",
+        "fhirVersion": "4.0.1",
+        "kind": "resource",
+        "abstract": false,
+        "type": "Location",
+        "baseDefinition": "http://hl7.org/fhir/StructureDefinition/Location",
+        "derivation": "constraint",
+        "differential": {
+          "element": [
+            {
+              "id": "Location",
+              "path": "Location"
+            },
+            {
+              "id": "Location.identifier",
+              "path": "Location.identifier",
+              "min": 1,
+              "mustSupport": true
+            }
+          ]
+        }
+      },
+      "request": {
+        "method": "PUT",
+        "url": "StructureDefinition/mercato-location"
+      }
+    },
+    {
+      "fullUrl": "https://mercato-os.com/fhir/StructureDefinition/mercato-medication",
+      "resource": {
+        "resourceType": "StructureDefinition",
+        "id": "mercato-medication",
+        "url": "https://mercato-os.com/fhir/StructureDefinition/mercato-medication",
+        "version": "7.2.1",
+        "name": "MercatoMedication",
+        "title": "Mercato-OS Medication Profile",
+        "status": "active",
+        "date": "2026-07-21",
+        "publisher": "Mercato-OS Healthcare",
+        "description": "FHIR R4 profile for tenant-scoped Mercato-OS Medication exchange.",
+        "fhirVersion": "4.0.1",
+        "kind": "resource",
+        "abstract": false,
+        "type": "Medication",
+        "baseDefinition": "http://hl7.org/fhir/StructureDefinition/Medication",
+        "derivation": "constraint",
+        "differential": {
+          "element": [
+            {
+              "id": "Medication",
+              "path": "Medication"
+            },
+            {
+              "id": "Medication.identifier",
+              "path": "Medication.identifier",
+              "min": 1,
+              "mustSupport": true
+            }
+          ]
+        }
+      },
+      "request": {
+        "method": "PUT",
+        "url": "StructureDefinition/mercato-medication"
+      }
+    },
+    {
+      "fullUrl": "https://mercato-os.com/fhir/StructureDefinition/mercato-medicationrequest",
+      "resource": {
+        "resourceType": "StructureDefinition",
+        "id": "mercato-medicationrequest",
+        "url": "https://mercato-os.com/fhir/StructureDefinition/mercato-medicationrequest",
+        "version": "7.2.1",
+        "name": "MercatoMedicationRequest",
+        "title": "Mercato-OS MedicationRequest Profile",
+        "status": "active",
+        "date": "2026-07-21",
+        "publisher": "Mercato-OS Healthcare",
+        "description": "FHIR R4 profile for tenant-scoped Mercato-OS MedicationRequest exchange.",
+        "fhirVersion": "4.0.1",
+        "kind": "resource",
+        "abstract": false,
+        "type": "MedicationRequest",
+        "baseDefinition": "http://hl7.org/fhir/StructureDefinition/MedicationRequest",
+        "derivation": "constraint",
+        "differential": {
+          "element": [
+            {
+              "id": "MedicationRequest",
+              "path": "MedicationRequest"
+            },
+            {
+              "id": "MedicationRequest.identifier",
+              "path": "MedicationRequest.identifier",
+              "min": 1,
+              "mustSupport": true
+            }
+          ]
+        }
+      },
+      "request": {
+        "method": "PUT",
+        "url": "StructureDefinition/mercato-medicationrequest"
+      }
+    },
+    {
+      "fullUrl": "https://mercato-os.com/fhir/StructureDefinition/mercato-medicationdispense",
+      "resource": {
+        "resourceType": "StructureDefinition",
+        "id": "mercato-medicationdispense",
+        "url": "https://mercato-os.com/fhir/StructureDefinition/mercato-medicationdispense",
+        "version": "7.2.1",
+        "name": "MercatoMedicationDispense",
+        "title": "Mercato-OS MedicationDispense Profile",
+        "status": "active",
+        "date": "2026-07-21",
+        "publisher": "Mercato-OS Healthcare",
+        "description": "FHIR R4 profile for tenant-scoped Mercato-OS MedicationDispense exchange.",
+        "fhirVersion": "4.0.1",
+        "kind": "resource",
+        "abstract": false,
+        "type": "MedicationDispense",
+        "baseDefinition": "http://hl7.org/fhir/StructureDefinition/MedicationDispense",
+        "derivation": "constraint",
+        "differential": {
+          "element": [
+            {
+              "id": "MedicationDispense",
+              "path": "MedicationDispense"
+            },
+            {
+              "id": "MedicationDispense.identifier",
+              "path": "MedicationDispense.identifier",
+              "min": 1,
+              "mustSupport": true
+            }
+          ]
+        }
+      },
+      "request": {
+        "method": "PUT",
+        "url": "StructureDefinition/mercato-medicationdispense"
+      }
+    },
+    {
+      "fullUrl": "https://mercato-os.com/fhir/StructureDefinition/mercato-medicationstatement",
+      "resource": {
+        "resourceType": "StructureDefinition",
+        "id": "mercato-medicationstatement",
+        "url": "https://mercato-os.com/fhir/StructureDefinition/mercato-medicationstatement",
+        "version": "7.2.1",
+        "name": "MercatoMedicationStatement",
+        "title": "Mercato-OS MedicationStatement Profile",
+        "status": "active",
+        "date": "2026-07-21",
+        "publisher": "Mercato-OS Healthcare",
+        "description": "FHIR R4 profile for tenant-scoped Mercato-OS MedicationStatement exchange.",
+        "fhirVersion": "4.0.1",
+        "kind": "resource",
+        "abstract": false,
+        "type": "MedicationStatement",
+        "baseDefinition": "http://hl7.org/fhir/StructureDefinition/MedicationStatement",
+        "derivation": "constraint",
+        "differential": {
+          "element": [
+            {
+              "id": "MedicationStatement",
+              "path": "MedicationStatement"
+            },
+            {
+              "id": "MedicationStatement.identifier",
+              "path": "MedicationStatement.identifier",
+              "min": 1,
+              "mustSupport": true
+            }
+          ]
+        }
+      },
+      "request": {
+        "method": "PUT",
+        "url": "StructureDefinition/mercato-medicationstatement"
+      }
+    },
+    {
+      "fullUrl": "https://mercato-os.com/fhir/StructureDefinition/mercato-allergyintolerance",
+      "resource": {
+        "resourceType": "StructureDefinition",
+        "id": "mercato-allergyintolerance",
+        "url": "https://mercato-os.com/fhir/StructureDefinition/mercato-allergyintolerance",
+        "version": "7.2.1",
+        "name": "MercatoAllergyIntolerance",
+        "title": "Mercato-OS AllergyIntolerance Profile",
+        "status": "active",
+        "date": "2026-07-21",
+        "publisher": "Mercato-OS Healthcare",
+        "description": "FHIR R4 profile for tenant-scoped Mercato-OS AllergyIntolerance exchange.",
+        "fhirVersion": "4.0.1",
+        "kind": "resource",
+        "abstract": false,
+        "type": "AllergyIntolerance",
+        "baseDefinition": "http://hl7.org/fhir/StructureDefinition/AllergyIntolerance",
+        "derivation": "constraint",
+        "differential": {
+          "element": [
+            {
+              "id": "AllergyIntolerance",
+              "path": "AllergyIntolerance"
+            },
+            {
+              "id": "AllergyIntolerance.identifier",
+              "path": "AllergyIntolerance.identifier",
+              "min": 1,
+              "mustSupport": true
+            }
+          ]
+        }
+      },
+      "request": {
+        "method": "PUT",
+        "url": "StructureDefinition/mercato-allergyintolerance"
+      }
+    },
+    {
+      "fullUrl": "https://mercato-os.com/fhir/StructureDefinition/mercato-condition",
+      "resource": {
+        "resourceType": "StructureDefinition",
+        "id": "mercato-condition",
+        "url": "https://mercato-os.com/fhir/StructureDefinition/mercato-condition",
+        "version": "7.2.1",
+        "name": "MercatoCondition",
+        "title": "Mercato-OS Condition Profile",
+        "status": "active",
+        "date": "2026-07-21",
+        "publisher": "Mercato-OS Healthcare",
+        "description": "FHIR R4 profile for tenant-scoped Mercato-OS Condition exchange.",
+        "fhirVersion": "4.0.1",
+        "kind": "resource",
+        "abstract": false,
+        "type": "Condition",
+        "baseDefinition": "http://hl7.org/fhir/StructureDefinition/Condition",
+        "derivation": "constraint",
+        "differential": {
+          "element": [
+            {
+              "id": "Condition",
+              "path": "Condition"
+            },
+            {
+              "id": "Condition.identifier",
+              "path": "Condition.identifier",
+              "min": 1,
+              "mustSupport": true
+            }
+          ]
+        }
+      },
+      "request": {
+        "method": "PUT",
+        "url": "StructureDefinition/mercato-condition"
+      }
+    },
+    {
+      "fullUrl": "https://mercato-os.com/fhir/StructureDefinition/mercato-encounter",
+      "resource": {
+        "resourceType": "StructureDefinition",
+        "id": "mercato-encounter",
+        "url": "https://mercato-os.com/fhir/StructureDefinition/mercato-encounter",
+        "version": "7.2.1",
+        "name": "MercatoEncounter",
+        "title": "Mercato-OS Encounter Profile",
+        "status": "active",
+        "date": "2026-07-21",
+        "publisher": "Mercato-OS Healthcare",
+        "description": "FHIR R4 profile for tenant-scoped Mercato-OS Encounter exchange.",
+        "fhirVersion": "4.0.1",
+        "kind": "resource",
+        "abstract": false,
+        "type": "Encounter",
+        "baseDefinition": "http://hl7.org/fhir/StructureDefinition/Encounter",
+        "derivation": "constraint",
+        "differential": {
+          "element": [
+            {
+              "id": "Encounter",
+              "path": "Encounter"
+            },
+            {
+              "id": "Encounter.identifier",
+              "path": "Encounter.identifier",
+              "min": 1,
+              "mustSupport": true
+            }
+          ]
+        }
+      },
+      "request": {
+        "method": "PUT",
+        "url": "StructureDefinition/mercato-encounter"
+      }
+    },
+    {
+      "fullUrl": "https://mercato-os.com/fhir/StructureDefinition/mercato-medicationadministration",
+      "resource": {
+        "resourceType": "StructureDefinition",
+        "id": "mercato-medicationadministration",
+        "url": "https://mercato-os.com/fhir/StructureDefinition/mercato-medicationadministration",
+        "version": "7.2.1",
+        "name": "MercatoMedicationAdministration",
+        "title": "Mercato-OS MedicationAdministration Profile",
+        "status": "active",
+        "date": "2026-07-21",
+        "publisher": "Mercato-OS Healthcare",
+        "description": "FHIR R4 profile for tenant-scoped Mercato-OS MedicationAdministration exchange.",
+        "fhirVersion": "4.0.1",
+        "kind": "resource",
+        "abstract": false,
+        "type": "MedicationAdministration",
+        "baseDefinition": "http://hl7.org/fhir/StructureDefinition/MedicationAdministration",
+        "derivation": "constraint",
+        "differential": {
+          "element": [
+            {
+              "id": "MedicationAdministration",
+              "path": "MedicationAdministration"
+            },
+            {
+              "id": "MedicationAdministration.identifier",
+              "path": "MedicationAdministration.identifier",
+              "min": 1,
+              "mustSupport": true
+            }
+          ]
+        }
+      },
+      "request": {
+        "method": "PUT",
+        "url": "StructureDefinition/mercato-medicationadministration"
+      }
+    },
+    {
+      "fullUrl": "https://mercato-os.com/fhir/StructureDefinition/mercato-observation",
+      "resource": {
+        "resourceType": "StructureDefinition",
+        "id": "mercato-observation",
+        "url": "https://mercato-os.com/fhir/StructureDefinition/mercato-observation",
+        "version": "7.2.1",
+        "name": "MercatoObservation",
+        "title": "Mercato-OS Observation Profile",
+        "status": "active",
+        "date": "2026-07-21",
+        "publisher": "Mercato-OS Healthcare",
+        "description": "FHIR R4 profile for tenant-scoped Mercato-OS Observation exchange.",
+        "fhirVersion": "4.0.1",
+        "kind": "resource",
+        "abstract": false,
+        "type": "Observation",
+        "baseDefinition": "http://hl7.org/fhir/StructureDefinition/Observation",
+        "derivation": "constraint",
+        "differential": {
+          "element": [
+            {
+              "id": "Observation",
+              "path": "Observation"
+            },
+            {
+              "id": "Observation.identifier",
+              "path": "Observation.identifier",
+              "min": 1,
+              "mustSupport": true
+            }
+          ]
+        }
+      },
+      "request": {
+        "method": "PUT",
+        "url": "StructureDefinition/mercato-observation"
+      }
+    },
+    {
+      "fullUrl": "https://mercato-os.com/fhir/StructureDefinition/mercato-diagnosticreport",
+      "resource": {
+        "resourceType": "StructureDefinition",
+        "id": "mercato-diagnosticreport",
+        "url": "https://mercato-os.com/fhir/StructureDefinition/mercato-diagnosticreport",
+        "version": "7.2.1",
+        "name": "MercatoDiagnosticReport",
+        "title": "Mercato-OS DiagnosticReport Profile",
+        "status": "active",
+        "date": "2026-07-21",
+        "publisher": "Mercato-OS Healthcare",
+        "description": "FHIR R4 profile for tenant-scoped Mercato-OS DiagnosticReport exchange.",
+        "fhirVersion": "4.0.1",
+        "kind": "resource",
+        "abstract": false,
+        "type": "DiagnosticReport",
+        "baseDefinition": "http://hl7.org/fhir/StructureDefinition/DiagnosticReport",
+        "derivation": "constraint",
+        "differential": {
+          "element": [
+            {
+              "id": "DiagnosticReport",
+              "path": "DiagnosticReport"
+            },
+            {
+              "id": "DiagnosticReport.identifier",
+              "path": "DiagnosticReport.identifier",
+              "min": 1,
+              "mustSupport": true
+            }
+          ]
+        }
+      },
+      "request": {
+        "method": "PUT",
+        "url": "StructureDefinition/mercato-diagnosticreport"
+      }
+    },
+    {
+      "fullUrl": "https://mercato-os.com/fhir/StructureDefinition/mercato-documentreference",
+      "resource": {
+        "resourceType": "StructureDefinition",
+        "id": "mercato-documentreference",
+        "url": "https://mercato-os.com/fhir/StructureDefinition/mercato-documentreference",
+        "version": "7.2.1",
+        "name": "MercatoDocumentReference",
+        "title": "Mercato-OS DocumentReference Profile",
+        "status": "active",
+        "date": "2026-07-21",
+        "publisher": "Mercato-OS Healthcare",
+        "description": "FHIR R4 profile for tenant-scoped Mercato-OS DocumentReference exchange.",
+        "fhirVersion": "4.0.1",
+        "kind": "resource",
+        "abstract": false,
+        "type": "DocumentReference",
+        "baseDefinition": "http://hl7.org/fhir/StructureDefinition/DocumentReference",
+        "derivation": "constraint",
+        "differential": {
+          "element": [
+            {
+              "id": "DocumentReference",
+              "path": "DocumentReference"
+            },
+            {
+              "id": "DocumentReference.identifier",
+              "path": "DocumentReference.identifier",
+              "min": 1,
+              "mustSupport": true
+            }
+          ]
+        }
+      },
+      "request": {
+        "method": "PUT",
+        "url": "StructureDefinition/mercato-documentreference"
+      }
+    },
+    {
+      "fullUrl": "https://mercato-os.com/fhir/StructureDefinition/mercato-auditevent",
+      "resource": {
+        "resourceType": "StructureDefinition",
+        "id": "mercato-auditevent",
+        "url": "https://mercato-os.com/fhir/StructureDefinition/mercato-auditevent",
+        "version": "7.2.1",
+        "name": "MercatoAuditEvent",
+        "title": "Mercato-OS AuditEvent Profile",
+        "status": "active",
+        "date": "2026-07-21",
+        "publisher": "Mercato-OS Healthcare",
+        "description": "FHIR R4 profile for tenant-scoped Mercato-OS AuditEvent exchange.",
+        "fhirVersion": "4.0.1",
+        "kind": "resource",
+        "abstract": false,
+        "type": "AuditEvent",
+        "baseDefinition": "http://hl7.org/fhir/StructureDefinition/AuditEvent",
+        "derivation": "constraint",
+        "differential": {
+          "element": [
+            {
+              "id": "AuditEvent",
+              "path": "AuditEvent"
+            }
+          ]
+        }
+      },
+      "request": {
+        "method": "PUT",
+        "url": "StructureDefinition/mercato-auditevent"
+      }
+    },
+    {
+      "fullUrl": "https://mercato-os.com/fhir/StructureDefinition/cds-override",
+      "resource": {
+        "resourceType": "StructureDefinition",
+        "id": "cds-override",
+        "url": "https://mercato-os.com/fhir/StructureDefinition/cds-override",
+        "version": "7.2.1",
+        "name": "MercatoCdsOverride",
+        "title": "Mercato-OS CDS Override",
+        "status": "active",
+        "date": "2026-07-21",
+        "publisher": "Mercato-OS Healthcare",
+        "description": "Records an explicitly authorized clinical decision-support override.",
+        "fhirVersion": "4.0.1",
+        "kind": "complex-type",
+        "abstract": false,
+        "context": [
+          {
+            "type": "element",
+            "expression": "MedicationRequest"
+          }
+        ],
+        "type": "Extension",
+        "baseDefinition": "http://hl7.org/fhir/StructureDefinition/Extension",
+        "derivation": "constraint",
+        "differential": {
+          "element": [
+            {
+              "id": "Extension",
+              "path": "Extension"
+            },
+            {
+              "id": "Extension.url",
+              "path": "Extension.url",
+              "fixedUri": "https://mercato-os.com/fhir/StructureDefinition/cds-override"
+            },
+            {
+              "id": "Extension.value[x]",
+              "path": "Extension.value[x]",
+              "min": 1,
+              "type": [
+                {
+                  "code": "string"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "request": {
+        "method": "PUT",
+        "url": "StructureDefinition/cds-override"
+      }
+    },
+    {
+      "fullUrl": "https://mercato-os.com/fhir/CodeSystem/mercato-medication-control",
+      "resource": {
+        "resourceType": "CodeSystem",
+        "id": "mercato-medication-control",
+        "url": "https://mercato-os.com/fhir/CodeSystem/medication-control",
+        "version": "7.2.1",
+        "name": "MercatoMedicationControl",
+        "title": "Mercato-OS Medication Control Codes",
+        "status": "active",
+        "date": "2026-07-21",
+        "publisher": "Mercato-OS Healthcare",
+        "content": "complete",
+        "caseSensitive": true,
+        "concept": [
+          {
+            "code": "controlled-drug",
+            "display": "Controlled drug"
+          },
+          {
+            "code": "prescription-only",
+            "display": "Prescription-only medicine"
+          },
+          {
+            "code": "general-sale",
+            "display": "General sale medicine"
+          }
+        ]
+      },
+      "request": {
+        "method": "PUT",
+        "url": "CodeSystem/mercato-medication-control"
+      }
+    },
+    {
+      "fullUrl": "https://mercato-os.com/fhir/ValueSet/mercato-medication-control",
+      "resource": {
+        "resourceType": "ValueSet",
+        "id": "mercato-medication-control",
+        "url": "https://mercato-os.com/fhir/ValueSet/medication-control",
+        "version": "7.2.1",
+        "name": "MercatoMedicationControl",
+        "title": "Mercato-OS Medication Control Value Set",
+        "status": "active",
+        "date": "2026-07-21",
+        "publisher": "Mercato-OS Healthcare",
+        "compose": {
+          "include": [
+            {
+              "system": "https://mercato-os.com/fhir/CodeSystem/medication-control",
+              "version": "7.2.1"
+            }
+          ]
+        }
+      },
+      "request": {
+        "method": "PUT",
+        "url": "ValueSet/mercato-medication-control"
+      }
+    }
+  ]
+}

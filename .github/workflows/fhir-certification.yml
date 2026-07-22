@@ -1,0 +1,28 @@
+name: Protected FHIR Certification
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_firely:
+        description: Run licensed/available Firely environment
+        required: true
+        default: "false"
+
+permissions:
+  contents: read
+
+jobs:
+  hapi-r4:
+    runs-on: ubuntu-latest
+    environment: fhir-certification
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "Run pinned HAPI R4 certification harness and retain immutable evidence."
+
+  firely:
+    if: inputs.run_firely == 'true'
+    runs-on: ubuntu-latest
+    environment: firely-certification
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "Firely compatibility is not claimed until this protected job has real configured infrastructure and passes."

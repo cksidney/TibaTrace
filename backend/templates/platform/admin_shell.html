@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DawaTrace Administrative Shell</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; color: #17212b; background: #f5f7f9; }
+    header { background: #123f35; color: white; padding: 18px 28px; }
+    main { max-width: 1100px; margin: 24px auto; padding: 0 20px; }
+    nav { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+    a { color: #075f4c; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
+    .metric { background: white; border: 1px solid #d8e0e5; padding: 16px; border-radius: 6px; }
+    .metric strong { display: block; font-size: 28px; margin-top: 5px; }
+  </style>
+</head>
+<body>
+  <header><strong>DawaTrace</strong> Administrative Shell</header>
+  <main>
+    <p>Active tenant: <code>{{ tenant_id|default:"none" }}</code></p>
+    <nav>
+      <a href="/admin/">Django administration</a>
+      <a href="/api/schema/">OpenAPI schema</a>
+      <a href="/api/fhir/r4/metadata">FHIR metadata</a>
+      <a href="/api/health/">System health</a>
+    </nav>
+    <section class="grid">
+      {% for label, value in counts.items %}
+        <div class="metric">{{ label }}<strong>{{ value }}</strong></div>
+      {% empty %}
+        <p>Select or authenticate into a tenant to view clinical counts.</p>
+      {% endfor %}
+    </section>
+  </main>
+</body>
+</html>

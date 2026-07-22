@@ -1,0 +1,231 @@
+{
+  "approved_exception_count": 1,
+  "approved_exceptions": [
+    {
+      "manager": "DawaTraceUserManager",
+      "model": "identity.User",
+      "reason": "Authentication resolves users before tenant middleware; authorization remains tenant-qualified."
+    }
+  ],
+  "finding_count": 0,
+  "findings": [],
+  "model_count": 54,
+  "models": [
+    {
+      "manager": "DawaTraceUserManager",
+      "model": "identity.User"
+    },
+    {
+      "manager": "StrictTenantManager",
+      "model": "identity.Role"
+    },
+    {
+      "manager": "StrictTenantManager",
+      "model": "identity.UserRole"
+    },
+    {
+      "manager": "StrictTenantManager",
+      "model": "identity.AttributePolicy"
+    },
+    {
+      "manager": "StrictTenantManager",
+      "model": "identity.ExternalIdentityMapping"
+    },
+    {
+      "manager": "StrictTenantManager",
+      "model": "identity.ServiceAccount"
+    },
+    {
+      "manager": "StrictTenantManager",
+      "model": "organizations.Organization"
+    },
+    {
+      "manager": "StrictTenantManager",
+      "model": "organizations.OrganizationIdentifier"
+    },
+    {
+      "manager": "StrictTenantManager",
+      "model": "organizations.Location"
+    },
+    {
+      "manager": "StrictTenantManager",
+      "model": "organizations.LocationIdentifier"
+    },
+    {
+      "manager": "StrictTenantManager",
+      "model": "medicines.Medicine"
+    },
+    {
+      "manager": "StrictTenantManager",
+      "model": "patients.Patient"
+    },
+    {
+      "manager": "StrictTenantManager",
+      "model": "patients.PatientIdentifier"
+    },
+    {
+      "manager": "StrictTenantManager",
+      "model": "patients.PatientAllergy"
+    },
+    {
+      "manager": "StrictTenantManager",
+      "model": "patients.PatientMedication"
+    },
+    {
+      "manager": "StrictTenantManager",
+      "model": "practitioners.Practitioner"
+    },
+    {
+      "manager": "StrictTenantManager",
+      "model": "practitioners.PractitionerIdentifier"
+    },
+    {
+      "manager": "StrictTenantManager",
+      "model": "practitioners.PractitionerRole"
+    },
+    {
+      "manager": "StrictTenantManager",
+      "model": "practitioners.PractitionerLicence"
+    },
+    {
+      "manager": "StrictTenantManager",
+      "model": "prescription.Prescription"
+    },
+    {
+      "manager": "StrictTenantManager",
+      "model": "prescription.PrescriptionItem"
+    },
+    {
+      "manager": "StrictTenantManager",
+      "model": "prescription.PrescriptionDispense"
+    },
+    {
+      "manager": "StrictTenantManager",
+      "model": "prescription.PrescriptionFill"
+    },
+    {
+      "manager": "StrictTenantManager",
+      "model": "prescription.PrescriptionStatusHistory"
+    },
+    {
+      "manager": "StrictTenantManager",
+      "model": "prescription.PrescriptionWorkflowEvent"
+    },
+    {
+      "manager": "StrictTenantManager",
+      "model": "prescription.PrescriptionVerification"
+    },
+    {
+      "manager": "StrictTenantManager",
+      "model": "prescription.PrescriptionAudit"
+    },
+    {
+      "manager": "StrictTenantManager",
+      "model": "prescription.PrescriptionSubstitution"
+    },
+    {
+      "manager": "StrictTenantManager",
+      "model": "prescription.ProviderConfiguration"
+    },
+    {
+      "manager": "StrictTenantManager",
+      "model": "prescription.IntegrationOutbox"
+    },
+    {
+      "manager": "StrictTenantManager",
+      "model": "prescription.DeadLetterQueue"
+    },
+    {
+      "manager": "StrictTenantManager",
+      "model": "clinical.ClinicalEncounter"
+    },
+    {
+      "manager": "StrictTenantManager",
+      "model": "clinical.ClinicalCondition"
+    },
+    {
+      "manager": "StrictTenantManager",
+      "model": "clinical.ClinicalObservation"
+    },
+    {
+      "manager": "StrictTenantManager",
+      "model": "clinical.ClinicalDiagnosticReport"
+    },
+    {
+      "manager": "StrictTenantManager",
+      "model": "clinical.ClinicalDocument"
+    },
+    {
+      "manager": "StrictTenantManager",
+      "model": "clinical.MedicationAdministrationRecord"
+    },
+    {
+      "manager": "ClinicalKnowledgeManager",
+      "model": "cds.ClinicalKnowledgeRelease"
+    },
+    {
+      "manager": "StrictTenantManager",
+      "model": "cds.ActiveIngredient"
+    },
+    {
+      "manager": "StrictTenantManager",
+      "model": "cds.MedicineIngredient"
+    },
+    {
+      "manager": "ClinicalKnowledgeManager",
+      "model": "cds.ClinicalKnowledgeRule"
+    },
+    {
+      "manager": "StrictTenantManager",
+      "model": "cds.ClinicalEvaluation"
+    },
+    {
+      "manager": "StrictTenantManager",
+      "model": "cds.ClinicalFinding"
+    },
+    {
+      "manager": "StrictTenantManager",
+      "model": "cds.ClinicalOverride"
+    },
+    {
+      "manager": "TerminologyManager",
+      "model": "terminology.FHIRTerminologyVersion"
+    },
+    {
+      "manager": "TerminologyManager",
+      "model": "terminology.FHIRCodeSystemRegistration"
+    },
+    {
+      "manager": "TerminologyManager",
+      "model": "terminology.FHIRValueSetRegistration"
+    },
+    {
+      "manager": "StrictTenantManager",
+      "model": "audit.AuditEvent"
+    },
+    {
+      "manager": "StrictTenantManager",
+      "model": "workflows.DomainEvent"
+    },
+    {
+      "manager": "StrictTenantManager",
+      "model": "notifications.NotificationOutbox"
+    },
+    {
+      "manager": "StrictTenantManager",
+      "model": "crosswalks.LegacyIdentifierCrosswalk"
+    },
+    {
+      "manager": "StrictTenantManager",
+      "model": "documents.StoredClinicalDocument"
+    },
+    {
+      "manager": "StrictTenantManager",
+      "model": "documents.DocumentAccessEvent"
+    },
+    {
+      "manager": "StrictTenantManager",
+      "model": "fhir.FHIRIdempotencyRecord"
+    }
+  ]
+}

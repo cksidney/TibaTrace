@@ -1,0 +1,104 @@
+name: DawaTrace CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: dawatrace_ci
+          POSTGRES_USER: dawatrace
+          POSTGRES_PASSWORD: dawatrace_ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U dawatrace -d dawatrace_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+    env:
+      DJANGO_SETTINGS_MODULE: dawatrace.settings.test
+      DAWATRACE_DATABASE_URL: postgresql://dawatrace:dawatrace_ci@127.0.0.1:5432/dawatrace_ci
+      DAWATRACE_SECRET_KEY: ci-only-secret
+      DAWATRACE_OBJECT_SIGNING_KEY: ci-object-signing-key
+      DAWATRACE_REDIS_URL: redis://127.0.0.1:6379/0
+      DAWATRACE_CELERY_TASK_ALWAYS_EAGER: "true"
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.lock
+            backend/requirements-dev.lock
+      - run: pip install -r requirements.lock -r requirements-dev.lock
+      - run: mkdir -p ../artifacts/generated/tests ../artifacts/generated/security
+      - run: pip check
+      - run: ruff check .
+      - run: python manage.py check --settings=dawatrace.settings.test
+      - run: python manage.py check --deploy --settings=dawatrace.settings.production
+        env:
+          DAWATRACE_SECRET_KEY: Phase2-CI-Deployment-Check-7dF3qN9xK2mT8vR5pL1sW6yH4cJ0zB
+          DAWATRACE_OBJECT_SIGNING_KEY: Phase2-CI-Object-Signing-9xP2kL7mV4nQ8wR5
+          DAWATRACE_SECURE_SSL_REDIRECT: "true"
+      - run: python manage.py makemigrations --check --dry-run --settings=dawatrace.settings.test
+      - run: python manage.py migrate --noinput --settings=dawatrace.settings.test
+      - run: python manage.py migrate prescription 0001 --noinput --settings=dawatrace.settings.test
+      - run: python manage.py migrate prescription --noinput --settings=dawatrace.settings.test
+      - run: python manage.py migrate cds 0003 --noinput --settings=dawatrace.settings.test
+      - run: python manage.py migrate cds --noinput --settings=dawatrace.settings.test
+      - run: python manage.py migrate fhir 0001 --noinput --settings=dawatrace.settings.test
+      - run: python manage.py migrate fhir --noinput --settings=dawatrace.settings.test
+      - run: python manage.py migrate crosswalks zero --noinput --settings=dawatrace.settings.test
+      - run: python manage.py migrate crosswalks --noinput --settings=dawatrace.settings.test
+      - run: python manage.py migrate documents zero --noinput --settings=dawatrace.settings.test
+      - run: python manage.py migrate documents --noinput --settings=dawatrace.settings.test
+      - run: python manage.py audit_clinical_lookup_safety --settings=dawatrace.settings.test
+      - run: python manage.py audit_tenant_managers --settings=dawatrace.settings.test
+      - run: python manage.py audit_clinical_tenant_ownership --json --settings=dawatrace.settings.test
+      - run: pytest -q --junitxml=../artifacts/generated/tests/backend.xml
+      - run: bandit -q -r apps dawatrace -c ../pyproject.toml -f json -o ../artifacts/generated/security/bandit.json
+      - run: pip-audit -r requirements.lock --format json --output ../artifacts/generated/security/pip-audit.json
+      - run: cyclonedx-py requirements requirements.lock --output-reproducible --of JSON -o ../artifacts/generated/security/dawatrace-backend.cdx.json
+      - run: python ../scripts/scan_secrets.py --root .. --output ../artifacts/generated/security/secret-scan.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dawatrace-backend-evidence
+          path: artifacts/generated
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - run: docker build --file docker/backend.Dockerfile --tag dawatrace/backend:ci .
+      - run: docker image inspect dawatrace/backend:ci
+      - name: Container scan gate
+        run: echo "Run the approved registry/container scanner before release; Phase 2 does not waive this gate."
+
+  shared:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm audit --audit-level=high
+      - run: npm run typecheck
+      - run: npm run build

@@ -1,0 +1,5188 @@
+{
+  "database_vendor": "sqlite",
+  "dawatrace_table_count": 57,
+  "generated_at": "2026-07-22T14:09:18.223557+00:00",
+  "product": "DawaTrace",
+  "tables": {
+    "audit_auditevent": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "__unnamed_constraint_1__": {
+          "check": true,
+          "columns": [
+            "metadata",
+            "metadata"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "audit_auditevent_actor_id_270bb4b7": {
+          "check": false,
+          "columns": [
+            "actor_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "audit_auditevent_tenant_id_570ea526": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_1": {
+          "check": false,
+          "columns": [
+            "actor_id"
+          ],
+          "foreign_key": [
+            "identity_user",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "ix_audit_created": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "created_at"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "ix_audit_object": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "model_name",
+            "object_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        }
+      },
+      "model": "audit.AuditEvent"
+    },
+    "cds_activeingredient": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "cds_activeingredient_tenant_id_362b3b49": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "uq_cds_ingredient_tenant": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "code"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": true
+        }
+      },
+      "model": "cds.ActiveIngredient"
+    },
+    "cds_clinicalevaluation": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "cds_clinicalevaluation_evaluated_by_id_92403231": {
+          "check": false,
+          "columns": [
+            "evaluated_by_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "cds_clinicalevaluation_knowledge_release_id_7704b720": {
+          "check": false,
+          "columns": [
+            "knowledge_release_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "cds_clinicalevaluation_patient_id_4a05ec9e": {
+          "check": false,
+          "columns": [
+            "patient_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "cds_clinicalevaluation_prescription_id_e89915e6": {
+          "check": false,
+          "columns": [
+            "prescription_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "cds_clinicalevaluation_tenant_id_ae656e47": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "knowledge_release_id"
+          ],
+          "foreign_key": [
+            "cds_clinicalknowledgerelease",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_1": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_2": {
+          "check": false,
+          "columns": [
+            "prescription_id"
+          ],
+          "foreign_key": [
+            "prescription_prescription",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_3": {
+          "check": false,
+          "columns": [
+            "patient_id"
+          ],
+          "foreign_key": [
+            "patients_patient",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_4": {
+          "check": false,
+          "columns": [
+            "evaluated_by_id"
+          ],
+          "foreign_key": [
+            "identity_user",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "ix_cds_eval_prescription": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "prescription_id",
+            "created_at"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        }
+      },
+      "model": "cds.ClinicalEvaluation"
+    },
+    "cds_clinicalfinding": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "cds_clinicalfinding_affected_medicine_id_1c738d62": {
+          "check": false,
+          "columns": [
+            "affected_medicine_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "cds_clinicalfinding_evaluation_id_35b374db": {
+          "check": false,
+          "columns": [
+            "evaluation_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "cds_clinicalfinding_patient_id_93bf71e0": {
+          "check": false,
+          "columns": [
+            "patient_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "cds_clinicalfinding_prescription_id_1ae23a25": {
+          "check": false,
+          "columns": [
+            "prescription_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "cds_clinicalfinding_tenant_id_ee29afea": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_1": {
+          "check": false,
+          "columns": [
+            "prescription_id"
+          ],
+          "foreign_key": [
+            "prescription_prescription",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_2": {
+          "check": false,
+          "columns": [
+            "patient_id"
+          ],
+          "foreign_key": [
+            "patients_patient",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_3": {
+          "check": false,
+          "columns": [
+            "evaluation_id"
+          ],
+          "foreign_key": [
+            "cds_clinicalevaluation",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_4": {
+          "check": false,
+          "columns": [
+            "affected_medicine_id"
+          ],
+          "foreign_key": [
+            "medicines_medicine",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        }
+      },
+      "model": "cds.ClinicalFinding"
+    },
+    "cds_clinicalknowledgerelease": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "cds_clinicalknowledgerelease_tenant_id_dc160a6d": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "ck_cds_release_scope": {
+          "check": true,
+          "columns": [
+            "is_global",
+            "tenant_id",
+            "is_global",
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "ix_cds_release_active": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "is_active",
+            "effective_date"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "uq_cds_release_global": {
+          "check": false,
+          "columns": [
+            "code",
+            "version"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": true
+        },
+        "uq_cds_release_tenant": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "code",
+            "version"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": true
+        }
+      },
+      "model": "cds.ClinicalKnowledgeRelease"
+    },
+    "cds_clinicalknowledgerule": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "__unnamed_constraint_1__": {
+          "check": true,
+          "columns": [
+            "criteria",
+            "criteria"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "cds_clinicalknowledgerule_release_id_210b92ce": {
+          "check": false,
+          "columns": [
+            "release_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "cds_clinicalknowledgerule_tenant_id_ddc4cd75": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_1": {
+          "check": false,
+          "columns": [
+            "release_id"
+          ],
+          "foreign_key": [
+            "cds_clinicalknowledgerelease",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "ix_cds_rule_factor": {
+          "check": false,
+          "columns": [
+            "release_id",
+            "rule_type",
+            "interacting_code"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "ix_cds_rule_lookup": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "rule_type",
+            "primary_code",
+            "is_active"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "uq_cds_rule_release": {
+          "check": false,
+          "columns": [
+            "release_id",
+            "rule_id",
+            "rule_version"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": true
+        }
+      },
+      "model": "cds.ClinicalKnowledgeRule"
+    },
+    "cds_clinicaloverride": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "__unnamed_constraint_1__": {
+          "check": false,
+          "columns": [
+            "finding_id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": true
+        },
+        "cds_clinicaloverride_authorized_by_id_c4d3f192": {
+          "check": false,
+          "columns": [
+            "authorized_by_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "cds_clinicaloverride_prescription_id_98844fde": {
+          "check": false,
+          "columns": [
+            "prescription_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "cds_clinicaloverride_tenant_id_8306e944": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_1": {
+          "check": false,
+          "columns": [
+            "prescription_id"
+          ],
+          "foreign_key": [
+            "prescription_prescription",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_2": {
+          "check": false,
+          "columns": [
+            "finding_id"
+          ],
+          "foreign_key": [
+            "cds_clinicalfinding",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_3": {
+          "check": false,
+          "columns": [
+            "authorized_by_id"
+          ],
+          "foreign_key": [
+            "identity_user",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        }
+      },
+      "model": "cds.ClinicalOverride"
+    },
+    "cds_medicineingredient": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "cds_medicineingredient_ingredient_id_39f08153": {
+          "check": false,
+          "columns": [
+            "ingredient_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "cds_medicineingredient_medicine_id_dc99326c": {
+          "check": false,
+          "columns": [
+            "medicine_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "cds_medicineingredient_tenant_id_b9265599": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_1": {
+          "check": false,
+          "columns": [
+            "medicine_id"
+          ],
+          "foreign_key": [
+            "medicines_medicine",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_2": {
+          "check": false,
+          "columns": [
+            "ingredient_id"
+          ],
+          "foreign_key": [
+            "cds_activeingredient",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "uq_cds_medicine_ingredient": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "medicine_id",
+            "ingredient_id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": true
+        }
+      },
+      "model": "cds.MedicineIngredient"
+    },
+    "clinical_clinicalcondition": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "clinical_clinicalcondition_encounter_id_f41109ed": {
+          "check": false,
+          "columns": [
+            "encounter_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "clinical_clinicalcondition_patient_id_493e6036": {
+          "check": false,
+          "columns": [
+            "patient_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "clinical_clinicalcondition_tenant_id_de4d9f99": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "encounter_id"
+          ],
+          "foreign_key": [
+            "clinical_clinicalencounter",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_1": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_2": {
+          "check": false,
+          "columns": [
+            "patient_id"
+          ],
+          "foreign_key": [
+            "patients_patient",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "ix_clinical_condition": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "patient_id",
+            "clinical_status"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        }
+      },
+      "model": "clinical.ClinicalCondition"
+    },
+    "clinical_clinicaldiagnosticreport": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "clinical_clinicaldiagnosticreport_encounter_id_3d244547": {
+          "check": false,
+          "columns": [
+            "encounter_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "clinical_clinicaldiagnosticreport_patient_id_4e967a84": {
+          "check": false,
+          "columns": [
+            "patient_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "clinical_clinicaldiagnosticreport_tenant_id_7497b4f1": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "encounter_id"
+          ],
+          "foreign_key": [
+            "clinical_clinicalencounter",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_1": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_2": {
+          "check": false,
+          "columns": [
+            "patient_id"
+          ],
+          "foreign_key": [
+            "patients_patient",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "ix_clinical_report": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "patient_id",
+            "status"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        }
+      },
+      "model": "clinical.ClinicalDiagnosticReport"
+    },
+    "clinical_clinicaldocument": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "__unnamed_constraint_1__": {
+          "check": true,
+          "columns": [
+            "size_bytes"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "clinical_clinicaldocument_author_id_ea94bbb7": {
+          "check": false,
+          "columns": [
+            "author_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "clinical_clinicaldocument_encounter_id_a813a123": {
+          "check": false,
+          "columns": [
+            "encounter_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "clinical_clinicaldocument_patient_id_5feff9b1": {
+          "check": false,
+          "columns": [
+            "patient_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "clinical_clinicaldocument_tenant_id_d167beb2": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "encounter_id"
+          ],
+          "foreign_key": [
+            "clinical_clinicalencounter",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_1": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_2": {
+          "check": false,
+          "columns": [
+            "patient_id"
+          ],
+          "foreign_key": [
+            "patients_patient",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_3": {
+          "check": false,
+          "columns": [
+            "author_id"
+          ],
+          "foreign_key": [
+            "practitioners_practitioner",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "ix_clinical_document": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "patient_id",
+            "status"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        }
+      },
+      "model": "clinical.ClinicalDocument"
+    },
+    "clinical_clinicalencounter": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "clinical_clinicalencounter_location_id_d5d15538": {
+          "check": false,
+          "columns": [
+            "location_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "clinical_clinicalencounter_organization_id_26e3567a": {
+          "check": false,
+          "columns": [
+            "organization_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "clinical_clinicalencounter_patient_id_cb09f57d": {
+          "check": false,
+          "columns": [
+            "patient_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "clinical_clinicalencounter_practitioner_id_c20044da": {
+          "check": false,
+          "columns": [
+            "practitioner_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "clinical_clinicalencounter_tenant_id_c2eba012": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_1": {
+          "check": false,
+          "columns": [
+            "practitioner_id"
+          ],
+          "foreign_key": [
+            "practitioners_practitioner",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_2": {
+          "check": false,
+          "columns": [
+            "patient_id"
+          ],
+          "foreign_key": [
+            "patients_patient",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_3": {
+          "check": false,
+          "columns": [
+            "organization_id"
+          ],
+          "foreign_key": [
+            "organizations_organization",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_4": {
+          "check": false,
+          "columns": [
+            "location_id"
+          ],
+          "foreign_key": [
+            "organizations_location",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "ix_clinical_enc_patient": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "patient_id",
+            "status"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        }
+      },
+      "model": "clinical.ClinicalEncounter"
+    },
+    "clinical_clinicalobservation": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "clinical_clinicalobservation_encounter_id_3f58f48e": {
+          "check": false,
+          "columns": [
+            "encounter_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "clinical_clinicalobservation_patient_id_a9ce4650": {
+          "check": false,
+          "columns": [
+            "patient_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "clinical_clinicalobservation_tenant_id_696d291a": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_1": {
+          "check": false,
+          "columns": [
+            "patient_id"
+          ],
+          "foreign_key": [
+            "patients_patient",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_2": {
+          "check": false,
+          "columns": [
+            "encounter_id"
+          ],
+          "foreign_key": [
+            "clinical_clinicalencounter",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "ix_clinical_observation": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "patient_id",
+            "status"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        }
+      },
+      "model": "clinical.ClinicalObservation"
+    },
+    "clinical_medicationadministrationrecord": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "clinical_medicationadministrationrecord_encounter_id_7b2cc755": {
+          "check": false,
+          "columns": [
+            "encounter_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "clinical_medicationadministrationrecord_patient_id_a2918891": {
+          "check": false,
+          "columns": [
+            "patient_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "clinical_medicationadministrationrecord_performer_id_73742b06": {
+          "check": false,
+          "columns": [
+            "performer_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "clinical_medicationadministrationrecord_prescription_item_id_6a9674e9": {
+          "check": false,
+          "columns": [
+            "prescription_item_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "clinical_medicationadministrationrecord_tenant_id_e3ab1d2b": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_1": {
+          "check": false,
+          "columns": [
+            "prescription_item_id"
+          ],
+          "foreign_key": [
+            "prescription_prescriptionitem",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_2": {
+          "check": false,
+          "columns": [
+            "performer_id"
+          ],
+          "foreign_key": [
+            "practitioners_practitioner",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_3": {
+          "check": false,
+          "columns": [
+            "patient_id"
+          ],
+          "foreign_key": [
+            "patients_patient",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_4": {
+          "check": false,
+          "columns": [
+            "encounter_id"
+          ],
+          "foreign_key": [
+            "clinical_clinicalencounter",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "ix_clinical_med_admin": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "patient_id",
+            "status"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        }
+      },
+      "model": "clinical.MedicationAdministrationRecord"
+    },
+    "crosswalks_legacyidentifiercrosswalk": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "__unnamed_constraint_1__": {
+          "check": true,
+          "columns": [
+            "immutable_metadata",
+            "immutable_metadata"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "crosswalks_legacyidentifiercrosswalk_source_system_id_10fc35b0": {
+          "check": false,
+          "columns": [
+            "source_system_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "crosswalks_legacyidentifiercrosswalk_tenant_id_1f366aec": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "source_system_id"
+          ],
+          "foreign_key": [
+            "crosswalks_legacysystem",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_1": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "ix_crosswalk_batch": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "migration_batch"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "ix_crosswalk_target": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "target_entity_type",
+            "target_uuid"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "uq_crosswalk_source_tenant": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "source_system_id",
+            "source_entity_type",
+            "source_identifier"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": true
+        }
+      },
+      "model": "crosswalks.LegacyIdentifierCrosswalk"
+    },
+    "crosswalks_legacysystem": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "__unnamed_constraint_1__": {
+          "check": false,
+          "columns": [
+            "code"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": true
+        },
+        "__unnamed_constraint_2__": {
+          "check": true,
+          "columns": [
+            "metadata",
+            "metadata"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        }
+      },
+      "model": "crosswalks.LegacySystem"
+    },
+    "documents_documentaccessevent": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "documents_documentaccessevent_actor_id_ba18f058": {
+          "check": false,
+          "columns": [
+            "actor_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "documents_documentaccessevent_document_id_1e2fd255": {
+          "check": false,
+          "columns": [
+            "document_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "documents_documentaccessevent_tenant_id_79b445a4": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "document_id"
+          ],
+          "foreign_key": [
+            "documents_storedclinicaldocument",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_1": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_2": {
+          "check": false,
+          "columns": [
+            "actor_id"
+          ],
+          "foreign_key": [
+            "identity_user",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        }
+      },
+      "model": "documents.DocumentAccessEvent"
+    },
+    "documents_storedclinicaldocument": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "__unnamed_constraint_1__": {
+          "check": true,
+          "columns": [
+            "size_bytes"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "__unnamed_constraint_2__": {
+          "check": true,
+          "columns": [
+            "metadata",
+            "metadata"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "documents_storedclinicaldocument_patient_id_b16c60c1": {
+          "check": false,
+          "columns": [
+            "patient_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "documents_storedclinicaldocument_tenant_id_577ad762": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "documents_storedclinicaldocument_uploaded_by_id_91f6079d": {
+          "check": false,
+          "columns": [
+            "uploaded_by_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "uploaded_by_id"
+          ],
+          "foreign_key": [
+            "identity_user",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_1": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_2": {
+          "check": false,
+          "columns": [
+            "patient_id"
+          ],
+          "foreign_key": [
+            "patients_patient",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "ix_document_patient": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "patient_id",
+            "created_at"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "uq_document_object_key_tenant": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "object_key"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": true
+        }
+      },
+      "model": "documents.StoredClinicalDocument"
+    },
+    "fhir_fhiridempotencyrecord": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "__unnamed_constraint_1__": {
+          "check": true,
+          "columns": [
+            "response_status"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "ck_fhir_idempotency_state_resource": {
+          "check": true,
+          "columns": [
+            "resource_id",
+            "state",
+            "resource_id",
+            "state"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fhir_fhiridempotencyrecord_actor_id_343b3584": {
+          "check": false,
+          "columns": [
+            "actor_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "fhir_fhiridempotencyrecord_tenant_id_1c7f520d": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_1": {
+          "check": false,
+          "columns": [
+            "actor_id"
+          ],
+          "foreign_key": [
+            "identity_user",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "ix_fhir_idempotency_created": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "created_at"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "ix_fhir_idempotency_resource": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "resource_type",
+            "resource_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "uq_fhir_idempotency_tenant_key": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "key"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": true
+        }
+      },
+      "model": "fhir.FHIRIdempotencyRecord"
+    },
+    "identity_attributepolicy": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "__unnamed_constraint_1__": {
+          "check": true,
+          "columns": [
+            "conditions",
+            "conditions"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "identity_attributepolicy_tenant_id_e78a3edb": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "uq_identity_abac_policy": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "code"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": true
+        }
+      },
+      "model": "identity.AttributePolicy"
+    },
+    "identity_externalidentitymapping": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "__unnamed_constraint_1__": {
+          "check": true,
+          "columns": [
+            "metadata",
+            "metadata"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "user_id"
+          ],
+          "foreign_key": [
+            "identity_user",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_1": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "identity_externalidentitymapping_tenant_id_209fbb7a": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "identity_externalidentitymapping_user_id_f783bd89": {
+          "check": false,
+          "columns": [
+            "user_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "uq_identity_external_subject": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "issuer",
+            "subject"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": true
+        }
+      },
+      "model": "identity.ExternalIdentityMapping"
+    },
+    "identity_role": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "__unnamed_constraint_1__": {
+          "check": true,
+          "columns": [
+            "capabilities",
+            "capabilities"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "identity_role_tenant_id_4b063ff3": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "uq_identity_role_tenant_code": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "code"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": true
+        }
+      },
+      "model": "identity.Role"
+    },
+    "identity_serviceaccount": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "__unnamed_constraint_1__": {
+          "check": true,
+          "columns": [
+            "capabilities",
+            "capabilities"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "identity_serviceaccount_tenant_id_753032d6": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "uq_identity_service_account": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "code"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": true
+        }
+      },
+      "model": "identity.ServiceAccount"
+    },
+    "identity_user": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "__unnamed_constraint_1__": {
+          "check": false,
+          "columns": [
+            "username"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": true
+        },
+        "__unnamed_constraint_2__": {
+          "check": true,
+          "columns": [
+            "metadata",
+            "metadata"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "identity_user_tenant_id_6a48a6ab": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        }
+      },
+      "model": "identity.User"
+    },
+    "identity_userrole": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "user_id"
+          ],
+          "foreign_key": [
+            "identity_user",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_1": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_2": {
+          "check": false,
+          "columns": [
+            "role_id"
+          ],
+          "foreign_key": [
+            "identity_role",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "identity_userrole_role_id_518bd477": {
+          "check": false,
+          "columns": [
+            "role_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "identity_userrole_tenant_id_d623c6eb": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "identity_userrole_user_id_385d660b": {
+          "check": false,
+          "columns": [
+            "user_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "uq_identity_user_role": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "user_id",
+            "role_id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": true
+        }
+      },
+      "model": "identity.UserRole"
+    },
+    "medicines_medicine": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "__unnamed_constraint_1__": {
+          "check": true,
+          "columns": [
+            "metadata",
+            "metadata"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "ck_medicine_explicit_scope": {
+          "check": true,
+          "columns": [
+            "is_global",
+            "tenant_id",
+            "is_global",
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "medicines_medicine_tenant_id_0ad7a549": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "uq_medicine_global_code": {
+          "check": false,
+          "columns": [
+            "code"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": true
+        },
+        "uq_medicine_tenant_code": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "code"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": true
+        }
+      },
+      "model": "medicines.Medicine"
+    },
+    "medicines_medicineidentifier": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "medicine_id"
+          ],
+          "foreign_key": [
+            "medicines_medicine",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "medicines_medicineidentifier_medicine_id_fb3195aa": {
+          "check": false,
+          "columns": [
+            "medicine_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "uq_medicine_identifier": {
+          "check": false,
+          "columns": [
+            "system",
+            "value"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": true
+        }
+      },
+      "model": "medicines.MedicineIdentifier"
+    },
+    "notifications_notificationoutbox": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "__unnamed_constraint_1__": {
+          "check": true,
+          "columns": [
+            "payload",
+            "payload"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "notifications_notificationoutbox_tenant_id_ad16a84f": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "uq_notification_idempotency": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "idempotency_key"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": true
+        }
+      },
+      "model": "notifications.NotificationOutbox"
+    },
+    "organizations_location": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "__unnamed_constraint_1__": {
+          "check": true,
+          "columns": [
+            "address",
+            "address"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "__unnamed_constraint_2__": {
+          "check": true,
+          "columns": [
+            "metadata",
+            "metadata"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "organization_id"
+          ],
+          "foreign_key": [
+            "organizations_organization",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_1": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "ix_location_tenant_org": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "organization_id",
+            "status"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "organizations_location_organization_id_9d165d6b": {
+          "check": false,
+          "columns": [
+            "organization_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "organizations_location_tenant_id_607463b4": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "uq_location_tenant_code": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "code"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": true
+        }
+      },
+      "model": "organizations.Location"
+    },
+    "organizations_locationidentifier": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_1": {
+          "check": false,
+          "columns": [
+            "location_id"
+          ],
+          "foreign_key": [
+            "organizations_location",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "organizations_locationidentifier_location_id_b0155728": {
+          "check": false,
+          "columns": [
+            "location_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "organizations_locationidentifier_tenant_id_3dd68d66": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "uq_location_identifier_tenant": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "system",
+            "value"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": true
+        }
+      },
+      "model": "organizations.LocationIdentifier"
+    },
+    "organizations_organization": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "__unnamed_constraint_1__": {
+          "check": true,
+          "columns": [
+            "metadata",
+            "metadata"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "ix_org_tenant_status": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "status",
+            "name"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "organizations_organization_tenant_id_40606e80": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "uq_org_tenant_code": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "code"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": true
+        }
+      },
+      "model": "organizations.Organization"
+    },
+    "organizations_organizationidentifier": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_1": {
+          "check": false,
+          "columns": [
+            "organization_id"
+          ],
+          "foreign_key": [
+            "organizations_organization",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "organizations_organizationidentifier_organization_id_c54c3ec5": {
+          "check": false,
+          "columns": [
+            "organization_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "organizations_organizationidentifier_tenant_id_94e87559": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "uq_org_identifier_tenant": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "system",
+            "value"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": true
+        }
+      },
+      "model": "organizations.OrganizationIdentifier"
+    },
+    "patients_patient": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "__unnamed_constraint_1__": {
+          "check": true,
+          "columns": [
+            "address",
+            "address"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "__unnamed_constraint_2__": {
+          "check": true,
+          "columns": [
+            "emergency_contact",
+            "emergency_contact"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "__unnamed_constraint_3__": {
+          "check": true,
+          "columns": [
+            "metadata",
+            "metadata"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "ix_patient_name_tenant": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "last_name",
+            "first_name"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "ix_patient_verify_tenant": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "verification_status"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "patients_patient_tenant_id_36ccbf54": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "uq_patient_reference_tenant": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "internal_reference_id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": true
+        }
+      },
+      "model": "patients.Patient"
+    },
+    "patients_patientallergy": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_1": {
+          "check": false,
+          "columns": [
+            "patient_id"
+          ],
+          "foreign_key": [
+            "patients_patient",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "ix_patient_allergen": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "allergen_name"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "ix_patient_allergy_active": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "patient_id",
+            "is_active"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "patients_patientallergy_patient_id_dc61e16e": {
+          "check": false,
+          "columns": [
+            "patient_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "patients_patientallergy_tenant_id_c6576a93": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        }
+      },
+      "model": "patients.PatientAllergy"
+    },
+    "patients_patientidentifier": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_1": {
+          "check": false,
+          "columns": [
+            "patient_id"
+          ],
+          "foreign_key": [
+            "patients_patient",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "patients_patientidentifier_patient_id_25c95a72": {
+          "check": false,
+          "columns": [
+            "patient_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "patients_patientidentifier_tenant_id_9057faf4": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "uq_patient_identifier_tenant": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "system",
+            "value"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": true
+        }
+      },
+      "model": "patients.PatientIdentifier"
+    },
+    "patients_patientmedication": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_1": {
+          "check": false,
+          "columns": [
+            "patient_id"
+          ],
+          "foreign_key": [
+            "patients_patient",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_2": {
+          "check": false,
+          "columns": [
+            "medicine_id"
+          ],
+          "foreign_key": [
+            "medicines_medicine",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "patients_patientmedication_medicine_id_243e3127": {
+          "check": false,
+          "columns": [
+            "medicine_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "patients_patientmedication_patient_id_3749b9e9": {
+          "check": false,
+          "columns": [
+            "patient_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "patients_patientmedication_tenant_id_dc195f9d": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        }
+      },
+      "model": "patients.PatientMedication"
+    },
+    "practitioners_practitioner": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "__unnamed_constraint_1__": {
+          "check": true,
+          "columns": [
+            "metadata",
+            "metadata"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "ix_practitioner_tenant": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "status",
+            "last_name"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "practitioners_practitioner_tenant_id_d86ec6cc": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        }
+      },
+      "model": "practitioners.Practitioner"
+    },
+    "practitioners_practitioneridentifier": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_1": {
+          "check": false,
+          "columns": [
+            "practitioner_id"
+          ],
+          "foreign_key": [
+            "practitioners_practitioner",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "practitioners_practitioneridentifier_practitioner_id_f0aa6750": {
+          "check": false,
+          "columns": [
+            "practitioner_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "practitioners_practitioneridentifier_tenant_id_ade63e7e": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "uq_practitioner_identifier_tenant": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "system",
+            "value"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": true
+        }
+      },
+      "model": "practitioners.PractitionerIdentifier"
+    },
+    "practitioners_practitionerlicence": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_1": {
+          "check": false,
+          "columns": [
+            "practitioner_id"
+          ],
+          "foreign_key": [
+            "practitioners_practitioner",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "practitioners_practitionerlicence_practitioner_id_dcf68e4a": {
+          "check": false,
+          "columns": [
+            "practitioner_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "practitioners_practitionerlicence_tenant_id_9fe9e38c": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "uq_practitioner_licence_tenant": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "issuer",
+            "licence_number"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": true
+        }
+      },
+      "model": "practitioners.PractitionerLicence"
+    },
+    "practitioners_practitionerrole": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_1": {
+          "check": false,
+          "columns": [
+            "practitioner_id"
+          ],
+          "foreign_key": [
+            "practitioners_practitioner",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_2": {
+          "check": false,
+          "columns": [
+            "organization_id"
+          ],
+          "foreign_key": [
+            "organizations_organization",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_3": {
+          "check": false,
+          "columns": [
+            "location_id"
+          ],
+          "foreign_key": [
+            "organizations_location",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "practitioners_practitionerrole_location_id_ba3831ba": {
+          "check": false,
+          "columns": [
+            "location_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "practitioners_practitionerrole_organization_id_fb22dea3": {
+          "check": false,
+          "columns": [
+            "organization_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "practitioners_practitionerrole_practitioner_id_bdf8f75d": {
+          "check": false,
+          "columns": [
+            "practitioner_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "practitioners_practitionerrole_tenant_id_6436e0a4": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "uq_practitioner_role_scope": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "practitioner_id",
+            "organization_id",
+            "role_code"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": true
+        }
+      },
+      "model": "practitioners.PractitionerRole"
+    },
+    "prescription_deadletterqueue": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "__unnamed_constraint_1__": {
+          "check": false,
+          "columns": [
+            "outbox_item_id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": true
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "outbox_item_id"
+          ],
+          "foreign_key": [
+            "prescription_integrationoutbox",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_1": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "prescription_deadletterqueue_tenant_id_d47e1085": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        }
+      },
+      "model": "prescription.DeadLetterQueue"
+    },
+    "prescription_integrationoutbox": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "__unnamed_constraint_1__": {
+          "check": true,
+          "columns": [
+            "payload",
+            "payload"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "__unnamed_constraint_2__": {
+          "check": true,
+          "columns": [
+            "retry_count"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "prescription_integrationoutbox_tenant_id_595c56a3": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "uq_integration_correlation_tenant": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "correlation_id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": true
+        },
+        "uq_integration_idempotency_tenant": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "idempotency_key"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": true
+        }
+      },
+      "model": "prescription.IntegrationOutbox"
+    },
+    "prescription_prescription": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "__unnamed_constraint_1__": {
+          "check": true,
+          "columns": [
+            "metadata",
+            "metadata"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_1": {
+          "check": false,
+          "columns": [
+            "practitioner_id"
+          ],
+          "foreign_key": [
+            "practitioners_practitioner",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_2": {
+          "check": false,
+          "columns": [
+            "patient_id"
+          ],
+          "foreign_key": [
+            "patients_patient",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_3": {
+          "check": false,
+          "columns": [
+            "organization_id"
+          ],
+          "foreign_key": [
+            "organizations_organization",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_4": {
+          "check": false,
+          "columns": [
+            "location_id"
+          ],
+          "foreign_key": [
+            "organizations_location",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_5": {
+          "check": false,
+          "columns": [
+            "approved_by_id"
+          ],
+          "foreign_key": [
+            "identity_user",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "ix_prescription_patient": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "patient_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "ix_prescription_tenant_status": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "status"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "ix_prescription_workflow": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "workflow_state"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "prescription_prescription_approved_by_id_5071d51e": {
+          "check": false,
+          "columns": [
+            "approved_by_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "prescription_prescription_location_id_32790ab9": {
+          "check": false,
+          "columns": [
+            "location_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "prescription_prescription_organization_id_35b008d0": {
+          "check": false,
+          "columns": [
+            "organization_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "prescription_prescription_patient_id_76afb6b4": {
+          "check": false,
+          "columns": [
+            "patient_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "prescription_prescription_practitioner_id_8e90aeae": {
+          "check": false,
+          "columns": [
+            "practitioner_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "prescription_prescription_tenant_id_f2a05e58": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "uq_prescription_number_tenant": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "prescription_number"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": true
+        }
+      },
+      "model": "prescription.Prescription"
+    },
+    "prescription_prescriptionaudit": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "__unnamed_constraint_1__": {
+          "check": true,
+          "columns": [
+            "payload",
+            "payload"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "user_id"
+          ],
+          "foreign_key": [
+            "identity_user",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_1": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_2": {
+          "check": false,
+          "columns": [
+            "prescription_id"
+          ],
+          "foreign_key": [
+            "prescription_prescription",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "prescription_prescriptionaudit_prescription_id_bbbd806c": {
+          "check": false,
+          "columns": [
+            "prescription_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "prescription_prescriptionaudit_tenant_id_062bc6a1": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "prescription_prescriptionaudit_user_id_10c493a2": {
+          "check": false,
+          "columns": [
+            "user_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        }
+      },
+      "model": "prescription.PrescriptionAudit"
+    },
+    "prescription_prescriptiondispense": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "__unnamed_constraint_1__": {
+          "check": true,
+          "columns": [
+            "metadata",
+            "metadata"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_1": {
+          "check": false,
+          "columns": [
+            "prescription_id"
+          ],
+          "foreign_key": [
+            "prescription_prescription",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_2": {
+          "check": false,
+          "columns": [
+            "location_id"
+          ],
+          "foreign_key": [
+            "organizations_location",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_3": {
+          "check": false,
+          "columns": [
+            "dispensed_by_id"
+          ],
+          "foreign_key": [
+            "identity_user",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "prescription_prescriptiondispense_dispensed_by_id_726f6fa7": {
+          "check": false,
+          "columns": [
+            "dispensed_by_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "prescription_prescriptiondispense_location_id_ee258da5": {
+          "check": false,
+          "columns": [
+            "location_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "prescription_prescriptiondispense_prescription_id_dbcb76db": {
+          "check": false,
+          "columns": [
+            "prescription_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "prescription_prescriptiondispense_tenant_id_7da28f35": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "uq_dispense_idempotency_tenant": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "idempotency_key"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": true
+        }
+      },
+      "model": "prescription.PrescriptionDispense"
+    },
+    "prescription_prescriptionfill": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "item_id"
+          ],
+          "foreign_key": [
+            "prescription_prescriptionitem",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_1": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_2": {
+          "check": false,
+          "columns": [
+            "substituted_medicine_id"
+          ],
+          "foreign_key": [
+            "medicines_medicine",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_3": {
+          "check": false,
+          "columns": [
+            "dispense_id"
+          ],
+          "foreign_key": [
+            "prescription_prescriptiondispense",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "prescription_prescriptionfill_dispense_id_ed2777f3": {
+          "check": false,
+          "columns": [
+            "dispense_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "prescription_prescriptionfill_item_id_ae2c842f": {
+          "check": false,
+          "columns": [
+            "item_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "prescription_prescriptionfill_substituted_medicine_id_0aa2ff4f": {
+          "check": false,
+          "columns": [
+            "substituted_medicine_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "prescription_prescriptionfill_tenant_id_0fc6744a": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        }
+      },
+      "model": "prescription.PrescriptionFill"
+    },
+    "prescription_prescriptionitem": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "__unnamed_constraint_1__": {
+          "check": true,
+          "columns": [
+            "duration_days"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "__unnamed_constraint_2__": {
+          "check": true,
+          "columns": [
+            "refills_authorized"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_1": {
+          "check": false,
+          "columns": [
+            "prescription_id"
+          ],
+          "foreign_key": [
+            "prescription_prescription",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_2": {
+          "check": false,
+          "columns": [
+            "canonical_medicine_id"
+          ],
+          "foreign_key": [
+            "medicines_medicine",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "prescription_prescriptionitem_canonical_medicine_id_1c835e2c": {
+          "check": false,
+          "columns": [
+            "canonical_medicine_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "prescription_prescriptionitem_prescription_id_92691e50": {
+          "check": false,
+          "columns": [
+            "prescription_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "prescription_prescriptionitem_tenant_id_c5e9586f": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        }
+      },
+      "model": "prescription.PrescriptionItem"
+    },
+    "prescription_prescriptionstatushistory": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_1": {
+          "check": false,
+          "columns": [
+            "prescription_id"
+          ],
+          "foreign_key": [
+            "prescription_prescription",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_2": {
+          "check": false,
+          "columns": [
+            "changed_by_id"
+          ],
+          "foreign_key": [
+            "identity_user",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "prescription_prescriptionstatushistory_changed_by_id_f087a1a9": {
+          "check": false,
+          "columns": [
+            "changed_by_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "prescription_prescriptionstatushistory_prescription_id_6bcb569b": {
+          "check": false,
+          "columns": [
+            "prescription_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "prescription_prescriptionstatushistory_tenant_id_bf0b70f7": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        }
+      },
+      "model": "prescription.PrescriptionStatusHistory"
+    },
+    "prescription_prescriptionsubstitution": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_1": {
+          "check": false,
+          "columns": [
+            "substitute_medicine_id"
+          ],
+          "foreign_key": [
+            "medicines_medicine",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_2": {
+          "check": false,
+          "columns": [
+            "original_item_id"
+          ],
+          "foreign_key": [
+            "prescription_prescriptionitem",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_3": {
+          "check": false,
+          "columns": [
+            "fill_id"
+          ],
+          "foreign_key": [
+            "prescription_prescriptionfill",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_4": {
+          "check": false,
+          "columns": [
+            "approved_by_id"
+          ],
+          "foreign_key": [
+            "identity_user",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "prescription_prescriptionsubstitution_approved_by_id_4e396440": {
+          "check": false,
+          "columns": [
+            "approved_by_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "prescription_prescriptionsubstitution_fill_id_04a3f607": {
+          "check": false,
+          "columns": [
+            "fill_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "prescription_prescriptionsubstitution_original_item_id_e9bea3c0": {
+          "check": false,
+          "columns": [
+            "original_item_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "prescription_prescriptionsubstitution_substitute_medicine_id_4fb55f93": {
+          "check": false,
+          "columns": [
+            "substitute_medicine_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "prescription_prescriptionsubstitution_tenant_id_11c925cc": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        }
+      },
+      "model": "prescription.PrescriptionSubstitution"
+    },
+    "prescription_prescriptionverification": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "__unnamed_constraint_1__": {
+          "check": true,
+          "columns": [
+            "verification_payload",
+            "verification_payload"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_1": {
+          "check": false,
+          "columns": [
+            "prescription_id"
+          ],
+          "foreign_key": [
+            "prescription_prescription",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "prescription_prescriptionverification_prescription_id_104e3e6c": {
+          "check": false,
+          "columns": [
+            "prescription_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "prescription_prescriptionverification_tenant_id_605f8385": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        }
+      },
+      "model": "prescription.PrescriptionVerification"
+    },
+    "prescription_prescriptionworkflowevent": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_1": {
+          "check": false,
+          "columns": [
+            "prescription_id"
+          ],
+          "foreign_key": [
+            "prescription_prescription",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_2": {
+          "check": false,
+          "columns": [
+            "actor_id"
+          ],
+          "foreign_key": [
+            "identity_user",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "prescription_prescriptionworkflowevent_actor_id_b4f3a325": {
+          "check": false,
+          "columns": [
+            "actor_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "prescription_prescriptionworkflowevent_prescription_id_fb5a0237": {
+          "check": false,
+          "columns": [
+            "prescription_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "prescription_prescriptionworkflowevent_tenant_id_dc7111db": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        }
+      },
+      "model": "prescription.PrescriptionWorkflowEvent"
+    },
+    "prescription_providerconfiguration": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "__unnamed_constraint_1__": {
+          "check": true,
+          "columns": [
+            "rate_limit"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "__unnamed_constraint_2__": {
+          "check": true,
+          "columns": [
+            "retry_policy",
+            "retry_policy"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "prescription_providerconfiguration_tenant_id_128f89e7": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "uq_provider_config_tenant": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "provider_code"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": true
+        }
+      },
+      "model": "prescription.ProviderConfiguration"
+    },
+    "tenancy_tenant": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "__unnamed_constraint_1__": {
+          "check": false,
+          "columns": [
+            "slug"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": true
+        },
+        "__unnamed_constraint_2__": {
+          "check": true,
+          "columns": [
+            "metadata",
+            "metadata"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        }
+      },
+      "model": "tenancy.Tenant"
+    },
+    "terminology_fhircodesystemregistration": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "__unnamed_constraint_1__": {
+          "check": true,
+          "columns": [
+            "concepts_json",
+            "concepts_json"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "version_id"
+          ],
+          "foreign_key": [
+            "terminology_fhirterminologyversion",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_1": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "terminology_fhircodesystemregistration_tenant_id_1f00ad21": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "terminology_fhircodesystemregistration_version_id_1f597640": {
+          "check": false,
+          "columns": [
+            "version_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "uq_code_system_version": {
+          "check": false,
+          "columns": [
+            "version_id",
+            "url"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": true
+        }
+      },
+      "model": "terminology.FHIRCodeSystemRegistration"
+    },
+    "terminology_fhirterminologyversion": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "ck_term_explicit_scope": {
+          "check": true,
+          "columns": [
+            "is_global",
+            "tenant_id",
+            "is_global",
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "ix_term_version_scope": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "status"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "terminology_fhirterminologyversion_tenant_id_e58cdea8": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "uq_term_version_global": {
+          "check": false,
+          "columns": [
+            "canonical_url",
+            "version"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": true
+        },
+        "uq_term_version_tenant": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "canonical_url",
+            "version"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": true
+        }
+      },
+      "model": "terminology.FHIRTerminologyVersion"
+    },
+    "terminology_fhirvaluesetregistration": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "__unnamed_constraint_1__": {
+          "check": true,
+          "columns": [
+            "compose_json",
+            "compose_json"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "version_id"
+          ],
+          "foreign_key": [
+            "terminology_fhirterminologyversion",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_1": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "terminology_fhirvaluesetregistration_tenant_id_a8348790": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "terminology_fhirvaluesetregistration_version_id_b1865347": {
+          "check": false,
+          "columns": [
+            "version_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "uq_value_set_version": {
+          "check": false,
+          "columns": [
+            "version_id",
+            "url"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": true
+        }
+      },
+      "model": "terminology.FHIRValueSetRegistration"
+    },
+    "workflows_domainevent": {
+      "constraints": {
+        "__primary__": {
+          "check": false,
+          "columns": [
+            "id"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": true,
+          "unique": false
+        },
+        "__unnamed_constraint_1__": {
+          "check": true,
+          "columns": [
+            "payload",
+            "payload"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "__unnamed_constraint_2__": {
+          "check": true,
+          "columns": [
+            "attempts"
+          ],
+          "foreign_key": null,
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "fk_0": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": [
+            "tenancy_tenant",
+            "id"
+          ],
+          "index": false,
+          "primary_key": false,
+          "unique": false
+        },
+        "ix_domain_event_queue": {
+          "check": false,
+          "columns": [
+            "tenant_id",
+            "status",
+            "created_at"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        },
+        "workflows_domainevent_tenant_id_25dbab84": {
+          "check": false,
+          "columns": [
+            "tenant_id"
+          ],
+          "foreign_key": null,
+          "index": true,
+          "primary_key": false,
+          "unique": false
+        }
+      },
+      "model": "workflows.DomainEvent"
+    }
+  }
+}

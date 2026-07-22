@@ -1,0 +1,51 @@
+{
+  "product": "DawaTrace",
+  "phase": "2",
+  "runtime": {
+    "django": "5.1.15",
+    "fhir.resources": "6.5.0",
+    "pydantic": "1.10.26",
+    "python": "3.11"
+  },
+  "total_tests": 166,
+  "suites": [
+    {
+      "path": "backend/tests/test_platform_identity_security.py",
+      "count": 13,
+      "categories": ["platform", "tenancy", "identity", "rbac", "abac", "audit"]
+    },
+    {
+      "path": "backend/tests/test_clinical_domain.py",
+      "count": 17,
+      "categories": ["patient", "practitioner", "clinical", "domain-invariants"]
+    },
+    {
+      "path": "backend/tests/test_prescription_cds.py",
+      "count": 16,
+      "categories": ["prescription", "dispensing", "cds", "idempotency", "authorization"]
+    },
+    {
+      "path": "backend/tests/test_fhir_r4_gateway.py",
+      "count": 66,
+      "categories": ["fhir-r4", "19-resources", "conversion", "search", "bundle", "operation-outcome", "tenant-isolation"]
+    },
+    {
+      "path": "backend/tests/test_terminology.py",
+      "count": 22,
+      "categories": ["code-system", "value-set", "validate-code", "expand", "tenant-isolation"]
+    },
+    {
+      "path": "backend/tests/test_infrastructure_security.py",
+      "count": 32,
+      "categories": ["crosswalk", "background-jobs", "providers", "documents", "security", "admin-shell"]
+    }
+  ],
+  "excluded": [
+    "non-extracted inventory/procurement/finance/payment/POS contexts",
+    "production data migration",
+    "licensed clinical content efficacy",
+    "Firely certification",
+    "external HAPI rerun",
+    "live malware scanner and external object storage"
+  ]
+}

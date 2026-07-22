@@ -1,0 +1,7 @@
+# Replace placeholders with approved accountable owners before protected releases.
+* @esenai-group/platform
+/backend/apps/clinical/ @esenai-group/clinical
+/backend/apps/cds/ @esenai-group/clinical @esenai-group/security
+/backend/apps/fhir/ @esenai-group/interoperability
+/backend/apps/identity/ @esenai-group/security
+/docs/ @esenai-group/architecture

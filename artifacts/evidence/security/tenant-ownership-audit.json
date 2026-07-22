@@ -1,0 +1,86 @@
+{
+  "mismatches": {},
+  "models": {
+    "cds.ClinicalEvaluation": {
+      "affected_ids": [],
+      "missing_tenant_count": 0,
+      "status": "pass"
+    },
+    "clinical.ClinicalCondition": {
+      "affected_ids": [],
+      "missing_tenant_count": 0,
+      "status": "pass"
+    },
+    "clinical.ClinicalDiagnosticReport": {
+      "affected_ids": [],
+      "missing_tenant_count": 0,
+      "status": "pass"
+    },
+    "clinical.ClinicalDocument": {
+      "affected_ids": [],
+      "missing_tenant_count": 0,
+      "status": "pass"
+    },
+    "clinical.ClinicalEncounter": {
+      "affected_ids": [],
+      "missing_tenant_count": 0,
+      "status": "pass"
+    },
+    "clinical.ClinicalObservation": {
+      "affected_ids": [],
+      "missing_tenant_count": 0,
+      "status": "pass"
+    },
+    "clinical.MedicationAdministrationRecord": {
+      "affected_ids": [],
+      "missing_tenant_count": 0,
+      "status": "pass"
+    },
+    "fhir.FHIRIdempotencyRecord": {
+      "affected_ids": [],
+      "missing_tenant_count": 0,
+      "status": "pass"
+    },
+    "organizations.Location": {
+      "affected_ids": [],
+      "missing_tenant_count": 0,
+      "status": "pass"
+    },
+    "organizations.Organization": {
+      "affected_ids": [],
+      "missing_tenant_count": 0,
+      "status": "pass"
+    },
+    "patients.Patient": {
+      "affected_ids": [],
+      "missing_tenant_count": 0,
+      "status": "pass"
+    },
+    "practitioners.Practitioner": {
+      "affected_ids": [],
+      "missing_tenant_count": 0,
+      "status": "pass"
+    },
+    "prescription.Prescription": {
+      "affected_ids": [],
+      "missing_tenant_count": 0,
+      "status": "pass"
+    },
+    "prescription.PrescriptionDispense": {
+      "affected_ids": [],
+      "missing_tenant_count": 0,
+      "status": "pass"
+    },
+    "prescription.PrescriptionFill": {
+      "affected_ids": [],
+      "missing_tenant_count": 0,
+      "status": "pass"
+    },
+    "prescription.PrescriptionItem": {
+      "affected_ids": [],
+      "missing_tenant_count": 0,
+      "status": "pass"
+    }
+  },
+  "safe_to_enforce": true
+}

@@ -1,0 +1,19 @@
+{
+  "generated_at": "2026-07-22T14:04:03Z",
+  "integrity_checks": {
+    "pip_check": "passed",
+    "npm_ci": "passed"
+  },
+  "online_advisory_checks": {
+    "npm_audit": {
+      "status": "not_run",
+      "reason": "Sandbox DNS failed and escalation was denied because an external audit would transmit private dependency metadata."
+    },
+    "pip_audit": {
+      "status": "not_run",
+      "reason": "Escalation was denied because an external audit would transmit private dependency metadata."
+    }
+  },
+  "ci_gate": "pip-audit and npm audit are configured for an approved CI environment",
+  "release_impact": "A trusted-environment advisory audit remains mandatory before release."
+}

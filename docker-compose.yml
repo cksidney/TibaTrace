@@ -1,0 +1,93 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: dawatrace
+      POSTGRES_USER: dawatrace
+      POSTGRES_PASSWORD: dawatrace-local-only
+    ports:
+      - "5433:5432"
+    volumes:
+      - dawatrace-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dawatrace -d dawatrace"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6380:6379"
+    volumes:
+      - dawatrace-redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+      args:
+        DAWATRACE_VERSION: ${DAWATRACE_VERSION:-0.1.0-alpha.1}
+        GIT_SHA: ${GIT_SHA:-unknown}
+        BUILD_TIME: ${BUILD_TIME:-unknown}
+    environment: &backend-env
+      DJANGO_SETTINGS_MODULE: dawatrace.settings.production
+      DAWATRACE_ENV: development
+      DAWATRACE_SECRET_KEY: local-compose-secret-replace-before-use
+      DAWATRACE_ALLOWED_HOSTS: localhost,127.0.0.1,api
+      DAWATRACE_DATABASE_URL: postgresql://dawatrace:dawatrace-local-only@postgres:5432/dawatrace
+      DAWATRACE_REDIS_URL: redis://redis:6379/0
+      DAWATRACE_CELERY_BROKER_URL: redis://redis:6379/1
+      DAWATRACE_CELERY_RESULT_BACKEND: redis://redis:6379/2
+      DAWATRACE_OBJECT_STORAGE_BACKEND: local
+      DAWATRACE_OBJECT_STORAGE_ROOT: /data/clinical
+      DAWATRACE_OBJECT_SIGNING_KEY: local-compose-object-key-replace-before-use
+      DAWATRACE_SECURE_SSL_REDIRECT: "false"
+      DAWATRACE_FHIR_WRITE_INTERACTIONS_ENABLED: "true"
+    command: ["sh", "-c", "python manage.py migrate && gunicorn dawatrace.wsgi:application --bind 0.0.0.0:8000 --workers 2"]
+    ports:
+      - "8000:8000"
+    volumes:
+      - dawatrace-objects:/data/clinical
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    environment: *backend-env
+    command: ["celery", "-A", "dawatrace", "worker", "--loglevel=INFO", "--queues=dawatrace-clinical"]
+    volumes:
+      - dawatrace-objects:/data/clinical
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  beat:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    environment: *backend-env
+    command: ["celery", "-A", "dawatrace", "beat", "--loglevel=INFO"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  dawatrace-postgres:
+  dawatrace-redis:
+  dawatrace-objects:

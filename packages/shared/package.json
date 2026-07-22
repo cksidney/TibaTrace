@@ -1,0 +1,16 @@
+{
+  "name": "@dawatrace/shared",
+  "version": "0.1.0-alpha.1",
+  "private": true,
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "typecheck": "tsc --project tsconfig.json --noEmit",
+    "build": "tsc --project tsconfig.build.json"
+  },
+  "devDependencies": {
+    "typescript": "5.7.3"
+  }
+}

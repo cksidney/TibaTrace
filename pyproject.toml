@@ -1,0 +1,15 @@
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+exclude = ["backend/apps/*/migrations", "artifacts", ".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"backend/dawatrace/settings/*.py" = ["F403", "F405"]
+
+[tool.bandit]
+exclude_dirs = ["backend/tests", "backend/apps/prescription/tests", "backend/apps/*/migrations"]
+skips = ["B101"]

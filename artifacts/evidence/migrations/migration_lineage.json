@@ -1,0 +1,66 @@
+{
+  "phase": "2",
+  "product": "DawaTrace",
+  "production_data_migrated": false,
+  "source_repository": "Mercato-OS",
+  "strategy": "zero-based-transformed",
+  "mappings": [
+    {
+      "source": "prescription.0001_initial",
+      "targets": [
+        "tenancy.0001_initial",
+        "organizations.0001_initial",
+        "patients.0001_initial",
+        "practitioners.0001_initial",
+        "medicines.0001_initial",
+        "prescription.0001_initial"
+      ],
+      "treatment": "transformed-and-split"
+    },
+    {
+      "source": "prescription.0002_integrationoutbox_providerconfiguration_and_more",
+      "targets": ["prescription.0001_initial"],
+      "treatment": "copied-semantics-tenant-hardened"
+    },
+    {
+      "source": "prescription.0003_activeingredient_clinicalknowledgeversion_and_more",
+      "targets": ["cds.0001_initial", "cds.0002_initial", "cds.0003_alter_clinicalknowledgerule_criteria", "cds.0004_alter_clinicalknowledgerule_managers"],
+      "treatment": "transformed-to-canonical-provider-cds"
+    },
+    {
+      "source": "prescription.0004_knowledgemanifest_knowledgepublisher_knowledgepack_and_more",
+      "targets": [],
+      "treatment": "omitted-marketplace-schema-source-attribution-retained"
+    },
+    {
+      "source": "prescription.0005_clinicalevent_clinicalmarketplacelisting_and_more",
+      "targets": ["clinical.0001_initial", "clinical.0002_initial", "clinical.0003_alter_clinicalcondition_category_and_more", "workflows.0001_initial", "notifications.0001_initial"],
+      "treatment": "transformed-and-split-marketplace-omitted"
+    },
+    {
+      "source": "prescription.0006_fhirterminologyversion_clinicaldocument_and_more",
+      "targets": ["terminology.0001_initial", "documents.0001_initial", "documents.0002_initial", "fhir.0001_initial", "fhir.0002_initial"],
+      "treatment": "transformed-and-split"
+    },
+    {
+      "source": "prescription.0007_phase_7_1_tenant_ownership",
+      "targets": ["all-dawatrace-initial-migrations"],
+      "treatment": "constraints-incorporated-at-zero"
+    },
+    {
+      "source": "prescription.0008_phase_7_2_2_explicit_tenant_scope",
+      "targets": ["cds-initial", "terminology-initial", "fhir-initial"],
+      "treatment": "explicit-scope-incorporated-at-zero"
+    },
+    {
+      "source": "fhir.0001_fhir_idempotency_record",
+      "targets": ["fhir.0001_initial", "fhir.0002_initial"],
+      "treatment": "transformed-independent-identity-and-idempotency"
+    },
+    {
+      "source": null,
+      "targets": ["crosswalks.0001_initial"],
+      "treatment": "new-independent-migration-control"
+    }
+  ]
+}
