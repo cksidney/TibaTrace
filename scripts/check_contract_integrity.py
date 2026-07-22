@@ -87,7 +87,13 @@ def check_contract_integrity():
             print(f"   - {reason}", file=sys.stderr)
         return 1
 
-    # 4. Verify TypeScript shared package contract alignment
+    # 4. Update reference schema if --update flag is passed
+    if "--update" in sys.argv:
+        with open(reference_schema_path, "w") as f:
+            json.dump(curr_data, f, indent=2, sort_keys=True)
+        print(f" 🔄 Reference contract artifact updated at {reference_schema_path}")
+
+    # 5. Verify TypeScript shared package contract alignment
     ts_shared = ROOT / "packages" / "shared" / "src"
     if ts_shared.exists():
         ts_files = list(ts_shared.glob("**/*.ts"))

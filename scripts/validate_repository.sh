@@ -94,6 +94,8 @@ START_TIME=$(date +%s)
 "${PYTHON}" "${ROOT}/backend/manage.py" migrate crosswalks --noinput --settings=dawatrace.settings.test
 "${PYTHON}" "${ROOT}/backend/manage.py" migrate documents zero --noinput --settings=dawatrace.settings.test
 "${PYTHON}" "${ROOT}/backend/manage.py" migrate documents --noinput --settings=dawatrace.settings.test
+"${PYTHON}" "${ROOT}/backend/manage.py" migrate medicines 0001 --noinput --settings=dawatrace.settings.test
+"${PYTHON}" "${ROOT}/backend/manage.py" migrate medicines --noinput --settings=dawatrace.settings.test
 "${PYTHON}" "${ROOT}/scripts/classify_migrations.py"
 END_TIME=$(date +%s)
 record_step "migration_graph_and_reversibility" "python scripts/classify_migrations.py" "true" "PASSED" "0" "$((END_TIME - START_TIME))" "" "artifacts/generated/validation/migration-reversibility.json"
@@ -120,10 +122,10 @@ record_step "clinical_and_tenant_safety_audits" "python manage.py audit_tenant_m
 
 echo "=== [8/13] Backend Pytest Test Suite ==="
 START_TIME=$(date +%s)
-"${PYTEST}" -c "${ROOT}/backend/pytest.ini" "${ROOT}/backend/tests" -q \
+"${PYTEST}" -c "${ROOT}/backend/pytest.ini" "${ROOT}/backend/tests" "${ROOT}/backend/apps" -q \
   --junitxml="${ROOT}/artifacts/generated/tests/backend.xml"
 END_TIME=$(date +%s)
-record_step "pytest_backend_suite" "pytest -c backend/pytest.ini backend/tests" "true" "PASSED" "0" "$((END_TIME - START_TIME))" "" "artifacts/generated/tests/backend.xml"
+record_step "pytest_backend_suite" "pytest -c backend/pytest.ini backend/tests backend/apps" "true" "PASSED" "0" "$((END_TIME - START_TIME))" "" "artifacts/generated/tests/backend.xml"
 
 echo "=== [9/13] Security Audits & SBOM ==="
 START_TIME=$(date +%s)

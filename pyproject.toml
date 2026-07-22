@@ -11,5 +11,5 @@ ignore = ["E501"]
 "backend/dawatrace/settings/*.py" = ["F403", "F405"]
 
 [tool.bandit]
-exclude_dirs = ["backend/tests", "backend/apps/prescription/tests", "backend/apps/*/migrations"]
+exclude_dirs = ["backend/tests", "backend/apps/*/tests", "backend/apps/*/migrations"]
 skips = ["B101"]

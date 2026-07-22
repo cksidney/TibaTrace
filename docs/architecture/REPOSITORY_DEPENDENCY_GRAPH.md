@@ -18,10 +18,11 @@ graph TD
     organizations[apps.organizations] --> tenancy
     audit[apps.audit] --> tenancy
 
-    %% Clinical Core
+    %% Clinical Core & Enterprise Medicine Master
     patients[apps.patients] --> tenancy
     practitioners[apps.practitioners] --> tenancy
     medicines[apps.medicines] --> tenancy
+    medicines --> organizations
     clinical[apps.clinical] --> tenancy
     clinical --> patients
     clinical --> practitioners

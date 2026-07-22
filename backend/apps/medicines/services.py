@@ -1,0 +1,277 @@
+from __future__ import annotations
+
+import decimal
+
+from django.core.exceptions import ValidationError
+from django.db import transaction
+
+from apps.medicines.models import (
+    ActiveSubstance,
+    BranchAssortment,
+    ClinicalMedicinalProduct,
+    CommercialSKU,
+    DoseForm,
+    IngredientComposition,
+    ManufacturedMedicinalProduct,
+    Manufacturer,
+    PackageDefinition,
+    ProductIdentifier,
+    SubstitutionGroup,
+    SubstitutionPolicy,
+)
+from apps.workflows.service import emit_event
+
+
+def _emit_medicine_event(event_type: str, tenant, aggregate_id: str, payload: dict):
+    tenant_id = getattr(tenant, "pk", tenant) if tenant else None
+    if tenant_id:
+        emit_event(
+            tenant_id=tenant_id,
+            aggregate_type="MEDICINE_CATALOGUE",
+            aggregate_id=aggregate_id,
+            event_type=event_type,
+            payload=payload or {},
+        )
+
+
+class MedicineCatalogueService:
+    @staticmethod
+    @transaction.atomic
+    def create_clinical_product(
+        *,
+        tenant=None,
+        is_global=False,
+        code: str,
+        canonical_name: str,
+        dose_form: DoseForm,
+        routes=None,
+        prescription_classification="PRESCRIPTION_ONLY",
+        controlled_classification="NONE",
+        antimicrobial_classification="NONE",
+        status=ClinicalMedicinalProduct.STATUS_DRAFT,
+        actor=None,
+    ) -> ClinicalMedicinalProduct:
+        product = ClinicalMedicinalProduct.objects.create(
+            tenant=tenant,
+            is_global=is_global,
+            code=code,
+            canonical_name=canonical_name,
+            dose_form=dose_form,
+            prescription_classification=prescription_classification,
+            controlled_classification=controlled_classification,
+            antimicrobial_classification=antimicrobial_classification,
+            status=status,
+        )
+        if routes:
+            product.routes.set(routes)
+
+        _emit_medicine_event(
+            event_type="ClinicalMedicinalProductCreated",
+            tenant=tenant,
+            aggregate_id=str(product.pk),
+            payload={"code": code, "canonical_name": canonical_name},
+        )
+        return product
+
+    @staticmethod
+    @transaction.atomic
+    def activate_clinical_product(*, product: ClinicalMedicinalProduct, actor=None) -> ClinicalMedicinalProduct:
+        if not product.ingredients.exists():
+            raise ValidationError("Clinical medicinal product must have at least one active ingredient before activation.")
+        product.status = ClinicalMedicinalProduct.STATUS_ACTIVE
+        product.save()
+
+        _emit_medicine_event(
+            event_type="ClinicalMedicinalProductActivated",
+            tenant=product.tenant,
+            aggregate_id=str(product.pk),
+            payload={"code": product.code},
+        )
+        return product
+
+    @staticmethod
+    @transaction.atomic
+    def register_manufactured_product(
+        *,
+        tenant=None,
+        is_global=False,
+        code: str,
+        brand_name: str,
+        clinical_product: ClinicalMedicinalProduct,
+        manufacturer: Manufacturer = None,
+        market_authorisation_number: str = "",
+        status=ManufacturedMedicinalProduct.STATUS_REGISTERED,
+        actor=None,
+    ) -> ManufacturedMedicinalProduct:
+        mfg_product = ManufacturedMedicinalProduct.objects.create(
+            tenant=tenant,
+            is_global=is_global,
+            code=code,
+            brand_name=brand_name,
+            clinical_product=clinical_product,
+            manufacturer=manufacturer,
+            market_authorisation_number=market_authorisation_number,
+            status=status,
+        )
+        _emit_medicine_event(
+            event_type="ManufacturedMedicinalProductRegistered",
+            tenant=tenant,
+            aggregate_id=str(mfg_product.pk),
+            payload={"brand_name": brand_name, "code": code},
+        )
+        return mfg_product
+
+    @staticmethod
+    @transaction.atomic
+    def register_sku(
+        *,
+        tenant,
+        sku_code: str,
+        display_name: str,
+        manufactured_product: ManufacturedMedicinalProduct,
+        package_definition: PackageDefinition,
+        default_barcode: str = "",
+        tax_category: str = "STANDARD",
+        status=CommercialSKU.STATUS_ACTIVE,
+        actor=None,
+    ) -> CommercialSKU:
+        sku = CommercialSKU.objects.create(
+            tenant=tenant,
+            sku_code=sku_code,
+            display_name=display_name,
+            manufactured_product=manufactured_product,
+            package_definition=package_definition,
+            default_barcode=default_barcode,
+            tax_category=tax_category,
+            status=status,
+        )
+        if default_barcode:
+            ProductIdentifierService.assign_identifier(
+                entity_type="SKU",
+                entity_id=sku.pk,
+                system="BARCODE",
+                value=default_barcode,
+                is_primary=True,
+            )
+
+        _emit_medicine_event(
+            event_type="CommercialSKUCreated",
+            tenant=tenant,
+            aggregate_id=str(sku.pk),
+            payload={"sku_code": sku_code, "display_name": display_name},
+        )
+        return sku
+
+
+class IngredientCompositionService:
+    @staticmethod
+    @transaction.atomic
+    def add_ingredient(
+        *,
+        clinical_product: ClinicalMedicinalProduct,
+        active_substance: ActiveSubstance,
+        numerator_value: decimal.Decimal,
+        numerator_unit: str,
+        denominator_value: decimal.Decimal = decimal.Decimal("1"),
+        denominator_unit: str = "unit",
+        role: str = "ACTIVE",
+        sequence: int = 1,
+    ) -> IngredientComposition:
+        if numerator_value <= decimal.Decimal("0"):
+            raise ValidationError("Ingredient numerator value must be positive.")
+        
+        comp = IngredientComposition.objects.create(
+            clinical_product=clinical_product,
+            active_substance=active_substance,
+            numerator_value=numerator_value,
+            numerator_unit=numerator_unit,
+            denominator_value=denominator_value,
+            denominator_unit=denominator_unit,
+            role=role,
+            sequence=sequence,
+        )
+        return comp
+
+
+class PackageHierarchyService:
+    @staticmethod
+    def validate_no_cycles(package: PackageDefinition, target_parent: PackageDefinition):
+        current = target_parent
+        visited = {package.pk}
+        while current:
+            if current.pk in visited:
+                raise ValidationError("Package hierarchy cycle detected.")
+            visited.add(current.pk)
+            current = current.parent_package
+
+
+class ProductIdentifierService:
+    @staticmethod
+    @transaction.atomic
+    def assign_identifier(
+        *,
+        entity_type: str,
+        entity_id,
+        system: str,
+        value: str,
+        issuing_authority: str = "",
+        is_primary: bool = False,
+    ) -> ProductIdentifier:
+        identifier, _ = ProductIdentifier.objects.update_or_create(
+            system=system,
+            value=value,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            defaults={"issuing_authority": issuing_authority, "is_primary": is_primary},
+        )
+        return identifier
+
+
+class SubstitutionPolicyService:
+    @staticmethod
+    @transaction.atomic
+    def configure_policy(
+        *,
+        tenant,
+        substitution_group: SubstitutionGroup,
+        policy_type: str = "GENERIC_EQUIVALENT",
+        approval_required: bool = True,
+        reason_required: bool = True,
+        actor=None,
+    ) -> SubstitutionPolicy:
+        policy, _ = SubstitutionPolicy.objects.update_or_create(
+            tenant=tenant,
+            substitution_group=substitution_group,
+            defaults={
+                "policy_type": policy_type,
+                "approval_required": approval_required,
+                "reason_required": reason_required,
+                "is_active": True,
+            },
+        )
+        _emit_medicine_event(
+            event_type="SubstitutionPolicyApproved",
+            tenant=tenant,
+            aggregate_id=str(substitution_group.pk),
+            payload={"policy_type": policy_type},
+        )
+        return policy
+
+
+class BranchAssortmentService:
+    @staticmethod
+    @transaction.atomic
+    def enable_sku_for_branch(*, tenant, location, sku: CommercialSKU, actor=None) -> BranchAssortment:
+        assortment, _ = BranchAssortment.objects.update_or_create(
+            tenant=tenant,
+            location=location,
+            sku=sku,
+            defaults={"is_sellable": True, "is_purchasable": True, "is_dispensable": True, "is_stocked": True},
+        )
+        _emit_medicine_event(
+            event_type="BranchAssortmentEnabled",
+            tenant=tenant,
+            aggregate_id=str(sku.pk),
+            payload={"location_id": str(location.pk)},
+        )
+        return assortment
