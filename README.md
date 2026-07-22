@@ -61,11 +61,15 @@ docker compose up --build
 The Compose stack owns its PostgreSQL database, Redis namespace and object-store
 volume. It does not connect to a Mercato database.
 
-## Test and Evidence
+## Test and System Validation
 
 ```bash
-./scripts/validate_phase_2.sh
+# Fast local validation
+./scripts/validate_repository.sh --fast
+
+# Full enterprise validation (CI / Release)
+./scripts/validate_repository.sh --full
 ```
 
-The source extraction manifest is under `artifacts/source/`. Phase 2 results and
-known blockers are documented in `docs/phase_2/DAWATRACE_PHASE_2_REPORT.md`.
+Validation artifacts are output to `artifacts/generated/validation/repository-validation-manifest.json`. For detailed documentation, see [`docs/validation/VALIDATION_GUIDE.md`](file:///Users/sidneykibet/DawaTrace/docs/validation/VALIDATION_GUIDE.md).
+

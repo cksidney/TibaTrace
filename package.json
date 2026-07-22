@@ -9,7 +9,10 @@
   "scripts": {
     "typecheck": "npm run typecheck --workspaces --if-present",
     "build": "npm run build --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present"
+    "test": "npm run test --workspaces --if-present",
+    "validate": "./scripts/validate_repository.sh --full",
+    "validate:fast": "./scripts/validate_repository.sh --fast",
+    "validate:full": "./scripts/validate_repository.sh --full"
   },
   "engines": {
     "node": ">=20 <21"

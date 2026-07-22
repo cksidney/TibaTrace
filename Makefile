@@ -1,4 +1,4 @@
-.PHONY: install check migrate test security sbom docker-build validate
+.PHONY: install check migrate test security sbom docker-build validate validate-fast validate-full
 
 install:
 	python3.11 -m venv .venv
@@ -23,7 +23,15 @@ sbom:
 	.venv/bin/cyclonedx-py requirements backend/requirements.lock --output-reproducible --of JSON -o artifacts/generated/security/dawatrace-backend.cdx.json
 
 docker-build:
-	docker build --file docker/backend.Dockerfile --tag dawatrace/backend:phase2 .
+	docker build --file docker/backend.Dockerfile --tag dawatrace/backend:phase3 .
 
 validate:
-	./scripts/validate_phase_2.sh
+	./scripts/validate_repository.sh --full
+
+validate-fast:
+	./scripts/validate_repository.sh --fast
+
+validate-full:
+	./scripts/validate_repository.sh --full
+
+

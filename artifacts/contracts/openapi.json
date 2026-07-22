@@ -1,0 +1,5026 @@
+{
+    "openapi": "3.0.3",
+    "info": {
+        "title": "DawaTrace API",
+        "version": "0.1.0-alpha.1",
+        "description": "Independent pharmacy and healthcare clinical-core API"
+    },
+    "paths": {
+        "/api/audit/events/": {
+            "get": {
+                "operationId": "audit_events_list",
+                "tags": [
+                    "audit"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/AuditEvent"
+                                    }
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/audit/events/{id}/": {
+            "get": {
+                "operationId": "audit_events_retrieve",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "A UUID string identifying this audit event.",
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "audit"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/AuditEvent"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/cds/evaluations/": {
+            "get": {
+                "operationId": "cds_evaluations_list",
+                "tags": [
+                    "cds"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/ClinicalEvaluation"
+                                    }
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/cds/evaluations/{id}/": {
+            "get": {
+                "operationId": "cds_evaluations_retrieve",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "A UUID string identifying this clinical evaluation.",
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "cds"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ClinicalEvaluation"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/cds/knowledge-releases/": {
+            "get": {
+                "operationId": "cds_knowledge_releases_list",
+                "tags": [
+                    "cds"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/KnowledgeRelease"
+                                    }
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/cds/knowledge-releases/{id}/": {
+            "get": {
+                "operationId": "cds_knowledge_releases_retrieve",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "A UUID string identifying this clinical knowledge release.",
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "cds"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/KnowledgeRelease"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/clinical/conditions/": {
+            "get": {
+                "operationId": "clinical_conditions_list",
+                "tags": [
+                    "clinical"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/ClinicalCondition"
+                                    }
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/clinical/conditions/{id}/": {
+            "get": {
+                "operationId": "clinical_conditions_retrieve",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "A UUID string identifying this clinical condition.",
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "clinical"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ClinicalCondition"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/clinical/diagnostic-reports/": {
+            "get": {
+                "operationId": "clinical_diagnostic_reports_list",
+                "tags": [
+                    "clinical"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/ClinicalDiagnosticReport"
+                                    }
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/clinical/diagnostic-reports/{id}/": {
+            "get": {
+                "operationId": "clinical_diagnostic_reports_retrieve",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "A UUID string identifying this clinical diagnostic report.",
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "clinical"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ClinicalDiagnosticReport"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/clinical/documents/": {
+            "get": {
+                "operationId": "clinical_documents_list",
+                "tags": [
+                    "clinical"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/ClinicalDocument"
+                                    }
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/clinical/documents/{id}/": {
+            "get": {
+                "operationId": "clinical_documents_retrieve",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "A UUID string identifying this clinical document.",
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "clinical"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ClinicalDocument"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/clinical/encounters/": {
+            "get": {
+                "operationId": "clinical_encounters_list",
+                "tags": [
+                    "clinical"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/ClinicalEncounter"
+                                    }
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/clinical/encounters/{id}/": {
+            "get": {
+                "operationId": "clinical_encounters_retrieve",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "A UUID string identifying this clinical encounter.",
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "clinical"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ClinicalEncounter"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/clinical/medication-administrations/": {
+            "get": {
+                "operationId": "clinical_medication_administrations_list",
+                "tags": [
+                    "clinical"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/MedicationAdministrationRecord"
+                                    }
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/clinical/medication-administrations/{id}/": {
+            "get": {
+                "operationId": "clinical_medication_administrations_retrieve",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "A UUID string identifying this medication administration record.",
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "clinical"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/MedicationAdministrationRecord"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/clinical/observations/": {
+            "get": {
+                "operationId": "clinical_observations_list",
+                "tags": [
+                    "clinical"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/ClinicalObservation"
+                                    }
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/clinical/observations/{id}/": {
+            "get": {
+                "operationId": "clinical_observations_retrieve",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "A UUID string identifying this clinical observation.",
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "clinical"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ClinicalObservation"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/dispensing/": {
+            "get": {
+                "operationId": "dispensing_list",
+                "tags": [
+                    "dispensing"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/PrescriptionDispense"
+                                    }
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/dispensing/{id}/": {
+            "get": {
+                "operationId": "dispensing_retrieve",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "A UUID string identifying this prescription dispense.",
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "dispensing"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/PrescriptionDispense"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/documents/": {
+            "get": {
+                "operationId": "documents_list",
+                "tags": [
+                    "documents"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/StoredClinicalDocument"
+                                    }
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/documents/{id}/": {
+            "get": {
+                "operationId": "documents_retrieve",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "A UUID string identifying this stored clinical document.",
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "documents"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/StoredClinicalDocument"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/documents/{id}/signed-token/": {
+            "post": {
+                "operationId": "documents_signed_token_create",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "A UUID string identifying this stored clinical document.",
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "documents"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/StoredClinicalDocument"
+                            }
+                        },
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/StoredClinicalDocument"
+                            }
+                        },
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/StoredClinicalDocument"
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/StoredClinicalDocument"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/documents/download/": {
+            "post": {
+                "operationId": "documents_download_create",
+                "tags": [
+                    "documents"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/StoredClinicalDocument"
+                            }
+                        },
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/StoredClinicalDocument"
+                            }
+                        },
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/StoredClinicalDocument"
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/StoredClinicalDocument"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/identity/me/": {
+            "get": {
+                "operationId": "identity_me_retrieve",
+                "tags": [
+                    "identity"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/UserSummary"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/identity/roles/": {
+            "get": {
+                "operationId": "identity_roles_list",
+                "tags": [
+                    "identity"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/Role"
+                                    }
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/identity/token/": {
+            "post": {
+                "operationId": "identity_token_create",
+                "description": "Takes a set of user credentials and returns an access and refresh JSON web\ntoken pair to prove the authentication of those credentials.",
+                "tags": [
+                    "identity"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/DawaTraceToken"
+                            }
+                        },
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/DawaTraceToken"
+                            }
+                        },
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/DawaTraceToken"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/DawaTraceToken"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/identity/token/refresh/": {
+            "post": {
+                "operationId": "identity_token_refresh_create",
+                "description": "Takes a refresh type JSON web token and returns an access type JSON web\ntoken if the refresh token is valid.",
+                "tags": [
+                    "identity"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/TokenRefresh"
+                            }
+                        },
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/TokenRefresh"
+                            }
+                        },
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/TokenRefresh"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/TokenRefresh"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/organizations/": {
+            "get": {
+                "operationId": "organizations_list",
+                "tags": [
+                    "organizations"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/Organization"
+                                    }
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            },
+            "post": {
+                "operationId": "organizations_create",
+                "tags": [
+                    "organizations"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Organization"
+                            }
+                        },
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Organization"
+                            }
+                        },
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Organization"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Organization"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/organizations/{id}/": {
+            "get": {
+                "operationId": "organizations_retrieve",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "A UUID string identifying this organization.",
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "organizations"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Organization"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            },
+            "put": {
+                "operationId": "organizations_update",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "A UUID string identifying this organization.",
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "organizations"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Organization"
+                            }
+                        },
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Organization"
+                            }
+                        },
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Organization"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Organization"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            },
+            "patch": {
+                "operationId": "organizations_partial_update",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "A UUID string identifying this organization.",
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "organizations"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PatchedOrganization"
+                            }
+                        },
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PatchedOrganization"
+                            }
+                        },
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PatchedOrganization"
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Organization"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            },
+            "delete": {
+                "operationId": "organizations_destroy",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "A UUID string identifying this organization.",
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "organizations"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No response body"
+                    }
+                }
+            }
+        },
+        "/api/organizations/locations/": {
+            "get": {
+                "operationId": "organizations_locations_list",
+                "tags": [
+                    "organizations"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/Location"
+                                    }
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            },
+            "post": {
+                "operationId": "organizations_locations_create",
+                "tags": [
+                    "organizations"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Location"
+                            }
+                        },
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Location"
+                            }
+                        },
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Location"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Location"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/organizations/locations/{id}/": {
+            "get": {
+                "operationId": "organizations_locations_retrieve",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "A UUID string identifying this location.",
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "organizations"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Location"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            },
+            "put": {
+                "operationId": "organizations_locations_update",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "A UUID string identifying this location.",
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "organizations"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Location"
+                            }
+                        },
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Location"
+                            }
+                        },
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Location"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Location"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            },
+            "patch": {
+                "operationId": "organizations_locations_partial_update",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "A UUID string identifying this location.",
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "organizations"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PatchedLocation"
+                            }
+                        },
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PatchedLocation"
+                            }
+                        },
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PatchedLocation"
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Location"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            },
+            "delete": {
+                "operationId": "organizations_locations_destroy",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "A UUID string identifying this location.",
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "organizations"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No response body"
+                    }
+                }
+            }
+        },
+        "/api/patients/": {
+            "get": {
+                "operationId": "patients_list",
+                "tags": [
+                    "patients"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/Patient"
+                                    }
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            },
+            "post": {
+                "operationId": "patients_create",
+                "tags": [
+                    "patients"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Patient"
+                            }
+                        },
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Patient"
+                            }
+                        },
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Patient"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Patient"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/patients/{id}/": {
+            "get": {
+                "operationId": "patients_retrieve",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "A UUID string identifying this patient.",
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "patients"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Patient"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            },
+            "put": {
+                "operationId": "patients_update",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "A UUID string identifying this patient.",
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "patients"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Patient"
+                            }
+                        },
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Patient"
+                            }
+                        },
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Patient"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Patient"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            },
+            "patch": {
+                "operationId": "patients_partial_update",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "A UUID string identifying this patient.",
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "patients"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PatchedPatient"
+                            }
+                        },
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PatchedPatient"
+                            }
+                        },
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PatchedPatient"
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Patient"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            },
+            "delete": {
+                "operationId": "patients_destroy",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "A UUID string identifying this patient.",
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "patients"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No response body"
+                    }
+                }
+            }
+        },
+        "/api/platform/": {
+            "get": {
+                "operationId": "platform_retrieve",
+                "tags": [
+                    "platform"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/PlatformInfo"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/practitioners/": {
+            "get": {
+                "operationId": "practitioners_list",
+                "tags": [
+                    "practitioners"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/Practitioner"
+                                    }
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            },
+            "post": {
+                "operationId": "practitioners_create",
+                "tags": [
+                    "practitioners"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Practitioner"
+                            }
+                        },
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Practitioner"
+                            }
+                        },
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Practitioner"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Practitioner"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/practitioners/{id}/": {
+            "get": {
+                "operationId": "practitioners_retrieve",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "A UUID string identifying this practitioner.",
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "practitioners"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Practitioner"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            },
+            "put": {
+                "operationId": "practitioners_update",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "A UUID string identifying this practitioner.",
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "practitioners"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Practitioner"
+                            }
+                        },
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Practitioner"
+                            }
+                        },
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Practitioner"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Practitioner"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            },
+            "patch": {
+                "operationId": "practitioners_partial_update",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "A UUID string identifying this practitioner.",
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "practitioners"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PatchedPractitioner"
+                            }
+                        },
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PatchedPractitioner"
+                            }
+                        },
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PatchedPractitioner"
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Practitioner"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            },
+            "delete": {
+                "operationId": "practitioners_destroy",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "A UUID string identifying this practitioner.",
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "practitioners"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No response body"
+                    }
+                }
+            }
+        },
+        "/api/prescriptions/": {
+            "get": {
+                "operationId": "prescriptions_list",
+                "tags": [
+                    "prescriptions"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/Prescription"
+                                    }
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            },
+            "post": {
+                "operationId": "prescriptions_create",
+                "tags": [
+                    "prescriptions"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Prescription"
+                            }
+                        },
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Prescription"
+                            }
+                        },
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Prescription"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Prescription"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/prescriptions/{id}/": {
+            "get": {
+                "operationId": "prescriptions_retrieve",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "A UUID string identifying this prescription.",
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "prescriptions"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Prescription"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            },
+            "put": {
+                "operationId": "prescriptions_update",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "A UUID string identifying this prescription.",
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "prescriptions"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Prescription"
+                            }
+                        },
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Prescription"
+                            }
+                        },
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Prescription"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Prescription"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            },
+            "patch": {
+                "operationId": "prescriptions_partial_update",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "A UUID string identifying this prescription.",
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "prescriptions"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PatchedPrescription"
+                            }
+                        },
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PatchedPrescription"
+                            }
+                        },
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PatchedPrescription"
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Prescription"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            },
+            "delete": {
+                "operationId": "prescriptions_destroy",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "A UUID string identifying this prescription.",
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "prescriptions"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No response body"
+                    }
+                }
+            }
+        },
+        "/api/prescriptions/{id}/dispense/": {
+            "post": {
+                "operationId": "prescriptions_dispense_create",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "A UUID string identifying this prescription.",
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "prescriptions"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Prescription"
+                            }
+                        },
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Prescription"
+                            }
+                        },
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Prescription"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Prescription"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/prescriptions/{id}/evaluate/": {
+            "post": {
+                "operationId": "prescriptions_evaluate_create",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "A UUID string identifying this prescription.",
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "prescriptions"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Prescription"
+                            }
+                        },
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Prescription"
+                            }
+                        },
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Prescription"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Prescription"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/prescriptions/{id}/qr/": {
+            "get": {
+                "operationId": "prescriptions_qr_retrieve",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "A UUID string identifying this prescription.",
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "prescriptions"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Prescription"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/prescriptions/{id}/transition/": {
+            "post": {
+                "operationId": "prescriptions_transition_create",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "A UUID string identifying this prescription.",
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "prescriptions"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Prescription"
+                            }
+                        },
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Prescription"
+                            }
+                        },
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Prescription"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Prescription"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/terminology/code-systems/": {
+            "get": {
+                "operationId": "terminology_code_systems_list",
+                "tags": [
+                    "terminology"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/CodeSystem"
+                                    }
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/terminology/code-systems/{id}/": {
+            "get": {
+                "operationId": "terminology_code_systems_retrieve",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "A UUID string identifying this fhir code system registration.",
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "terminology"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CodeSystem"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/terminology/code-systems/validate-code/": {
+            "post": {
+                "operationId": "terminology_code_systems_validate_code_create",
+                "tags": [
+                    "terminology"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CodeSystem"
+                            }
+                        },
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CodeSystem"
+                            }
+                        },
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CodeSystem"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CodeSystem"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/terminology/value-sets/": {
+            "get": {
+                "operationId": "terminology_value_sets_list",
+                "tags": [
+                    "terminology"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/ValueSet"
+                                    }
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/terminology/value-sets/{id}/": {
+            "get": {
+                "operationId": "terminology_value_sets_retrieve",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "A UUID string identifying this fhir value set registration.",
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "terminology"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ValueSet"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/terminology/value-sets/expand/": {
+            "get": {
+                "operationId": "terminology_value_sets_expand_retrieve",
+                "tags": [
+                    "terminology"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ValueSet"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "AuditEvent": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "readOnly": true
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "readOnly": true
+                    },
+                    "updated_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "readOnly": true
+                    },
+                    "action": {
+                        "type": "string",
+                        "maxLength": 120
+                    },
+                    "model_name": {
+                        "type": "string",
+                        "maxLength": 120
+                    },
+                    "object_id": {
+                        "type": "string",
+                        "maxLength": 160
+                    },
+                    "correlation_id": {
+                        "type": "string",
+                        "maxLength": 160
+                    },
+                    "outcome": {
+                        "type": "string",
+                        "maxLength": 40
+                    },
+                    "metadata": {},
+                    "tenant": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "actor": {
+                        "type": "integer",
+                        "nullable": true
+                    }
+                },
+                "required": [
+                    "action",
+                    "created_at",
+                    "id",
+                    "model_name",
+                    "object_id",
+                    "tenant",
+                    "updated_at"
+                ]
+            },
+            "ClinicalCondition": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "readOnly": true
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "readOnly": true
+                    },
+                    "updated_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "readOnly": true
+                    },
+                    "clinical_status": {
+                        "$ref": "#/components/schemas/ClinicalStatusEnum"
+                    },
+                    "verification_status": {
+                        "$ref": "#/components/schemas/VerificationStatusEnum"
+                    },
+                    "category": {
+                        "type": "string",
+                        "nullable": true,
+                        "maxLength": 100
+                    },
+                    "code": {
+                        "type": "string",
+                        "maxLength": 100
+                    },
+                    "system": {
+                        "type": "string",
+                        "nullable": true,
+                        "maxLength": 255
+                    },
+                    "display": {
+                        "type": "string",
+                        "nullable": true,
+                        "maxLength": 255
+                    },
+                    "onset_date": {
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": true
+                    },
+                    "recorded_date": {
+                        "type": "string",
+                        "format": "date-time",
+                        "readOnly": true
+                    },
+                    "tenant": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "patient": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "encounter": {
+                        "type": "string",
+                        "format": "uuid",
+                        "nullable": true
+                    }
+                },
+                "required": [
+                    "code",
+                    "created_at",
+                    "id",
+                    "patient",
+                    "recorded_date",
+                    "tenant",
+                    "updated_at"
+                ]
+            },
+            "ClinicalDiagnosticReport": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "readOnly": true
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "readOnly": true
+                    },
+                    "updated_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "readOnly": true
+                    },
+                    "status": {
+                        "$ref": "#/components/schemas/ClinicalDiagnosticReportStatusEnum"
+                    },
+                    "category": {
+                        "type": "string",
+                        "nullable": true,
+                        "maxLength": 100
+                    },
+                    "code": {
+                        "type": "string",
+                        "maxLength": 100
+                    },
+                    "system": {
+                        "type": "string",
+                        "nullable": true,
+                        "maxLength": 255
+                    },
+                    "display": {
+                        "type": "string",
+                        "nullable": true,
+                        "maxLength": 255
+                    },
+                    "effective_time": {
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": true
+                    },
+                    "conclusion": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "tenant": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "patient": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "encounter": {
+                        "type": "string",
+                        "format": "uuid",
+                        "nullable": true
+                    },
+                    "observations": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                },
+                "required": [
+                    "code",
+                    "created_at",
+                    "id",
+                    "patient",
+                    "tenant",
+                    "updated_at"
+                ]
+            },
+            "ClinicalDiagnosticReportStatusEnum": {
+                "enum": [
+                    "REGISTERED",
+                    "PARTIAL",
+                    "PRELIMINARY",
+                    "FINAL",
+                    "AMENDED",
+                    "CORRECTED",
+                    "APPENDED",
+                    "CANCELLED",
+                    "ENTERED_IN_ERROR",
+                    "UNKNOWN"
+                ],
+                "type": "string",
+                "description": "* `REGISTERED` - Registered\n* `PARTIAL` - Partial\n* `PRELIMINARY` - Preliminary\n* `FINAL` - Final\n* `AMENDED` - Amended\n* `CORRECTED` - Corrected\n* `APPENDED` - Appended\n* `CANCELLED` - Cancelled\n* `ENTERED_IN_ERROR` - Entered in error\n* `UNKNOWN` - Unknown"
+            },
+            "ClinicalDocument": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "readOnly": true
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "readOnly": true
+                    },
+                    "updated_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "readOnly": true
+                    },
+                    "status": {
+                        "$ref": "#/components/schemas/ClinicalDocumentStatusEnum"
+                    },
+                    "doc_type": {
+                        "type": "string",
+                        "nullable": true,
+                        "maxLength": 100
+                    },
+                    "category": {
+                        "type": "string",
+                        "nullable": true,
+                        "maxLength": 100
+                    },
+                    "object_url": {
+                        "type": "string",
+                        "maxLength": 512
+                    },
+                    "content_type": {
+                        "type": "string",
+                        "maxLength": 100
+                    },
+                    "size_bytes": {
+                        "type": "integer",
+                        "maximum": 9223372036854775807,
+                        "minimum": 0,
+                        "format": "int64",
+                        "nullable": true
+                    },
+                    "hash_sha256": {
+                        "type": "string",
+                        "nullable": true,
+                        "maxLength": 64
+                    },
+                    "tenant": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "patient": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "encounter": {
+                        "type": "string",
+                        "format": "uuid",
+                        "nullable": true
+                    },
+                    "author": {
+                        "type": "string",
+                        "format": "uuid",
+                        "nullable": true
+                    }
+                },
+                "required": [
+                    "content_type",
+                    "created_at",
+                    "id",
+                    "object_url",
+                    "patient",
+                    "tenant",
+                    "updated_at"
+                ]
+            },
+            "ClinicalDocumentStatusEnum": {
+                "enum": [
+                    "CURRENT",
+                    "SUPERSEDED",
+                    "ENTERED_IN_ERROR"
+                ],
+                "type": "string",
+                "description": "* `CURRENT` - Current\n* `SUPERSEDED` - Superseded\n* `ENTERED_IN_ERROR` - Entered in error"
+            },
+            "ClinicalEncounter": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "readOnly": true
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "readOnly": true
+                    },
+                    "updated_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "readOnly": true
+                    },
+                    "status": {
+                        "$ref": "#/components/schemas/ClinicalEncounterStatusEnum"
+                    },
+                    "encounter_class": {
+                        "type": "string",
+                        "maxLength": 50
+                    },
+                    "start_time": {
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": true
+                    },
+                    "end_time": {
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": true
+                    },
+                    "reason_code": {
+                        "type": "string",
+                        "nullable": true,
+                        "maxLength": 100
+                    },
+                    "tenant": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "patient": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "organization": {
+                        "type": "string",
+                        "format": "uuid",
+                        "nullable": true
+                    },
+                    "location": {
+                        "type": "string",
+                        "format": "uuid",
+                        "nullable": true
+                    },
+                    "practitioner": {
+                        "type": "string",
+                        "format": "uuid",
+                        "nullable": true
+                    }
+                },
+                "required": [
+                    "created_at",
+                    "encounter_class",
+                    "id",
+                    "patient",
+                    "tenant",
+                    "updated_at"
+                ]
+            },
+            "ClinicalEncounterStatusEnum": {
+                "enum": [
+                    "PLANNED",
+                    "ARRIVED",
+                    "TRIAGED",
+                    "IN_PROGRESS",
+                    "ONLEAVE",
+                    "FINISHED",
+                    "CANCELLED",
+                    "ENTERED_IN_ERROR"
+                ],
+                "type": "string",
+                "description": "* `PLANNED` - Planned\n* `ARRIVED` - Arrived\n* `TRIAGED` - Triaged\n* `IN_PROGRESS` - In progress\n* `ONLEAVE` - On leave\n* `FINISHED` - Finished\n* `CANCELLED` - Cancelled\n* `ENTERED_IN_ERROR` - Entered in error"
+            },
+            "ClinicalEvaluation": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "readOnly": true
+                    },
+                    "patient": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "prescription": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "knowledge_release": {
+                        "type": "string",
+                        "format": "uuid",
+                        "nullable": true
+                    },
+                    "status": {
+                        "$ref": "#/components/schemas/ClinicalEvaluationStatusEnum"
+                    },
+                    "context_hash": {
+                        "type": "string",
+                        "maxLength": 64
+                    },
+                    "evaluated_by": {
+                        "type": "integer",
+                        "nullable": true
+                    },
+                    "completed_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "readOnly": true
+                    },
+                    "error_code": {
+                        "type": "string",
+                        "maxLength": 80
+                    },
+                    "error_detail": {
+                        "type": "string",
+                        "maxLength": 255
+                    },
+                    "findings": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/ClinicalFinding"
+                        },
+                        "readOnly": true
+                    }
+                },
+                "required": [
+                    "completed_at",
+                    "context_hash",
+                    "findings",
+                    "id",
+                    "patient",
+                    "prescription",
+                    "status"
+                ]
+            },
+            "ClinicalEvaluationStatusEnum": {
+                "enum": [
+                    "PASS",
+                    "WARNING",
+                    "BLOCK",
+                    "KNOWLEDGE_UNAVAILABLE",
+                    "ERROR"
+                ],
+                "type": "string",
+                "description": "* `PASS` - Pass\n* `WARNING` - Warning\n* `BLOCK` - Block\n* `KNOWLEDGE_UNAVAILABLE` - Knowledge unavailable\n* `ERROR` - Error"
+            },
+            "ClinicalFinding": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "readOnly": true
+                    },
+                    "rule_id": {
+                        "type": "string",
+                        "maxLength": 120
+                    },
+                    "rule_version": {
+                        "type": "string",
+                        "maxLength": 80
+                    },
+                    "rule_type": {
+                        "type": "string",
+                        "maxLength": 40
+                    },
+                    "source": {
+                        "type": "string",
+                        "maxLength": 200
+                    },
+                    "source_version": {
+                        "type": "string",
+                        "maxLength": 100
+                    },
+                    "effective_date": {
+                        "type": "string",
+                        "format": "date"
+                    },
+                    "severity": {
+                        "type": "string",
+                        "maxLength": 20
+                    },
+                    "evidence_summary": {
+                        "type": "string"
+                    },
+                    "explanation": {
+                        "type": "string"
+                    },
+                    "recommended_action": {
+                        "type": "string"
+                    },
+                    "override_policy": {
+                        "type": "string",
+                        "maxLength": 20
+                    },
+                    "affected_medicine": {
+                        "type": "string",
+                        "format": "uuid",
+                        "nullable": true
+                    },
+                    "interacting_factor": {
+                        "type": "string",
+                        "maxLength": 255
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "readOnly": true
+                    }
+                },
+                "required": [
+                    "created_at",
+                    "effective_date",
+                    "evidence_summary",
+                    "explanation",
+                    "id",
+                    "interacting_factor",
+                    "override_policy",
+                    "recommended_action",
+                    "rule_id",
+                    "rule_type",
+                    "rule_version",
+                    "severity",
+                    "source",
+                    "source_version"
+                ]
+            },
+            "ClinicalObservation": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "readOnly": true
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "readOnly": true
+                    },
+                    "updated_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "readOnly": true
+                    },
+                    "status": {
+                        "$ref": "#/components/schemas/ClinicalObservationStatusEnum"
+                    },
+                    "category": {
+                        "type": "string",
+                        "nullable": true,
+                        "maxLength": 100
+                    },
+                    "code": {
+                        "type": "string",
+                        "maxLength": 100
+                    },
+                    "system": {
+                        "type": "string",
+                        "nullable": true,
+                        "maxLength": 255
+                    },
+                    "display": {
+                        "type": "string",
+                        "nullable": true,
+                        "maxLength": 255
+                    },
+                    "effective_time": {
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": true
+                    },
+                    "value_quantity": {
+                        "type": "string",
+                        "format": "decimal",
+                        "pattern": "^-?\\d{0,8}(?:\\.\\d{0,4})?$",
+                        "nullable": true
+                    },
+                    "value_unit": {
+                        "type": "string",
+                        "nullable": true,
+                        "maxLength": 50
+                    },
+                    "value_string": {
+                        "type": "string",
+                        "nullable": true,
+                        "maxLength": 255
+                    },
+                    "interpretation": {
+                        "type": "string",
+                        "nullable": true,
+                        "maxLength": 50
+                    },
+                    "tenant": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "patient": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "encounter": {
+                        "type": "string",
+                        "format": "uuid",
+                        "nullable": true
+                    }
+                },
+                "required": [
+                    "code",
+                    "created_at",
+                    "id",
+                    "patient",
+                    "tenant",
+                    "updated_at"
+                ]
+            },
+            "ClinicalObservationStatusEnum": {
+                "enum": [
+                    "REGISTERED",
+                    "PRELIMINARY",
+                    "FINAL",
+                    "AMENDED",
+                    "CORRECTED",
+                    "CANCELLED",
+                    "ENTERED_IN_ERROR",
+                    "UNKNOWN"
+                ],
+                "type": "string",
+                "description": "* `REGISTERED` - Registered\n* `PRELIMINARY` - Preliminary\n* `FINAL` - Final\n* `AMENDED` - Amended\n* `CORRECTED` - Corrected\n* `CANCELLED` - Cancelled\n* `ENTERED_IN_ERROR` - Entered in error\n* `UNKNOWN` - Unknown"
+            },
+            "ClinicalStatusEnum": {
+                "enum": [
+                    "ACTIVE",
+                    "RECURRENCE",
+                    "RELAPSE",
+                    "INACTIVE",
+                    "REMISSION",
+                    "RESOLVED"
+                ],
+                "type": "string",
+                "description": "* `ACTIVE` - Active\n* `RECURRENCE` - Recurrence\n* `RELAPSE` - Relapse\n* `INACTIVE` - Inactive\n* `REMISSION` - Remission\n* `RESOLVED` - Resolved"
+            },
+            "CodeSystem": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "readOnly": true
+                    },
+                    "version": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "url": {
+                        "type": "string",
+                        "maxLength": 255
+                    },
+                    "name": {
+                        "type": "string",
+                        "maxLength": 150
+                    },
+                    "title": {
+                        "type": "string",
+                        "maxLength": 255
+                    },
+                    "content_mode": {
+                        "type": "string",
+                        "maxLength": 50
+                    },
+                    "concepts_json": {},
+                    "is_global": {
+                        "type": "boolean"
+                    }
+                },
+                "required": [
+                    "id",
+                    "name",
+                    "url",
+                    "version"
+                ]
+            },
+            "DawaTraceToken": {
+                "type": "object",
+                "properties": {
+                    "username": {
+                        "type": "string",
+                        "writeOnly": true
+                    },
+                    "password": {
+                        "type": "string",
+                        "writeOnly": true
+                    }
+                },
+                "required": [
+                    "password",
+                    "username"
+                ]
+            },
+            "KnowledgeRelease": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "readOnly": true
+                    },
+                    "code": {
+                        "type": "string",
+                        "maxLength": 100
+                    },
+                    "version": {
+                        "type": "string",
+                        "maxLength": 80
+                    },
+                    "source": {
+                        "type": "string",
+                        "maxLength": 200
+                    },
+                    "source_version": {
+                        "type": "string",
+                        "maxLength": 100
+                    },
+                    "licence": {
+                        "type": "string",
+                        "maxLength": 200
+                    },
+                    "effective_date": {
+                        "type": "string",
+                        "format": "date"
+                    },
+                    "expires_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": true
+                    },
+                    "is_global": {
+                        "type": "boolean"
+                    },
+                    "is_active": {
+                        "type": "boolean"
+                    },
+                    "content_classification": {
+                        "type": "string",
+                        "maxLength": 50
+                    },
+                    "checksum_sha256": {
+                        "type": "string",
+                        "maxLength": 64
+                    }
+                },
+                "required": [
+                    "checksum_sha256",
+                    "code",
+                    "effective_date",
+                    "id",
+                    "licence",
+                    "source",
+                    "source_version",
+                    "version"
+                ]
+            },
+            "Location": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "readOnly": true
+                    },
+                    "organization": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "name": {
+                        "type": "string",
+                        "maxLength": 255
+                    },
+                    "code": {
+                        "type": "string",
+                        "maxLength": 80
+                    },
+                    "location_type": {
+                        "type": "string",
+                        "maxLength": 50
+                    },
+                    "status": {
+                        "type": "string",
+                        "maxLength": 20
+                    },
+                    "address": {},
+                    "metadata": {},
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "readOnly": true
+                    },
+                    "updated_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "readOnly": true
+                    }
+                },
+                "required": [
+                    "code",
+                    "created_at",
+                    "id",
+                    "name",
+                    "organization",
+                    "updated_at"
+                ]
+            },
+            "MedicationAdministrationRecord": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "readOnly": true
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "readOnly": true
+                    },
+                    "updated_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "readOnly": true
+                    },
+                    "status": {
+                        "$ref": "#/components/schemas/MedicationAdministrationRecordStatusEnum"
+                    },
+                    "medication_name": {
+                        "type": "string",
+                        "maxLength": 255
+                    },
+                    "effective_time": {
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": true
+                    },
+                    "dosage_text": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "reason_not_done": {
+                        "type": "string",
+                        "nullable": true,
+                        "maxLength": 255
+                    },
+                    "tenant": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "patient": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "encounter": {
+                        "type": "string",
+                        "format": "uuid",
+                        "nullable": true
+                    },
+                    "prescription_item": {
+                        "type": "string",
+                        "format": "uuid",
+                        "nullable": true
+                    },
+                    "performer": {
+                        "type": "string",
+                        "format": "uuid",
+                        "nullable": true
+                    }
+                },
+                "required": [
+                    "created_at",
+                    "id",
+                    "medication_name",
+                    "patient",
+                    "tenant",
+                    "updated_at"
+                ]
+            },
+            "MedicationAdministrationRecordStatusEnum": {
+                "enum": [
+                    "IN_PROGRESS",
+                    "NOT_DONE",
+                    "ON_HOLD",
+                    "COMPLETED",
+                    "ENTERED_IN_ERROR",
+                    "STOPPED",
+                    "UNKNOWN"
+                ],
+                "type": "string",
+                "description": "* `IN_PROGRESS` - In progress\n* `NOT_DONE` - Not done\n* `ON_HOLD` - On hold\n* `COMPLETED` - Completed\n* `ENTERED_IN_ERROR` - Entered in error\n* `STOPPED` - Stopped\n* `UNKNOWN` - Unknown"
+            },
+            "Organization": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "readOnly": true
+                    },
+                    "name": {
+                        "type": "string",
+                        "maxLength": 255
+                    },
+                    "code": {
+                        "type": "string",
+                        "maxLength": 80
+                    },
+                    "organization_type": {
+                        "$ref": "#/components/schemas/OrganizationTypeEnum"
+                    },
+                    "status": {
+                        "type": "string",
+                        "maxLength": 20
+                    },
+                    "metadata": {},
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "readOnly": true
+                    },
+                    "updated_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "readOnly": true
+                    }
+                },
+                "required": [
+                    "code",
+                    "created_at",
+                    "id",
+                    "name",
+                    "updated_at"
+                ]
+            },
+            "OrganizationTypeEnum": {
+                "enum": [
+                    "PHARMACY",
+                    "HOSPITAL",
+                    "CLINIC",
+                    "OTHER"
+                ],
+                "type": "string",
+                "description": "* `PHARMACY` - Pharmacy\n* `HOSPITAL` - Hospital\n* `CLINIC` - Clinic\n* `OTHER` - Other"
+            },
+            "PatchedLocation": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "readOnly": true
+                    },
+                    "organization": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "name": {
+                        "type": "string",
+                        "maxLength": 255
+                    },
+                    "code": {
+                        "type": "string",
+                        "maxLength": 80
+                    },
+                    "location_type": {
+                        "type": "string",
+                        "maxLength": 50
+                    },
+                    "status": {
+                        "type": "string",
+                        "maxLength": 20
+                    },
+                    "address": {},
+                    "metadata": {},
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "readOnly": true
+                    },
+                    "updated_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "readOnly": true
+                    }
+                }
+            },
+            "PatchedOrganization": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "readOnly": true
+                    },
+                    "name": {
+                        "type": "string",
+                        "maxLength": 255
+                    },
+                    "code": {
+                        "type": "string",
+                        "maxLength": 80
+                    },
+                    "organization_type": {
+                        "$ref": "#/components/schemas/OrganizationTypeEnum"
+                    },
+                    "status": {
+                        "type": "string",
+                        "maxLength": 20
+                    },
+                    "metadata": {},
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "readOnly": true
+                    },
+                    "updated_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "readOnly": true
+                    }
+                }
+            },
+            "PatchedPatient": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "readOnly": true
+                    },
+                    "internal_reference_id": {
+                        "type": "string",
+                        "maxLength": 255
+                    },
+                    "verification_status": {
+                        "type": "string",
+                        "maxLength": 50
+                    },
+                    "first_name": {
+                        "type": "string",
+                        "maxLength": 120
+                    },
+                    "last_name": {
+                        "type": "string",
+                        "maxLength": 120
+                    },
+                    "date_of_birth": {
+                        "type": "string",
+                        "format": "date",
+                        "nullable": true
+                    },
+                    "sex": {
+                        "$ref": "#/components/schemas/SexEnum"
+                    },
+                    "phone": {
+                        "type": "string",
+                        "maxLength": 40
+                    },
+                    "email": {
+                        "type": "string",
+                        "format": "email",
+                        "maxLength": 254
+                    },
+                    "address": {},
+                    "emergency_contact": {},
+                    "is_active": {
+                        "type": "boolean"
+                    },
+                    "metadata": {},
+                    "identifiers": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/PatientIdentifier"
+                        },
+                        "readOnly": true
+                    },
+                    "allergies": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/PatientAllergy"
+                        },
+                        "readOnly": true
+                    },
+                    "medication_statements": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/PatientMedication"
+                        },
+                        "readOnly": true
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "readOnly": true
+                    },
+                    "updated_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "readOnly": true
+                    }
+                }
+            },
+            "PatchedPractitioner": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "readOnly": true
+                    },
+                    "first_name": {
+                        "type": "string",
+                        "maxLength": 100
+                    },
+                    "last_name": {
+                        "type": "string",
+                        "maxLength": 100
+                    },
+                    "phone": {
+                        "type": "string",
+                        "maxLength": 40
+                    },
+                    "email": {
+                        "type": "string",
+                        "format": "email",
+                        "maxLength": 254
+                    },
+                    "status": {
+                        "type": "string",
+                        "maxLength": 20
+                    },
+                    "metadata": {},
+                    "licences": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/PractitionerLicence"
+                        },
+                        "readOnly": true
+                    },
+                    "roles": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/PractitionerRole"
+                        },
+                        "readOnly": true
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "readOnly": true
+                    },
+                    "updated_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "readOnly": true
+                    }
+                }
+            },
+            "PatchedPrescription": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "readOnly": true
+                    },
+                    "patient": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "practitioner": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "organization": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "location": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "prescription_number": {
+                        "type": "string",
+                        "maxLength": 80
+                    },
+                    "status": {
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/PrescriptionStatusEnum"
+                            }
+                        ],
+                        "readOnly": true
+                    },
+                    "workflow_state": {
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/WorkflowStateEnum"
+                            }
+                        ],
+                        "readOnly": true
+                    },
+                    "issued_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": true
+                    },
+                    "expires_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": true
+                    },
+                    "substitution_policy": {
+                        "type": "string",
+                        "maxLength": 50
+                    },
+                    "clinical_review_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "readOnly": true,
+                        "nullable": true
+                    },
+                    "approved_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "readOnly": true,
+                        "nullable": true
+                    },
+                    "approved_by": {
+                        "type": "integer",
+                        "readOnly": true,
+                        "nullable": true
+                    },
+                    "payment_reference": {
+                        "type": "string",
+                        "readOnly": true
+                    },
+                    "metadata": {},
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/PrescriptionItem"
+                        },
+                        "readOnly": true
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "readOnly": true
+                    },
+                    "updated_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "readOnly": true
+                    }
+                }
+            },
+            "Patient": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "readOnly": true
+                    },
+                    "internal_reference_id": {
+                        "type": "string",
+                        "maxLength": 255
+                    },
+                    "verification_status": {
+                        "type": "string",
+                        "maxLength": 50
+                    },
+                    "first_name": {
+                        "type": "string",
+                        "maxLength": 120
+                    },
+                    "last_name": {
+                        "type": "string",
+                        "maxLength": 120
+                    },
+                    "date_of_birth": {
+                        "type": "string",
+                        "format": "date",
+                        "nullable": true
+                    },
+                    "sex": {
+                        "$ref": "#/components/schemas/SexEnum"
+                    },
+                    "phone": {
+                        "type": "string",
+                        "maxLength": 40
+                    },
+                    "email": {
+                        "type": "string",
+                        "format": "email",
+                        "maxLength": 254
+                    },
+                    "address": {},
+                    "emergency_contact": {},
+                    "is_active": {
+                        "type": "boolean"
+                    },
+                    "metadata": {},
+                    "identifiers": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/PatientIdentifier"
+                        },
+                        "readOnly": true
+                    },
+                    "allergies": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/PatientAllergy"
+                        },
+                        "readOnly": true
+                    },
+                    "medication_statements": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/PatientMedication"
+                        },
+                        "readOnly": true
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "readOnly": true
+                    },
+                    "updated_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "readOnly": true
+                    }
+                },
+                "required": [
+                    "allergies",
+                    "created_at",
+                    "id",
+                    "identifiers",
+                    "internal_reference_id",
+                    "medication_statements",
+                    "updated_at"
+                ]
+            },
+            "PatientAllergy": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "readOnly": true
+                    },
+                    "allergen_name": {
+                        "type": "string",
+                        "maxLength": 160
+                    },
+                    "allergen_code": {
+                        "type": "string",
+                        "maxLength": 100
+                    },
+                    "allergen_system": {
+                        "type": "string",
+                        "maxLength": 255
+                    },
+                    "reaction": {
+                        "type": "string",
+                        "maxLength": 255
+                    },
+                    "severity": {
+                        "$ref": "#/components/schemas/SeverityEnum"
+                    },
+                    "notes": {
+                        "type": "string",
+                        "maxLength": 255
+                    },
+                    "is_active": {
+                        "type": "boolean"
+                    }
+                },
+                "required": [
+                    "allergen_name",
+                    "id"
+                ]
+            },
+            "PatientIdentifier": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "readOnly": true
+                    },
+                    "system": {
+                        "type": "string",
+                        "maxLength": 255
+                    },
+                    "value": {
+                        "type": "string",
+                        "maxLength": 255
+                    }
+                },
+                "required": [
+                    "id",
+                    "system",
+                    "value"
+                ]
+            },
+            "PatientMedication": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "readOnly": true
+                    },
+                    "medicine": {
+                        "type": "string",
+                        "format": "uuid",
+                        "nullable": true
+                    },
+                    "medication_name": {
+                        "type": "string",
+                        "maxLength": 255
+                    },
+                    "directions": {
+                        "type": "string"
+                    },
+                    "status": {
+                        "$ref": "#/components/schemas/PatientMedicationStatusEnum"
+                    },
+                    "effective_start": {
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": true
+                    },
+                    "effective_end": {
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": true
+                    }
+                },
+                "required": [
+                    "id",
+                    "medication_name"
+                ]
+            },
+            "PatientMedicationStatusEnum": {
+                "enum": [
+                    "ACTIVE",
+                    "COMPLETED",
+                    "STOPPED"
+                ],
+                "type": "string",
+                "description": "* `ACTIVE` - Active\n* `COMPLETED` - Completed\n* `STOPPED` - Stopped"
+            },
+            "PlatformInfo": {
+                "type": "object",
+                "properties": {
+                    "product": {
+                        "type": "string"
+                    },
+                    "vendor": {
+                        "type": "string"
+                    },
+                    "api": {
+                        "type": "string"
+                    },
+                    "tenant_id": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "api",
+                    "product",
+                    "tenant_id",
+                    "vendor"
+                ]
+            },
+            "Practitioner": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "readOnly": true
+                    },
+                    "first_name": {
+                        "type": "string",
+                        "maxLength": 100
+                    },
+                    "last_name": {
+                        "type": "string",
+                        "maxLength": 100
+                    },
+                    "phone": {
+                        "type": "string",
+                        "maxLength": 40
+                    },
+                    "email": {
+                        "type": "string",
+                        "format": "email",
+                        "maxLength": 254
+                    },
+                    "status": {
+                        "type": "string",
+                        "maxLength": 20
+                    },
+                    "metadata": {},
+                    "licences": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/PractitionerLicence"
+                        },
+                        "readOnly": true
+                    },
+                    "roles": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/PractitionerRole"
+                        },
+                        "readOnly": true
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "readOnly": true
+                    },
+                    "updated_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "readOnly": true
+                    }
+                },
+                "required": [
+                    "created_at",
+                    "first_name",
+                    "id",
+                    "last_name",
+                    "licences",
+                    "roles",
+                    "updated_at"
+                ]
+            },
+            "PractitionerLicence": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "readOnly": true
+                    },
+                    "licence_number": {
+                        "type": "string",
+                        "maxLength": 100
+                    },
+                    "issuer": {
+                        "type": "string",
+                        "maxLength": 100
+                    },
+                    "jurisdiction": {
+                        "type": "string",
+                        "maxLength": 80
+                    },
+                    "status": {
+                        "type": "string",
+                        "maxLength": 20
+                    },
+                    "expiry_date": {
+                        "type": "string",
+                        "format": "date",
+                        "nullable": true
+                    }
+                },
+                "required": [
+                    "id",
+                    "issuer",
+                    "licence_number"
+                ]
+            },
+            "PractitionerRole": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "readOnly": true
+                    },
+                    "organization": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "location": {
+                        "type": "string",
+                        "format": "uuid",
+                        "nullable": true
+                    },
+                    "role_code": {
+                        "type": "string",
+                        "maxLength": 100
+                    },
+                    "specialty_code": {
+                        "type": "string",
+                        "maxLength": 100
+                    },
+                    "status": {
+                        "type": "string",
+                        "maxLength": 20
+                    },
+                    "start_date": {
+                        "type": "string",
+                        "format": "date",
+                        "nullable": true
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "format": "date",
+                        "nullable": true
+                    }
+                },
+                "required": [
+                    "id",
+                    "organization",
+                    "role_code"
+                ]
+            },
+            "Prescription": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "readOnly": true
+                    },
+                    "patient": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "practitioner": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "organization": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "location": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "prescription_number": {
+                        "type": "string",
+                        "maxLength": 80
+                    },
+                    "status": {
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/PrescriptionStatusEnum"
+                            }
+                        ],
+                        "readOnly": true
+                    },
+                    "workflow_state": {
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/WorkflowStateEnum"
+                            }
+                        ],
+                        "readOnly": true
+                    },
+                    "issued_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": true
+                    },
+                    "expires_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": true
+                    },
+                    "substitution_policy": {
+                        "type": "string",
+                        "maxLength": 50
+                    },
+                    "clinical_review_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "readOnly": true,
+                        "nullable": true
+                    },
+                    "approved_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "readOnly": true,
+                        "nullable": true
+                    },
+                    "approved_by": {
+                        "type": "integer",
+                        "readOnly": true,
+                        "nullable": true
+                    },
+                    "payment_reference": {
+                        "type": "string",
+                        "readOnly": true
+                    },
+                    "metadata": {},
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/PrescriptionItem"
+                        },
+                        "readOnly": true
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "readOnly": true
+                    },
+                    "updated_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "readOnly": true
+                    }
+                },
+                "required": [
+                    "approved_at",
+                    "approved_by",
+                    "clinical_review_id",
+                    "created_at",
+                    "id",
+                    "items",
+                    "location",
+                    "organization",
+                    "patient",
+                    "payment_reference",
+                    "practitioner",
+                    "prescription_number",
+                    "status",
+                    "updated_at",
+                    "workflow_state"
+                ]
+            },
+            "PrescriptionDispense": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "readOnly": true
+                    },
+                    "prescription": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "location": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "dispensed_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "readOnly": true
+                    },
+                    "status": {
+                        "type": "string",
+                        "maxLength": 50
+                    },
+                    "dispensed_by": {
+                        "type": "integer",
+                        "nullable": true
+                    },
+                    "idempotency_key": {
+                        "type": "string",
+                        "maxLength": 255
+                    },
+                    "fills": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/PrescriptionFill"
+                        },
+                        "readOnly": true
+                    }
+                },
+                "required": [
+                    "dispensed_at",
+                    "fills",
+                    "id",
+                    "idempotency_key",
+                    "location",
+                    "prescription"
+                ]
+            },
+            "PrescriptionFill": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "readOnly": true
+                    },
+                    "item": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "quantity_dispensed": {
+                        "type": "string",
+                        "format": "decimal",
+                        "pattern": "^-?\\d{0,9}(?:\\.\\d{0,3})?$"
+                    },
+                    "substituted_medicine": {
+                        "type": "string",
+                        "format": "uuid",
+                        "nullable": true
+                    }
+                },
+                "required": [
+                    "id",
+                    "item",
+                    "quantity_dispensed"
+                ]
+            },
+            "PrescriptionItem": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "readOnly": true
+                    },
+                    "canonical_medicine": {
+                        "type": "string",
+                        "format": "uuid",
+                        "nullable": true
+                    },
+                    "medication_name": {
+                        "type": "string",
+                        "maxLength": 255
+                    },
+                    "dosage_instruction": {
+                        "type": "string"
+                    },
+                    "dose_amount": {
+                        "type": "string",
+                        "format": "decimal",
+                        "pattern": "^-?\\d{0,9}(?:\\.\\d{0,3})?$",
+                        "nullable": true
+                    },
+                    "dose_unit": {
+                        "type": "string",
+                        "maxLength": 50
+                    },
+                    "frequency_per_day": {
+                        "type": "string",
+                        "format": "decimal",
+                        "pattern": "^-?\\d{0,5}(?:\\.\\d{0,3})?$",
+                        "nullable": true
+                    },
+                    "duration_days": {
+                        "type": "integer",
+                        "maximum": 9223372036854775807,
+                        "minimum": 0,
+                        "format": "int64",
+                        "nullable": true
+                    },
+                    "quantity": {
+                        "type": "string",
+                        "format": "decimal",
+                        "pattern": "^-?\\d{0,9}(?:\\.\\d{0,3})?$"
+                    },
+                    "refills_authorized": {
+                        "type": "integer",
+                        "maximum": 9223372036854775807,
+                        "minimum": 0,
+                        "format": "int64"
+                    },
+                    "is_controlled": {
+                        "type": "boolean"
+                    },
+                    "route": {
+                        "type": "string",
+                        "maxLength": 80
+                    }
+                },
+                "required": [
+                    "dosage_instruction",
+                    "id",
+                    "medication_name",
+                    "quantity"
+                ]
+            },
+            "PrescriptionStatusEnum": {
+                "enum": [
+                    "DRAFT",
+                    "ISSUED",
+                    "VERIFIED",
+                    "DISPENSED_PARTIALLY",
+                    "DISPENSED",
+                    "EXPIRED",
+                    "CANCELLED",
+                    "REJECTED",
+                    "SUSPENDED",
+                    "COMPLETED"
+                ],
+                "type": "string",
+                "description": "* `DRAFT` - Draft\n* `ISSUED` - Issued\n* `VERIFIED` - Verified\n* `DISPENSED_PARTIALLY` - Dispensed partially\n* `DISPENSED` - Dispensed\n* `EXPIRED` - Expired\n* `CANCELLED` - Cancelled\n* `REJECTED` - Rejected\n* `SUSPENDED` - Suspended\n* `COMPLETED` - Completed"
+            },
+            "Role": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "readOnly": true
+                    },
+                    "code": {
+                        "type": "string",
+                        "maxLength": 80
+                    },
+                    "name": {
+                        "type": "string",
+                        "maxLength": 160
+                    },
+                    "capabilities": {},
+                    "is_active": {
+                        "type": "boolean"
+                    },
+                    "is_system": {
+                        "type": "boolean"
+                    }
+                },
+                "required": [
+                    "code",
+                    "id",
+                    "name"
+                ]
+            },
+            "SeverityEnum": {
+                "enum": [
+                    "INFO",
+                    "WARNING",
+                    "HARD_STOP"
+                ],
+                "type": "string",
+                "description": "* `INFO` - Info\n* `WARNING` - Warning\n* `HARD_STOP` - Hard stop"
+            },
+            "SexEnum": {
+                "enum": [
+                    "MALE",
+                    "FEMALE",
+                    "OTHER",
+                    "UNKNOWN"
+                ],
+                "type": "string",
+                "description": "* `MALE` - Male\n* `FEMALE` - Female\n* `OTHER` - Other\n* `UNKNOWN` - Unknown"
+            },
+            "StoredClinicalDocument": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "readOnly": true
+                    },
+                    "tenant": {
+                        "type": "string",
+                        "format": "uuid",
+                        "readOnly": true
+                    },
+                    "patient": {
+                        "type": "string",
+                        "format": "uuid",
+                        "readOnly": true,
+                        "nullable": true
+                    },
+                    "original_name": {
+                        "type": "string",
+                        "readOnly": true
+                    },
+                    "content_type": {
+                        "type": "string",
+                        "readOnly": true
+                    },
+                    "size_bytes": {
+                        "type": "integer",
+                        "readOnly": true
+                    },
+                    "hash_sha256": {
+                        "type": "string",
+                        "readOnly": true
+                    },
+                    "uploaded_by": {
+                        "type": "integer",
+                        "readOnly": true
+                    },
+                    "malware_scan_status": {
+                        "type": "string",
+                        "readOnly": true
+                    },
+                    "metadata": {
+                        "readOnly": true
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "readOnly": true
+                    },
+                    "updated_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "readOnly": true
+                    }
+                },
+                "required": [
+                    "content_type",
+                    "created_at",
+                    "hash_sha256",
+                    "id",
+                    "malware_scan_status",
+                    "metadata",
+                    "original_name",
+                    "patient",
+                    "size_bytes",
+                    "tenant",
+                    "updated_at",
+                    "uploaded_by"
+                ]
+            },
+            "TokenRefresh": {
+                "type": "object",
+                "properties": {
+                    "access": {
+                        "type": "string",
+                        "readOnly": true
+                    },
+                    "refresh": {
+                        "type": "string",
+                        "writeOnly": true
+                    }
+                },
+                "required": [
+                    "access",
+                    "refresh"
+                ]
+            },
+            "UserSummary": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "readOnly": true
+                    },
+                    "username": {
+                        "type": "string",
+                        "description": "Required. 150 characters or fewer. Letters, digits and @/./+/-/_ only.",
+                        "pattern": "^[\\w.@+-]+$",
+                        "maxLength": 150
+                    },
+                    "email": {
+                        "type": "string",
+                        "format": "email",
+                        "title": "Email address",
+                        "maxLength": 254
+                    },
+                    "first_name": {
+                        "type": "string",
+                        "maxLength": 150
+                    },
+                    "last_name": {
+                        "type": "string",
+                        "maxLength": 150
+                    },
+                    "tenant_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "nullable": true,
+                        "readOnly": true
+                    },
+                    "is_platform_admin": {
+                        "type": "boolean"
+                    }
+                },
+                "required": [
+                    "id",
+                    "tenant_id",
+                    "username"
+                ]
+            },
+            "ValueSet": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "readOnly": true
+                    },
+                    "version": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "url": {
+                        "type": "string",
+                        "maxLength": 255
+                    },
+                    "name": {
+                        "type": "string",
+                        "maxLength": 150
+                    },
+                    "title": {
+                        "type": "string",
+                        "maxLength": 255
+                    },
+                    "compose_json": {},
+                    "is_global": {
+                        "type": "boolean"
+                    }
+                },
+                "required": [
+                    "id",
+                    "name",
+                    "url",
+                    "version"
+                ]
+            },
+            "VerificationStatusEnum": {
+                "enum": [
+                    "UNCONFIRMED",
+                    "PROVISIONAL",
+                    "DIFFERENTIAL",
+                    "CONFIRMED",
+                    "REFUTED",
+                    "ENTERED_IN_ERROR"
+                ],
+                "type": "string",
+                "description": "* `UNCONFIRMED` - Unconfirmed\n* `PROVISIONAL` - Provisional\n* `DIFFERENTIAL` - Differential\n* `CONFIRMED` - Confirmed\n* `REFUTED` - Refuted\n* `ENTERED_IN_ERROR` - Entered in error"
+            },
+            "WorkflowStateEnum": {
+                "enum": [
+                    "DRAFT",
+                    "CLINICAL_REVIEW",
+                    "BLOCKED",
+                    "APPROVED",
+                    "DISPENSING",
+                    "READY_FOR_PAYMENT",
+                    "PAID",
+                    "DISPENSED",
+                    "REVERSED"
+                ],
+                "type": "string",
+                "description": "* `DRAFT` - Draft\n* `CLINICAL_REVIEW` - Clinical review\n* `BLOCKED` - Blocked\n* `APPROVED` - Approved\n* `DISPENSING` - Dispensing\n* `READY_FOR_PAYMENT` - Ready for payment\n* `PAID` - Paid\n* `DISPENSED` - Dispensed\n* `REVERSED` - Reversed"
+            }
+        },
+        "securitySchemes": {
+            "cookieAuth": {
+                "type": "apiKey",
+                "in": "cookie",
+                "name": "sessionid"
+            },
+            "jwtAuth": {
+                "type": "http",
+                "scheme": "bearer",
+                "bearerFormat": "JWT"
+            }
+        }
+    }
+}
