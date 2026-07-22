@@ -96,6 +96,8 @@ START_TIME=$(date +%s)
 "${PYTHON}" "${ROOT}/backend/manage.py" migrate documents --noinput --settings=dawatrace.settings.test
 "${PYTHON}" "${ROOT}/backend/manage.py" migrate medicines 0001 --noinput --settings=dawatrace.settings.test
 "${PYTHON}" "${ROOT}/backend/manage.py" migrate medicines --noinput --settings=dawatrace.settings.test
+"${PYTHON}" "${ROOT}/backend/manage.py" migrate procurement zero --noinput --settings=dawatrace.settings.test
+"${PYTHON}" "${ROOT}/backend/manage.py" migrate procurement --noinput --settings=dawatrace.settings.test
 "${PYTHON}" "${ROOT}/scripts/classify_migrations.py"
 END_TIME=$(date +%s)
 record_step "migration_graph_and_reversibility" "python scripts/classify_migrations.py" "true" "PASSED" "0" "$((END_TIME - START_TIME))" "" "artifacts/generated/validation/migration-reversibility.json"

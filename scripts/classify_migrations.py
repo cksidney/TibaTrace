@@ -51,6 +51,10 @@ def classify_app_migrations():
             "boundary": "medicines.0001_initial",
             "evidence": "Verified rollback from 0002 to 0001 and re-application in validate_repository.sh."
         },
+        "procurement": {
+            "boundary": "zero",
+            "evidence": "Verified rollback to zero and re-application in validate_repository.sh."
+        },
     }
 
     apps_data = []

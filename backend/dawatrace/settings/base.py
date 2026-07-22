@@ -67,6 +67,7 @@ INSTALLED_APPS = [
     "apps.identity",
     "apps.organizations",
     "apps.medicines",
+    "apps.procurement",
     "apps.patients",
     "apps.practitioners",
     "apps.prescription",

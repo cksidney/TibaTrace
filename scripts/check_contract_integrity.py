@@ -81,17 +81,18 @@ def check_contract_integrity():
     print(f" [3/4] Semantic Contract Drift Classification: '{classification.upper()}'")
     print(f"       Total API Routes: {len(curr_paths)}, Total Schemas: {len(curr_schemas)}")
 
-    if classification == "breaking":
-        print(f"❌ BREAKING CONTRACT DRIFT DETECTED!", file=sys.stderr)
-        for reason in breaking_reasons:
-            print(f"   - {reason}", file=sys.stderr)
-        return 1
-
     # 4. Update reference schema if --update flag is passed
     if "--update" in sys.argv:
         with open(reference_schema_path, "w") as f:
             json.dump(curr_data, f, indent=2, sort_keys=True)
         print(f" 🔄 Reference contract artifact updated at {reference_schema_path}")
+        ref_data = curr_data
+        classification = "updated"
+    elif classification == "breaking":
+        print(f"❌ BREAKING CONTRACT DRIFT DETECTED!", file=sys.stderr)
+        for reason in breaking_reasons:
+            print(f"   - {reason}", file=sys.stderr)
+        return 1
 
     # 5. Verify TypeScript shared package contract alignment
     ts_shared = ROOT / "packages" / "shared" / "src"

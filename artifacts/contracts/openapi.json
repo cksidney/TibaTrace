@@ -289,7 +289,7 @@
             "type": "string"
           },
           "verification_status": {
-            "$ref": "#/components/schemas/VerificationStatusEnum"
+            "$ref": "#/components/schemas/ClinicalConditionVerificationStatusEnum"
           }
         },
         "required": [
@@ -302,6 +302,18 @@
           "updated_at"
         ],
         "type": "object"
+      },
+      "ClinicalConditionVerificationStatusEnum": {
+        "description": "* `UNCONFIRMED` - Unconfirmed\n* `PROVISIONAL` - Provisional\n* `DIFFERENTIAL` - Differential\n* `CONFIRMED` - Confirmed\n* `REFUTED` - Refuted\n* `ENTERED_IN_ERROR` - Entered in error",
+        "enum": [
+          "UNCONFIRMED",
+          "PROVISIONAL",
+          "DIFFERENTIAL",
+          "CONFIRMED",
+          "REFUTED",
+          "ENTERED_IN_ERROR"
+        ],
+        "type": "string"
       },
       "ClinicalDiagnosticReport": {
         "properties": {
@@ -1108,6 +1120,17 @@
         ],
         "type": "object"
       },
+      "DecisionEnum": {
+        "description": "* `RELEASE` - Release to Available Stock\n* `QUARANTINE` - Quarantine for Investigation\n* `REJECT` - Reject & Return\n* `HOLD_FOR_INVESTIGATION` - Hold for Technical Review\n* `DESTROY` - Condemn & Destroy",
+        "enum": [
+          "RELEASE",
+          "QUARANTINE",
+          "REJECT",
+          "HOLD_FOR_INVESTIGATION",
+          "DESTROY"
+        ],
+        "type": "string"
+      },
       "DoseForm": {
         "properties": {
           "code": {
@@ -1156,6 +1179,150 @@
           "CLINICAL_PRODUCT",
           "MANUFACTURED_PRODUCT",
           "SKU"
+        ],
+        "type": "string"
+      },
+      "GoodsReceipt": {
+        "properties": {
+          "arrival_time": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "readOnly": true,
+            "type": "string"
+          },
+          "delivery_note_number": {
+            "maxLength": 128,
+            "type": "string"
+          },
+          "discrepancy_summary": {
+            "type": "string"
+          },
+          "grn_number": {
+            "maxLength": 64,
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "readOnly": true,
+            "type": "string"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/GoodsReceiptLine"
+            },
+            "readOnly": true,
+            "type": "array"
+          },
+          "purchase_order": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "received_by": {
+            "type": "integer"
+          },
+          "receiving_branch": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GoodsReceiptStatusEnum"
+              }
+            ],
+            "readOnly": true
+          },
+          "supplier": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "arrival_time",
+          "created_at",
+          "delivery_note_number",
+          "grn_number",
+          "id",
+          "lines",
+          "purchase_order",
+          "received_by",
+          "receiving_branch",
+          "status",
+          "supplier"
+        ],
+        "type": "object"
+      },
+      "GoodsReceiptLine": {
+        "properties": {
+          "accepted_quantity": {
+            "format": "int64",
+            "maximum": 9223372036854775807,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "delivered_quantity": {
+            "format": "int64",
+            "maximum": 9223372036854775807,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "discrepancy_reason": {
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "readOnly": true,
+            "type": "string"
+          },
+          "po_line": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "quarantined_quantity": {
+            "format": "int64",
+            "maximum": 9223372036854775807,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "rejected_quantity": {
+            "format": "int64",
+            "maximum": 9223372036854775807,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "sku": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "sku_code": {
+            "readOnly": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "delivered_quantity",
+          "id",
+          "po_line",
+          "sku",
+          "sku_code"
+        ],
+        "type": "object"
+      },
+      "GoodsReceiptStatusEnum": {
+        "description": "* `DRAFT` - Draft\n* `RECEIVING` - Receiving\n* `RECEIVED` - Received\n* `UNDER_INSPECTION` - Under Inspection\n* `PARTIALLY_ACCEPTED` - Partially Accepted\n* `ACCEPTED` - Accepted\n* `REJECTED` - Rejected\n* `CLOSED` - Closed\n* `CANCELLED` - Cancelled",
+        "enum": [
+          "DRAFT",
+          "RECEIVING",
+          "RECEIVED",
+          "UNDER_INSPECTION",
+          "PARTIALLY_ACCEPTED",
+          "ACCEPTED",
+          "REJECTED",
+          "CLOSED",
+          "CANCELLED"
         ],
         "type": "string"
       },
@@ -1482,6 +1649,16 @@
           "updated_at"
         ],
         "type": "object"
+      },
+      "MatchingStatusEnum": {
+        "description": "* `UNMATCHED` - Unmatched\n* `MATCHED` - Matched\n* `VARIANCE_FLAGGED` - Variance Flagged\n* `ACCEPTED_WITH_VARIANCE` - Accepted With Variance",
+        "enum": [
+          "UNMATCHED",
+          "MATCHED",
+          "VARIANCE_FLAGGED",
+          "ACCEPTED_WITH_VARIANCE"
+        ],
+        "type": "string"
       },
       "MedicationAdministrationRecord": {
         "properties": {
@@ -2079,6 +2256,66 @@
           "updated_at": {
             "format": "date-time",
             "readOnly": true,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "PatchedGoodsReceipt": {
+        "properties": {
+          "arrival_time": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "readOnly": true,
+            "type": "string"
+          },
+          "delivery_note_number": {
+            "maxLength": 128,
+            "type": "string"
+          },
+          "discrepancy_summary": {
+            "type": "string"
+          },
+          "grn_number": {
+            "maxLength": 64,
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "readOnly": true,
+            "type": "string"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/GoodsReceiptLine"
+            },
+            "readOnly": true,
+            "type": "array"
+          },
+          "purchase_order": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "received_by": {
+            "type": "integer"
+          },
+          "receiving_branch": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GoodsReceiptStatusEnum"
+              }
+            ],
+            "readOnly": true
+          },
+          "supplier": {
+            "format": "uuid",
             "type": "string"
           }
         },
@@ -2756,6 +2993,266 @@
         },
         "type": "object"
       },
+      "PatchedPurchaseOrder": {
+        "properties": {
+          "approved_at": {
+            "format": "date-time",
+            "nullable": true,
+            "readOnly": true,
+            "type": "string"
+          },
+          "approved_by": {
+            "nullable": true,
+            "readOnly": true,
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "readOnly": true,
+            "type": "string"
+          },
+          "currency": {
+            "maxLength": 3,
+            "type": "string"
+          },
+          "expected_delivery_date": {
+            "format": "date",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "readOnly": true,
+            "type": "string"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/PurchaseOrderLine"
+            },
+            "readOnly": true,
+            "type": "array"
+          },
+          "order_date": {
+            "format": "date",
+            "type": "string"
+          },
+          "ordering_branch": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "originating_requisition": {
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
+          "po_number": {
+            "maxLength": 64,
+            "type": "string"
+          },
+          "revision_number": {
+            "format": "int64",
+            "maximum": 9223372036854775807,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PurchaseOrderStatusEnum"
+              }
+            ],
+            "readOnly": true
+          },
+          "supplier": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "supplier_name": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "total_gross": {
+            "format": "decimal",
+            "pattern": "^-?\\d{0,12}(?:\\.\\d{0,2})?$",
+            "type": "string"
+          },
+          "total_net": {
+            "format": "decimal",
+            "pattern": "^-?\\d{0,12}(?:\\.\\d{0,2})?$",
+            "type": "string"
+          },
+          "total_tax": {
+            "format": "decimal",
+            "pattern": "^-?\\d{0,12}(?:\\.\\d{0,2})?$",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "PatchedPurchaseRequisition": {
+        "properties": {
+          "approved_at": {
+            "format": "date-time",
+            "nullable": true,
+            "readOnly": true,
+            "type": "string"
+          },
+          "approved_by": {
+            "nullable": true,
+            "readOnly": true,
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "readOnly": true,
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "readOnly": true,
+            "type": "string"
+          },
+          "justification": {
+            "type": "string"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/PurchaseRequisitionLine"
+            },
+            "readOnly": true,
+            "type": "array"
+          },
+          "priority": {
+            "maxLength": 32,
+            "type": "string"
+          },
+          "requested_delivery_date": {
+            "format": "date",
+            "type": "string"
+          },
+          "requester": {
+            "type": "integer"
+          },
+          "requesting_branch": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "requesting_branch_name": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "requisition_number": {
+            "maxLength": 64,
+            "type": "string"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PurchaseRequisitionStatusEnum"
+              }
+            ],
+            "readOnly": true
+          }
+        },
+        "type": "object"
+      },
+      "PatchedReceivedBatch": {
+        "properties": {
+          "accepted_quantity": {
+            "format": "int64",
+            "maximum": 9223372036854775807,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "readOnly": true,
+            "type": "string"
+          },
+          "expiry_date": {
+            "format": "date",
+            "type": "string"
+          },
+          "grn_line": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "readOnly": true,
+            "type": "string"
+          },
+          "manufacture_date": {
+            "format": "date",
+            "nullable": true,
+            "type": "string"
+          },
+          "manufacturer_batch_number": {
+            "maxLength": 128,
+            "type": "string"
+          },
+          "quality_status": {
+            "$ref": "#/components/schemas/QualityStatusEnum"
+          },
+          "quarantined_quantity": {
+            "format": "int64",
+            "maximum": 9223372036854775807,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "received_quantity": {
+            "format": "int64",
+            "maximum": 9223372036854775807,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "rejected_quantity": {
+            "format": "int64",
+            "maximum": 9223372036854775807,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "sku": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "sku_code": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "temperature_excursion": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "PatchedReceivingInspection": {
+        "properties": {
+          "decision": {
+            "$ref": "#/components/schemas/DecisionEnum"
+          },
+          "goods_receipt": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "readOnly": true,
+            "type": "string"
+          },
+          "inspected_at": {
+            "format": "date-time",
+            "readOnly": true,
+            "type": "string"
+          },
+          "inspector": {
+            "type": "integer"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "PatchedSubstitutionGroup": {
         "properties": {
           "clinical_products": {
@@ -2837,6 +3334,313 @@
             "format": "date-time",
             "readOnly": true,
             "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "PatchedSupplier": {
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "approved_at": {
+            "format": "date-time",
+            "nullable": true,
+            "readOnly": true,
+            "type": "string"
+          },
+          "approved_by": {
+            "nullable": true,
+            "readOnly": true,
+            "type": "integer"
+          },
+          "contact_email": {
+            "format": "email",
+            "maxLength": 254,
+            "type": "string"
+          },
+          "contact_phone": {
+            "maxLength": 64,
+            "type": "string"
+          },
+          "country": {
+            "maxLength": 100,
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "readOnly": true,
+            "type": "string"
+          },
+          "default_currency": {
+            "maxLength": 3,
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "readOnly": true,
+            "type": "string"
+          },
+          "legal_name": {
+            "maxLength": 255,
+            "type": "string"
+          },
+          "payment_terms": {
+            "maxLength": 128,
+            "type": "string"
+          },
+          "registration_number": {
+            "maxLength": 128,
+            "type": "string"
+          },
+          "risk_category": {
+            "$ref": "#/components/schemas/RiskCategoryEnum"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SupplierStatusEnum"
+              }
+            ],
+            "readOnly": true
+          },
+          "supplier_code": {
+            "maxLength": 64,
+            "type": "string"
+          },
+          "suspension_reason": {
+            "type": "string"
+          },
+          "tax_identifier": {
+            "maxLength": 128,
+            "type": "string"
+          },
+          "trading_name": {
+            "maxLength": 255,
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "readOnly": true,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "PatchedSupplierProductAgreement": {
+        "properties": {
+          "agreed_unit_price": {
+            "format": "decimal",
+            "pattern": "^-?\\d{0,10}(?:\\.\\d{0,2})?$",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "readOnly": true,
+            "type": "string"
+          },
+          "currency": {
+            "maxLength": 3,
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "readOnly": true,
+            "type": "string"
+          },
+          "is_preferred": {
+            "type": "boolean"
+          },
+          "lead_time_days": {
+            "format": "int64",
+            "maximum": 9223372036854775807,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "minimum_order_quantity": {
+            "format": "int64",
+            "maximum": 9223372036854775807,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "purchase_unit": {
+            "maxLength": 64,
+            "type": "string"
+          },
+          "requires_cold_chain": {
+            "type": "boolean"
+          },
+          "sku": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "sku_code": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SupplierProductAgreementStatusEnum"
+              }
+            ],
+            "readOnly": true
+          },
+          "supplier": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "supplier_catalogue_number": {
+            "maxLength": 128,
+            "type": "string"
+          },
+          "supplier_code": {
+            "readOnly": true,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "PatchedSupplierQualification": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "readOnly": true,
+            "type": "string"
+          },
+          "document_reference": {
+            "maxLength": 255,
+            "type": "string"
+          },
+          "effective_date": {
+            "format": "date",
+            "type": "string"
+          },
+          "expiry_date": {
+            "format": "date",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "readOnly": true,
+            "type": "string"
+          },
+          "issuing_authority": {
+            "maxLength": 255,
+            "type": "string"
+          },
+          "licence_number": {
+            "maxLength": 128,
+            "type": "string"
+          },
+          "qualification_type": {
+            "$ref": "#/components/schemas/QualificationTypeEnum"
+          },
+          "supplier": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "supplier_code": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "verification_status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SupplierQualificationVerificationStatusEnum"
+              }
+            ],
+            "readOnly": true
+          },
+          "verified_at": {
+            "format": "date-time",
+            "nullable": true,
+            "readOnly": true,
+            "type": "string"
+          },
+          "verified_by": {
+            "nullable": true,
+            "readOnly": true,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "PatchedSupplierReturn": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "readOnly": true,
+            "type": "string"
+          },
+          "goods_receipt": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "readOnly": true,
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "return_number": {
+            "maxLength": 64,
+            "type": "string"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SupplierReturnStatusEnum"
+              }
+            ],
+            "readOnly": true
+          },
+          "supplier": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "PatchedThreeWayMatch": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "readOnly": true,
+            "type": "string"
+          },
+          "goods_receipt": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "readOnly": true,
+            "type": "string"
+          },
+          "invoice_reference": {
+            "maxLength": 128,
+            "type": "string"
+          },
+          "matching_status": {
+            "$ref": "#/components/schemas/MatchingStatusEnum"
+          },
+          "price_variance": {
+            "format": "decimal",
+            "pattern": "^-?\\d{0,10}(?:\\.\\d{0,2})?$",
+            "type": "string"
+          },
+          "purchase_order": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "quantity_variance": {
+            "format": "int64",
+            "maximum": 9223372036854775807,
+            "minimum": -9223372036854775808,
+            "type": "integer"
           }
         },
         "type": "object"
@@ -3555,6 +4359,498 @@
         ],
         "type": "object"
       },
+      "PurchaseOrder": {
+        "properties": {
+          "approved_at": {
+            "format": "date-time",
+            "nullable": true,
+            "readOnly": true,
+            "type": "string"
+          },
+          "approved_by": {
+            "nullable": true,
+            "readOnly": true,
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "readOnly": true,
+            "type": "string"
+          },
+          "currency": {
+            "maxLength": 3,
+            "type": "string"
+          },
+          "expected_delivery_date": {
+            "format": "date",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "readOnly": true,
+            "type": "string"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/PurchaseOrderLine"
+            },
+            "readOnly": true,
+            "type": "array"
+          },
+          "order_date": {
+            "format": "date",
+            "type": "string"
+          },
+          "ordering_branch": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "originating_requisition": {
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
+          "po_number": {
+            "maxLength": 64,
+            "type": "string"
+          },
+          "revision_number": {
+            "format": "int64",
+            "maximum": 9223372036854775807,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PurchaseOrderStatusEnum"
+              }
+            ],
+            "readOnly": true
+          },
+          "supplier": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "supplier_name": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "total_gross": {
+            "format": "decimal",
+            "pattern": "^-?\\d{0,12}(?:\\.\\d{0,2})?$",
+            "type": "string"
+          },
+          "total_net": {
+            "format": "decimal",
+            "pattern": "^-?\\d{0,12}(?:\\.\\d{0,2})?$",
+            "type": "string"
+          },
+          "total_tax": {
+            "format": "decimal",
+            "pattern": "^-?\\d{0,12}(?:\\.\\d{0,2})?$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "approved_at",
+          "approved_by",
+          "created_at",
+          "expected_delivery_date",
+          "id",
+          "lines",
+          "order_date",
+          "ordering_branch",
+          "po_number",
+          "status",
+          "supplier",
+          "supplier_name"
+        ],
+        "type": "object"
+      },
+      "PurchaseOrderLine": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "readOnly": true,
+            "type": "string"
+          },
+          "ordered_quantity": {
+            "format": "int64",
+            "maximum": 9223372036854775807,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "purchase_unit": {
+            "maxLength": 64,
+            "type": "string"
+          },
+          "received_quantity": {
+            "format": "int64",
+            "maximum": 9223372036854775807,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "rejected_quantity": {
+            "format": "int64",
+            "maximum": 9223372036854775807,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "requires_cold_chain": {
+            "type": "boolean"
+          },
+          "sku": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "sku_code": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "total_price": {
+            "format": "decimal",
+            "pattern": "^-?\\d{0,12}(?:\\.\\d{0,2})?$",
+            "type": "string"
+          },
+          "unit_price": {
+            "format": "decimal",
+            "pattern": "^-?\\d{0,10}(?:\\.\\d{0,2})?$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "ordered_quantity",
+          "sku",
+          "sku_code",
+          "total_price",
+          "unit_price"
+        ],
+        "type": "object"
+      },
+      "PurchaseOrderStatusEnum": {
+        "description": "* `DRAFT` - Draft\n* `SUBMITTED` - Submitted\n* `APPROVED` - Approved\n* `SENT` - Sent\n* `ACKNOWLEDGED` - Acknowledged\n* `PARTIALLY_RECEIVED` - Partially Received\n* `FULLY_RECEIVED` - Fully Received\n* `CLOSED` - Closed\n* `CANCELLED` - Cancelled\n* `REJECTED` - Rejected",
+        "enum": [
+          "DRAFT",
+          "SUBMITTED",
+          "APPROVED",
+          "SENT",
+          "ACKNOWLEDGED",
+          "PARTIALLY_RECEIVED",
+          "FULLY_RECEIVED",
+          "CLOSED",
+          "CANCELLED",
+          "REJECTED"
+        ],
+        "type": "string"
+      },
+      "PurchaseRequisition": {
+        "properties": {
+          "approved_at": {
+            "format": "date-time",
+            "nullable": true,
+            "readOnly": true,
+            "type": "string"
+          },
+          "approved_by": {
+            "nullable": true,
+            "readOnly": true,
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "readOnly": true,
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "readOnly": true,
+            "type": "string"
+          },
+          "justification": {
+            "type": "string"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/PurchaseRequisitionLine"
+            },
+            "readOnly": true,
+            "type": "array"
+          },
+          "priority": {
+            "maxLength": 32,
+            "type": "string"
+          },
+          "requested_delivery_date": {
+            "format": "date",
+            "type": "string"
+          },
+          "requester": {
+            "type": "integer"
+          },
+          "requesting_branch": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "requesting_branch_name": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "requisition_number": {
+            "maxLength": 64,
+            "type": "string"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PurchaseRequisitionStatusEnum"
+              }
+            ],
+            "readOnly": true
+          }
+        },
+        "required": [
+          "approved_at",
+          "approved_by",
+          "created_at",
+          "id",
+          "lines",
+          "requested_delivery_date",
+          "requester",
+          "requesting_branch",
+          "requesting_branch_name",
+          "requisition_number",
+          "status"
+        ],
+        "type": "object"
+      },
+      "PurchaseRequisitionLine": {
+        "properties": {
+          "approved_quantity": {
+            "format": "int64",
+            "maximum": 9223372036854775807,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "readOnly": true,
+            "type": "string"
+          },
+          "outstanding_quantity": {
+            "format": "int64",
+            "maximum": 9223372036854775807,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "purchase_unit": {
+            "maxLength": 64,
+            "type": "string"
+          },
+          "requested_quantity": {
+            "format": "int64",
+            "maximum": 9223372036854775807,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "sku": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "sku_code": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PurchaseRequisitionLineStatusEnum"
+          }
+        },
+        "required": [
+          "id",
+          "requested_quantity",
+          "sku",
+          "sku_code"
+        ],
+        "type": "object"
+      },
+      "PurchaseRequisitionLineStatusEnum": {
+        "description": "* `PENDING` - Pending\n* `APPROVED` - Approved\n* `REJECTED` - Rejected\n* `ORDERED` - Ordered",
+        "enum": [
+          "PENDING",
+          "APPROVED",
+          "REJECTED",
+          "ORDERED"
+        ],
+        "type": "string"
+      },
+      "PurchaseRequisitionStatusEnum": {
+        "description": "* `DRAFT` - Draft\n* `SUBMITTED` - Submitted\n* `UNDER_REVIEW` - Under Review\n* `APPROVED` - Approved\n* `PARTIALLY_ORDERED` - Partially Ordered\n* `FULLY_ORDERED` - Fully Ordered\n* `REJECTED` - Rejected\n* `CANCELLED` - Cancelled\n* `CLOSED` - Closed",
+        "enum": [
+          "DRAFT",
+          "SUBMITTED",
+          "UNDER_REVIEW",
+          "APPROVED",
+          "PARTIALLY_ORDERED",
+          "FULLY_ORDERED",
+          "REJECTED",
+          "CANCELLED",
+          "CLOSED"
+        ],
+        "type": "string"
+      },
+      "QualificationTypeEnum": {
+        "description": "* `BUSINESS_REGISTRATION` - Business Registration\n* `TAX_COMPLIANCE` - Tax Compliance Certificate\n* `WHOLESALE_DEALER_LICENCE` - Wholesale Dealer Licence\n* `GDP_CERTIFICATE` - Good Distribution Practice Certificate\n* `QUALITY_AGREEMENT` - Quality Agreement\n* `COLD_CHAIN_AUTHORIZATION` - Cold-Chain Authorization\n* `CONTROLLED_DRUG_LICENCE` - Controlled Drug Licence",
+        "enum": [
+          "BUSINESS_REGISTRATION",
+          "TAX_COMPLIANCE",
+          "WHOLESALE_DEALER_LICENCE",
+          "GDP_CERTIFICATE",
+          "QUALITY_AGREEMENT",
+          "COLD_CHAIN_AUTHORIZATION",
+          "CONTROLLED_DRUG_LICENCE"
+        ],
+        "type": "string"
+      },
+      "QualityStatusEnum": {
+        "description": "* `PENDING_INSPECTION` - Pending Inspection\n* `QUARANTINED` - Quarantined\n* `RELEASED` - Released\n* `REJECTED` - Rejected\n* `RETURN_PENDING` - Return Pending\n* `RETURNED` - Returned\n* `DESTROYED` - Destroyed",
+        "enum": [
+          "PENDING_INSPECTION",
+          "QUARANTINED",
+          "RELEASED",
+          "REJECTED",
+          "RETURN_PENDING",
+          "RETURNED",
+          "DESTROYED"
+        ],
+        "type": "string"
+      },
+      "ReceivedBatch": {
+        "properties": {
+          "accepted_quantity": {
+            "format": "int64",
+            "maximum": 9223372036854775807,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "readOnly": true,
+            "type": "string"
+          },
+          "expiry_date": {
+            "format": "date",
+            "type": "string"
+          },
+          "grn_line": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "readOnly": true,
+            "type": "string"
+          },
+          "manufacture_date": {
+            "format": "date",
+            "nullable": true,
+            "type": "string"
+          },
+          "manufacturer_batch_number": {
+            "maxLength": 128,
+            "type": "string"
+          },
+          "quality_status": {
+            "$ref": "#/components/schemas/QualityStatusEnum"
+          },
+          "quarantined_quantity": {
+            "format": "int64",
+            "maximum": 9223372036854775807,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "received_quantity": {
+            "format": "int64",
+            "maximum": 9223372036854775807,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "rejected_quantity": {
+            "format": "int64",
+            "maximum": 9223372036854775807,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "sku": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "sku_code": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "temperature_excursion": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "created_at",
+          "expiry_date",
+          "grn_line",
+          "id",
+          "manufacturer_batch_number",
+          "received_quantity",
+          "sku",
+          "sku_code"
+        ],
+        "type": "object"
+      },
+      "ReceivingInspection": {
+        "properties": {
+          "decision": {
+            "$ref": "#/components/schemas/DecisionEnum"
+          },
+          "goods_receipt": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "readOnly": true,
+            "type": "string"
+          },
+          "inspected_at": {
+            "format": "date-time",
+            "readOnly": true,
+            "type": "string"
+          },
+          "inspector": {
+            "type": "integer"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision",
+          "goods_receipt",
+          "id",
+          "inspected_at",
+          "inspector",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "RiskCategoryEnum": {
+        "description": "* `LOW` - Low Risk\n* `MEDIUM` - Medium Risk\n* `HIGH` - High Risk\n* `CRITICAL` - Critical Risk",
+        "enum": [
+          "LOW",
+          "MEDIUM",
+          "HIGH",
+          "CRITICAL"
+        ],
+        "type": "string"
+      },
       "Role": {
         "properties": {
           "capabilities": {},
@@ -3778,6 +5074,363 @@
         ],
         "type": "object"
       },
+      "Supplier": {
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "approved_at": {
+            "format": "date-time",
+            "nullable": true,
+            "readOnly": true,
+            "type": "string"
+          },
+          "approved_by": {
+            "nullable": true,
+            "readOnly": true,
+            "type": "integer"
+          },
+          "contact_email": {
+            "format": "email",
+            "maxLength": 254,
+            "type": "string"
+          },
+          "contact_phone": {
+            "maxLength": 64,
+            "type": "string"
+          },
+          "country": {
+            "maxLength": 100,
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "readOnly": true,
+            "type": "string"
+          },
+          "default_currency": {
+            "maxLength": 3,
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "readOnly": true,
+            "type": "string"
+          },
+          "legal_name": {
+            "maxLength": 255,
+            "type": "string"
+          },
+          "payment_terms": {
+            "maxLength": 128,
+            "type": "string"
+          },
+          "registration_number": {
+            "maxLength": 128,
+            "type": "string"
+          },
+          "risk_category": {
+            "$ref": "#/components/schemas/RiskCategoryEnum"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SupplierStatusEnum"
+              }
+            ],
+            "readOnly": true
+          },
+          "supplier_code": {
+            "maxLength": 64,
+            "type": "string"
+          },
+          "suspension_reason": {
+            "type": "string"
+          },
+          "tax_identifier": {
+            "maxLength": 128,
+            "type": "string"
+          },
+          "trading_name": {
+            "maxLength": 255,
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "readOnly": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "approved_at",
+          "approved_by",
+          "created_at",
+          "id",
+          "legal_name",
+          "status",
+          "supplier_code",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "SupplierProductAgreement": {
+        "properties": {
+          "agreed_unit_price": {
+            "format": "decimal",
+            "pattern": "^-?\\d{0,10}(?:\\.\\d{0,2})?$",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "readOnly": true,
+            "type": "string"
+          },
+          "currency": {
+            "maxLength": 3,
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "readOnly": true,
+            "type": "string"
+          },
+          "is_preferred": {
+            "type": "boolean"
+          },
+          "lead_time_days": {
+            "format": "int64",
+            "maximum": 9223372036854775807,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "minimum_order_quantity": {
+            "format": "int64",
+            "maximum": 9223372036854775807,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "purchase_unit": {
+            "maxLength": 64,
+            "type": "string"
+          },
+          "requires_cold_chain": {
+            "type": "boolean"
+          },
+          "sku": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "sku_code": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SupplierProductAgreementStatusEnum"
+              }
+            ],
+            "readOnly": true
+          },
+          "supplier": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "supplier_catalogue_number": {
+            "maxLength": 128,
+            "type": "string"
+          },
+          "supplier_code": {
+            "readOnly": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "agreed_unit_price",
+          "created_at",
+          "id",
+          "sku",
+          "sku_code",
+          "status",
+          "supplier",
+          "supplier_code"
+        ],
+        "type": "object"
+      },
+      "SupplierProductAgreementStatusEnum": {
+        "description": "* `DRAFT` - Draft\n* `ACTIVE` - Active\n* `SUSPENDED` - Suspended\n* `TERMINATED` - Terminated",
+        "enum": [
+          "DRAFT",
+          "ACTIVE",
+          "SUSPENDED",
+          "TERMINATED"
+        ],
+        "type": "string"
+      },
+      "SupplierQualification": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "readOnly": true,
+            "type": "string"
+          },
+          "document_reference": {
+            "maxLength": 255,
+            "type": "string"
+          },
+          "effective_date": {
+            "format": "date",
+            "type": "string"
+          },
+          "expiry_date": {
+            "format": "date",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "readOnly": true,
+            "type": "string"
+          },
+          "issuing_authority": {
+            "maxLength": 255,
+            "type": "string"
+          },
+          "licence_number": {
+            "maxLength": 128,
+            "type": "string"
+          },
+          "qualification_type": {
+            "$ref": "#/components/schemas/QualificationTypeEnum"
+          },
+          "supplier": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "supplier_code": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "verification_status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SupplierQualificationVerificationStatusEnum"
+              }
+            ],
+            "readOnly": true
+          },
+          "verified_at": {
+            "format": "date-time",
+            "nullable": true,
+            "readOnly": true,
+            "type": "string"
+          },
+          "verified_by": {
+            "nullable": true,
+            "readOnly": true,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "created_at",
+          "effective_date",
+          "expiry_date",
+          "id",
+          "licence_number",
+          "qualification_type",
+          "supplier",
+          "supplier_code",
+          "verification_status",
+          "verified_at",
+          "verified_by"
+        ],
+        "type": "object"
+      },
+      "SupplierQualificationVerificationStatusEnum": {
+        "description": "* `PENDING` - Pending Verification\n* `VERIFIED` - Verified\n* `REJECTED` - Rejected\n* `EXPIRED` - Expired\n* `REVOKED` - Revoked",
+        "enum": [
+          "PENDING",
+          "VERIFIED",
+          "REJECTED",
+          "EXPIRED",
+          "REVOKED"
+        ],
+        "type": "string"
+      },
+      "SupplierReturn": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "readOnly": true,
+            "type": "string"
+          },
+          "goods_receipt": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "readOnly": true,
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "return_number": {
+            "maxLength": 64,
+            "type": "string"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SupplierReturnStatusEnum"
+              }
+            ],
+            "readOnly": true
+          },
+          "supplier": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "created_at",
+          "goods_receipt",
+          "id",
+          "reason",
+          "return_number",
+          "status",
+          "supplier"
+        ],
+        "type": "object"
+      },
+      "SupplierReturnStatusEnum": {
+        "description": "* `DRAFT` - Draft\n* `REQUESTED` - Requested\n* `APPROVED` - Approved\n* `READY_FOR_DISPATCH` - Ready for Dispatch\n* `DISPATCHED` - Dispatched\n* `ACKNOWLEDGED` - Acknowledged\n* `CREDIT_PENDING` - Credit Pending\n* `CLOSED` - Closed\n* `REJECTED` - Rejected",
+        "enum": [
+          "DRAFT",
+          "REQUESTED",
+          "APPROVED",
+          "READY_FOR_DISPATCH",
+          "DISPATCHED",
+          "ACKNOWLEDGED",
+          "CREDIT_PENDING",
+          "CLOSED",
+          "REJECTED"
+        ],
+        "type": "string"
+      },
+      "SupplierStatusEnum": {
+        "description": "* `PROSPECTIVE` - Prospective\n* `UNDER_REVIEW` - Under Review\n* `APPROVED` - Approved\n* `ACTIVE` - Active\n* `SUSPENDED` - Suspended\n* `DISQUALIFIED` - Disqualified\n* `ARCHIVED` - Archived",
+        "enum": [
+          "PROSPECTIVE",
+          "UNDER_REVIEW",
+          "APPROVED",
+          "ACTIVE",
+          "SUSPENDED",
+          "DISQUALIFIED",
+          "ARCHIVED"
+        ],
+        "type": "string"
+      },
       "TherapeuticClassification": {
         "properties": {
           "code": {
@@ -3826,6 +5479,53 @@
           "id",
           "system",
           "updated_at"
+        ],
+        "type": "object"
+      },
+      "ThreeWayMatch": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "readOnly": true,
+            "type": "string"
+          },
+          "goods_receipt": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "readOnly": true,
+            "type": "string"
+          },
+          "invoice_reference": {
+            "maxLength": 128,
+            "type": "string"
+          },
+          "matching_status": {
+            "$ref": "#/components/schemas/MatchingStatusEnum"
+          },
+          "price_variance": {
+            "format": "decimal",
+            "pattern": "^-?\\d{0,10}(?:\\.\\d{0,2})?$",
+            "type": "string"
+          },
+          "purchase_order": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "quantity_variance": {
+            "format": "int64",
+            "maximum": 9223372036854775807,
+            "minimum": -9223372036854775808,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "created_at",
+          "goods_receipt",
+          "id",
+          "purchase_order"
         ],
         "type": "object"
       },
@@ -3924,18 +5624,6 @@
           "version"
         ],
         "type": "object"
-      },
-      "VerificationStatusEnum": {
-        "description": "* `UNCONFIRMED` - Unconfirmed\n* `PROVISIONAL` - Provisional\n* `DIFFERENTIAL` - Differential\n* `CONFIRMED` - Confirmed\n* `REFUTED` - Refuted\n* `ENTERED_IN_ERROR` - Entered in error",
-        "enum": [
-          "UNCONFIRMED",
-          "PROVISIONAL",
-          "DIFFERENTIAL",
-          "CONFIRMED",
-          "REFUTED",
-          "ENTERED_IN_ERROR"
-        ],
-        "type": "string"
       },
       "WorkflowStateEnum": {
         "description": "* `DRAFT` - Draft\n* `CLINICAL_REVIEW` - Clinical review\n* `BLOCKED` - Blocked\n* `APPROVED` - Approved\n* `DISPENSING` - Dispensing\n* `READY_FOR_PAYMENT` - Ready for payment\n* `PAID` - Paid\n* `DISPENSED` - Dispensed\n* `REVERSED` - Reversed",
@@ -10150,6 +11838,3116 @@
         ],
         "tags": [
           "prescriptions"
+        ]
+      }
+    },
+    "/api/procurement/goods-receipts/": {
+      "get": {
+        "operationId": "procurement_goods_receipts_list",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/GoodsReceipt"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      },
+      "post": {
+        "operationId": "procurement_goods_receipts_create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GoodsReceipt"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/GoodsReceipt"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/GoodsReceipt"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoodsReceipt"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      }
+    },
+    "/api/procurement/goods-receipts/{id}/": {
+      "delete": {
+        "operationId": "procurement_goods_receipts_destroy",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this goods receipt.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No response body"
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      },
+      "get": {
+        "operationId": "procurement_goods_receipts_retrieve",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this goods receipt.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoodsReceipt"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      },
+      "patch": {
+        "operationId": "procurement_goods_receipts_partial_update",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this goods receipt.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedGoodsReceipt"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedGoodsReceipt"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedGoodsReceipt"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoodsReceipt"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      },
+      "put": {
+        "operationId": "procurement_goods_receipts_update",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this goods receipt.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GoodsReceipt"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/GoodsReceipt"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/GoodsReceipt"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoodsReceipt"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      }
+    },
+    "/api/procurement/goods-receipts/{id}/close/": {
+      "post": {
+        "operationId": "procurement_goods_receipts_close_create",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this goods receipt.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GoodsReceipt"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/GoodsReceipt"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/GoodsReceipt"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoodsReceipt"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      }
+    },
+    "/api/procurement/inspections/": {
+      "get": {
+        "operationId": "procurement_inspections_list",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ReceivingInspection"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      },
+      "post": {
+        "operationId": "procurement_inspections_create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReceivingInspection"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/ReceivingInspection"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/ReceivingInspection"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReceivingInspection"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      }
+    },
+    "/api/procurement/inspections/{id}/": {
+      "delete": {
+        "operationId": "procurement_inspections_destroy",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this receiving inspection.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No response body"
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      },
+      "get": {
+        "operationId": "procurement_inspections_retrieve",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this receiving inspection.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReceivingInspection"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      },
+      "patch": {
+        "operationId": "procurement_inspections_partial_update",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this receiving inspection.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedReceivingInspection"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedReceivingInspection"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedReceivingInspection"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReceivingInspection"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      },
+      "put": {
+        "operationId": "procurement_inspections_update",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this receiving inspection.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReceivingInspection"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/ReceivingInspection"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/ReceivingInspection"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReceivingInspection"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      }
+    },
+    "/api/procurement/matching/": {
+      "get": {
+        "operationId": "procurement_matching_list",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ThreeWayMatch"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      },
+      "post": {
+        "operationId": "procurement_matching_create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ThreeWayMatch"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/ThreeWayMatch"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/ThreeWayMatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreeWayMatch"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      }
+    },
+    "/api/procurement/matching/{id}/": {
+      "delete": {
+        "operationId": "procurement_matching_destroy",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this three way match.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No response body"
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      },
+      "get": {
+        "operationId": "procurement_matching_retrieve",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this three way match.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreeWayMatch"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      },
+      "patch": {
+        "operationId": "procurement_matching_partial_update",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this three way match.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedThreeWayMatch"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedThreeWayMatch"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedThreeWayMatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreeWayMatch"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      },
+      "put": {
+        "operationId": "procurement_matching_update",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this three way match.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ThreeWayMatch"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/ThreeWayMatch"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/ThreeWayMatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreeWayMatch"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      }
+    },
+    "/api/procurement/purchase-orders/": {
+      "get": {
+        "operationId": "procurement_purchase_orders_list",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PurchaseOrder"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      },
+      "post": {
+        "operationId": "procurement_purchase_orders_create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PurchaseOrder"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PurchaseOrder"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/PurchaseOrder"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseOrder"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      }
+    },
+    "/api/procurement/purchase-orders/{id}/": {
+      "delete": {
+        "operationId": "procurement_purchase_orders_destroy",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this purchase order.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No response body"
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      },
+      "get": {
+        "operationId": "procurement_purchase_orders_retrieve",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this purchase order.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseOrder"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      },
+      "patch": {
+        "operationId": "procurement_purchase_orders_partial_update",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this purchase order.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedPurchaseOrder"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedPurchaseOrder"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedPurchaseOrder"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseOrder"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      },
+      "put": {
+        "operationId": "procurement_purchase_orders_update",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this purchase order.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PurchaseOrder"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PurchaseOrder"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/PurchaseOrder"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseOrder"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      }
+    },
+    "/api/procurement/purchase-orders/{id}/approve/": {
+      "post": {
+        "operationId": "procurement_purchase_orders_approve_create",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this purchase order.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PurchaseOrder"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PurchaseOrder"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/PurchaseOrder"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseOrder"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      }
+    },
+    "/api/procurement/purchase-orders/{id}/send/": {
+      "post": {
+        "operationId": "procurement_purchase_orders_send_create",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this purchase order.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PurchaseOrder"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PurchaseOrder"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/PurchaseOrder"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseOrder"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      }
+    },
+    "/api/procurement/received-batches/": {
+      "get": {
+        "operationId": "procurement_received_batches_list",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ReceivedBatch"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      },
+      "post": {
+        "operationId": "procurement_received_batches_create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReceivedBatch"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/ReceivedBatch"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/ReceivedBatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReceivedBatch"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      }
+    },
+    "/api/procurement/received-batches/{id}/": {
+      "delete": {
+        "operationId": "procurement_received_batches_destroy",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this received batch.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No response body"
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      },
+      "get": {
+        "operationId": "procurement_received_batches_retrieve",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this received batch.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReceivedBatch"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      },
+      "patch": {
+        "operationId": "procurement_received_batches_partial_update",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this received batch.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedReceivedBatch"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedReceivedBatch"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedReceivedBatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReceivedBatch"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      },
+      "put": {
+        "operationId": "procurement_received_batches_update",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this received batch.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReceivedBatch"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/ReceivedBatch"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/ReceivedBatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReceivedBatch"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      }
+    },
+    "/api/procurement/received-batches/{id}/release/": {
+      "post": {
+        "operationId": "procurement_received_batches_release_create",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this received batch.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReceivedBatch"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/ReceivedBatch"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/ReceivedBatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReceivedBatch"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      }
+    },
+    "/api/procurement/requisitions/": {
+      "get": {
+        "operationId": "procurement_requisitions_list",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PurchaseRequisition"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      },
+      "post": {
+        "operationId": "procurement_requisitions_create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PurchaseRequisition"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PurchaseRequisition"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/PurchaseRequisition"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseRequisition"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      }
+    },
+    "/api/procurement/requisitions/{id}/": {
+      "delete": {
+        "operationId": "procurement_requisitions_destroy",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this purchase requisition.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No response body"
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      },
+      "get": {
+        "operationId": "procurement_requisitions_retrieve",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this purchase requisition.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseRequisition"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      },
+      "patch": {
+        "operationId": "procurement_requisitions_partial_update",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this purchase requisition.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedPurchaseRequisition"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedPurchaseRequisition"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedPurchaseRequisition"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseRequisition"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      },
+      "put": {
+        "operationId": "procurement_requisitions_update",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this purchase requisition.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PurchaseRequisition"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PurchaseRequisition"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/PurchaseRequisition"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseRequisition"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      }
+    },
+    "/api/procurement/requisitions/{id}/approve/": {
+      "post": {
+        "operationId": "procurement_requisitions_approve_create",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this purchase requisition.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PurchaseRequisition"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PurchaseRequisition"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/PurchaseRequisition"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseRequisition"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      }
+    },
+    "/api/procurement/supplier-products/": {
+      "get": {
+        "operationId": "procurement_supplier_products_list",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SupplierProductAgreement"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      },
+      "post": {
+        "operationId": "procurement_supplier_products_create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupplierProductAgreement"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/SupplierProductAgreement"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/SupplierProductAgreement"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupplierProductAgreement"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      }
+    },
+    "/api/procurement/supplier-products/{id}/": {
+      "delete": {
+        "operationId": "procurement_supplier_products_destroy",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this supplier product agreement.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No response body"
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      },
+      "get": {
+        "operationId": "procurement_supplier_products_retrieve",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this supplier product agreement.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupplierProductAgreement"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      },
+      "patch": {
+        "operationId": "procurement_supplier_products_partial_update",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this supplier product agreement.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedSupplierProductAgreement"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedSupplierProductAgreement"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedSupplierProductAgreement"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupplierProductAgreement"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      },
+      "put": {
+        "operationId": "procurement_supplier_products_update",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this supplier product agreement.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupplierProductAgreement"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/SupplierProductAgreement"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/SupplierProductAgreement"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupplierProductAgreement"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      }
+    },
+    "/api/procurement/supplier-qualifications/": {
+      "get": {
+        "operationId": "procurement_supplier_qualifications_list",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SupplierQualification"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      },
+      "post": {
+        "operationId": "procurement_supplier_qualifications_create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupplierQualification"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/SupplierQualification"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/SupplierQualification"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupplierQualification"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      }
+    },
+    "/api/procurement/supplier-qualifications/{id}/": {
+      "delete": {
+        "operationId": "procurement_supplier_qualifications_destroy",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this supplier qualification.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No response body"
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      },
+      "get": {
+        "operationId": "procurement_supplier_qualifications_retrieve",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this supplier qualification.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupplierQualification"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      },
+      "patch": {
+        "operationId": "procurement_supplier_qualifications_partial_update",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this supplier qualification.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedSupplierQualification"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedSupplierQualification"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedSupplierQualification"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupplierQualification"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      },
+      "put": {
+        "operationId": "procurement_supplier_qualifications_update",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this supplier qualification.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupplierQualification"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/SupplierQualification"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/SupplierQualification"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupplierQualification"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      }
+    },
+    "/api/procurement/supplier-qualifications/{id}/verify/": {
+      "post": {
+        "operationId": "procurement_supplier_qualifications_verify_create",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this supplier qualification.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupplierQualification"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/SupplierQualification"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/SupplierQualification"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupplierQualification"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      }
+    },
+    "/api/procurement/supplier-returns/": {
+      "get": {
+        "operationId": "procurement_supplier_returns_list",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SupplierReturn"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      },
+      "post": {
+        "operationId": "procurement_supplier_returns_create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupplierReturn"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/SupplierReturn"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/SupplierReturn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupplierReturn"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      }
+    },
+    "/api/procurement/supplier-returns/{id}/": {
+      "delete": {
+        "operationId": "procurement_supplier_returns_destroy",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this supplier return.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No response body"
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      },
+      "get": {
+        "operationId": "procurement_supplier_returns_retrieve",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this supplier return.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupplierReturn"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      },
+      "patch": {
+        "operationId": "procurement_supplier_returns_partial_update",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this supplier return.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedSupplierReturn"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedSupplierReturn"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedSupplierReturn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupplierReturn"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      },
+      "put": {
+        "operationId": "procurement_supplier_returns_update",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this supplier return.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupplierReturn"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/SupplierReturn"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/SupplierReturn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupplierReturn"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      }
+    },
+    "/api/procurement/suppliers/": {
+      "get": {
+        "operationId": "procurement_suppliers_list",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Supplier"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      },
+      "post": {
+        "operationId": "procurement_suppliers_create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Supplier"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Supplier"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Supplier"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Supplier"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      }
+    },
+    "/api/procurement/suppliers/{id}/": {
+      "delete": {
+        "operationId": "procurement_suppliers_destroy",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this supplier.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No response body"
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      },
+      "get": {
+        "operationId": "procurement_suppliers_retrieve",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this supplier.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Supplier"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      },
+      "patch": {
+        "operationId": "procurement_suppliers_partial_update",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this supplier.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedSupplier"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedSupplier"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedSupplier"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Supplier"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      },
+      "put": {
+        "operationId": "procurement_suppliers_update",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this supplier.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Supplier"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Supplier"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Supplier"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Supplier"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      }
+    },
+    "/api/procurement/suppliers/{id}/approve/": {
+      "post": {
+        "operationId": "procurement_suppliers_approve_create",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this supplier.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Supplier"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Supplier"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Supplier"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Supplier"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
+        ]
+      }
+    },
+    "/api/procurement/suppliers/{id}/suspend/": {
+      "post": {
+        "operationId": "procurement_suppliers_suspend_create",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this supplier.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Supplier"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Supplier"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Supplier"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Supplier"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "procurement"
         ]
       }
     },

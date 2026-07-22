@@ -18,6 +18,11 @@ graph TD
     organizations[apps.organizations] --> tenancy
     audit[apps.audit] --> tenancy
 
+    %% Procurement & Supplier Governance
+    procurement[apps.procurement] --> tenancy
+    procurement --> medicines
+    procurement --> organizations
+
     %% Clinical Core & Enterprise Medicine Master
     patients[apps.patients] --> tenancy
     practitioners[apps.practitioners] --> tenancy
