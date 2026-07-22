@@ -1,0 +1,49 @@
+{
+  "architecture": "arm64",
+  "base_image": "python:3.11-slim-bookworm@sha256:b18992999dbe963a45a8a4da40ac2b1975be1a776d939d098c647482bcad5cba",
+  "build_time": "2026-07-22T14:12:29Z",
+  "container_check": {
+    "command": "docker run --rm ... python manage.py check",
+    "output": "System check identified no issues (0 silenced).",
+    "result": "passed"
+  },
+  "created": "2026-07-22T14:37:04.524816673Z",
+  "descriptor_digest": "sha256:5b143cb6fb6945758ac4bcd795f5ddc2c735cfc34fafa6268b75892b6b83bbfa",
+  "docker_scout": {
+    "attempted": true,
+    "mode": "local://dawatrace/backend:0.1.0-alpha.1",
+    "notes": "Docker Scout printed update notice then produced no report during two bounded 30 second waits; interrupted to avoid leaving a running process. Treat CVE scan as pending external advisory gate.",
+    "result": "blocked_timeout"
+  },
+  "healthcheck": {
+    "Interval": 30000000000,
+    "Retries": 3,
+    "StartPeriod": 20000000000,
+    "Test": [
+      "CMD-SHELL",
+      "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health/', timeout=3)\""
+    ],
+    "Timeout": 5000000000
+  },
+  "image_id": "sha256:5b143cb6fb6945758ac4bcd795f5ddc2c735cfc34fafa6268b75892b6b83bbfa",
+  "labels": {
+    "com.esenai.dawatrace.fhir.version": "4.0.1",
+    "org.opencontainers.image.created": "2026-07-22T14:12:29Z",
+    "org.opencontainers.image.revision": "a81fe068b71550ce25f36703097da9dd507eb22c",
+    "org.opencontainers.image.title": "DawaTrace Backend",
+    "org.opencontainers.image.vendor": "Esenai Group Ltd",
+    "org.opencontainers.image.version": "0.1.0-alpha.1"
+  },
+  "os": "linux",
+  "product": "DawaTrace Backend",
+  "repo_digests": [
+    "dawatrace/backend@sha256:5b143cb6fb6945758ac4bcd795f5ddc2c735cfc34fafa6268b75892b6b83bbfa"
+  ],
+  "repo_tags": [
+    "dawatrace/backend:0.1.0-alpha.1"
+  ],
+  "runtime_user": "dawatrace",
+  "size_bytes": 89247960,
+  "source_revision": "a81fe068b71550ce25f36703097da9dd507eb22c",
+  "version": "0.1.0-alpha.1"
+}
