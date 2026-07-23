@@ -12,7 +12,7 @@ from apps.medicines.models import (
     PackageDefinition,
 )
 from apps.organizations.models import Location, Organization
-from apps.procurement.models import ReceivedBatch
+from apps.procurement.models import ReceivedBatch, SupplierQualification
 from apps.procurement.services import (
     BatchReceivingService,
     GoodsReceivingService,
@@ -29,10 +29,14 @@ User = get_user_model()
 def test_batch_capture_and_quality_release():
     tenant = Tenant.objects.create(name="Batch Tenant", slug="batch-tenant")
     set_current_tenant_id(str(tenant.pk))
-    user = User.objects.create_user(username="batchuser", email="batch@test.com", password="password123", tenant=tenant)  # nosec B106
+    user = User.objects.create_user(username="batchuser", email="batch@test.com", password="password123", tenant=tenant, is_platform_admin=True)  # nosec B106
 
     supplier = SupplierGovernanceService.create_supplier(tenant=tenant, supplier_code="SUP-BATCH", legal_name="Batch Supplier")
     SupplierGovernanceService.approve_supplier(supplier=supplier, approver=user)
+    SupplierQualification.objects.create(
+        tenant=tenant, supplier=supplier, qualification_type=SupplierQualification.QualificationType.BUSINESS_REGISTRATION,
+        verification_status=SupplierQualification.QualificationVerificationStatus.VERIFIED, effective_date=datetime.date.today(), expiry_date=datetime.date.today() + datetime.timedelta(days=365)
+    )
 
     org = Organization.objects.create(tenant=tenant, code="ORG-BAT", name="Bat Org")
     branch = Location.objects.create(tenant=tenant, organization=org, code="LOC-BAT", name="Bat Branch")

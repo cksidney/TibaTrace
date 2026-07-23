@@ -13,7 +13,7 @@ from apps.medicines.models import (
     PackageDefinition,
 )
 from apps.organizations.models import Location, Organization
-from apps.procurement.models import GoodsReceipt, PurchaseOrder
+from apps.procurement.models import GoodsReceipt, PurchaseOrder, SupplierQualification
 from apps.procurement.services import (
     GoodsReceivingService,
     PurchaseOrderService,
@@ -33,6 +33,10 @@ def test_goods_receiving_workflow_and_tolerances():
 
     supplier = SupplierGovernanceService.create_supplier(tenant=tenant, supplier_code="SUP-GRN", legal_name="GRN Supplier")
     SupplierGovernanceService.approve_supplier(supplier=supplier, approver=user)
+    SupplierQualification.objects.create(
+        tenant=tenant, supplier=supplier, qualification_type=SupplierQualification.QualificationType.BUSINESS_REGISTRATION,
+        verification_status=SupplierQualification.QualificationVerificationStatus.VERIFIED, effective_date=datetime.date.today(), expiry_date=datetime.date.today() + datetime.timedelta(days=365)
+    )
 
     org = Organization.objects.create(tenant=tenant, code="ORG-GRN", name="GRN Org")
     branch = Location.objects.create(tenant=tenant, organization=org, code="LOC-GRN", name="GRN Branch")

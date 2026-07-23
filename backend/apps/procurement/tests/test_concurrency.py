@@ -14,6 +14,7 @@ from apps.medicines.models import (
     PackageDefinition,
 )
 from apps.organizations.models import Location, Organization
+from apps.procurement.models import SupplierQualification
 from apps.procurement.services import (
     GoodsReceivingService,
     PurchaseOrderService,
@@ -38,6 +39,10 @@ class TestGoodsReceiptConcurrency(TransactionTestCase):
 
         self.supplier = SupplierGovernanceService.create_supplier(tenant=self.tenant, supplier_code="SUP-CONC", legal_name="Conc Supplier")
         SupplierGovernanceService.approve_supplier(supplier=self.supplier, approver=self.user)
+        SupplierQualification.objects.create(
+            tenant=self.tenant, supplier=self.supplier, qualification_type=SupplierQualification.QualificationType.BUSINESS_REGISTRATION,
+            verification_status=SupplierQualification.QualificationVerificationStatus.VERIFIED, effective_date=datetime.date.today(), expiry_date=datetime.date.today() + datetime.timedelta(days=365)
+        )
 
         self.org = Organization.objects.create(tenant=self.tenant, code="ORG-CONC", name="Conc Org")
         self.branch = Location.objects.create(tenant=self.tenant, organization=self.org, code="LOC-CONC", name="Conc Branch")

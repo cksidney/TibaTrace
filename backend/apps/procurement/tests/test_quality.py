@@ -11,7 +11,7 @@ from apps.medicines.models import (
     PackageDefinition,
 )
 from apps.organizations.models import Location, Organization
-from apps.procurement.models import ReceivingInspection
+from apps.procurement.models import ReceivingInspection, SupplierQualification
 from apps.procurement.services import (
     GoodsReceivingService,
     PurchaseOrderService,
@@ -31,6 +31,10 @@ def test_receiving_inspection_decision():
 
     supplier = SupplierGovernanceService.create_supplier(tenant=tenant, supplier_code="SUP-INSP", legal_name="Insp Supplier")
     SupplierGovernanceService.approve_supplier(supplier=supplier, approver=user)
+    SupplierQualification.objects.create(
+        tenant=tenant, supplier=supplier, qualification_type=SupplierQualification.QualificationType.BUSINESS_REGISTRATION,
+        verification_status=SupplierQualification.QualificationVerificationStatus.VERIFIED, effective_date=datetime.date.today(), expiry_date=datetime.date.today() + datetime.timedelta(days=365)
+    )
 
     org = Organization.objects.create(tenant=tenant, code="ORG-INSP", name="Insp Org")
     branch = Location.objects.create(tenant=tenant, organization=org, code="LOC-INSP", name="Insp Branch")

@@ -11,7 +11,7 @@ from apps.medicines.models import (
     PackageDefinition,
 )
 from apps.organizations.models import Location, Organization
-from apps.procurement.models import SupplierReturn
+from apps.procurement.models import SupplierQualification, SupplierReturn
 from apps.procurement.services import (
     GoodsReceivingService,
     PurchaseOrderService,
@@ -31,6 +31,10 @@ def test_supplier_return_request():
 
     supplier = SupplierGovernanceService.create_supplier(tenant=tenant, supplier_code="SUP-RET", legal_name="Ret Supplier")
     SupplierGovernanceService.approve_supplier(supplier=supplier, approver=user)
+    SupplierQualification.objects.create(
+        tenant=tenant, supplier=supplier, qualification_type=SupplierQualification.QualificationType.BUSINESS_REGISTRATION,
+        verification_status=SupplierQualification.QualificationVerificationStatus.VERIFIED, effective_date=datetime.date.today(), expiry_date=datetime.date.today() + datetime.timedelta(days=365)
+    )
 
     org = Organization.objects.create(tenant=tenant, code="ORG-RET", name="Ret Org")
     branch = Location.objects.create(tenant=tenant, organization=org, code="LOC-RET", name="Ret Branch")

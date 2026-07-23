@@ -323,7 +323,8 @@ class GoodsReceipt(TimestampedModel):
 
     class Meta:
         constraints = [
-            models.UniqueConstraint(fields=["tenant", "grn_number"], name="unique_tenant_grn_number")
+            models.UniqueConstraint(fields=["tenant", "grn_number"], name="unique_tenant_grn_number"),
+            models.UniqueConstraint(fields=["tenant", "supplier", "delivery_note_number"], name="unique_tenant_supplier_delivery_note")
         ]
 
     def __str__(self):
@@ -340,9 +341,19 @@ class GoodsReceiptLine(TimestampedModel):
     quarantined_quantity = models.PositiveIntegerField(default=0)
     rejected_quantity = models.PositiveIntegerField(default=0)
     discrepancy_reason = models.TextField(blank=True, default="")
+    idempotency_key = models.CharField(max_length=128, blank=True, default="")
 
     objects = StrictTenantManager()
     all_objects = models.Manager()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["tenant", "idempotency_key"],
+                condition=~models.Q(idempotency_key=""),
+                name="unique_grn_line_idempotency"
+            )
+        ]
 
     def __str__(self):
         return f"GRN {self.goods_receipt.grn_number} Line - {self.sku.sku_code} ({self.delivered_quantity})"

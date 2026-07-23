@@ -6,7 +6,7 @@ from django.test import TestCase
 
 from apps.core.tenant_context import set_current_tenant_id
 from apps.organizations.models import Location, Organization
-from apps.procurement.models import PurchaseRequisition
+from apps.procurement.models import PurchaseRequisition, SupplierQualification
 from apps.procurement.services import (
     PurchaseOrderService,
     PurchaseRequisitionService,
@@ -34,6 +34,10 @@ class TestSegregationOfDuties(TestCase):
         
         self.supplier = SupplierGovernanceService.create_supplier(tenant=self.tenant, supplier_code="SUP-RBAC", legal_name="RBAC Supplier")
         SupplierGovernanceService.approve_supplier(supplier=self.supplier, approver=self.approver_user)
+        SupplierQualification.objects.create(
+            tenant=self.tenant, supplier=self.supplier, qualification_type=SupplierQualification.QualificationType.BUSINESS_REGISTRATION,
+            verification_status=SupplierQualification.QualificationVerificationStatus.VERIFIED, effective_date=datetime.date.today(), expiry_date=datetime.date.today() + datetime.timedelta(days=365)
+        )
 
     def test_requester_cannot_approve_own_requisition(self):
         req = PurchaseRequisitionService.create_requisition(

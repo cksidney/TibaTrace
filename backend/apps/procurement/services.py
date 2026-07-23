@@ -9,6 +9,7 @@ from apps.procurement.models import (
     GoodsReceiptLine,
     PurchaseOrder,
     PurchaseOrderLine,
+    PurchaseOrderRevision,
     PurchaseRequisition,
     PurchaseRequisitionLine,
     ReceivedBatch,
@@ -17,6 +18,7 @@ from apps.procurement.models import (
     SupplierProductAgreement,
     SupplierQualification,
     SupplierReturn,
+    SupplierReturnLine,
     ThreeWayMatch,
 )
 from apps.workflows.service import emit_event
@@ -252,6 +254,28 @@ class PurchaseOrderService:
         if purchase_order.supplier.status not in [Supplier.Status.APPROVED, Supplier.Status.ACTIVE]:
             raise ValidationError("Cannot approve PO for a supplier that is not APPROVED or ACTIVE.")
 
+        # Check mandatory supplier qualifications
+        active_qualifications = SupplierQualification.all_objects.filter(
+            tenant=purchase_order.tenant,
+            supplier=purchase_order.supplier,
+            verification_status=SupplierQualification.QualificationVerificationStatus.VERIFIED,
+            expiry_date__gte=timezone.now().date(),
+        ).values_list("qualification_type", flat=True)
+
+        if SupplierQualification.QualificationType.BUSINESS_REGISTRATION not in active_qualifications:
+            raise ValidationError("Supplier missing active BUSINESS_REGISTRATION qualification.")
+
+        po_lines = PurchaseOrderLine.all_objects.filter(purchase_order=purchase_order)
+        if any(line.requires_cold_chain for line in po_lines):
+            if SupplierQualification.QualificationType.COLD_CHAIN_AUTHORIZATION not in active_qualifications:
+                raise ValidationError("Supplier missing COLD_CHAIN_AUTHORIZATION for cold-chain products.")
+
+        # If any SKU is a controlled drug, require CONTROLLED_DRUG_LICENCE
+        for line in po_lines:
+            if getattr(line.sku.manufactured_product.clinical_product, "controlled_classification", "NONE") != "NONE":
+                if SupplierQualification.QualificationType.CONTROLLED_DRUG_LICENCE not in active_qualifications:
+                    raise ValidationError("Supplier missing CONTROLLED_DRUG_LICENCE for controlled products.")
+
         purchase_order.status = PurchaseOrder.Status.APPROVED
         purchase_order.approved_at = timezone.now()
         purchase_order.approved_by = approver
@@ -278,6 +302,58 @@ class PurchaseOrderService:
             aggregate_id=str(purchase_order.pk),
             event_type="PurchaseOrderSent",
             payload={"po_number": purchase_order.po_number},
+        )
+        return purchase_order
+
+    @staticmethod
+    @transaction.atomic
+    def revise_purchase_order(*, purchase_order, actor, change_reason, **changes):
+        if purchase_order.status not in [PurchaseOrder.Status.APPROVED, PurchaseOrder.Status.SENT, PurchaseOrder.Status.ACKNOWLEDGED]:
+            raise ValidationError("Can only revise APPROVED, SENT, or ACKNOWLEDGED Purchase Orders.")
+
+        # Serialize snapshot
+        po_dict = {
+            "po_number": purchase_order.po_number,
+            "supplier_id": str(purchase_order.supplier_id),
+            "order_date": str(purchase_order.order_date),
+            "expected_delivery_date": str(purchase_order.expected_delivery_date),
+            "currency": purchase_order.currency,
+            "total_net": str(purchase_order.total_net),
+            "status": purchase_order.status,
+            "lines": [
+                {
+                    "sku_id": str(line_item.sku_id),
+                    "ordered_quantity": line_item.ordered_quantity,
+                    "unit_price": str(line_item.unit_price)
+                } for line_item in PurchaseOrderLine.all_objects.filter(purchase_order=purchase_order)
+            ]
+        }
+        
+        PurchaseOrderRevision.objects.create(
+            tenant=purchase_order.tenant,
+            purchase_order=purchase_order,
+            revision_number=purchase_order.revision_number,
+            change_reason=change_reason,
+            previous_snapshot=po_dict,
+            actor=actor
+        )
+
+        for key, value in changes.items():
+            if hasattr(purchase_order, key):
+                setattr(purchase_order, key, value)
+        
+        purchase_order.revision_number += 1
+        purchase_order.status = PurchaseOrder.Status.SUBMITTED
+        purchase_order.approved_at = None
+        purchase_order.approved_by = None
+        purchase_order.save()
+
+        emit_event(
+            tenant_id=str(purchase_order.tenant.pk),
+            aggregate_type="PurchaseOrder",
+            aggregate_id=str(purchase_order.pk),
+            event_type="PurchaseOrderRevised",
+            payload={"po_number": purchase_order.po_number, "revision": purchase_order.revision_number, "reason": change_reason},
         )
         return purchase_order
 
@@ -312,7 +388,12 @@ class GoodsReceivingService:
 
     @staticmethod
     @transaction.atomic
-    def receive_line(*, goods_receipt, po_line, delivered_quantity, accepted_quantity=0, quarantined_quantity=0, rejected_quantity=0, discrepancy_reason=""):
+    def receive_line(*, goods_receipt, po_line, delivered_quantity, accepted_quantity=0, quarantined_quantity=0, rejected_quantity=0, discrepancy_reason="", idempotency_key=""):
+        if idempotency_key:
+            existing_line = GoodsReceiptLine.all_objects.filter(tenant=goods_receipt.tenant, idempotency_key=idempotency_key).first()
+            if existing_line:
+                return existing_line
+
         if (accepted_quantity + quarantined_quantity + rejected_quantity) > delivered_quantity:
             raise ValidationError("Accepted + Quarantined + Rejected quantities cannot exceed delivered quantity.")
 
@@ -332,6 +413,7 @@ class GoodsReceivingService:
             quarantined_quantity=quarantined_quantity,
             rejected_quantity=rejected_quantity,
             discrepancy_reason=discrepancy_reason,
+            idempotency_key=idempotency_key,
         )
 
         locked_po_line.received_quantity += delivered_quantity
@@ -373,6 +455,12 @@ class BatchReceivingService:
     @staticmethod
     @transaction.atomic
     def capture_batch(*, grn_line, manufacturer_batch_number, expiry_date, received_quantity, manufacture_date=None, temperature_excursion=False):
+        if manufacture_date and manufacture_date >= expiry_date:
+            raise ValidationError("Manufacture date must precede expiry date.")
+        
+        if expiry_date <= timezone.now().date():
+            raise ValidationError("Cannot receive expired batch.")
+
         batch = ReceivedBatch.objects.create(
             tenant=grn_line.tenant,
             grn_line=grn_line,
@@ -398,6 +486,12 @@ class BatchReceivingService:
     @staticmethod
     @transaction.atomic
     def release_batch(*, batch, actor, reason="Inspection passed"):
+        if not actor.has_capability("procurement.quality_release", tenant_id=str(batch.tenant.pk)):
+            raise ValidationError("Actor lacks quality-release authority.")
+
+        if batch.quality_status in [ReceivedBatch.QualityStatus.REJECTED, ReceivedBatch.QualityStatus.DESTROYED, ReceivedBatch.QualityStatus.RETURNED]:
+            raise ValidationError("Cannot release rejected or terminal batches.")
+
         batch.quality_status = ReceivedBatch.QualityStatus.RELEASED
         batch.accepted_quantity = batch.received_quantity
         batch.quarantined_quantity = 0
@@ -449,6 +543,26 @@ class SupplierReturnService:
             payload={"return_number": ret.return_number, "reason": reason},
         )
         return ret
+
+    @staticmethod
+    @transaction.atomic
+    def add_return_line(*, supplier_return, sku, quantity, batch=None):
+        if supplier_return.status != SupplierReturn.Status.REQUESTED:
+            raise ValidationError("Can only add lines to requested return.")
+        
+        # Verify quantity does not exceed rejected/quarantined from GRN
+        grn_lines = GoodsReceiptLine.all_objects.filter(goods_receipt=supplier_return.goods_receipt, sku=sku)
+        total_eligible = sum(line.rejected_quantity + line.quarantined_quantity for line in grn_lines)
+        if quantity > total_eligible:
+            raise ValidationError("Return quantity exceeds eligible rejected/quarantined quantity.")
+
+        return SupplierReturnLine.objects.create(
+            tenant=supplier_return.tenant,
+            supplier_return=supplier_return,
+            sku=sku,
+            batch=batch,
+            quantity=quantity
+        )
 
 
 class ProcurementMatchingService:
