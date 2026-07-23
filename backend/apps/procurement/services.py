@@ -249,6 +249,9 @@ class PurchaseOrderService:
     @staticmethod
     @transaction.atomic
     def approve_po(*, purchase_order, approver):
+        if purchase_order.supplier.status not in [Supplier.Status.APPROVED, Supplier.Status.ACTIVE]:
+            raise ValidationError("Cannot approve PO for a supplier that is not APPROVED or ACTIVE.")
+
         purchase_order.status = PurchaseOrder.Status.APPROVED
         purchase_order.approved_at = timezone.now()
         purchase_order.approved_by = approver
@@ -313,11 +316,17 @@ class GoodsReceivingService:
         if (accepted_quantity + quarantined_quantity + rejected_quantity) > delivered_quantity:
             raise ValidationError("Accepted + Quarantined + Rejected quantities cannot exceed delivered quantity.")
 
+        # Acquire a row-level lock to prevent concurrent over-receipts
+        locked_po_line = PurchaseOrderLine.objects.select_for_update().get(pk=po_line.pk)
+
+        if locked_po_line.received_quantity + delivered_quantity > locked_po_line.ordered_quantity:
+            raise ValidationError("Total received quantity cannot exceed ordered quantity.")
+
         grn_line = GoodsReceiptLine.objects.create(
             tenant=goods_receipt.tenant,
             goods_receipt=goods_receipt,
-            po_line=po_line,
-            sku=po_line.sku,
+            po_line=locked_po_line,
+            sku=locked_po_line.sku,
             delivered_quantity=delivered_quantity,
             accepted_quantity=accepted_quantity,
             quarantined_quantity=quarantined_quantity,
@@ -325,9 +334,9 @@ class GoodsReceivingService:
             discrepancy_reason=discrepancy_reason,
         )
 
-        po_line.received_quantity += delivered_quantity
-        po_line.rejected_quantity += rejected_quantity
-        po_line.save()
+        locked_po_line.received_quantity += delivered_quantity
+        locked_po_line.rejected_quantity += rejected_quantity
+        locked_po_line.save()
 
         return grn_line
 
