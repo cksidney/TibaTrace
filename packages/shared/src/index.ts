@@ -227,3 +227,63 @@ export interface ReceivedBatchDTO {
   qualityStatus: BatchQualityStatus;
   temperatureExcursion: boolean;
 }
+
+export type LedgerEntryType =
+  | "RECEIPT"
+  | "ISSUE"
+  | "TRANSFER_OUT"
+  | "TRANSFER_IN"
+  | "RETURN_OUT"
+  | "RETURN_IN"
+  | "ADJUSTMENT_INCREASE"
+  | "ADJUSTMENT_DECREASE"
+  | "STOCKTAKE_GAIN"
+  | "STOCKTAKE_LOSS"
+  | "EXPIRY"
+  | "WRITE_OFF"
+  | "DESTRUCTION"
+  | "RESERVATION"
+  | "RESERVATION_RELEASE";
+
+export interface InventoryLedgerEntryDTO {
+  id: string;
+  branch: string;
+  location: string;
+  sku: string;
+  inventoryBatch?: string;
+  entryType: LedgerEntryType;
+  quantityDelta: number;
+  unit: string;
+  baseQuantityDelta: number;
+  transactionTimestamp: string;
+  effectiveTimestamp: string;
+}
+
+export interface InventoryBalanceDTO {
+  id: string;
+  branch: string;
+  location: string;
+  sku: string;
+  inventoryBatch?: string;
+  qualityStatus: string;
+  onHand: number;
+  reserved: number;
+  available: number;
+  quarantined: number;
+  damaged: number;
+  expired: number;
+  lastCalculatedAt: string;
+}
+
+export interface InventoryReservationDTO {
+  id: string;
+  branch: string;
+  sourceLocation: string;
+  sku: string;
+  inventoryBatch?: string;
+  requestedQuantity: number;
+  allocatedQuantity: number;
+  purpose: string;
+  status: string;
+  expiresAt?: string;
+}

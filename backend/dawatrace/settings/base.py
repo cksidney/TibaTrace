@@ -68,6 +68,7 @@ INSTALLED_APPS = [
     "apps.organizations",
     "apps.medicines",
     "apps.procurement",
+    "apps.inventory",
     "apps.patients",
     "apps.practitioners",
     "apps.prescription",
@@ -156,6 +157,10 @@ SPECTACULAR_SETTINGS = {
     "DESCRIPTION": "Independent pharmacy and healthcare clinical-core API",
     "VERSION": "0.1.0-alpha.1",
     "SERVE_INCLUDE_SCHEMA": False,
+    "ENUM_NAME_OVERRIDES": {
+        "QualityStatusEnum": "apps.procurement.models.ReceivedBatch.QualityStatus",
+        "InventoryBatchQualityStatusEnum": "apps.inventory.models.InventoryBatch.QualityStatus",
+    },
 }
 
 SIMPLE_JWT = {
