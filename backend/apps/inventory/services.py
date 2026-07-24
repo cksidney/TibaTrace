@@ -593,6 +593,34 @@ class InventoryAdjustmentService:
         emit_event(tenant_id=str(tenant.pk), aggregate_type="InventoryAdjustment", aggregate_id=str(entry.pk), event_type="InventoryAdjustmentPosted", payload={"delta": str(delta)})
         return entry
 
+class InventoryWriteOffService:
+    @staticmethod
+    @transaction.atomic
+    def write_off_stock(*, tenant, branch, location, sku, batch, quantity, reason, actor, idempotency_key):
+        if quantity <= 0:
+            raise ValidationError("Write-off quantity must be positive.")
+            
+        entry = InventoryLedgerService.post_entry(
+            tenant=tenant,
+            branch=branch,
+            location=location,
+            sku=sku,
+            inventory_batch=batch,
+            entry_type=InventoryLedgerEntry.EntryType.WRITE_OFF,
+            quantity_delta=-quantity,
+            unit=sku.package_definition.unit_of_measure,
+            base_quantity_delta=-quantity,
+            effective_timestamp=timezone.now(),
+            source_document_type="WRITE_OFF",
+            source_document_id=idempotency_key,
+            idempotency_key=idempotency_key,
+            actor=actor,
+            reason_code=reason,
+        )
+        
+        emit_event(tenant_id=str(tenant.pk), aggregate_type="InventoryWriteOff", aggregate_id=str(entry.pk), event_type="InventoryWriteOffPosted", payload={"quantity": str(quantity)})
+        return entry
+
 class StocktakeService:
     @staticmethod
     @transaction.atomic

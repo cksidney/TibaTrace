@@ -1,9 +1,10 @@
 import uuid
 
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import Q
 
-from apps.core.models import StrictTenantManager, TenantConsistencyMixin, TimestampedModel
+from apps.core.models import StrictTenantManager, StrictTenantQuerySet, TenantConsistencyMixin, TimestampedModel
 
 
 class InventoryLocation(TenantConsistencyMixin, TimestampedModel):
@@ -98,6 +99,17 @@ class InventoryBatch(TenantConsistencyMixin, TimestampedModel):
         ]
 
 
+class InventoryLedgerEntryQuerySet(StrictTenantQuerySet):
+    def update(self, **kwargs):
+        raise ValidationError("InventoryLedgerEntry records are immutable and cannot be updated.")
+        
+    def delete(self):
+        raise ValidationError("InventoryLedgerEntry records are immutable and cannot be deleted.")
+
+class InventoryLedgerEntryManager(StrictTenantManager):
+    def _base_queryset(self):
+        return InventoryLedgerEntryQuerySet(self.model, using=self._db)
+
 class InventoryLedgerEntry(TenantConsistencyMixin, TimestampedModel):
     class EntryType(models.TextChoices):
         RECEIPT = "RECEIPT", "Receipt"
@@ -153,19 +165,29 @@ class InventoryLedgerEntry(TenantConsistencyMixin, TimestampedModel):
     
     reversal_reference = models.OneToOneField("self", null=True, blank=True, on_delete=models.PROTECT, related_name="reversed_by")
     
-    objects = StrictTenantManager()
-    all_objects = models.Manager()
+    objects = InventoryLedgerEntryManager()
+    all_objects = models.Manager.from_queryset(InventoryLedgerEntryQuerySet)()
 
     class Meta:
         constraints = [
-            models.UniqueConstraint(fields=["tenant", "idempotency_key"], name="uq_inventory_ledger_idempotency"),
-            models.CheckConstraint(check=~Q(quantity_delta=0), name="chk_ledger_delta_nonzero"),
-            models.CheckConstraint(check=~Q(base_quantity_delta=0), name="chk_ledger_base_delta_nonzero")
+            models.UniqueConstraint(fields=["tenant", "idempotency_key"], name="uq_ledger_idempotency"),
+            models.CheckConstraint(condition=~Q(quantity_delta=0), name="chk_ledger_delta_nonzero"),
+            models.CheckConstraint(condition=~Q(base_quantity_delta=0), name="chk_ledger_base_delta_nonzero")
         ]
         indexes = [
             models.Index(fields=["tenant", "sku", "location", "inventory_batch"], name="ix_ledger_sku_loc_batch"),
             models.Index(fields=["tenant", "transaction_timestamp"], name="ix_ledger_timestamp")
         ]
+
+    def save(self, *args, **kwargs):
+        if self.pk is not None:
+            # Check if it actually exists in DB
+            if InventoryLedgerEntry.all_objects.filter(pk=self.pk, tenant=self.tenant_id).exists():
+                raise ValidationError("InventoryLedgerEntry records are immutable and cannot be modified.")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("InventoryLedgerEntry records are immutable and cannot be deleted.")
 
 
 class InventoryBalance(TenantConsistencyMixin, TimestampedModel):
