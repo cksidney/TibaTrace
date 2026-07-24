@@ -26,6 +26,16 @@ graph TD
     inventory --> medicines
     inventory --> procurement
 
+    %% Customers, Sales & Fulfilment
+    customers[apps.customers] --> tenancy
+    customers --> organizations
+    customers --> medicines
+    sales[apps.sales] --> tenancy
+    sales --> customers
+    sales --> medicines
+    sales --> inventory
+    sales --> organizations
+
     %% Clinical Core & Enterprise Medicine Master
     patients[apps.patients] --> tenancy
     practitioners[apps.practitioners] --> tenancy

@@ -287,3 +287,208 @@ export interface InventoryReservationDTO {
   status: string;
   expiresAt?: string;
 }
+
+export type CustomerType =
+  | "INDIVIDUAL"
+  | "PHARMACY"
+  | "HOSPITAL"
+  | "CLINIC"
+  | "WHOLESALER"
+  | "DISTRIBUTOR"
+  | "GOVERNMENT"
+  | "NGO"
+  | "INSURER"
+  | "CORPORATE"
+  | "INTERNAL";
+
+export type CustomerStatus =
+  | "PROSPECTIVE"
+  | "UNDER_REVIEW"
+  | "APPROVED"
+  | "ACTIVE"
+  | "SUSPENDED"
+  | "BLOCKED"
+  | "ARCHIVED";
+
+export interface CustomerDTO {
+  id: string;
+  customerNumber: string;
+  legalName: string;
+  tradingName?: string;
+  customerType: CustomerType;
+  registrationNumber?: string;
+  taxNumber?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  status: CustomerStatus;
+  riskClassification: string;
+  creditStatus: string;
+  defaultCurrency: string;
+  paymentTerms: string;
+  controlledMedicineEligible: boolean;
+  coldChainCapable: boolean;
+}
+
+export interface CustomerDeliveryAddressDTO {
+  id: string;
+  customerId: string;
+  addressCode: string;
+  recipientName: string;
+  addressLine1: string;
+  city: string;
+  county?: string;
+  country: string;
+  phone?: string;
+  routeZone?: string;
+  coldChainCapable: boolean;
+  controlledMedicineCapable: boolean;
+  isActive: boolean;
+}
+
+export type QuotationStatus =
+  | "DRAFT"
+  | "SUBMITTED"
+  | "APPROVED"
+  | "SENT"
+  | "ACCEPTED"
+  | "CONVERTED"
+  | "REJECTED"
+  | "EXPIRED"
+  | "CANCELLED";
+
+export interface QuotationDTO {
+  id: string;
+  quotationNumber: string;
+  branchId: string;
+  customerId: string;
+  deliveryAddressId?: string;
+  currency: string;
+  status: QuotationStatus;
+  issueDate: string;
+  validUntil?: string;
+  subtotal: number;
+  taxTotal: number;
+  total: number;
+  revision: number;
+}
+
+export type SalesOrderStatus =
+  | "DRAFT"
+  | "SUBMITTED"
+  | "UNDER_REVIEW"
+  | "APPROVED"
+  | "RESERVED"
+  | "PARTIALLY_ALLOCATED"
+  | "ALLOCATED"
+  | "PARTIALLY_PICKED"
+  | "PICKED"
+  | "PARTIALLY_PACKED"
+  | "PACKED"
+  | "PARTIALLY_DISPATCHED"
+  | "DISPATCHED"
+  | "PARTIALLY_DELIVERED"
+  | "DELIVERED"
+  | "CLOSED"
+  | "REJECTED"
+  | "ON_HOLD"
+  | "BACKORDERED"
+  | "CANCELLED";
+
+export interface SalesOrderDTO {
+  id: string;
+  orderNumber: string;
+  branchId: string;
+  sourceQuotationId?: string;
+  customerId: string;
+  deliveryAddressId?: string;
+  customerPoReference?: string;
+  currency: string;
+  orderDate: string;
+  requestedDeliveryDate?: string;
+  priority: number;
+  fulfilmentPolicy: string;
+  substitutionPolicy: string;
+  invoicePolicy: string;
+  subtotal: number;
+  taxTotal: number;
+  total: number;
+  status: SalesOrderStatus;
+}
+
+export interface SalesOrderLineDTO {
+  id: string;
+  salesOrderId: string;
+  skuId: string;
+  descriptionSnapshot: string;
+  requestedQuantity: number;
+  approvedQuantity: number;
+  reservedQuantity: number;
+  allocatedQuantity: number;
+  pickedQuantity: number;
+  packedQuantity: number;
+  dispatchedQuantity: number;
+  deliveredQuantity: number;
+  returnedQuantity: number;
+  unit: string;
+  agreedUnitPrice: number;
+  discountAmount: number;
+  taxAmount: number;
+  lineTotal: number;
+  status: string;
+}
+
+export interface PickingTaskDTO {
+  id: string;
+  pickingWaveId?: string;
+  salesOrderId: string;
+  salesOrderLineId: string;
+  sourceLocationId: string;
+  skuId: string;
+  batchId?: string;
+  requestedQuantity: number;
+  pickedQuantity: number;
+  shortQuantity: number;
+  status: string;
+  assignedPickerId?: string;
+}
+
+export interface PackageDTO {
+  id: string;
+  packingSessionId: string;
+  packageNumber: string;
+  salesOrderId: string;
+  temperatureZone: string;
+  packageType: string;
+  sealNumber?: string;
+  status: string;
+}
+
+export interface DispatchOrderDTO {
+  id: string;
+  dispatchNumber: string;
+  branchId: string;
+  warehouseId?: string;
+  customerId: string;
+  deliveryAddressId?: string;
+  carrier?: string;
+  status: string;
+}
+
+export interface DeliveryRecordDTO {
+  id: string;
+  dispatchOrderId: string;
+  customerId: string;
+  status: string;
+  deliveredAt?: string;
+  recipientName?: string;
+  proofType?: string;
+}
+
+export interface SalesReturnAuthorizationDTO {
+  id: string;
+  returnNumber: string;
+  salesOrderId: string;
+  customerId: string;
+  status: string;
+  reason?: string;
+}

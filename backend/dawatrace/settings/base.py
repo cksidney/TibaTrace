@@ -81,6 +81,8 @@ INSTALLED_APPS = [
     "apps.crosswalks",
     "apps.documents",
     "apps.fhir",
+    "apps.customers",
+    "apps.sales",
 ]
 
 MIDDLEWARE = [
@@ -98,6 +100,7 @@ MIDDLEWARE = [
 ]
 
 ROOT_URLCONF = "dawatrace.urls"
+LOGIN_URL = "/admin/login/"
 WSGI_APPLICATION = "dawatrace.wsgi.application"
 ASGI_APPLICATION = "dawatrace.asgi.application"
 

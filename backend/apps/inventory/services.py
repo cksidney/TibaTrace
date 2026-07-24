@@ -1,7 +1,9 @@
 import uuid
+from decimal import Decimal
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.db.models import Sum
 from django.utils import timezone
 
 from apps.inventory.models import (
@@ -273,7 +275,17 @@ class FEFOAllocationService:
     Implements First-Expire-First-Out allocation logic.
     """
     @staticmethod
-    def allocate_stock(*, tenant, branch, location=None, sku, required_quantity, exclude_batches=None):
+    def allocate_stock(
+        *,
+        tenant,
+        branch,
+        location=None,
+        sku,
+        required_quantity,
+        exclude_batches=None,
+        include_batches=None,
+        minimum_expiry_date=None,
+    ):
         """
         Returns a list of tuples: (InventoryBatch, allocated_quantity)
         satisfying the required_quantity via FEFO.
@@ -285,10 +297,15 @@ class FEFOAllocationService:
             tenant=tenant,
             branch=branch,
             sku=sku,
-            available__gt=0
+            available__gt=0,
+            inventory_batch__quality_status=InventoryBatch.QualityStatus.RELEASED,
+            inventory_batch__recall_status=InventoryBatch.RecallStatus.NONE,
+            inventory_batch__expiry_date__gte=minimum_expiry_date or timezone.now().date(),
         ).exclude(
             inventory_batch__in=exclude_batches
         )
+        if include_batches is not None:
+            balances = balances.filter(inventory_batch__in=include_batches)
         
         if location:
             balances = balances.filter(location=location)
@@ -319,7 +336,21 @@ class FEFOAllocationService:
 class InventoryReservationService:
     @staticmethod
     @transaction.atomic
-    def reserve_stock(*, tenant, branch, source_location, sku, requested_quantity, purpose, actor, idempotency_key, expiry_time=None):
+    def reserve_stock(
+        *,
+        tenant,
+        branch,
+        source_location,
+        sku,
+        requested_quantity,
+        purpose,
+        actor,
+        idempotency_key,
+        expiry_time=None,
+        exclude_batches=None,
+        include_batches=None,
+        minimum_expiry_date=None,
+    ):
         if InventoryReservation.all_objects.filter(tenant=tenant, idempotency_key=idempotency_key).exists():
             return InventoryReservation.all_objects.get(tenant=tenant, idempotency_key=idempotency_key)
             
@@ -329,7 +360,10 @@ class InventoryReservationService:
             branch=branch, 
             location=source_location, 
             sku=sku, 
-            required_quantity=requested_quantity
+            required_quantity=requested_quantity,
+            exclude_batches=exclude_batches,
+            include_batches=include_batches,
+            minimum_expiry_date=minimum_expiry_date,
         )
         
         reservation = InventoryReservation.objects.create(
@@ -420,6 +454,90 @@ class InventoryReservationService:
             payload={"sku_id": str(reservation.sku.pk)},
         )
         
+        return reservation
+
+    @staticmethod
+    @transaction.atomic
+    def fulfill_reservation(
+        *,
+        reservation,
+        quantity,
+        inventory_batch,
+        actor,
+        idempotency_key,
+    ):
+        reservation = InventoryReservation.all_objects.select_for_update().get(
+            pk=reservation.pk,
+            tenant=reservation.tenant,
+        )
+        quantity = Decimal(str(quantity))
+        if quantity <= 0:
+            raise ValidationError("Reservation fulfilment quantity must be positive.")
+        if reservation.status in {
+            InventoryReservation.Status.RELEASED,
+            InventoryReservation.Status.EXPIRED,
+            InventoryReservation.Status.CANCELLED,
+        }:
+            raise ValidationError("Inactive reservations cannot be fulfilled.")
+
+        reservation_entries = InventoryLedgerEntry.all_objects.filter(
+            tenant=reservation.tenant,
+            source_document_type="RESERVATION",
+            source_document_id=str(reservation.pk),
+            entry_type=InventoryLedgerEntry.EntryType.RESERVATION,
+            inventory_batch=inventory_batch,
+        )
+        reserved_for_batch = sum(
+            (entry.base_quantity_delta for entry in reservation_entries),
+            Decimal("0"),
+        )
+        fulfilment_entries = InventoryLedgerEntry.all_objects.filter(
+            tenant=reservation.tenant,
+            source_document_type="RESERVATION_FULFILMENT",
+            source_document_id=str(reservation.pk),
+            entry_type=InventoryLedgerEntry.EntryType.RESERVATION_RELEASE,
+            inventory_batch=inventory_batch,
+        )
+        already_fulfilled_for_batch = sum(
+            (entry.base_quantity_delta for entry in fulfilment_entries),
+            Decimal("0"),
+        )
+        if already_fulfilled_for_batch + quantity > reserved_for_batch:
+            raise ValidationError("Cannot fulfil more than the reserved batch quantity.")
+
+        InventoryLedgerService.post_entry(
+            tenant=reservation.tenant,
+            branch=reservation.branch,
+            location=reservation.source_location,
+            sku=reservation.sku,
+            inventory_batch=inventory_batch,
+            entry_type=InventoryLedgerEntry.EntryType.RESERVATION_RELEASE,
+            quantity_delta=quantity,
+            unit=reservation.unit,
+            base_quantity_delta=quantity,
+            effective_timestamp=timezone.now(),
+            source_document_type="RESERVATION_FULFILMENT",
+            source_document_id=str(reservation.pk),
+            idempotency_key=idempotency_key,
+            actor=actor,
+            reason_code="SALES_DISPATCH_FULFILMENT",
+        )
+
+        total_fulfilled = (
+            InventoryLedgerEntry.all_objects.filter(
+                tenant=reservation.tenant,
+                source_document_type="RESERVATION_FULFILMENT",
+                source_document_id=str(reservation.pk),
+                entry_type=InventoryLedgerEntry.EntryType.RESERVATION_RELEASE,
+            ).aggregate(total=Sum("base_quantity_delta"))["total"]
+            or Decimal("0")
+        )
+        reservation.status = (
+            InventoryReservation.Status.FULFILLED
+            if total_fulfilled >= reservation.allocated_quantity
+            else InventoryReservation.Status.PARTIALLY_FULFILLED
+        )
+        reservation.save(update_fields=["status", "updated_at"])
         return reservation
 
 
