@@ -61,30 +61,31 @@ def generate_manifest(mode="full", steps_data=None):
 
     steps = steps_data or []
 
-    # Derive overall decision automatically
+    # Derive validation decision automatically
     failed_steps = [s for s in steps if s.get("result") == "FAILED"]
+    skipped_steps = [s for s in steps if s.get("result") == "SKIPPED"]
     if failed_steps:
-        overall_decision = "PHASE_3_0_BASELINE_FAILED_VALIDATION"
+        overall_decision = "VALIDATION_FAILED"
+    elif skipped_steps:
+        overall_decision = "VALIDATION_PASSED_WITH_DOCUMENTED_NON_BLOCKERS"
     else:
-        overall_decision = "PHASE_3_0_BASELINE_CLOSED_WITH_EXTERNAL_SECURITY_GATES_PENDING"
+        overall_decision = "VALIDATION_PASSED"
 
-    external_deferred_gates = [
+    deferred_gates = [
         {
-            "gate": "pip-audit",
-            "reason": "Private dependency metadata audit requires online vulnerability intelligence feeds; deferred to release CI pipeline."
-        },
-        {
-            "gate": "container-cve-scan",
-            "reason": "Container registry vulnerability scanning requires official release image registry; deferred to release pipeline."
+            "gate": step["name"],
+            "reason": step.get("skip_reason"),
         }
+        for step in skipped_steps
     ]
 
     manifest = {
         "project_name": "DawaTrace",
         "project_version": "0.1.0-alpha.1",
+        "phase": 5,
         "validation_mode": mode,
         "overall_decision": overall_decision,
-        "coherence_declaration": "Repository-wide source coherence has been verified across backend models, migrations, services, API schemas, shared TypeScript contracts, tests, startup imports and deployment configuration. Docker image build, container runtime and deployable frontend validation are verified only where explicitly evidenced above.",
+        "coherence_declaration": "Repository-wide source coherence is evaluated across backend models, migrations, domain services, API schemas, shared TypeScript contracts, tests, startup imports, security checks and deployment configuration. Deferred gates are listed explicitly and are not represented as executed.",
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "environment": {
             "os": platform.platform(),
@@ -100,7 +101,7 @@ def generate_manifest(mode="full", steps_data=None):
             "clean_working_tree": len(git_status) == 0
         },
         "evidence_checksums_sha256": checksums,
-        "deferred_external_gates": external_deferred_gates,
+        "deferred_gates": deferred_gates,
         "steps": steps
     }
 

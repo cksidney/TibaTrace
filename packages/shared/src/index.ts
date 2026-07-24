@@ -492,3 +492,493 @@ export interface SalesReturnAuthorizationDTO {
   status: string;
   reason?: string;
 }
+
+export type DecimalString = string;
+
+export type PrescriptionLifecycleStatus =
+  | "RECEIVED"
+  | "INTAKE_REVIEW"
+  | "LEGALLY_VALIDATED"
+  | "CLINICAL_REVIEW"
+  | "PHARMACIST_VERIFIED"
+  | "READY_FOR_DISPENSING"
+  | "PARTIALLY_DISPENSED"
+  | "DISPENSED"
+  | "PARTIALLY_SUPPLIED"
+  | "SUPPLIED"
+  | "CLOSED"
+  | "ON_HOLD"
+  | "INTERVENTION_REQUIRED"
+  | "REJECTED"
+  | "CANCELLED"
+  | "EXPIRED"
+  | "RETURNED";
+
+export type LegalValidationState =
+  | "PENDING"
+  | "PASSED"
+  | "FAILED"
+  | "MANUAL_REVIEW";
+
+export type ClinicalReviewState =
+  | "NOT_STARTED"
+  | "IN_PROGRESS"
+  | "FINDINGS_OPEN"
+  | "COMPLETED"
+  | "BLOCKED";
+
+export type PharmacistVerificationState =
+  | "NOT_VERIFIED"
+  | "VERIFIED"
+  | "REVOKED";
+
+export type DispensingEpisodeStatus =
+  | "DRAFT"
+  | "PREPARING"
+  | "CHECKING"
+  | "READY_FOR_SUPPLY"
+  | "PARTIALLY_SUPPLIED"
+  | "SUPPLIED"
+  | "CLOSED"
+  | "ON_HOLD"
+  | "CANCELLED"
+  | "REVERSED"
+  | "RETURNED";
+
+export type ClinicalFindingSeverity =
+  | "INFORMATION"
+  | "LOW"
+  | "MODERATE"
+  | "HIGH"
+  | "CRITICAL"
+  | "INFO"
+  | "WARNING"
+  | "BLOCK";
+
+export type ClinicalFindingResolution =
+  | "OPEN"
+  | "ACKNOWLEDGED"
+  | "OVERRIDDEN"
+  | "INTERVENTION_REQUIRED"
+  | "RESOLVED"
+  | "NOT_APPLICABLE";
+
+export interface PatientIdentifierDTO {
+  id: string;
+  identifierType: string;
+  system: string;
+  maskedValue: string;
+  verificationStatus: string;
+  issuingAuthority?: string;
+  issueDate?: string;
+  expiryDate?: string;
+}
+
+export interface PatientDTO {
+  id: string;
+  internalReferenceId: string;
+  patientNumber: string;
+  externalPatientReference?: string;
+  verificationStatus: string;
+  firstName: string;
+  lastName: string;
+  preferredName?: string;
+  dateOfBirth?: string;
+  sex: string;
+  preferredLanguage?: string;
+  communicationPreference?: string;
+  isDeceased: boolean;
+  consentStatus: string;
+  isActive: boolean;
+  identifiers: PatientIdentifierDTO[];
+}
+
+export interface AllergyDTO {
+  id: string;
+  patientId: string;
+  allergenName: string;
+  allergenCode?: string;
+  medicinalProductId?: string;
+  activeIngredientId?: string;
+  reaction?: string;
+  severity: string;
+  onsetDate?: string;
+  verificationStatus: string;
+  source: string;
+  status: string;
+  notes?: string;
+  isActive: boolean;
+}
+
+export interface PatientClinicalSummaryDTO {
+  id: string;
+  patientId: string;
+  pregnancyStatus: string;
+  lactationStatus: string;
+  renalImpairment: string;
+  hepaticImpairment: string;
+  heightCm?: DecimalString;
+  weightKg?: DecimalString;
+  source: string;
+  verificationStatus: string;
+  verifiedById?: string;
+  verifiedAt?: string;
+  updatedAt: string;
+}
+
+export interface PrescriberDTO {
+  id: string;
+  professionalName: string;
+  registrationNumber: string;
+  profession: string;
+  licensingBody: string;
+  licenceStatus: string;
+  licenceIssueDate?: string;
+  licenceExpiryDate?: string;
+  prescribingScope: string[];
+  controlledMedicineAuthority: boolean;
+  organizationId?: string;
+  verificationState: string;
+  status: string;
+}
+
+export interface PrescriptionItemDTO {
+  id: string;
+  prescriptionId: string;
+  prescribedMedicinalProductId?: string;
+  prescribedBrandId?: string;
+  prescribedSkuId?: string;
+  prescribedDescriptionSnapshot: string;
+  activeIngredientSnapshot: Record<string, unknown>[];
+  strengthSnapshot: string;
+  dosageFormSnapshot: string;
+  route?: string;
+  dosageInstruction: string;
+  doseAmount?: DecimalString;
+  doseUnit?: string;
+  frequencyPerDay?: DecimalString;
+  durationDays?: number;
+  quantity: DecimalString;
+  unit: string;
+  refillsAuthorized: number;
+  repeatsRemaining: number;
+  quantitySuppliedTotal: DecimalString;
+  minimumRepeatIntervalDays: number;
+  earliestRefillDate?: string;
+  latestRefillDate?: string;
+  substitutionPolicy: string;
+  isControlled: boolean;
+  status: string;
+}
+
+export interface PrescriptionDTO {
+  id: string;
+  prescriptionNumber: string;
+  externalPrescriptionReference?: string;
+  patientId: string;
+  practitionerId: string;
+  organizationId: string;
+  locationId: string;
+  prescribingOrganizationId?: string;
+  prescriptionDate?: string;
+  receivedAt?: string;
+  prescriptionType: string;
+  sourceChannel: string;
+  originalDocumentId?: string;
+  status: PrescriptionLifecycleStatus;
+  expiresAt?: string;
+  isControlledMedicine: boolean;
+  repeatAuthorization: boolean;
+  repeatsAllowed: number;
+  repeatsRemaining: number;
+  legalValidationState: LegalValidationState;
+  clinicalReviewState: ClinicalReviewState;
+  pharmacistVerificationState: PharmacistVerificationState;
+  dispensingState: string;
+  items: PrescriptionItemDTO[];
+}
+
+export interface ClinicalFindingDTO extends ClinicalSourceAttribution {
+  id: string;
+  patientId: string;
+  prescriptionId: string;
+  prescriptionItemId?: string;
+  affectedMedicineId?: string;
+  ruleType: string;
+  clinicalCategory: string;
+  severity: ClinicalFindingSeverity;
+  explanation: string;
+  evidenceSummary: string;
+  recommendedAction: string;
+  overridePolicy: string;
+  resolutionStatus: ClinicalFindingResolution;
+  resolvedById?: string;
+  resolutionReason?: string;
+  resolvedAt?: string;
+  detectedAt: string;
+}
+
+export interface PharmacistReviewDTO {
+  id: string;
+  prescriptionId: string;
+  reviewingPharmacistId: string;
+  reviewStartedAt: string;
+  reviewCompletedAt?: string;
+  outcome?: string;
+  notes?: string;
+  verificationDecision?: string;
+  contextHash: string;
+  version: number;
+}
+
+export interface PharmacistInterventionDTO {
+  id: string;
+  prescriptionId: string;
+  prescriptionItemId?: string;
+  reviewId: string;
+  clinicalFindingId?: string;
+  interventionType: string;
+  contactedParty?: string;
+  contactMethod?: string;
+  interventionRequest: string;
+  response?: string;
+  originalInstruction: Record<string, unknown>;
+  changedInstruction: Record<string, unknown>;
+  prescriberAuthorization: Record<string, unknown>;
+  outcome?: string;
+  status: string;
+  actorId: string;
+  resolvedAt?: string;
+}
+
+export interface PharmacistVerificationDTO {
+  id: string;
+  prescriptionId: string;
+  reviewId: string;
+  verifiedById: string;
+  decision: string;
+  contextHash: string;
+  verificationChecks: Record<string, boolean>;
+  clinicalJustification?: string;
+  verifiedAt: string;
+  revokedAt?: string;
+  revokedReason?: string;
+}
+
+export interface ClinicalSubstitutionDTO {
+  id: string;
+  prescriptionId: string;
+  prescriptionItemId: string;
+  prescribedSkuId?: string;
+  proposedSkuId: string;
+  equivalenceBasis: string;
+  priceImpact: DecimalString;
+  stockReason?: string;
+  prescriberApproved: boolean;
+  patientConsented: boolean;
+  pharmacistApproved: boolean;
+  approvedById?: string;
+  status: string;
+  reason: string;
+}
+
+export interface DispensingLineDTO {
+  id: string;
+  episodeId: string;
+  prescriptionItemId: string;
+  prescribedSkuId: string;
+  suppliedSkuId: string;
+  inventoryBatchId: string;
+  inventoryAllocationId: string;
+  quantityAuthorized: DecimalString;
+  quantityPrepared: DecimalString;
+  quantitySupplied: DecimalString;
+  unit: string;
+  packageDefinitionId: string;
+  batchNumberSnapshot: string;
+  expiryDateSnapshot: string;
+  dosageLabelInstructions: string;
+  substitutionId?: string;
+  status: string;
+  preparedById: string;
+  checkerId?: string;
+}
+
+export interface DispensingEpisodeDTO {
+  id: string;
+  dispensingNumber: string;
+  prescriptionId: string;
+  patientId: string;
+  branchId: string;
+  pharmacyLocationId: string;
+  pharmacistId: string;
+  status: DispensingEpisodeStatus;
+  initiatedAt: string;
+  completedAt?: string;
+  supplyMethod: string;
+  salesOrderId?: string;
+  paymentGateState: string;
+  counsellingStatus: string;
+  lines: DispensingLineDTO[];
+}
+
+export interface PatientCounsellingDTO {
+  id: string;
+  episodeId: string;
+  patientId: string;
+  counsellingRequired: boolean;
+  counsellingCompleted: boolean;
+  topics: string[];
+  warningsExplained?: string;
+  administrationInstructions?: string;
+  storageGuidance?: string;
+  adherenceAdvice?: string;
+  sideEffectGuidance?: string;
+  missedDoseGuidance?: string;
+  deviceDemonstration: boolean;
+  patientQuestions?: string;
+  language?: string;
+  interpreter?: string;
+  counselledById?: string;
+  counselledAt?: string;
+  refusalReason?: string;
+}
+
+export interface RepeatDispensingDTO {
+  prescriptionItemId: string;
+  repeatsAuthorized: number;
+  repeatsRemaining: number;
+  minimumIntervalDays: number;
+  earliestRefillDate?: string;
+  latestRefillDate?: string;
+  cumulativeSuppliedQuantity: DecimalString;
+}
+
+export interface PatientMedicationHistoryDTO {
+  id: string;
+  patientId: string;
+  prescriptionId: string;
+  prescriptionItemId: string;
+  dispensingEpisodeId: string;
+  medicineSupplyLineId: string;
+  medicineNameSnapshot: string;
+  suppliedSkuId: string;
+  activeIngredientSnapshot: Record<string, unknown>[];
+  strengthSnapshot: string;
+  dosageFormSnapshot: string;
+  inventoryBatchId: string;
+  quantity: DecimalString;
+  instructions: string;
+  suppliedAt: string;
+  status: string;
+  source: string;
+  reversalReferenceId?: string;
+}
+
+export interface PatientReturnDTO {
+  id: string;
+  returnNumber: string;
+  supplyId: string;
+  patientId: string;
+  reason: string;
+  receivedById: string;
+  inspectedById?: string;
+  quarantineLocationId: string;
+  qualityDecision: string;
+  destructionPath?: string;
+  refundEligibility: string;
+  status: string;
+}
+
+export type ClinicalQueueType =
+  | "PRESCRIPTION_INTAKE"
+  | "LEGAL_VALIDATION"
+  | "CLINICAL_REVIEW"
+  | "CRITICAL_DUR_FINDING"
+  | "PRESCRIBER_CLARIFICATION"
+  | "PATIENT_CLARIFICATION"
+  | "PHARMACIST_VERIFICATION"
+  | "READY_FOR_DISPENSING"
+  | "DISPENSING_PREPARATION"
+  | "FINAL_CHECK"
+  | "READY_FOR_COUNSELLING"
+  | "READY_FOR_SUPPLY"
+  | "PARTIAL_DISPENSING_FOLLOW_UP"
+  | "REPEAT_DUE"
+  | "EARLY_REPEAT_REVIEW"
+  | "CONTROLLED_MEDICINE_REVIEW"
+  | "PATIENT_RETURN_INSPECTION"
+  | "REVERSAL_APPROVAL";
+
+export interface ClinicalWorkItemDTO {
+  id: string;
+  queueType: ClinicalQueueType;
+  prescriptionId: string;
+  prescriptionNumber: string;
+  dispensingEpisodeId?: string;
+  dispensingNumber?: string;
+  branchId: string;
+  branchName: string;
+  requiredCapability: string;
+  status: "OPEN" | "IN_PROGRESS" | "CLOSED" | "CANCELLED";
+  dueAt?: string;
+  closedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DispensingReversalDTO {
+  id: string;
+  reversalNumber: string;
+  supplyId: string;
+  originalSupplyLineId: string;
+  quantity: DecimalString;
+  reason: string;
+  authorizedById: string;
+  physicallyReturned: boolean;
+  returnCondition?: string;
+  inventoryEligibility: string;
+  reversedAt: string;
+}
+
+export interface PrescriptionVerificationAction {
+  decision?: "VERIFIED" | "VERIFIED_WITH_COUNSELLING";
+  clinicalJustification?: string;
+  idempotencyKey: string;
+}
+
+export interface DispensingReserveAction {
+  prescriptionItemId: string;
+  quantity: DecimalString;
+  minimumShelfLifeDays?: number;
+  substituteSkuId?: string;
+  idempotencyKey: string;
+}
+
+export interface DispensingSupplyAction {
+  lineQuantities?: Record<string, DecimalString>;
+  partialReason?: string;
+  nextEligibleDate?: string;
+  idempotencyKey: string;
+}
+
+export interface DispensingReversalRequestAction {
+  supplyLineId: string;
+  reason: string;
+}
+
+export interface DispensingReversalAction
+  extends DispensingReversalRequestAction {
+  quantity?: DecimalString;
+  physicallyReturned?: boolean;
+  returnCondition?: string;
+  inventoryEligibility?: string;
+  idempotencyKey: string;
+}
+
+export interface PaginatedResponse<T> {
+  count: number;
+  next?: string;
+  previous?: string;
+  results: T[];
+}

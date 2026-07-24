@@ -35,26 +35,28 @@ class User(AbstractUser):
         if not self.is_platform_admin and not self.tenant_id and not self.is_superuser:
             raise ValidationError({"tenant": "Non-platform users require tenant ownership."})
 
-    def has_capability(self, capability: str, tenant_id=None) -> bool:
+    def effective_capabilities(self, tenant_id=None) -> set[str]:
         if not self.is_active:
-            return False
+            return set()
         if self.is_superuser or self.is_platform_admin:
-            return True
+            return {"*"}
         effective_tenant = str(tenant_id or self.tenant_id or "")
         if not effective_tenant or str(self.tenant_id) != effective_tenant:
-            return False
-        assignments = UserRole.all_objects.select_related("role").filter(
+            return set()
+        assignments = UserRole.all_objects.filter(
             tenant_id=effective_tenant,
             user_id=self.id,
             is_active=True,
             role__is_active=True,
         )
-        granted = any(capability in (assignment.role.capabilities or []) for assignment in assignments)
-        if not granted:
-            return False
+        capabilities = set()
+        for granted in assignments.values_list("role__capabilities", flat=True):
+            capabilities.update(granted or [])
+        if not capabilities:
+            return set()
         policies = AttributePolicy.all_objects.filter(
             tenant_id=effective_tenant,
-            capability=capability,
+            capability__in=capabilities,
             is_active=True,
         )
         for policy in policies:
@@ -62,8 +64,12 @@ class User(AbstractUser):
             required_metadata = conditions.get("user_metadata", {})
             matches = all((self.metadata or {}).get(key) == value for key, value in required_metadata.items())
             if matches and policy.effect == AttributePolicy.EFFECT_DENY:
-                return False
-        return True
+                capabilities.discard(policy.capability)
+        return capabilities
+
+    def has_capability(self, capability: str, tenant_id=None) -> bool:
+        capabilities = self.effective_capabilities(tenant_id=tenant_id)
+        return "*" in capabilities or capability in capabilities
 
 
 class Role(TimestampedModel):

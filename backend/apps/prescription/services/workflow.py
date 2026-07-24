@@ -45,21 +45,46 @@ class PrescriptionWorkflowService:
             ).order_by("id").values(
                 "id",
                 "canonical_medicine_id",
+                "prescribed_medicinal_product_id",
+                "prescribed_brand_id",
+                "prescribed_sku_id",
                 "medication_name",
+                "prescribed_description_snapshot",
+                "active_ingredient_snapshot",
+                "strength_snapshot",
+                "dosage_form_snapshot",
                 "dosage_instruction",
                 "dose_amount",
                 "dose_unit",
                 "frequency_per_day",
                 "duration_days",
                 "quantity",
+                "unit",
+                "refills_authorized",
+                "minimum_repeat_interval_days",
                 "is_controlled",
+                "route",
+                "maximum_daily_dose",
+                "substitution_policy",
             )
         )
         payload = {
             "patient_id": str(prescription.patient_id),
             "practitioner_id": str(prescription.practitioner_id),
+            "prescribing_organization_id": str(
+                prescription.prescribing_organization_id or ""
+            ),
+            "prescription_date": (
+                prescription.prescription_date.isoformat()
+                if prescription.prescription_date
+                else None
+            ),
             "issued_at": prescription.issued_at.isoformat() if prescription.issued_at else None,
             "expires_at": prescription.expires_at.isoformat() if prescription.expires_at else None,
+            "prescription_type": prescription.prescription_type,
+            "is_controlled_medicine": prescription.is_controlled_medicine,
+            "repeat_authorization": prescription.repeat_authorization,
+            "repeats_allowed": prescription.repeats_allowed,
             "lines": lines,
         }
         return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()

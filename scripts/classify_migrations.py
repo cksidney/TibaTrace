@@ -28,12 +28,20 @@ def classify_app_migrations():
     # Map of tested rollback boundaries for apps with verified rollbacks in validate_repository.sh
     rollback_executed_apps = {
         "prescription": {
-            "boundary": "prescription.0001_initial",
-            "evidence": "Verified rollback from 0002 to 0001 and re-application in validate_repository.sh."
+            "boundary": "prescription.0002_prescription_ix_prescription_tenant_status_and_more",
+            "evidence": "Verified Phase 5 rollback from 0003 to 0002 and re-application; earlier rollback coverage is retained."
         },
         "cds": {
-            "boundary": "cds.0003_alter_clinicalknowledgerule_criteria",
-            "evidence": "Verified rollback from 0004 to 0003 and re-application in validate_repository.sh."
+            "boundary": "cds.0004_alter_clinicalknowledgerule_managers",
+            "evidence": "Verified Phase 5 rollback from 0006 through 0005 to 0004 and re-application; earlier rollback coverage is retained."
+        },
+        "patients": {
+            "boundary": "patients.0001_initial",
+            "evidence": "Verified Phase 5 rollback from 0002 to 0001 and re-application in validate_repository.sh."
+        },
+        "practitioners": {
+            "boundary": "practitioners.0001_initial",
+            "evidence": "Verified Phase 5 rollback from 0002 to 0001 and re-application in validate_repository.sh."
         },
         "fhir": {
             "boundary": "fhir.0001_initial",

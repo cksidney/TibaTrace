@@ -49,12 +49,13 @@ record_step() {
   STEPS_JSON=$("${PYTHON}" -c '
 import json, sys
 steps = json.loads(sys.argv[1])
+exit_code = None if sys.argv[6] == "null" else int(sys.argv[6])
 steps.append({
     "name": sys.argv[2],
     "exact_command": sys.argv[3],
     "executed": sys.argv[4] == "true",
     "result": sys.argv[5],
-    "exit_code": int(sys.argv[6]),
+    "exit_code": exit_code,
     "duration_seconds": float(sys.argv[7]),
     "skip_reason": sys.argv[8] if sys.argv[8] != "" else None,
     "evidence_path": sys.argv[9] if sys.argv[9] != "" else None
@@ -83,6 +84,14 @@ record_step "django_system_and_migration_drift" "python manage.py check && pytho
 
 echo "=== [4/13] Migration Graph & Rollback Reversibility ==="
 START_TIME=$(date +%s)
+"${PYTHON}" "${ROOT}/backend/manage.py" migrate --noinput --settings=dawatrace.settings.test
+"${PYTHON}" "${ROOT}/backend/manage.py" migrate prescription 0002 --noinput --settings=dawatrace.settings.test
+"${PYTHON}" "${ROOT}/backend/manage.py" migrate prescription --noinput --settings=dawatrace.settings.test
+"${PYTHON}" "${ROOT}/backend/manage.py" migrate cds 0004 --noinput --settings=dawatrace.settings.test
+"${PYTHON}" "${ROOT}/backend/manage.py" migrate --noinput --settings=dawatrace.settings.test
+"${PYTHON}" "${ROOT}/backend/manage.py" migrate patients 0001 --noinput --settings=dawatrace.settings.test
+"${PYTHON}" "${ROOT}/backend/manage.py" migrate --noinput --settings=dawatrace.settings.test
+"${PYTHON}" "${ROOT}/backend/manage.py" migrate practitioners 0001 --noinput --settings=dawatrace.settings.test
 "${PYTHON}" "${ROOT}/backend/manage.py" migrate --noinput --settings=dawatrace.settings.test
 "${PYTHON}" "${ROOT}/backend/manage.py" migrate prescription 0001 --noinput --settings=dawatrace.settings.test
 "${PYTHON}" "${ROOT}/backend/manage.py" migrate prescription --noinput --settings=dawatrace.settings.test
@@ -123,8 +132,11 @@ START_TIME=$(date +%s)
 "${PYTHON}" "${ROOT}/backend/manage.py" audit_clinical_lookup_safety --settings=dawatrace.settings.test
 "${PYTHON}" "${ROOT}/backend/manage.py" audit_tenant_managers --settings=dawatrace.settings.test
 "${PYTHON}" "${ROOT}/backend/manage.py" audit_clinical_tenant_ownership --json --settings=dawatrace.settings.test
+"${PYTHON}" "${ROOT}/backend/manage.py" seed_clinical_dispensing --tenant validation-clinical --settings=dawatrace.settings.test
+"${PYTHON}" "${ROOT}/backend/manage.py" seed_clinical_dispensing --tenant validation-clinical --settings=dawatrace.settings.test
+"${PYTHON}" "${ROOT}/backend/manage.py" check_clinical_dispensing_integrity --tenant validation-clinical --settings=dawatrace.settings.test
 END_TIME=$(date +%s)
-record_step "clinical_and_tenant_safety_audits" "python manage.py audit_tenant_managers" "true" "PASSED" "0" "$((END_TIME - START_TIME))" "" ""
+record_step "clinical_and_tenant_safety_audits" "clinical audits; seed_clinical_dispensing twice; check_clinical_dispensing_integrity" "true" "PASSED" "0" "$((END_TIME - START_TIME))" "" ""
 
 echo "=== [8/13] Backend Pytest Test Suite ==="
 START_TIME=$(date +%s)
@@ -141,13 +153,19 @@ START_TIME=$(date +%s)
   --output-reproducible --of JSON -o "${ROOT}/artifacts/generated/security/dawatrace-backend.cdx.json"
 "${PYTHON}" "${ROOT}/scripts/scan_secrets.py" \
   --root "${ROOT}" --output "${ROOT}/artifacts/generated/security/secret-scan.json"
+END_TIME=$(date +%s)
+record_step "security_scans_and_sbom" "bandit; cyclonedx; scan_secrets" "true" "PASSED" "0" "$((END_TIME - START_TIME))" "" "artifacts/generated/security/dawatrace-backend.cdx.json"
 
+START_TIME=$(date +%s)
 if [[ "${DAWATRACE_RUN_ONLINE_AUDIT:-false}" == "true" ]]; then
   "${ROOT}/.venv/bin/pip-audit" -r "${ROOT}/backend/requirements.lock" \
     --format json --output "${ROOT}/artifacts/generated/security/pip-audit.json"
+  END_TIME=$(date +%s)
+  record_step "online_dependency_audit" "pip-audit -r backend/requirements.lock" "true" "PASSED" "0" "$((END_TIME - START_TIME))" "" "artifacts/generated/security/pip-audit.json"
+else
+  END_TIME=$(date +%s)
+  record_step "online_dependency_audit" "pip-audit -r backend/requirements.lock" "false" "SKIPPED" "null" "$((END_TIME - START_TIME))" "Online vulnerability intelligence is disabled locally; deferred to release CI." ""
 fi
-END_TIME=$(date +%s)
-record_step "security_and_sbom" "bandit & cyclonedx & scan_secrets" "true" "PASSED" "0" "$((END_TIME - START_TIME))" "" "artifacts/generated/security/dawatrace-backend.cdx.json"
 
 echo "=== [10/13] Frontend Workspace Inventory Matrix ==="
 START_TIME=$(date +%s)
@@ -163,7 +181,7 @@ if [ -x "${ROOT}/node_modules/.bin/tsc" ]; then
   record_step "typescript_workspace_compilation" "tsc --noEmit -p packages/shared/tsconfig.json" "true" "PASSED" "0" "$((END_TIME - START_TIME))" "" ""
 else
   END_TIME=$(date +%s)
-  record_step "typescript_workspace_compilation" "tsc --noEmit" "false" "SKIPPED" "0" "$((END_TIME - START_TIME))" "tsc binary not found in node_modules" ""
+  record_step "typescript_workspace_compilation" "tsc --noEmit" "false" "SKIPPED" "null" "$((END_TIME - START_TIME))" "tsc binary not found in node_modules" ""
 fi
 
 echo "=== [12/13] Container Build & Runtime Smoke Tests ==="
@@ -177,17 +195,36 @@ if [[ "${MODE}" == "full" ]]; then
     docker build --file "${ROOT}/docker/backend.Dockerfile" --tag dawatrace/backend:validation "${ROOT}"
     echo "Docker container image build: OK"
     END_TIME=$(date +%s)
-    record_step "docker_container_build_and_runtime" "docker build --file docker/backend.Dockerfile" "true" "PASSED" "0" "$((END_TIME - START_TIME))" "" ""
+    record_step "docker_container_build" "docker build --file docker/backend.Dockerfile" "true" "PASSED" "0" "$((END_TIME - START_TIME))" "" ""
+
+    START_TIME=$(date +%s)
+    docker run --rm \
+      --entrypoint python \
+      -e DJANGO_SETTINGS_MODULE=dawatrace.settings.production \
+      -e DAWATRACE_ENV=development \
+      -e DAWATRACE_SECRET_KEY=container-runtime-validation-secret \
+      -e DAWATRACE_DATABASE_URL=sqlite:////tmp/dawatrace-runtime.sqlite3 \
+      -e DAWATRACE_REDIS_URL=locmem:// \
+      -e DAWATRACE_OBJECT_SIGNING_KEY=container-runtime-validation-signing-key \
+      -e DAWATRACE_SECURE_SSL_REDIRECT=false \
+      dawatrace/backend:validation \
+      manage.py check
+    END_TIME=$(date +%s)
+    record_step "docker_container_runtime" "docker run --rm --entrypoint python dawatrace/backend:validation manage.py check" "true" "PASSED" "0" "$((END_TIME - START_TIME))" "" ""
   else
     echo "Docker daemon socket unavailable or unprivileged in current environment; skipping container build."
     END_TIME=$(date +%s)
-    record_step "docker_container_build_and_runtime" "docker build --file docker/backend.Dockerfile" "false" "SKIPPED" "0" "$((END_TIME - START_TIME))" "Docker daemon socket unavailable or unprivileged in local sandbox; deferred to CI container runner." ""
+    record_step "docker_container_build" "docker build --file docker/backend.Dockerfile" "false" "SKIPPED" "null" "$((END_TIME - START_TIME))" "Docker daemon unavailable; deferred to CI container runner." ""
+    record_step "docker_container_runtime" "docker run dawatrace/backend:validation" "false" "SKIPPED" "null" "0" "Docker image was not built because the daemon is unavailable." ""
   fi
 else
   echo "Fast mode: Skipped heavy Docker container build and runtime startup tests."
   END_TIME=$(date +%s)
-  record_step "docker_container_build_and_runtime" "docker build" "false" "SKIPPED" "0" "$((END_TIME - START_TIME))" "Fast mode requested" ""
+  record_step "docker_container_build" "docker build" "false" "SKIPPED" "null" "$((END_TIME - START_TIME))" "Fast mode requested" ""
+  record_step "docker_container_runtime" "docker run" "false" "SKIPPED" "null" "0" "Fast mode requested" ""
 fi
+
+record_step "external_release_checks" "release CI external checks" "false" "SKIPPED" "null" "0" "Registry CVE, signed-artifact, and deployment-environment checks require release CI credentials." ""
 
 echo "=== [13/13] Evidence Manifest Generation ==="
 "${PYTHON}" "${ROOT}/scripts/generate_validation_manifest.py" "${MODE}" "${STEPS_JSON}"

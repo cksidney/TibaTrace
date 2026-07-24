@@ -20,6 +20,7 @@ class KnowledgeFinding:
     override_policy: str
     affected_medicine_id: object | None
     interacting_factor: str
+    prescription_item_id: object | None = None
 
 
 class ClinicalKnowledgeProvider(ABC):
@@ -52,3 +53,21 @@ class ClinicalKnowledgeProvider(ABC):
 
     @abstractmethod
     def check_duration(self, context) -> Iterable[KnowledgeFinding]: ...
+
+    def check_frequency(self, context) -> Iterable[KnowledgeFinding]:
+        return ()
+
+    def check_weight(self, context) -> Iterable[KnowledgeFinding]:
+        return ()
+
+    def check_lactation(self, context) -> Iterable[KnowledgeFinding]:
+        return ()
+
+    def check_controlled_medicine(self, context) -> Iterable[KnowledgeFinding]:
+        return ()
+
+    def check_repeat_interval(self, context) -> Iterable[KnowledgeFinding]:
+        return ()
+
+    def check_formulary(self, context) -> Iterable[KnowledgeFinding]:
+        return ()

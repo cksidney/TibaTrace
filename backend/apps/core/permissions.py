@@ -28,4 +28,9 @@ class TenantCapabilityPermission(BasePermission):
             if request.method not in {"GET", "HEAD", "OPTIONS"}
             else getattr(view, "read_capability", "")
         )
-        return bool(capability and request.user.has_capability(capability, tenant_id=tenant_id))
+        capabilities = request.user.effective_capabilities(tenant_id=tenant_id)
+        request.effective_capabilities = capabilities
+        return bool(
+            capability
+            and ("*" in capabilities or capability in capabilities)
+        )

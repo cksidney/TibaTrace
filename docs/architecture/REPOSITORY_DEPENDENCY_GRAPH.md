@@ -54,6 +54,12 @@ graph TD
     prescription --> medicines
     prescription --> cds
     prescription --> clinical
+    prescription --> inventory
+    prescription --> sales
+    prescription --> documents
+    prescription --> workflows
+    prescription --> notifications
+    prescription --> audit
 
     %% FHIR & Terminology
     terminology[apps.terminology] --> tenancy
@@ -80,8 +86,10 @@ graph TD
    - Enforces same-tenant/same-patient invariants, immutable ownership, document hashes, and temporal consistency.
 
 3. **`apps.prescription` & `apps.cds`**:
-   - Owns the canonical prescription lifecycle and drug interaction checking.
-   - Prescriptions cannot bypass clinical review or interaction evaluation.
+   - Own the legal-validation, versioned DUR, pharmacist-review, immutable verification, dispensing, supply, medication-history, reversal, and patient-return lifecycles.
+   - `apps.prescription` consumes, but never duplicates, medicine, inventory reservation, FEFO, ledger, sales, document, workflow, notification, identity, and audit authorities.
+   - Inventory is reduced only by `InventoryLedgerService` at final supply. Preparation and allocation do not reduce on-hand stock.
+   - Prescriptions cannot reserve stock without current pharmacist verification.
 
 4. **`apps.fhir` & `apps.terminology`**:
    - HL7 FHIR R4 4.0.1 gateway mapping domain models to/from FHIR resource representations.
@@ -127,8 +135,25 @@ DRAFT -> CLINICAL_REVIEW -> APPROVED / BLOCKED -> DISPENSING
       -> READY_FOR_PAYMENT -> PAID -> DISPENSED -> REVERSED
 ```
 
-- **Invariant**: State transitions must be executed through `PrescriptionWorkflowService`. Direct database status mutation is strictly prohibited.
+- **Invariant**: Legacy workflow transitions use `PrescriptionWorkflowService`; Phase 5 legal, clinical, verification, dispensing, supply, reversal, and return transitions use their authoritative domain services. Serializers and ViewSets never mutate these states directly.
 - **Payment & Dispensing Separation**: Payment completion (`PAID`) and physical dispensing completion (`DISPENSED`) remain separate, auditable domain states.
+
+The legacy state machine remains available for existing clients. Phase 5 adds orthogonal legal-validation, clinical-review, pharmacist-verification, and dispensing state dimensions governed by services in `apps.prescription.services.clinical_dispensing`.
+
+```text
+Prescription Received
+→ Legal Validation
+→ Versioned DUR
+→ Pharmacist Review / Intervention
+→ Immutable Pharmacist Verification
+→ Inventory Reservation
+→ Existing FEFO Allocation
+→ Preparation
+→ Independent Check
+→ Counselling
+→ Supply / Inventory Issue
+→ Append-only Medication History
+```
 
 ---
 

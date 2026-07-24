@@ -12,9 +12,18 @@ from apps.tenancy.models import Tenant
 
 ALL_CAPABILITIES = [
     "organizations.read", "organizations.write", "patients.read", "patients.write",
+    "patients.create", "patients.identity.manage", "patients.identity.view", "patients.sensitive.view",
+    "patients.allergy.record", "patients.clinical_summary.manage",
     "practitioners.read", "practitioners.write", "prescriptions.read", "prescriptions.write",
+    "prescribers.verify", "prescriptions.intake", "prescriptions.legal_validate",
+    "prescriptions.clinical_review", "prescriptions.intervention.create",
+    "prescriptions.pharmacist_verify", "prescriptions.critical_override",
+    "prescriptions.controlled_verify", "prescriptions.substitution.approve",
     "prescriptions.review", "prescriptions.approve", "prescriptions.record_payment",
     "dispensing.read", "dispensing.prepare", "dispensing.complete", "dispensing.reverse", "dispensing.substitute",
+    "dispensing.reserve", "dispensing.allocate", "dispensing.check", "dispensing.supply",
+    "dispensing.counsel", "dispensing.repeat.authorize", "dispensing.return.receive",
+    "dispensing.return.quality", "dispensing.return.restock",
     "clinical.read", "clinical.write", "cds.read", "cds.configure.read", "cds.configure", "cds.override",
     "terminology.read", "terminology.manage", "audit.read", "documents.read", "documents.write",
     "system/Organization.read", "system/Location.read", "system/Patient.read", "system/Patient.write",

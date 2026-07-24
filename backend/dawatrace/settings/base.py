@@ -163,6 +163,8 @@ SPECTACULAR_SETTINGS = {
     "ENUM_NAME_OVERRIDES": {
         "QualityStatusEnum": "apps.procurement.models.ReceivedBatch.QualityStatus",
         "InventoryBatchQualityStatusEnum": "apps.inventory.models.InventoryBatch.QualityStatus",
+        "PatientIdentifierVerificationStatusEnum": "apps.patients.models.PatientIdentifier.VERIFICATION_STATUSES",
+        "ClinicalRecordVerificationStatusEnum": "apps.patients.models.PatientAllergy.VERIFICATION_CHOICES",
     },
 }
 
