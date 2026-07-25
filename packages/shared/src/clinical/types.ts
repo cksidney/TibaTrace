@@ -162,6 +162,10 @@ export interface PosClinicalContext {
   deviceId: string;
   registerId?: string;
   transactionId: string;
+  /**
+   * Recorded as basket context, not as an authorisation claim. Every clinical
+   * write authorises against the authenticated session instead.
+   */
   cashierId: string;
   patientId?: string;
   patientName?: string;
@@ -273,19 +277,32 @@ export interface PosClinicalScreeningRequest {
 /** Request body for POST .../acknowledge/ */
 export interface PosClinicalAcknowledgement {
   findingId: string;
-  cashierId: string;
+  /** Required; the server refuses a write against a changed basket. */
+  expectedContextHash: string;
 }
 
 /** Request body for POST .../request-pharmacist/ */
 export interface PosPharmacistReviewRequest {
-  cashierId: string;
+  /**
+   * The context the caller believes it is acting on. Required: the server
+   * refuses the write if the basket changed after screening, and omitting it
+   * fails closed rather than skipping the check.
+   */
+  expectedContextHash: string;
   urgencyNote?: string;
 }
 
 /** Request body for POST .../pharmacist-review/ */
 export interface PosPharmacistDecision {
   findingId?: string;
-  pharmacistId: string;
+  /**
+   * The deciding pharmacist is the authenticated user. It is deliberately not a
+   * field here: the API previously resolved the actor from a client-supplied
+   * id, which let a caller nominate whose authority to act under -- a cashier
+   * could pass a pharmacist's id and approve their own override. Authority now
+   * comes from the session alone.
+   */
+  expectedContextHash: string;
   authMethod: PharmacistAuthMethod;
   decision: PharmacistDecisionType;
   clinicalJustification?: string;
@@ -298,11 +315,12 @@ export interface PosPharmacistDecision {
 /** Request body for POST .../override/ */
 export interface PosClinicalOverride {
   findingId: string;
-  pharmacistId: string;
   overrideReason: ClinicalOverrideReason;
+  /** Mandatory. The server rejects an override without one. */
   clinicalJustification: string;
   overrideCapability: string;
   idempotencyKey: string;
+  expectedContextHash: string;
 }
 
 /** Offline clinical sync record */
@@ -529,3 +547,9 @@ export const POS_CLINICAL_ROLE_CAPABILITIES: Record<string, string[]> = {
     POS_CLINICAL_CAPABILITIES.VIEW_AUDIT,
   ],
 };
+
+/** Request body for POST .../acknowledge/ */
+export interface PosAcknowledgementRequest {
+  findingId: string;
+  expectedContextHash: string;
+}
