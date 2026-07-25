@@ -1,17 +1,23 @@
 from __future__ import annotations
 
 import hashlib
-import hmac
 import json
 import uuid
 from decimal import Decimal
 
+from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 
 from apps.cds.models import (
     ActiveIngredient,
     ClinicalKnowledgeRule,
+)
+from apps.cds.offline_package_signing import (
+    VerificationResult,
+    build_payload,
+    sign_payload,
+    verify_package_payload,
 )
 from apps.cds.pos_screening_models import (
     PosClinicalAuditEvent,
@@ -399,50 +405,223 @@ class PosClinicalApprovalService:
 
 
 class PosOfflinePackageService:
+    """Issue, verify and revoke offline clinical packages.
+
+    Signing lives in apps/cds/offline_package_signing.py. This service owns the
+    surrounding policy: what may be issued, what may be handed out, and what
+    counts as still valid.
+    """
+
+    #: How long a freshly issued package remains usable offline.
+    DEFAULT_VALIDITY = timezone.timedelta(days=30)
+
     @staticmethod
     @transaction.atomic
-    def generate_package(*, tenant, generated_by=None):
-        rules = list(ClinicalKnowledgeRule.all_objects.filter(tenant=tenant, is_active=True).values())
+    def generate_package(
+        *,
+        tenant,
+        generated_by=None,
+        branch=None,
+        device_id="",
+        screening=None,
+        context_hash="",
+        permitted_actions=None,
+    ):
+        """Issue a package bound to the context it was created for.
+
+        A package must never be issued over an unsafe clinical state: doing so
+        would hand a terminal an offline authorisation for a basket the server
+        itself would refuse.
+        """
+        if screening is not None:
+            if not screening.safe_to_proceed:
+                raise ValidationError(
+                    "Cannot issue an offline package while the screening is not safe to proceed."
+                )
+            if context_hash and screening.context_hash != context_hash:
+                raise ValidationError("STALE_CLINICAL_CONTEXT: screening context has changed.")
+            context_hash = context_hash or screening.context_hash
+
+        rules = list(
+            ClinicalKnowledgeRule.all_objects.filter(tenant=tenant, is_active=True).values()
+        )
         ingredients = list(ActiveIngredient.all_objects.filter(tenant=tenant).values())
-        
-        package_data = {
-            "rules": rules,
-            "ingredients": ingredients,
-        }
-        
-        json_data = json.dumps(package_data, sort_keys=True, default=str)
-        key = str(tenant.pk).encode('utf-8')
-        signature = hmac.new(key, json_data.encode('utf-8'), hashlib.sha256).hexdigest()
-        
-        version = f"PKG-{timezone.now().strftime('%Y-%m-%d-%H%M%S')}"
-        expiry = timezone.now() + timezone.timedelta(days=30)
-        
+
+        package_id = uuid.uuid4()
+        nonce = uuid.uuid4()
+        issued_at = timezone.now()
+        expires_at = issued_at + PosOfflinePackageService.DEFAULT_VALIDITY
+        version = f"PKG-{issued_at.strftime('%Y-%m-%d-%H%M%S')}-{str(package_id)[:8]}"
+
+        payload = build_payload(
+            package_id=package_id,
+            signing_version=PosOfflineClinicalPackage.SigningVersion.OBJECT_SIGNING_KEY_V1,
+            tenant_id=tenant.pk,
+            branch_id=branch.pk if branch else None,
+            device_id=device_id,
+            patient_ref=str(getattr(screening, "patient_id", "") or ""),
+            prescription_ref=str(getattr(screening, "prescription_id", "") or ""),
+            episode_ref=str(getattr(screening, "dispensing_episode_id", "") or ""),
+            screening_ref=str(getattr(screening, "pk", "") or ""),
+            context_hash=context_hash,
+            findings=rules,
+            permitted_actions=permitted_actions or [],
+            issued_at=issued_at,
+            expires_at=expires_at,
+            package_version=version,
+            nonce=nonce,
+        )
+        # The clinical content travels alongside the signed envelope; the
+        # envelope is what authenticates it.
+        payload["rules"] = rules
+        payload["ingredients"] = ingredients
+
         pkg = PosOfflineClinicalPackage.all_objects.create(
+            id=package_id,
             tenant=tenant,
             version=version,
             rule_set_version=version,
-            package_data=package_data,
-            signature=signature,
-            expires_at=expiry,
-            generated_by=generated_by
+            package_data=payload,
+            signature=sign_payload(payload),
+            signing_version=PosOfflineClinicalPackage.SigningVersion.OBJECT_SIGNING_KEY_V1,
+            expires_at=expires_at,
+            generated_by=generated_by,
+            branch=branch,
+            device_id=device_id,
+            context_hash=context_hash,
+            nonce=nonce,
+            is_active=True,
+        )
+        emit_event(
+            tenant_id=str(tenant.pk),
+            aggregate_type="PosOfflineClinicalPackage",
+            aggregate_id=str(pkg.pk),
+            event_type="OfflineClinicalPackageIssued",
+            payload={
+                "package_id": str(pkg.pk),
+                "signing_version": pkg.signing_version,
+                "branch_id": str(branch.pk) if branch else "",
+                "device_id": device_id,
+                "context_hash": context_hash,
+                "expires_at": expires_at.isoformat(),
+            },
         )
         return pkg
 
     @staticmethod
-    def validate_package(*, package_data, signature, tenant):
-        json_data = json.dumps(package_data, sort_keys=True, default=str)
-        key = str(tenant.pk).encode('utf-8')
-        expected_signature = hmac.new(key, json_data.encode('utf-8'), hashlib.sha256).hexdigest()
-        return hmac.compare_digest(expected_signature, signature)
+    def verify(
+        *,
+        tenant,
+        package_data,
+        signature,
+        signing_version,
+        package=None,
+        expected_branch_id=None,
+        expected_device_id=None,
+        expected_context_hash=None,
+    ):
+        """Authoritative verification. Returns a typed result; never raises."""
+        if package is not None:
+            if not package.is_active or package.revoked_at is not None:
+                return VerificationResult.failure(
+                    "OFFLINE_PACKAGE_REVOKED", "Package has been revoked."
+                )
+            # The signed payload carries its own expires_at, which is what stops
+            # a device extending its own package. The column is checked as well
+            # so that an operator can expire a package server-side without
+            # needing to re-sign anything.
+            if package.expires_at is not None and package.expires_at <= timezone.now():
+                return VerificationResult.failure(
+                    "OFFLINE_PACKAGE_EXPIRED", "Package has expired."
+                )
+        return verify_package_payload(
+            payload=package_data,
+            signature=signature,
+            signing_version=signing_version,
+            now=timezone.now(),
+            expected_tenant_id=tenant.pk,
+            expected_branch_id=expected_branch_id,
+            expected_device_id=expected_device_id,
+            expected_context_hash=expected_context_hash,
+        )
+
+    @staticmethod
+    def validate_package(*, package_data, signature, tenant, signing_version=None):
+        """Backwards-compatible boolean wrapper.
+
+        Retained because existing callers expect a boolean. It now defaults to
+        the legacy signing version, which always fails -- a caller that has not
+        been updated to pass a real version gets a refusal, not a pass.
+        """
+        result = PosOfflinePackageService.verify(
+            tenant=tenant,
+            package_data=package_data,
+            signature=signature,
+            signing_version=signing_version
+            or PosOfflineClinicalPackage.SigningVersion.LEGACY_TENANT_UUID_HMAC,
+        )
+        return result.valid
+
+    @staticmethod
+    def get_valid_package(*, tenant, branch=None, device_id=None, context_hash=None):
+        """Return the newest package that actually verifies, or None.
+
+        Deliberately not "the newest package": the previous implementation
+        returned whatever was most recent, expired or not.
+        """
+        candidates = PosOfflineClinicalPackage.all_objects.filter(
+            tenant=tenant,
+            is_active=True,
+            revoked_at__isnull=True,
+            expires_at__gt=timezone.now(),
+        ).order_by("-created_at")
+        if branch is not None:
+            candidates = candidates.filter(branch=branch)
+        if device_id:
+            candidates = candidates.filter(device_id=device_id)
+
+        for pkg in candidates[:20]:
+            result = PosOfflinePackageService.verify(
+                tenant=tenant,
+                package_data=pkg.package_data,
+                signature=pkg.signature,
+                signing_version=pkg.signing_version,
+                package=pkg,
+                expected_context_hash=context_hash,
+            )
+            if result.valid:
+                return pkg
+        return None
+
+    @staticmethod
+    @transaction.atomic
+    def revoke(*, package, reason, actor=None):
+        package.is_active = False
+        package.revoked_at = timezone.now()
+        package.revocation_reason = reason
+        package.save(update_fields=["is_active", "revoked_at", "revocation_reason"])
+        emit_event(
+            tenant_id=str(package.tenant_id),
+            aggregate_type="PosOfflineClinicalPackage",
+            aggregate_id=str(package.pk),
+            event_type="OfflineClinicalPackageRevoked",
+            payload={
+                "package_id": str(package.pk),
+                "reason": reason,
+                "actor_id": str(actor.pk) if actor else "",
+            },
+        )
+        return package
 
     @staticmethod
     def get_current_version(*, tenant):
-        pkg = PosOfflineClinicalPackage.all_objects.filter(tenant=tenant).order_by('-created_at').first()
+        pkg = PosOfflinePackageService.get_valid_package(tenant=tenant)
         if not pkg:
             return None
         return {
             "version": pkg.version,
+            "signing_version": pkg.signing_version,
             "expires_at": pkg.expires_at,
             "created_at": pkg.created_at,
-            "signature": pkg.signature
+            "signature": pkg.signature,
         }

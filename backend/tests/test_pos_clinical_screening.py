@@ -400,7 +400,24 @@ def test_generate_offline_package(tenant, pharmacist_user):
 
 def test_validate_package_signature(tenant, pharmacist_user):
     pkg = PosOfflinePackageService.generate_package(tenant=tenant, generated_by=pharmacist_user)
-    assert PosOfflinePackageService.validate_package(package_data=pkg.package_data, signature=pkg.signature, tenant=tenant)
+    assert PosOfflinePackageService.validate_package(
+        package_data=pkg.package_data,
+        signature=pkg.signature,
+        tenant=tenant,
+        signing_version=pkg.signing_version,
+    )
+
+
+def test_validate_package_without_signing_version_fails_closed(tenant, pharmacist_user):
+    """A caller that has not been updated must be refused, not trusted.
+
+    validate_package defaults to the withdrawn legacy version precisely so that
+    an old call site cannot keep silently passing.
+    """
+    pkg = PosOfflinePackageService.generate_package(tenant=tenant, generated_by=pharmacist_user)
+    assert not PosOfflinePackageService.validate_package(
+        package_data=pkg.package_data, signature=pkg.signature, tenant=tenant
+    )
 
 def test_invalid_signature_rejected(tenant, pharmacist_user):
     pkg = PosOfflinePackageService.generate_package(tenant=tenant, generated_by=pharmacist_user)

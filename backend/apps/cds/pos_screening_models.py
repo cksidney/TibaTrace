@@ -219,16 +219,52 @@ class PosClinicalOverride(TenantConsistencyMixin, TimestampedModel):
 
 
 class PosOfflineClinicalPackage(TenantConsistencyMixin, TimestampedModel):
+    class SigningVersion(models.TextChoices):
+        #: The original scheme keyed the HMAC on tenant.pk, which is public
+        #: metadata. Anyone holding a tenant UUID could mint a package that
+        #: verified, so packages signed this way prove nothing about their
+        #: origin and are rejected on sight. Retained as a value only so that
+        #: historical records can be classified and audited.
+        LEGACY_TENANT_UUID_HMAC = "LEGACY_TENANT_UUID_HMAC", "Legacy (forgeable)"
+        OBJECT_SIGNING_KEY_V1 = "OBJECT_SIGNING_KEY_V1", "Object signing key v1"
+
+    #: Only these may ever verify. LEGACY is deliberately absent.
+    SUPPORTED_SIGNING_VERSIONS = frozenset({SigningVersion.OBJECT_SIGNING_KEY_V1})
+
     tenant = models.ForeignKey("tenancy.Tenant", on_delete=models.CASCADE, related_name="+")
     version = models.CharField(max_length=64)
     rule_set_version = models.CharField(max_length=64, blank=True, default="")
     package_data = models.JSONField(default=dict)
     signature = models.CharField(max_length=512)
+    signing_version = models.CharField(
+        max_length=40,
+        choices=SigningVersion.choices,
+        default=SigningVersion.OBJECT_SIGNING_KEY_V1,
+    )
     generated_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField()
     generated_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
     )
+
+    # Binding: a package is valid only for the exact context it was issued for.
+    branch = models.ForeignKey(
+        "organizations.Location",
+        on_delete=models.PROTECT,
+        related_name="+",
+        null=True,
+        blank=True,
+    )
+    device_id = models.CharField(max_length=128, blank=True, default="")
+    context_hash = models.CharField(max_length=64, blank=True, default="")
+    #: Unique per issuance, so two packages can never be byte-identical and a
+    #: captured signature cannot be replayed onto a fresh record.
+    nonce = models.UUIDField(default=uuid.uuid4, editable=False)
+
+    # Revocation. Old packages are kept for audit rather than deleted.
+    is_active = models.BooleanField(default=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    revocation_reason = models.CharField(max_length=120, blank=True, default="")
 
     objects = StrictTenantManager()
     all_objects = models.Manager()
