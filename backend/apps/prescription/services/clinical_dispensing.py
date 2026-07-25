@@ -70,6 +70,20 @@ CAPABILITY_ALIASES = {
     "dispensing.return.receive": ("dispensing.reverse",),
     "dispensing.return.quality": ("dispensing.reverse",),
     "pos.shift.manage": ("dispensing.complete",),
+    # POS payment capabilities. Aliased to the existing payment capability so
+    # roles already trusted to take money keep working, while tenants can grant
+    # the finer-grained ones as they adopt them.
+    "pos.payment.intent.create": ("prescriptions.record_payment",),
+    "pos.payment.tender.allocate": ("prescriptions.record_payment",),
+    "pos.payment.cash.accept": ("prescriptions.record_payment",),
+    "pos.payment.card.confirm": ("prescriptions.record_payment",),
+    "pos.payment.provider.initiate": ("prescriptions.record_payment",),
+    "pos.payment.status.view": ("dispensing.read",),
+    "pos.payment.cancel": ("prescriptions.record_payment",),
+    # Deliberately NOT aliased to record_payment: taking money back and
+    # reconciling it are supervisory acts, separate from accepting payment.
+    "pos.payment.reverse": ("dispensing.reverse",),
+    "pos.payment.reconcile": ("dispensing.reverse",),
 }
 
 

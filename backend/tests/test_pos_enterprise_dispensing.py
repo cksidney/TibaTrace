@@ -223,6 +223,9 @@ PHARMACIST_CAPS = [
     "prescriptions.approve",
     "prescriptions.record_payment",
     "pos.shift.manage",
+    # Reversal and reconciliation are supervisory: deliberately absent from
+    # CASHIER_CAPS below.
+    "dispensing.reverse",
 ]
 CASHIER_CAPS = ["dispensing.read", "prescriptions.record_payment", "pos.shift.manage"]
 

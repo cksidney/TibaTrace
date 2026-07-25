@@ -1976,3 +1976,14 @@ class PosLabelReprintAudit(TenantConsistencyMixin, TimestampedModel):
     def __str__(self):
         return f"Reprint for {self.label.document_number} by {self.reprinted_by_id}"
 
+
+# The POS payment intent and settlement ledger lives in its own module for
+# readability; re-exported here so Django registers it with this app.
+from apps.prescription.payment_models import (  # noqa: E402,F401
+    PaymentAttempt,
+    PaymentIntent,
+    PaymentProviderEvent,
+    PaymentReversal,
+    PaymentSettlement,
+    PaymentTender,
+)

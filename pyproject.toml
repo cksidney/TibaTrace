@@ -12,6 +12,7 @@ ignore = ["E501"]
 # Pytest fixtures shared across test modules are imported by name, which ruff
 # reads as a redefinition when a test takes the fixture as an argument.
 "backend/tests/test_pos_dispensing_controls.py" = ["F811"]
+"backend/tests/test_pos_payment_ledger.py" = ["F811"]
 
 [tool.bandit]
 exclude_dirs = ["backend/tests", "backend/apps/*/tests", "backend/apps/*/migrations"]
