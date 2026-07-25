@@ -6,3 +6,4 @@ export * from './workflow.js';
 export * from './tenders.js';
 export * from './splitTender.js';
 export * from './timeline.js';
+export * from './taskQueue.js';
