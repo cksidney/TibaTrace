@@ -18,6 +18,7 @@ urlpatterns = [
     path("api/", include("apps.prescription.api.urls")),
     path("api/clinical/", include("apps.clinical.urls")),
     path("api/cds/", include("apps.cds.urls")),
+    path("api/pos/clinical-screening/", include("apps.cds.pos_api.urls")),
     path("api/terminology/", include("apps.terminology.urls")),
     path("api/audit/", include("apps.audit.urls")),
     path("api/documents/", include("apps.documents.urls")),

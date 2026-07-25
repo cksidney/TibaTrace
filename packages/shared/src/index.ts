@@ -982,3 +982,6 @@ export interface PaginatedResponse<T> {
   previous?: string;
   results: T[];
 }
+
+// ─── POS Clinical Safety Plugin ─────────────────────────────────────────────────
+export * from "./clinical/index.js";

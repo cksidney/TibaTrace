@@ -61,6 +61,19 @@ graph TD
     prescription --> notifications
     prescription --> audit
 
+    %% POS Clinical Screening Components
+    pos_screening_models[apps.cds.pos_screening_models] --> cds
+    pos_screening_models --> patients
+    pos_screening_models --> prescription
+    pos_screening_models --> tenancy
+    pos_screening_services[apps.cds.pos_screening_services] --> pos_screening_models
+    pos_screening_services --> cds_services[apps.cds.services]
+    pos_screening_services --> medicines
+    pos_screening_services --> patients
+    pos_screening_services --> inventory
+    pos_api[apps.cds.pos_api] --> pos_screening_services
+    pos_api --> pos_screening_models
+
     %% FHIR & Terminology
     terminology[apps.terminology] --> tenancy
     fhir[apps.fhir] --> tenancy
@@ -90,6 +103,7 @@ graph TD
    - `apps.prescription` consumes, but never duplicates, medicine, inventory reservation, FEFO, ledger, sales, document, workflow, notification, identity, and audit authorities.
    - Inventory is reduced only by `InventoryLedgerService` at final supply. Preparation and allocation do not reduce on-hand stock.
    - Prescriptions cannot reserve stock without current pharmacist verification.
+   - POS clinical screening modules (`apps.cds.pos_screening_models`, `apps.cds.pos_screening_services`, `apps.cds.pos_api`) integrate POS clinical workflows directly with the central CDS engine.
 
 4. **`apps.fhir` & `apps.terminology`**:
    - HL7 FHIR R4 4.0.1 gateway mapping domain models to/from FHIR resource representations.
@@ -106,6 +120,7 @@ graph TD
 graph LR
     subgraph Packages
         shared["@dawatrace/shared (packages/shared)"]
+        shared_clinical["packages/shared/src/clinical"]
     end
 
     subgraph Applications
@@ -113,16 +128,22 @@ graph LR
         portal["Patient/Provider Portal (apps/portal)"]
         pos_android["Android POS (apps/pos-android)"]
         pos_windows["Windows POS (apps/pos-windows)"]
+        pos_win_plugin["apps/pos-windows/plugins/drug-interaction"]
+        pos_and_plugin["apps/pos-android/plugins/drug-interaction"]
     end
 
     hq --> shared
     portal --> shared
     pos_android --> shared
     pos_windows --> shared
+    shared_clinical --> shared
+    pos_win_plugin --> shared_clinical
+    pos_and_plugin --> shared_clinical
 ```
 
 * **`@dawatrace/shared`**: The single source of truth for TypeScript interfaces, API contract definitions, FHIR types, and domain status enums.
-* **Frontend Applications**: Consume `@dawatrace/shared` contracts directly. No ad-hoc or duplicated type definitions are permitted.
+* **`packages/shared/src/clinical`**: Shared clinical contracts consumed by POS drug interaction plugins.
+* **Frontend Applications & Plugins**: Consume `@dawatrace/shared` contracts directly. `apps/pos-windows/plugins/drug-interaction` and `apps/pos-android/plugins/drug-interaction` consume `packages/shared/src/clinical`. No ad-hoc or duplicated type definitions are permitted.
 
 ---
 
