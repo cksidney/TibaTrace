@@ -103,10 +103,23 @@ describe('android accessibility guarantees', () => {
 });
 
 describe('android payment parity with windows', () => {
-  it('offers exactly the tenders the server can settle', async () => {
+  it('offers only tenders the server can actually settle', async () => {
     const { TENDER_OPTIONS } = await import('@dawatrace/shared/dispensing/index.js');
-    const available = TENDER_OPTIONS.filter((t) => t.available).map((t) => t.type);
-    expect(available).toEqual(['CASH', 'CARD']);
+    // SPLIT is an allocation mode, not a tender: it distributes across the
+    // settleable ones and is never sent as a tender_type.
+    const settleable = TENDER_OPTIONS.filter((t) => t.available && t.type !== 'SPLIT').map(
+      (t) => t.type,
+    );
+    expect(settleable).toEqual(['CASH', 'CARD']);
+  });
+
+  it('keeps MPESA disabled until a real provider adapter exists', async () => {
+    // The fake adapter is for tests and demos; it must not make the tender look
+    // settleable on a real deployment.
+    const { TENDER_OPTIONS } = await import('@dawatrace/shared/dispensing/index.js');
+    const mpesa = TENDER_OPTIONS.find((t) => t.type === 'MPESA');
+    expect(mpesa?.available).toBe(false);
+    expect(mpesa?.blocker).toBeTruthy();
   });
 
   it('states a blocker for every unavailable tender', async () => {
@@ -123,7 +136,7 @@ describe('android payment parity with windows', () => {
       'CASH:true',
       'CARD:true',
       'MPESA:false',
-      'SPLIT:false',
+      'SPLIT:true',
     ]);
   });
 });

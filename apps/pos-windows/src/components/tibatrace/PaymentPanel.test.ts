@@ -10,9 +10,18 @@ import { lineStatus } from './PrescriptionWorkspace.js';
 describe('tender availability', () => {
   it('only offers tenders whose settlement path exists on the server', () => {
     // Offering a tender the server cannot settle lets an operator start a
-    // payment the system cannot finish.
-    const available = TENDER_OPTIONS.filter((option) => option.available).map((o) => o.type);
-    expect(available).toEqual(['CASH', 'CARD']);
+    // payment the system cannot finish. SPLIT is excluded here because it is an
+    // allocation mode across the settleable tenders, not a tender itself.
+    const settleable = TENDER_OPTIONS.filter((o) => o.available && o.type !== 'SPLIT').map(
+      (o) => o.type,
+    );
+    expect(settleable).toEqual(['CASH', 'CARD']);
+  });
+
+  it('keeps MPESA disabled until a real provider adapter exists', () => {
+    const mpesa = TENDER_OPTIONS.find((o) => o.type === 'MPESA');
+    expect(mpesa?.available).toBe(false);
+    expect(mpesa?.blocker).toBeTruthy();
   });
 
   it('states why an unavailable tender is disabled', () => {

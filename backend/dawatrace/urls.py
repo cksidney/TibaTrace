@@ -3,9 +3,11 @@ from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 from apps.platform.admin_shell import admin_shell
-from apps.platform.views import PlatformInfoView, health
+from apps.platform.views import PlatformInfoView, health, pos_terminal_view
 
 urlpatterns = [
+    path("", pos_terminal_view, name="pos-home"),
+    path("pos/", pos_terminal_view, name="pos-terminal"),
     path("admin/", admin.site.urls),
     path("admin-shell/", admin_shell, name="admin-shell"),
     path("api/health/", health, name="health"),
@@ -20,6 +22,7 @@ urlpatterns = [
     path("api/cds/", include("apps.cds.urls")),
     path("api/pos/clinical-screening/", include("apps.cds.pos_api.urls")),
     path("api/pos/dispensing/", include("apps.prescription.pos_dispensing_api.urls")),
+    path("api/pos/payments/", include("apps.prescription.payment_api.urls")),
     path("api/terminology/", include("apps.terminology.urls")),
     path("api/audit/", include("apps.audit.urls")),
     path("api/documents/", include("apps.documents.urls")),

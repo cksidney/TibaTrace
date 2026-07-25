@@ -8585,6 +8585,94 @@
         ],
         "type": "object"
       },
+      "PaymentIntent": {
+        "properties": {
+          "amount_due": {
+            "format": "decimal",
+            "pattern": "^-?\\d{0,13}(?:\\.\\d{0,2})?$",
+            "readOnly": true,
+            "type": "string"
+          },
+          "amount_remaining": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "amount_reversed": {
+            "format": "decimal",
+            "pattern": "^-?\\d{0,13}(?:\\.\\d{0,2})?$",
+            "readOnly": true,
+            "type": "string"
+          },
+          "amount_settled": {
+            "format": "decimal",
+            "pattern": "^-?\\d{0,13}(?:\\.\\d{0,2})?$",
+            "readOnly": true,
+            "type": "string"
+          },
+          "currency": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "dispensing_episode": {
+            "format": "uuid",
+            "readOnly": true,
+            "type": "string"
+          },
+          "effective_settled": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "readOnly": true,
+            "type": "string"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PaymentIntentStatusEnum"
+              }
+            ],
+            "readOnly": true
+          },
+          "tenders": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "version": {
+            "readOnly": true,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "amount_due",
+          "amount_remaining",
+          "amount_reversed",
+          "amount_settled",
+          "currency",
+          "dispensing_episode",
+          "effective_settled",
+          "id",
+          "status",
+          "tenders",
+          "version"
+        ],
+        "type": "object"
+      },
+      "PaymentIntentStatusEnum": {
+        "description": "* `CREATED` - Created\n* `OPEN` - Open\n* `PARTIALLY_SETTLED` - Partially settled\n* `SETTLED` - Settled\n* `CANCELLED` - Cancelled\n* `REVERSAL_PENDING` - Reversal pending\n* `REVERSED` - Reversed\n* `EXPIRED` - Expired",
+        "enum": [
+          "CREATED",
+          "OPEN",
+          "PARTIALLY_SETTLED",
+          "SETTLED",
+          "CANCELLED",
+          "REVERSAL_PENDING",
+          "REVERSED",
+          "EXPIRED"
+        ],
+        "type": "string"
+      },
       "PaymentStateEnum": {
         "description": "* `NOT_REQUIRED` - Not required\n* `PENDING` - Pending\n* `AUTHORIZED` - Authorized\n* `PARTIALLY_PAID` - Partially paid\n* `PAID` - Paid\n* `WAIVED` - Waived\n* `FAILED` - Failed\n* `CANCELLED` - Cancelled\n* `REVERSAL_PENDING` - Reversal pending\n* `REVERSED` - Reversed\n* `REFUNDED` - Refunded",
         "enum": [
@@ -8599,6 +8687,107 @@
           "REVERSAL_PENDING",
           "REVERSED",
           "REFUNDED"
+        ],
+        "type": "string"
+      },
+      "PaymentTender": {
+        "properties": {
+          "allocated_amount": {
+            "format": "decimal",
+            "pattern": "^-?\\d{0,13}(?:\\.\\d{0,2})?$",
+            "readOnly": true,
+            "type": "string"
+          },
+          "cash_received": {
+            "format": "decimal",
+            "nullable": true,
+            "pattern": "^-?\\d{0,13}(?:\\.\\d{0,2})?$",
+            "readOnly": true,
+            "type": "string"
+          },
+          "change_due": {
+            "format": "decimal",
+            "nullable": true,
+            "pattern": "^-?\\d{0,13}(?:\\.\\d{0,2})?$",
+            "readOnly": true,
+            "type": "string"
+          },
+          "effective_settled": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "external_reference": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "readOnly": true,
+            "type": "string"
+          },
+          "provider": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProviderEnum"
+              }
+            ],
+            "readOnly": true
+          },
+          "reversed_amount": {
+            "format": "decimal",
+            "pattern": "^-?\\d{0,13}(?:\\.\\d{0,2})?$",
+            "readOnly": true,
+            "type": "string"
+          },
+          "settled_amount": {
+            "format": "decimal",
+            "pattern": "^-?\\d{0,13}(?:\\.\\d{0,2})?$",
+            "readOnly": true,
+            "type": "string"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PaymentTenderStatusEnum"
+              }
+            ],
+            "readOnly": true
+          },
+          "tender_type": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TenderTypeEnum"
+              }
+            ],
+            "readOnly": true
+          }
+        },
+        "required": [
+          "allocated_amount",
+          "cash_received",
+          "change_due",
+          "effective_settled",
+          "external_reference",
+          "id",
+          "provider",
+          "reversed_amount",
+          "settled_amount",
+          "status",
+          "tender_type"
+        ],
+        "type": "object"
+      },
+      "PaymentTenderStatusEnum": {
+        "description": "* `ALLOCATED` - Allocated\n* `PENDING` - Pending\n* `PARTIALLY_SETTLED` - Partially settled\n* `SETTLED` - Settled\n* `FAILED` - Failed\n* `CANCELLED` - Cancelled\n* `REVERSAL_PENDING` - Reversal pending\n* `REVERSED` - Reversed",
+        "enum": [
+          "ALLOCATED",
+          "PENDING",
+          "PARTIALLY_SETTLED",
+          "SETTLED",
+          "FAILED",
+          "CANCELLED",
+          "REVERSAL_PENDING",
+          "REVERSED"
         ],
         "type": "string"
       },
@@ -9038,6 +9227,18 @@
       },
       "PosDispensingEpisode": {
         "properties": {
+          "amount_due": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "amount_remaining": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "amount_settled": {
+            "readOnly": true,
+            "type": "string"
+          },
           "branch": {
             "format": "uuid",
             "readOnly": true,
@@ -9085,6 +9286,10 @@
             "type": "integer"
           },
           "counselling_status": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "currency": {
             "readOnly": true,
             "type": "string"
           },
@@ -9167,6 +9372,9 @@
           }
         },
         "required": [
+          "amount_due",
+          "amount_remaining",
+          "amount_settled",
           "branch",
           "collected_at",
           "collection_proof_type",
@@ -9178,6 +9386,7 @@
           "controlled_authority_checked",
           "controlled_witness",
           "counselling_status",
+          "currency",
           "dispensing_number",
           "id",
           "idempotency_key",
@@ -10378,6 +10587,15 @@
           "updated_at"
         ],
         "type": "object"
+      },
+      "ProviderEnum": {
+        "description": "* `MANUAL` - Manual\n* `FAKE` - Fake provider (test/demo)\n* `MPESA` - M-PESA",
+        "enum": [
+          "MANUAL",
+          "FAKE",
+          "MPESA"
+        ],
+        "type": "string"
       },
       "PurchaseOrder": {
         "properties": {
@@ -12578,6 +12796,15 @@
           "SUSPENDED",
           "DISQUALIFIED",
           "ARCHIVED"
+        ],
+        "type": "string"
+      },
+      "TenderTypeEnum": {
+        "description": "* `CASH` - Cash\n* `CARD` - Card\n* `MPESA` - M-PESA",
+        "enum": [
+          "CASH",
+          "CARD",
+          "MPESA"
         ],
         "type": "string"
       },
@@ -22185,6 +22412,721 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PosShiftRecord"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "pos"
+        ]
+      }
+    },
+    "/api/pos/payments/intents/": {
+      "get": {
+        "operationId": "pos_payments_intents_list",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PaymentIntent"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "pos"
+        ]
+      }
+    },
+    "/api/pos/payments/intents/create_intent/": {
+      "post": {
+        "operationId": "pos_payments_intents_create_intent_create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PaymentIntent"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PaymentIntent"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/PaymentIntent"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentIntent"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "pos"
+        ]
+      }
+    },
+    "/api/pos/payments/intents/{id}/": {
+      "get": {
+        "operationId": "pos_payments_intents_retrieve",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this payment intent.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentIntent"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "pos"
+        ]
+      }
+    },
+    "/api/pos/payments/intents/{id}/cancel/": {
+      "post": {
+        "operationId": "pos_payments_intents_cancel_create",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this payment intent.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PaymentIntent"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PaymentIntent"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/PaymentIntent"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentIntent"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "pos"
+        ]
+      }
+    },
+    "/api/pos/payments/intents/{id}/summary/": {
+      "get": {
+        "description": "Allocation totals for the till.",
+        "operationId": "pos_payments_intents_summary_retrieve",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this payment intent.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentIntent"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "pos"
+        ]
+      }
+    },
+    "/api/pos/payments/intents/{id}/tenders/": {
+      "post": {
+        "operationId": "pos_payments_intents_tenders_create",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this payment intent.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PaymentIntent"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PaymentIntent"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/PaymentIntent"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentIntent"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "pos"
+        ]
+      }
+    },
+    "/api/pos/payments/settlements/": {
+      "get": {
+        "operationId": "pos_payments_settlements_list",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PaymentTender"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "pos"
+        ]
+      }
+    },
+    "/api/pos/payments/settlements/{id}/": {
+      "get": {
+        "operationId": "pos_payments_settlements_retrieve",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this payment settlement.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentTender"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "pos"
+        ]
+      }
+    },
+    "/api/pos/payments/settlements/{id}/reverse/": {
+      "post": {
+        "operationId": "pos_payments_settlements_reverse_create",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this payment settlement.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PaymentTender"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PaymentTender"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/PaymentTender"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentTender"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "pos"
+        ]
+      }
+    },
+    "/api/pos/payments/tenders/": {
+      "get": {
+        "operationId": "pos_payments_tenders_list",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PaymentTender"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "pos"
+        ]
+      }
+    },
+    "/api/pos/payments/tenders/{id}/": {
+      "get": {
+        "operationId": "pos_payments_tenders_retrieve",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this payment tender.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentTender"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "pos"
+        ]
+      }
+    },
+    "/api/pos/payments/tenders/{id}/cancel/": {
+      "post": {
+        "operationId": "pos_payments_tenders_cancel_create",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this payment tender.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PaymentTender"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PaymentTender"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/PaymentTender"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentTender"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "pos"
+        ]
+      }
+    },
+    "/api/pos/payments/tenders/{id}/card-confirm/": {
+      "post": {
+        "operationId": "pos_payments_tenders_card_confirm_create",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this payment tender.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PaymentTender"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PaymentTender"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/PaymentTender"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentTender"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "pos"
+        ]
+      }
+    },
+    "/api/pos/payments/tenders/{id}/cash-settle/": {
+      "post": {
+        "operationId": "pos_payments_tenders_cash_settle_create",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this payment tender.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PaymentTender"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PaymentTender"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/PaymentTender"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentTender"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "pos"
+        ]
+      }
+    },
+    "/api/pos/payments/tenders/{id}/initiate/": {
+      "post": {
+        "description": "Ask a provider to collect. Records only that we asked.",
+        "operationId": "pos_payments_tenders_initiate_create",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this payment tender.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PaymentTender"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PaymentTender"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/PaymentTender"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentTender"
                 }
               }
             },

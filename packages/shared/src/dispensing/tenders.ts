@@ -30,12 +30,10 @@ export const TENDER_OPTIONS: readonly TenderOption[] = [
     available: false,
     blocker: 'M-PESA settlement is not yet available on this deployment.',
   },
-  {
-    type: 'SPLIT',
-    label: 'Split tender',
-    available: false,
-    blocker: 'Split-tender allocation is not yet available on this deployment.',
-  },
+  // Enabled once the server gained intent/tender allocation, settlement
+  // orchestration and the API to drive them. It was disabled while those were
+  // absent rather than shown as a control that could not complete.
+  { type: 'SPLIT', label: 'Split tender', available: true },
 ];
 
 export function tenderIsAvailable(mode: PaymentMode): boolean {
