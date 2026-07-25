@@ -47,22 +47,29 @@ class Command(BaseCommand):
             else:
                 self.stdout.write(self.style.SUCCESS(f"  ok   {label}"))
 
-        # 1. Supply must never precede a payment gate that permits it.
-        #    payment_gate_state is the authoritative field -- it is what
-        #    MedicineSupplyService actually enforces. payment_status is the POS
-        #    mirror and is left at its default by non-POS dispensing paths, so
-        #    asserting on it would falsely flag every clinically-dispensed
-        #    episode.
+        # 1. Supply must never precede a payment state that permits it.
         record(
-            "supplied episodes whose payment gate did not permit supply",
-            supplied.exclude(payment_gate_state__in=MedicineSupplyService.ALLOWED_PAYMENT_STATES),
+            "supplied episodes whose payment state did not permit supply",
+            supplied.exclude(payment_state__in=MedicineSupplyService.ALLOWED_PAYMENT_STATES),
         )
 
-        # 1b. Where the POS did record a payment, the two must not disagree.
-        record(
-            "episodes where POS payment_status contradicts the payment gate",
-            supplied.filter(payment_status="PAID").exclude(payment_gate_state="PAID"),
+        # 1b. Structural guard: payment settlement must be expressed by exactly
+        #     one field. A second one reintroduces the divergence this model was
+        #     collapsed to remove, so fail the build rather than let it ship.
+        rogue = sorted(
+            f.name
+            for f in DispensingEpisode._meta.get_fields()
+            if getattr(f, "attname", None)
+            and f.name != "payment_state"
+            and f.name.startswith("payment_")
+            and getattr(f, "choices", None)
+            and {c[0] for c in f.choices} & {"PAID", "NOT_REQUIRED"}
         )
+        if rogue:
+            issues.append(f"second authoritative payment state field: {rogue}")
+            self.stderr.write(self.style.ERROR(f"  FAIL second payment-state field present: {rogue}"))
+        else:
+            self.stdout.write(self.style.SUCCESS("  ok   exactly one canonical payment-state field"))
 
         # 2. Supply must never precede an independent final check.
         checked_ids = DispensingCheck.all_objects.filter(

@@ -897,14 +897,49 @@ class DispensingEpisode(TenantConsistencyMixin, TimestampedModel):
         ("REVERSED", "Reversed"),
         ("RETURNED", "Returned"),
     )
+    #: Canonical payment lifecycle. This is the single authoritative payment
+    #: state for an episode -- it replaced the former payment_gate_state /
+    #: payment_status pair, which could diverge. Do not add a second field that
+    #: also expresses settlement; check_pos_dispensing_integrity fails the build
+    #: if one reappears.
     PAYMENT_STATES = (
         ("NOT_REQUIRED", "Not required"),
         ("PENDING", "Pending"),
         ("AUTHORIZED", "Authorized"),
+        ("PARTIALLY_PAID", "Partially paid"),
         ("PAID", "Paid"),
         ("WAIVED", "Waived"),
         ("FAILED", "Failed"),
+        ("CANCELLED", "Cancelled"),
+        ("REVERSAL_PENDING", "Reversal pending"),
+        ("REVERSED", "Reversed"),
+        ("REFUNDED", "Refunded"),
     )
+
+    #: States in which medicine supply is commercially permitted. PARTIALLY_PAID
+    #: is deliberately excluded: part-payment must not release stock.
+    PAYMENT_STATES_PERMITTING_SUPPLY = frozenset(
+        {"NOT_REQUIRED", "AUTHORIZED", "PAID", "WAIVED"}
+    )
+
+    #: States a caller may request when an episode is first created. Settlement
+    #: states are absent by design -- an episode must never be born already paid.
+    PAYMENT_STATES_AT_CREATION = frozenset({"NOT_REQUIRED", "PENDING", "WAIVED"})
+
+    #: Permitted transitions. Terminal states have no outgoing edges.
+    PAYMENT_TRANSITIONS = {
+        "NOT_REQUIRED": {"PENDING", "CANCELLED"},
+        "PENDING": {"AUTHORIZED", "PARTIALLY_PAID", "PAID", "WAIVED", "FAILED", "CANCELLED"},
+        "AUTHORIZED": {"PARTIALLY_PAID", "PAID", "FAILED", "CANCELLED", "REVERSAL_PENDING"},
+        "PARTIALLY_PAID": {"PARTIALLY_PAID", "PAID", "FAILED", "CANCELLED", "REVERSAL_PENDING"},
+        "PAID": {"REVERSAL_PENDING", "REFUNDED"},
+        "WAIVED": {"REVERSAL_PENDING"},
+        "FAILED": {"PENDING", "CANCELLED"},
+        "CANCELLED": set(),
+        "REVERSAL_PENDING": {"REVERSED", "PAID"},
+        "REVERSED": {"REFUNDED"},
+        "REFUNDED": set(),
+    }
 
     tenant_relation_fields = (
         "prescription",
@@ -951,12 +986,11 @@ class DispensingEpisode(TenantConsistencyMixin, TimestampedModel):
         blank=True,
         related_name="dispensing_episodes",
     )
-    payment_gate_state = models.CharField(
+    payment_state = models.CharField(
         max_length=30,
         choices=PAYMENT_STATES,
         default="NOT_REQUIRED",
     )
-    payment_status = models.CharField(max_length=30, choices=PAYMENT_STATES, default="PENDING")
     payment_idempotency_key = models.CharField(max_length=255, blank=True, default="")
     payment_reference = models.CharField(max_length=128, blank=True, default="")
     tender_type = models.CharField(max_length=64, default="CASH")

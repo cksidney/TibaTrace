@@ -420,12 +420,12 @@ def test_payment_orchestration_links_payment_without_inventory_deduction(domain)
     )
 
     assert res["success"]
-    assert res["payment_status"] == "PAID"
+    assert res["payment_state"] == "PAID"
     episode.refresh_from_db()
     assert episode.status == "PAID"
     assert episode.paid_amount == Decimal("150.00")
-    # payment_gate_state is what the supply service reads; both must move.
-    assert episode.payment_gate_state == "PAID"
+    # One canonical field now carries settlement.
+    assert episode.payment_state == "PAID"
 
     # Payment must not deduct stock: only the RECEIPT and RESERVATION exist.
     assert not InventoryLedgerEntry.all_objects.filter(

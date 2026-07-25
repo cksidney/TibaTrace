@@ -353,7 +353,7 @@ class DispensingEpisodeSerializer(serializers.ModelSerializer):
             "completed_at",
             "supply_method",
             "sales_order",
-            "payment_gate_state",
+            "payment_state",
             "counselling_status",
             "notes",
             "idempotency_key",
@@ -408,8 +408,10 @@ class DispensingEpisodeCreateSerializer(serializers.Serializer):
     pharmacy_location_id = serializers.UUIDField()
     supply_method = serializers.CharField(default="PATIENT_COLLECTION")
     sales_order_id = serializers.UUIDField(required=False, allow_null=True)
-    payment_gate_state = serializers.ChoiceField(
-        choices=DispensingEpisode.PAYMENT_STATES,
+    # Only non-settlement states may be requested at creation: an episode
+    # must never be created already PAID.
+    payment_state = serializers.ChoiceField(
+        choices=sorted(DispensingEpisode.PAYMENT_STATES_AT_CREATION),
         required=False,
     )
     notes = serializers.CharField(required=False, allow_blank=True)

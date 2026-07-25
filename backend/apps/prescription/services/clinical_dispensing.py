@@ -1616,7 +1616,7 @@ class DispensingEpisodeService:
         idempotency_key,
         supply_method="PATIENT_COLLECTION",
         sales_order=None,
-        payment_gate_state=None,
+        payment_state=None,
         notes="",
     ):
         _require_capability(actor, prescription.tenant_id, "dispensing.reserve")
@@ -1655,7 +1655,7 @@ class DispensingEpisodeService:
             pharmacist=actor,
             supply_method=supply_method,
             sales_order=sales_order,
-            payment_gate_state=payment_gate_state
+            payment_state=payment_state
             or ("PENDING" if sales_order else "NOT_REQUIRED"),
             notes=notes,
             idempotency_key=idempotency_key,
@@ -2468,7 +2468,8 @@ class ControlledMedicineRegisterService:
 
 
 class MedicineSupplyService:
-    ALLOWED_PAYMENT_STATES = {"NOT_REQUIRED", "AUTHORIZED", "PAID", "WAIVED"}
+    #: Delegates to the model so the gate and the lifecycle cannot drift apart.
+    ALLOWED_PAYMENT_STATES = DispensingEpisode.PAYMENT_STATES_PERMITTING_SUPPLY
 
     @staticmethod
     def _requested_lines(episode, line_quantities):
@@ -2530,7 +2531,7 @@ class MedicineSupplyService:
         _active_verification(prescription, lock=True)
         if prescription.expires_at and prescription.expires_at <= timezone.now():
             raise ValidationError("Expired prescriptions cannot be supplied.")
-        if episode.payment_gate_state not in cls.ALLOWED_PAYMENT_STATES:
+        if episode.payment_state not in cls.ALLOWED_PAYMENT_STATES:
             raise ValidationError("Payment gate does not permit medicine supply.")
         final_check = DispensingCheck.all_objects.filter(
             tenant_id=episode.tenant_id,

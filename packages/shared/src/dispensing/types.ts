@@ -11,6 +11,25 @@ export type DispensingQueueState =
   | 'CANCELLED'
   | 'REJECTED';
 
+/**
+ * Canonical payment lifecycle for a dispensing episode. Mirrors
+ * DispensingEpisode.PAYMENT_STATES on the backend, which is the authority.
+ * Only NOT_REQUIRED, AUTHORIZED, PAID and WAIVED permit medicine supply --
+ * PARTIALLY_PAID deliberately does not.
+ */
+export type PaymentState =
+  | 'NOT_REQUIRED'
+  | 'PENDING'
+  | 'AUTHORIZED'
+  | 'PARTIALLY_PAID'
+  | 'PAID'
+  | 'WAIVED'
+  | 'FAILED'
+  | 'CANCELLED'
+  | 'REVERSAL_PENDING'
+  | 'REVERSED'
+  | 'REFUNDED';
+
 export type PaymentTenderType =
   | 'CASH'
   | 'CARD'
@@ -51,8 +70,7 @@ export interface DispensingEpisodeDTO {
   status: DispensingQueueState;
   initiated_at: string;
   completed_at?: string | null;
-  payment_gate_state: string;
-  payment_status: string;
+  payment_state: PaymentState;
   payment_reference: string;
   tender_type: PaymentTenderType;
   paid_amount: string;
@@ -97,7 +115,7 @@ export interface PaymentProcessRequest {
 export interface PaymentProcessResponse {
   success: boolean;
   episode_id: string;
-  payment_status: string;
+  payment_state: PaymentState;
   payment_reference: string;
   tender_type: PaymentTenderType;
   paid_amount: string;

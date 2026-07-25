@@ -239,14 +239,14 @@ class PosPaymentOrchestrationService:
             return {
                 "success": True,
                 "episode_id": str(episode.id),
-                "payment_status": episode.payment_status,
+                "payment_state": episode.payment_state,
                 "payment_reference": episode.payment_reference,
                 "tender_type": episode.tender_type,
                 "paid_amount": str(episode.paid_amount),
                 "replayed": True,
             }
 
-        if episode.payment_status == "PAID":
+        if episode.payment_state == "PAID":
             raise ValidationError("Episode has already been paid.")
 
         if episode.status in ["CANCELLED", "REJECTED", "CLOSED"]:
@@ -272,9 +272,7 @@ class PosPaymentOrchestrationService:
 
         # Payment records commercial settlement only. It never touches inventory;
         # stock moves solely on confirmed physical supply.
-        episode.payment_status = "PAID"
-        # payment_gate_state is the field the authoritative supply service reads.
-        episode.payment_gate_state = "PAID"
+        episode.payment_state = "PAID"
         episode.payment_reference = payment_reference or f"PAY-{idempotency_key[:24].upper()}"
         episode.tender_type = tender_type
         episode.paid_amount = amount
@@ -298,7 +296,7 @@ class PosPaymentOrchestrationService:
         return {
             "success": True,
             "episode_id": str(episode.id),
-            "payment_status": "PAID",
+            "payment_state": "PAID",
             "payment_reference": episode.payment_reference,
             "tender_type": tender_type,
             "paid_amount": str(episode.paid_amount),

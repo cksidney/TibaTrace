@@ -70,7 +70,7 @@ def test_supply_is_refused_without_final_check_and_counselling(domain):
     """Was: supply completed with no DispensingCheck and no counselling."""
     episode = domain["episode"]
     episode.status = "READY_FOR_SUPPLY"
-    episode.payment_gate_state = "PAID"
+    episode.payment_state = "PAID"
     episode.save()
 
     assert not DispensingCheck.all_objects.filter(episode=episode).exists()
@@ -90,7 +90,7 @@ def test_replayed_collection_does_not_issue_stock_twice(domain):
     episode = data["episode"]
     make_clinically_ready(data)
     episode.status = "READY_FOR_SUPPLY"
-    episode.payment_gate_state = "PAID"
+    episode.payment_state = "PAID"
     episode.save()
 
     key = "COLLECT-IDEMPOTENT-1"
@@ -148,7 +148,7 @@ def test_repeat_is_consumed_on_supply_not_merely_probed(domain):
     make_clinically_ready(data)
     episode = data["episode"]
     episode.status = "READY_FOR_SUPPLY"
-    episode.payment_gate_state = "PAID"
+    episode.payment_state = "PAID"
     episode.save()
 
     before = rx.repeats_remaining
@@ -170,7 +170,7 @@ def test_changed_prescription_invalidates_the_existing_approval(domain):
     make_clinically_ready(data)
     episode = data["episode"]
     episode.status = "READY_FOR_SUPPLY"
-    episode.payment_gate_state = "PAID"
+    episode.payment_state = "PAID"
     episode.save()
 
     # Mutate the prescription so its context hash no longer matches.
@@ -200,7 +200,7 @@ def test_cashier_cannot_supply_medicine(domain):
     make_clinically_ready(data)
     episode = data["episode"]
     episode.status = "READY_FOR_SUPPLY"
-    episode.payment_gate_state = "PAID"
+    episode.payment_state = "PAID"
     episode.save()
 
     with pytest.raises(PermissionDenied):
@@ -233,20 +233,20 @@ def test_user_without_any_role_cannot_transition_state(domain):
 
 
 def test_episode_state_cannot_be_mutated_by_patch(domain):
-    """Was: PATCH could set status=SUPPLIED / payment_status=PAID directly."""
+    """Was: PATCH could set status=SUPPLIED / payment_state=PAID directly."""
     data = domain
     client = APIClient()
     client.force_authenticate(user=data["pharmacist"])
     url = reverse("pos-dispensing-episodes-detail", args=[data["episode"].id])
 
     response = client.patch(
-        url, {"status": "SUPPLIED", "payment_status": "PAID"}, format="json"
+        url, {"status": "SUPPLIED", "payment_state": "PAID"}, format="json"
     )
     assert response.status_code in (403, 405), response.status_code
 
     data["episode"].refresh_from_db()
     assert data["episode"].status == "PREPARING"
-    assert data["episode"].payment_status != "PAID"
+    assert data["episode"].payment_state != "PAID"
 
 
 def test_episode_cannot_be_deleted_over_the_api(domain):
