@@ -26,8 +26,8 @@ class Command(BaseCommand):
         if not tenant:
             tenant = Tenant.objects.create(name="Demo Tenant", slug="demo")
 
-        cashier, _ = User.objects.get_or_create(username="demo_cashier", defaults={"tenant": tenant})
-        pharmacist, _ = User.objects.get_or_create(username="demo_pharmacist", defaults={"tenant": tenant})
+        cashier, _ = User.objects.get_or_create(username="demo_screening_cashier", tenant=tenant)
+        pharmacist, _ = User.objects.get_or_create(username="demo_screening_pharmacist", tenant=tenant)
 
         release, _ = ClinicalKnowledgeRelease.all_objects.get_or_create(
             tenant=tenant,

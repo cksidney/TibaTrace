@@ -27,6 +27,9 @@ User = get_user_model()
 class PosClinicalScreeningViewSet(viewsets.GenericViewSet):
     permission_classes = [IsAuthenticated]
     lookup_field = 'screening_id'
+    # Required for schema generation: without it drf-spectacular cannot infer a
+    # component and silently drops these routes from the OpenAPI contract.
+    serializer_class = PosClinicalScreeningRequestSerializer
 
     def get_queryset(self):
         tenant_id = get_current_tenant_id()
@@ -38,7 +41,7 @@ class PosClinicalScreeningViewSet(viewsets.GenericViewSet):
         tenant = getattr(self.request, "tenant", None)
         if not tenant:
             return self.request.user
-        return User.all_objects.filter(tenant=tenant, id=user_id).first() or self.request.user
+        return User.objects.filter(tenant=tenant, id=user_id).first() or self.request.user
 
     @action(detail=False, methods=['post'])
     def evaluate(self, request):

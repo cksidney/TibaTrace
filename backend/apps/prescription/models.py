@@ -957,6 +957,7 @@ class DispensingEpisode(TenantConsistencyMixin, TimestampedModel):
         default="NOT_REQUIRED",
     )
     payment_status = models.CharField(max_length=30, choices=PAYMENT_STATES, default="PENDING")
+    payment_idempotency_key = models.CharField(max_length=255, blank=True, default="")
     payment_reference = models.CharField(max_length=128, blank=True, default="")
     tender_type = models.CharField(max_length=64, default="CASH")
     paid_amount = models.DecimalField(max_digits=15, decimal_places=2, default=0)
@@ -1874,6 +1875,7 @@ class PosShiftRecord(TenantConsistencyMixin, TimestampedModel):
     status = models.CharField(max_length=32, choices=Status.choices, default=Status.OPEN)
     controlled_stock_start_count = models.IntegerField(default=0)
     controlled_stock_end_count = models.IntegerField(default=0)
+    outstanding_episode_count = models.IntegerField(default=0)
     discrepancy_declared = models.BooleanField(default=False)
     declaration_notes = models.TextField(blank=True, default="")
 

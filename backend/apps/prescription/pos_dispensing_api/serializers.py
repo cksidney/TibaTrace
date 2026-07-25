@@ -7,8 +7,15 @@ from apps.prescription.models import (
     PosShiftRecord,
 )
 
+#: Tender types the POS accepts. Kept in step with PaymentTenderType in
+#: packages/shared/src/dispensing/types.ts. Only CASH, CARD and MPESA are
+#: settled by this release; the remaining values are rejected until their
+#: settlement workflow exists, so that a tender cannot be recorded as paid
+#: through a path that was never implemented.
+TENDER_TYPES = ["CASH", "CARD", "MPESA"]
 
-class DispensingLineSerializer(serializers.ModelSerializer):
+
+class PosDispensingLineSerializer(serializers.ModelSerializer):
     class Meta:
         model = DispensingLine
         fields = [
@@ -28,8 +35,8 @@ class DispensingLineSerializer(serializers.ModelSerializer):
         ]
 
 
-class DispensingEpisodeSerializer(serializers.ModelSerializer):
-    lines = DispensingLineSerializer(many=True, read_only=True)
+class PosDispensingEpisodeSerializer(serializers.ModelSerializer):
+    lines = PosDispensingLineSerializer(many=True, read_only=True)
 
     class Meta:
         model = DispensingEpisode
@@ -62,7 +69,38 @@ class DispensingEpisodeSerializer(serializers.ModelSerializer):
             "idempotency_key",
             "lines",
         ]
-        read_only_fields = ["id", "dispensing_number", "initiated_at", "completed_at"]
+        # Every field that carries clinical, financial or custody meaning is
+        # read-only over this surface. These transition only through the gated
+        # service actions below (process-payment, confirm-collection, ...), never
+        # by direct PATCH -- otherwise the state machine and its clinical gates
+        # could be bypassed entirely.
+        read_only_fields = [
+            "id",
+            "dispensing_number",
+            "prescription",
+            "patient",
+            "branch",
+            "pharmacy_location",
+            "pharmacist",
+            "status",
+            "initiated_at",
+            "completed_at",
+            "payment_gate_state",
+            "payment_status",
+            "payment_reference",
+            "tender_type",
+            "paid_amount",
+            "collector_name",
+            "collector_id_number",
+            "collector_phone",
+            "collector_relationship",
+            "collection_proof_type",
+            "collected_at",
+            "controlled_witness",
+            "controlled_authority_checked",
+            "counselling_status",
+            "idempotency_key",
+        ]
 
 
 class TransitionStateRequestSerializer(serializers.Serializer):
@@ -78,15 +116,19 @@ class BatchVerificationRequestSerializer(serializers.Serializer):
 
 
 class ProcessPaymentRequestSerializer(serializers.Serializer):
-    tender_type = serializers.CharField(max_length=64, default="CASH")
+    tender_type = serializers.ChoiceField(choices=TENDER_TYPES, default="CASH")
     paid_amount = serializers.DecimalField(max_digits=15, decimal_places=2)
     payment_reference = serializers.CharField(max_length=128, required=False, allow_blank=True, default="")
+    # Client-generated and stable across retries: this is what makes a replayed
+    # payment a no-op instead of a second charge.
+    idempotency_key = serializers.CharField(max_length=255)
 
 
 class PartialDispenseRequestSerializer(serializers.Serializer):
     dispensing_line_id = serializers.UUIDField()
     quantity_supplied = serializers.DecimalField(max_digits=15, decimal_places=4)
     reason = serializers.CharField(required=False, allow_blank=True, default="")
+    idempotency_key = serializers.CharField(max_length=255)
 
 
 class ControlledVerifyRequestSerializer(serializers.Serializer):
@@ -112,6 +154,7 @@ class CollectionConfirmRequestSerializer(serializers.Serializer):
     collector_relationship = serializers.CharField(max_length=128, required=False, allow_blank=True, default="SELF")
     collection_proof_type = serializers.CharField(max_length=64, required=False, allow_blank=True, default="SIGNATURE")
     signature_ref = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
+    idempotency_key = serializers.CharField(max_length=255)
 
 
 class ShiftStartSerializer(serializers.Serializer):
@@ -139,9 +182,11 @@ class PosShiftRecordSerializer(serializers.ModelSerializer):
             "status",
             "controlled_stock_start_count",
             "controlled_stock_end_count",
+            "outstanding_episode_count",
             "discrepancy_declared",
             "declaration_notes",
         ]
+        read_only_fields = fields
 
 
 class DeviceTelemetrySerializer(serializers.Serializer):

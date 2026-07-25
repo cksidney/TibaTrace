@@ -1,34 +1,137 @@
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
+from django.db.models import Count, F, Q
 
-from apps.prescription.models import DispensingEpisode, DispensingLine, PosDeviceHealthRecord, PosShiftRecord
+from apps.prescription.models import (
+    DispensingCheck,
+    DispensingEpisode,
+    DispensingLine,
+    MedicineSupply,
+    PatientCounselling,
+    PosDeviceHealthRecord,
+    PosShiftRecord,
+)
+from apps.prescription.services.clinical_dispensing import MedicineSupplyService
+
+SUPPLIED_STATES = ["SUPPLIED", "PARTIALLY_SUPPLIED"]
 
 
 class Command(BaseCommand):
     help = "Verify POS Enterprise Dispensing data integrity and tenant isolation"
 
+    def add_arguments(self, parser):
+        parser.add_argument("--tenant", dest="tenant", default=None)
+
     def handle(self, *args, **options):
         self.stdout.write("Running POS Enterprise Dispensing Integrity Check...")
 
         episodes = DispensingEpisode.all_objects.all()
-        self.stdout.write(f"Total Dispensing Episodes: {episodes.count()}")
+        if options.get("tenant"):
+            episodes = episodes.filter(tenant__slug=options["tenant"])
+        tenant_ids = set(episodes.values_list("tenant_id", flat=True))
 
-        lines = DispensingLine.all_objects.all()
-        self.stdout.write(f"Total Dispensing Lines: {lines.count()}")
+        self.stdout.write(f"Dispensing episodes:  {episodes.count()}")
+        self.stdout.write(f"Dispensing lines:     {DispensingLine.all_objects.filter(episode__in=episodes).count()}")
+        self.stdout.write(f"POS shift records:    {PosShiftRecord.all_objects.filter(tenant_id__in=tenant_ids).count()}")
+        self.stdout.write(f"Device health:        {PosDeviceHealthRecord.all_objects.filter(tenant_id__in=tenant_ids).count()}")
 
-        shifts = PosShiftRecord.all_objects.all()
-        self.stdout.write(f"Total POS Shift Records: {shifts.count()}")
+        issues = []
+        supplied = episodes.filter(status__in=SUPPLIED_STATES)
 
-        devices = PosDeviceHealthRecord.all_objects.all()
-        self.stdout.write(f"Total Device Health Records: {devices.count()}")
+        def record(label, queryset):
+            # len() works for both querysets and materialised lists; list.count()
+            # means something else entirely, so do not branch on hasattr.
+            count = len(queryset)
+            if count:
+                issues.append(f"{label}: {count}")
+                self.stderr.write(self.style.ERROR(f"  FAIL {label}: {count}"))
+            else:
+                self.stdout.write(self.style.SUCCESS(f"  ok   {label}"))
 
-        # Verify payment gate integrity
-        premature_supplies = DispensingEpisode.all_objects.filter(
-            status="SUPPLIED",
-            payment_status__in=["PENDING", "FAILED"],
+        # 1. Supply must never precede a payment gate that permits it.
+        #    payment_gate_state is the authoritative field -- it is what
+        #    MedicineSupplyService actually enforces. payment_status is the POS
+        #    mirror and is left at its default by non-POS dispensing paths, so
+        #    asserting on it would falsely flag every clinically-dispensed
+        #    episode.
+        record(
+            "supplied episodes whose payment gate did not permit supply",
+            supplied.exclude(payment_gate_state__in=MedicineSupplyService.ALLOWED_PAYMENT_STATES),
         )
-        if premature_supplies.exists():
-            self.stderr.write(self.style.ERROR(f"Integrity Violation: {premature_supplies.count()} episodes supplied without confirmed payment!"))
-        else:
-            self.stdout.write(self.style.SUCCESS("Payment Gate Integrity: PASSED (0 un-paid supplied episodes)"))
 
-        self.stdout.write(self.style.SUCCESS("POS Enterprise Dispensing Integrity Check Completed Successfully."))
+        # 1b. Where the POS did record a payment, the two must not disagree.
+        record(
+            "episodes where POS payment_status contradicts the payment gate",
+            supplied.filter(payment_status="PAID").exclude(payment_gate_state="PAID"),
+        )
+
+        # 2. Supply must never precede an independent final check.
+        checked_ids = DispensingCheck.all_objects.filter(
+            outcome="PASSED", episode__in=supplied
+        ).values_list("episode_id", flat=True)
+        record(
+            "supplied episodes without a passed final check",
+            supplied.exclude(id__in=checked_ids),
+        )
+
+        # 3. Supply must never precede recorded counselling.
+        counselled_ids = PatientCounselling.all_objects.filter(
+            episode__in=supplied
+        ).values_list("episode_id", flat=True)
+        record(
+            "supplied episodes without counselling recorded",
+            supplied.exclude(id__in=counselled_ids),
+        )
+
+        # 4. Duplicate supply for one episode indicates a defeated idempotency key.
+        duplicate_supply = (
+            MedicineSupply.all_objects.filter(episode__in=episodes)
+            .values("episode_id")
+            .annotate(n=Count("id"))
+            .filter(n__gt=1)
+        )
+        record("episodes with duplicate MedicineSupply records", list(duplicate_supply))
+
+        # 5. Oversupply beyond what was authorised.
+        record(
+            "dispensing lines supplied beyond authorisation",
+            DispensingLine.all_objects.filter(
+                episode__in=episodes, quantity_supplied__gt=F("quantity_authorized")
+            ),
+        )
+
+        # 6. Controlled medicine handed over at the POS must carry collector
+        #    identity and an authority check. Scoped to episodes actually
+        #    collected through the POS (collected_at set): the clinical
+        #    dispensing path enforces controlled custody by its own capability
+        #    and separation-of-duties rules and does not populate these
+        #    POS-specific fields.
+        record(
+            "POS-collected controlled supplies without authority or collector identity",
+            supplied.filter(
+                prescription__is_controlled_medicine=True, collected_at__isnull=False
+            ).filter(Q(controlled_authority_checked=False) | Q(collector_id_number="")),
+        )
+
+        # 7. Collected episodes must name a collector.
+        record(
+            "collected episodes without a recorded collector",
+            supplied.filter(collected_at__isnull=False, collector_name=""),
+        )
+
+        # 8. Cross-tenant references between an episode and its lines.
+        record(
+            "dispensing lines whose tenant differs from their episode",
+            DispensingLine.all_objects.filter(episode__in=episodes).exclude(
+                tenant_id=F("episode__tenant_id")
+            ),
+        )
+
+        if issues:
+            raise CommandError(
+                f"POS dispensing integrity failed with {len(issues)} issue type(s): "
+                + "; ".join(issues)
+            )
+
+        self.stdout.write(
+            self.style.SUCCESS("POS Enterprise Dispensing Integrity Check passed.")
+        )

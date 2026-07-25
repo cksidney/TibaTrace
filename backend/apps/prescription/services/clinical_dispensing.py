@@ -69,6 +69,7 @@ CAPABILITY_ALIASES = {
     "dispensing.counsel": ("dispensing.complete",),
     "dispensing.return.receive": ("dispensing.reverse",),
     "dispensing.return.quality": ("dispensing.reverse",),
+    "pos.shift.manage": ("dispensing.complete",),
 }
 
 

@@ -27,17 +27,33 @@ class Command(BaseCommand):
     def _check_tenant(self, tenant):
         issues = []
         
-        # 2. Unresolved blocking finding on completed transaction
+        # 2. A basket with an open blocking finding must never be green-lit.
+        #    Note: status='COMPLETE' means the screening *evaluation* finished,
+        #    not that the sale completed. A screening that found a blocker and
+        #    is awaiting pharmacist action is a correct, expected state, so the
+        #    invariant to enforce is the safe_to_proceed flag -- not the mere
+        #    presence of an unresolved finding.
         screenings = PosClinicalScreening.all_objects.filter(tenant=tenant, status='COMPLETE')
         for screening in screenings:
-            if screening.blocking_count > 0:
-                unresolved = PosClinicalFinding.all_objects.filter(
-                    screening=screening, 
-                    blocking=True, 
-                    resolution_status='OPEN'
-                ).exists()
-                if unresolved:
-                    self._record(issues, "UNRESOLVED_BLOCKING_FINDING", screening.id, "Completed screening has unresolved blocking finding.")
+            open_blocking = PosClinicalFinding.all_objects.filter(
+                screening=screening,
+                blocking=True,
+                resolution_status='OPEN',
+            ).count()
+            if open_blocking and screening.safe_to_proceed:
+                self._record(
+                    issues,
+                    "UNSAFE_SCREENING_CLEARED",
+                    screening.id,
+                    "Screening is marked safe to proceed despite an unresolved blocking finding.",
+                )
+            if open_blocking != screening.blocking_count:
+                self._record(
+                    issues,
+                    "BLOCKING_COUNT_DESYNCHRONISED",
+                    screening.id,
+                    f"blocking_count={screening.blocking_count} but {open_blocking} open blocking finding(s) exist.",
+                )
 
         # 3. Pharmacist decision without pharmacist identity
         for dec in PosClinicalDecision.all_objects.filter(tenant=tenant):

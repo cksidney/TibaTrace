@@ -135,8 +135,17 @@ START_TIME=$(date +%s)
 "${PYTHON}" "${ROOT}/backend/manage.py" seed_clinical_dispensing --tenant validation-clinical --settings=dawatrace.settings.test
 "${PYTHON}" "${ROOT}/backend/manage.py" seed_clinical_dispensing --tenant validation-clinical --settings=dawatrace.settings.test
 "${PYTHON}" "${ROOT}/backend/manage.py" check_clinical_dispensing_integrity --tenant validation-clinical --settings=dawatrace.settings.test
+# POS phases seed and integrity-check themselves here too. Both commands must be
+# run twice / must exit non-zero on violation, otherwise a broken phase command
+# can sit behind a fully green validation run.
+"${PYTHON}" "${ROOT}/backend/manage.py" seed_pos_clinical_demo --settings=dawatrace.settings.test
+"${PYTHON}" "${ROOT}/backend/manage.py" seed_pos_clinical_demo --settings=dawatrace.settings.test
+"${PYTHON}" "${ROOT}/backend/manage.py" check_pos_clinical_integrity --settings=dawatrace.settings.test
+"${PYTHON}" "${ROOT}/backend/manage.py" seed_pos_dispensing_demo --settings=dawatrace.settings.test
+"${PYTHON}" "${ROOT}/backend/manage.py" seed_pos_dispensing_demo --settings=dawatrace.settings.test
+"${PYTHON}" "${ROOT}/backend/manage.py" check_pos_dispensing_integrity --settings=dawatrace.settings.test
 END_TIME=$(date +%s)
-record_step "clinical_and_tenant_safety_audits" "clinical audits; seed_clinical_dispensing twice; check_clinical_dispensing_integrity" "true" "PASSED" "0" "$((END_TIME - START_TIME))" "" ""
+record_step "clinical_and_tenant_safety_audits" "clinical audits; seed_clinical_dispensing twice; check_clinical_dispensing_integrity; seed_pos_clinical_demo twice; check_pos_clinical_integrity; seed_pos_dispensing_demo twice; check_pos_dispensing_integrity" "true" "PASSED" "0" "$((END_TIME - START_TIME))" "" ""
 
 echo "=== [8/13] Backend Pytest Test Suite ==="
 START_TIME=$(date +%s)

@@ -17,9 +17,9 @@ from apps.prescription.pos_dispensing_api.serializers import (
     ControlledVerifyRequestSerializer,
     CounsellingRecordSerializer,
     DeviceTelemetrySerializer,
-    DispensingEpisodeSerializer,
     PartialDispenseRequestSerializer,
     PosDeviceHealthRecordSerializer,
+    PosDispensingEpisodeSerializer,
     PosShiftRecordSerializer,
     ProcessPaymentRequestSerializer,
     ShiftEndSerializer,
@@ -38,9 +38,16 @@ from apps.prescription.pos_dispensing_services import (
 )
 
 
-class PosDispensingViewSet(viewsets.ModelViewSet):
+class PosDispensingViewSet(viewsets.ReadOnlyModelViewSet):
+    """Read-only over episodes; all mutation goes through the gated actions.
+
+    Deliberately not a ModelViewSet: a writable PATCH/PUT/DELETE here would let
+    any authenticated caller set status/payment_status directly and bypass the
+    clinical gates enforced by the service layer.
+    """
+
     permission_classes = [IsAuthenticated]
-    serializer_class = DispensingEpisodeSerializer
+    serializer_class = PosDispensingEpisodeSerializer
 
     def get_queryset(self):
         tenant = getattr(self.request, "tenant", None)
@@ -107,6 +114,7 @@ class PosDispensingViewSet(viewsets.ModelViewSet):
                 paid_amount=data["paid_amount"],
                 payment_reference=data.get("payment_reference", ""),
                 cashier=request.user,
+                idempotency_key=data["idempotency_key"],
             )
             return Response(res)
         except ValidationError as e:
@@ -126,6 +134,7 @@ class PosDispensingViewSet(viewsets.ModelViewSet):
                 quantity_supplied=data["quantity_supplied"],
                 reason=data.get("reason", ""),
                 actor=request.user,
+                idempotency_key=data["idempotency_key"],
             )
             return Response(res)
         except ValidationError as e:
@@ -142,7 +151,7 @@ class PosDispensingViewSet(viewsets.ModelViewSet):
         if data.get("witness_id"):
             tenant = getattr(self.request, "tenant", None)
             if tenant:
-                witness = User.all_objects.filter(tenant=tenant, id=data["witness_id"]).first()
+                witness = User.objects.filter(tenant=tenant, id=data["witness_id"]).first()
 
         try:
             res = PosControlledMedicineService.verify_controlled_authority(
@@ -150,6 +159,7 @@ class PosDispensingViewSet(viewsets.ModelViewSet):
                 practitioner_id=data["practitioner_id"],
                 collector_id_number=data["collector_id_number"],
                 witness=witness,
+                actor=request.user,
             )
             return Response(res)
         except ValidationError as e:
@@ -162,17 +172,20 @@ class PosDispensingViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
-        counselling = PosCounsellingService.record_counselling(
-            episode=episode,
-            pharmacist=request.user,
-            medicine_explained=data["medicine_explained"],
-            dosage_explained=data["dosage_explained"],
-            storage_explained=data["storage_explained"],
-            side_effects_discussed=data["side_effects_discussed"],
-            interaction_advice_given=data["interaction_advice_given"],
-            patient_acknowledged=data["patient_acknowledged"],
-            notes=data.get("notes", ""),
-        )
+        try:
+            counselling = PosCounsellingService.record_counselling(
+                episode=episode,
+                pharmacist=request.user,
+                medicine_explained=data["medicine_explained"],
+                dosage_explained=data["dosage_explained"],
+                storage_explained=data["storage_explained"],
+                side_effects_discussed=data["side_effects_discussed"],
+                interaction_advice_given=data["interaction_advice_given"],
+                patient_acknowledged=data["patient_acknowledged"],
+                notes=data.get("notes", ""),
+            )
+        except ValidationError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         return Response({"status": "COMPLETED", "counselling_id": str(counselling.id)})
 
     @action(detail=True, methods=["post"], url_path="confirm-collection")
@@ -192,6 +205,7 @@ class PosDispensingViewSet(viewsets.ModelViewSet):
                 collection_proof_type=data.get("collection_proof_type", "SIGNATURE"),
                 signature_ref=data.get("signature_ref", ""),
                 actor=request.user,
+                idempotency_key=data["idempotency_key"],
             )
             return Response({
                 "status": "SUPPLIED",
@@ -202,7 +216,7 @@ class PosDispensingViewSet(viewsets.ModelViewSet):
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
-class PosShiftViewSet(viewsets.ModelViewSet):
+class PosShiftViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [IsAuthenticated]
     serializer_class = PosShiftRecordSerializer
 
@@ -220,13 +234,17 @@ class PosShiftViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
-        shift = PosShiftService.start_shift(
-            tenant=tenant,
-            shift_number=data["shift_number"],
-            cashier=request.user,
-            pharmacist=request.user,
-            controlled_start_count=data.get("controlled_start_count", 0),
-        )
+        try:
+            shift = PosShiftService.start_shift(
+                tenant=tenant,
+                shift_number=data["shift_number"],
+                cashier=request.user,
+                pharmacist=request.user,
+                controlled_start_count=data.get("controlled_start_count", 0),
+                actor=request.user,
+            )
+        except ValidationError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(shift).data)
 
     @action(detail=True, methods=["post"], url_path="end")
@@ -236,15 +254,19 @@ class PosShiftViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
-        s = PosShiftService.end_shift(
-            shift=shift,
-            controlled_end_count=data.get("controlled_end_count", 0),
-            declaration_notes=data.get("declaration_notes", ""),
-        )
+        try:
+            s = PosShiftService.end_shift(
+                shift=shift,
+                controlled_end_count=data.get("controlled_end_count", 0),
+                declaration_notes=data.get("declaration_notes", ""),
+                actor=request.user,
+            )
+        except ValidationError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(s).data)
 
 
-class PosDeviceHealthViewSet(viewsets.ModelViewSet):
+class PosDeviceHealthViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [IsAuthenticated]
     serializer_class = PosDeviceHealthRecordSerializer
 

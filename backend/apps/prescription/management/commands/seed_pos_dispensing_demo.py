@@ -4,7 +4,7 @@ from decimal import Decimal
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-from apps.identity.models import User
+from apps.identity.models import Role, User, UserRole
 from apps.inventory.models import InventoryBatch, InventoryLedgerEntry, InventoryLocation, InventoryReservation
 from apps.inventory.services import InventoryLedgerService
 from apps.medicines.models import (
@@ -42,12 +42,47 @@ class Command(BaseCommand):
         branch, _ = Location.all_objects.get_or_create(tenant=tenant, code="DEMO-BR", defaults={"organization": org, "name": "Main Dispensary"})
         wh, _ = InventoryLocation.all_objects.get_or_create(tenant=tenant, branch=branch, location_code="DEMO-WH", defaults={"name": "Pharmacy Store"})
 
-        rph, _ = User.objects.get_or_create(username="demo_rph")
-        rph.tenant = tenant
-        rph.save()
-        cashier, _ = User.objects.get_or_create(username="demo_cashier")
-        cashier.tenant = tenant
-        cashier.save()
+        # Users must be created with their tenant: User.save() runs full_clean,
+        # which rejects a non-platform user that has no tenant ownership.
+        rph, _ = User.objects.get_or_create(
+            username="demo_dispensing_rph", tenant=tenant
+        )
+        cashier, _ = User.objects.get_or_create(
+            username="demo_dispensing_cashier", tenant=tenant
+        )
+
+        # Roles carry the capabilities the POS services now require, so the
+        # seeded demo reflects real separation of duties rather than an
+        # unrestricted operator.
+        pharmacist_role, _ = Role.all_objects.get_or_create(
+            tenant=tenant,
+            code="DEMO_PHARMACIST",
+            defaults={
+                "name": "Demo pharmacist",
+                "capabilities": [
+                    "dispensing.prepare",
+                    "dispensing.check",
+                    "dispensing.supply",
+                    "dispensing.counsel",
+                    "dispensing.complete",
+                    "prescriptions.pharmacist_verify",
+                    "prescriptions.controlled_verify",
+                    "prescriptions.approve",
+                ],
+            },
+        )
+        cashier_role, _ = Role.all_objects.get_or_create(
+            tenant=tenant,
+            code="DEMO_CASHIER",
+            defaults={
+                "name": "Demo cashier",
+                # Deliberately no dispensing.supply or counselling capability:
+                # a cashier must not be able to make pharmacist decisions.
+                "capabilities": ["dispensing.read", "prescriptions.record_payment"],
+            },
+        )
+        UserRole.all_objects.get_or_create(tenant=tenant, user=rph, role=pharmacist_role)
+        UserRole.all_objects.get_or_create(tenant=tenant, user=cashier, role=cashier_role)
 
         patient, _ = Patient.all_objects.get_or_create(
             tenant=tenant,
