@@ -6,6 +6,7 @@ import {
 } from '@dawatrace/shared/dispensing/index.js';
 import type {
   ActionOutcome,
+  CounsellingRecordRequest,
   DispensingEpisodeDTO,
   GateState,
 } from '@dawatrace/shared/dispensing/index.js';
@@ -146,7 +147,10 @@ export function usePosWorkflow(baseUrl = '/api/pos/dispensing') {
   );
 
   const recordCounselling = useCallback(
-    (notes: string) => run(() => workflow.recordCounselling({ notes })),
+    // Takes the whole request: the server defaults every omitted counselling
+    // flag to true, so a partial body would record topics that were never
+    // covered.
+    (request: CounsellingRecordRequest) => run(() => workflow.recordCounselling(request)),
     [workflow, run],
   );
 

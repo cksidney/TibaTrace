@@ -38,6 +38,47 @@ class PosDispensingLineSerializer(serializers.ModelSerializer):
 class PosDispensingEpisodeSerializer(serializers.ModelSerializer):
     lines = PosDispensingLineSerializer(many=True, read_only=True)
 
+    # Money owed and money taken come from the active PaymentIntent, which is
+    # the authoritative ledger. The episode's own paid_amount is a convenience
+    # mirror and must never be presented to an operator as the amount due --
+    # a till that shows the wrong figure takes the wrong money.
+    amount_due = serializers.SerializerMethodField()
+    amount_settled = serializers.SerializerMethodField()
+    amount_remaining = serializers.SerializerMethodField()
+    currency = serializers.SerializerMethodField()
+
+    def _intent(self, episode):
+        from apps.prescription.payment_models import PaymentIntent
+
+        cached = getattr(episode, "_active_intent", None)
+        if cached is None:
+            cached = (
+                PaymentIntent.all_objects.filter(
+                    dispensing_episode=episode, status__in=PaymentIntent.ACTIVE_STATUSES
+                )
+                .order_by("-created_at")
+                .first()
+            )
+            # Cache the miss too, so a null result does not re-query per field.
+            episode._active_intent = cached or False
+        return cached or None
+
+    def get_amount_due(self, episode):
+        intent = self._intent(episode)
+        return str(intent.amount_due) if intent else None
+
+    def get_amount_settled(self, episode):
+        intent = self._intent(episode)
+        return str(intent.effective_settled) if intent else None
+
+    def get_amount_remaining(self, episode):
+        intent = self._intent(episode)
+        return str(intent.amount_remaining) if intent else None
+
+    def get_currency(self, episode):
+        intent = self._intent(episode)
+        return intent.currency if intent else None
+
     class Meta:
         model = DispensingEpisode
         fields = [
@@ -55,6 +96,10 @@ class PosDispensingEpisodeSerializer(serializers.ModelSerializer):
             "payment_reference",
             "tender_type",
             "paid_amount",
+            "amount_due",
+            "amount_settled",
+            "amount_remaining",
+            "currency",
             "collector_name",
             "collector_id_number",
             "collector_phone",

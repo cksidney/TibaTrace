@@ -93,6 +93,15 @@ export interface DispensingEpisodeDTO {
   payment_reference: string;
   tender_type: PaymentTenderType;
   paid_amount: string;
+  /**
+   * Authoritative totals from the active PaymentIntent, or null when no intent
+   * is open. `paid_amount` on the episode is a convenience mirror and must not
+   * be shown as the amount due.
+   */
+  amount_due: string | null;
+  amount_settled: string | null;
+  amount_remaining: string | null;
+  currency: string | null;
   collector_name: string;
   collector_id_number: string;
   collector_phone: string;

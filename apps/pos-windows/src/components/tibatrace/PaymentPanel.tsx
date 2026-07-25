@@ -81,21 +81,23 @@ export function PaymentPanel({
   onTakePayment,
 }: {
   readonly paymentState: PaymentState;
-  readonly amountDue: string;
-  readonly amountSettled: string;
+  /** Null when no payment intent is open; the panel says so rather than guessing. */
+  readonly amountDue: string | null;
+  readonly amountSettled: string | null;
   readonly canTakePayment: boolean;
   readonly blockedReason: string;
   readonly busy: boolean;
   readonly onTakePayment: (tender: PaymentTenderType, amount: string, reference: string) => void;
 }) {
   const [tender, setTender] = useState<PaymentMode>('CASH');
-  const [amount, setAmount] = useState(amountDue);
+  const [amount, setAmount] = useState(amountDue ?? '');
   const [reference, setReference] = useState('');
   const [submitted, setSubmitted] = useState(false);
 
   const meta = paymentStatusMeta(paymentState);
   const selected = TENDER_OPTIONS.find((option) => option.type === tender);
-  const remaining = Number(amountDue) - Number(amountSettled);
+  const priced = amountDue !== null && amountSettled !== null;
+  const remaining = priced ? Number(amountDue) - Number(amountSettled) : null;
 
   return (
     <section style={{ display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
@@ -105,12 +107,23 @@ export function PaymentPanel({
       </header>
 
       <dl style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: spacing.lg, margin: 0 }}>
-        <Amount label="Amount due" value={amountDue} />
-        <Amount label="Settled" value={amountSettled} />
-        <Amount label="Remaining" value={remaining.toFixed(2)} emphasis={remaining > 0} />
+        <Amount label="Amount due" value={amountDue ?? 'Not priced'} />
+        <Amount label="Settled" value={amountSettled ?? '—'} />
+        <Amount
+          label="Remaining"
+          value={remaining === null ? '—' : remaining.toFixed(2)}
+          emphasis={remaining !== null && remaining > 0}
+        />
       </dl>
 
       {blockedReason ? <BlockingReason status="BLOCKING" reason={blockedReason} /> : null}
+
+      {!priced ? (
+        <BlockingReason
+          status="DISABLED"
+          reason="No payment intent is open for this episode, so there is no authoritative amount to collect."
+        />
+      ) : null}
 
       {/* Part-payment is called out explicitly: it is the state most likely to
           be mistaken for "paid enough to hand over the medicine". */}
@@ -172,7 +185,9 @@ export function PaymentPanel({
 
       <button
         type="button"
-        disabled={!canTakePayment || busy || submitted || !(selected?.available ?? false)}
+        // Without an open intent there is no authoritative amount to collect,
+        // so payment is not offered at all.
+        disabled={!priced || !canTakePayment || busy || submitted || !(selected?.available ?? false)}
         onClick={() => {
           // Guards a double-submit: a second click must not become a second
           // charge while the first is still in flight.
@@ -191,7 +206,7 @@ export function PaymentPanel({
           color: canTakePayment && !busy && !submitted ? '#fff' : text.tertiary,
           fontSize: fontSize.bodyLarge,
           fontWeight: 600,
-          cursor: canTakePayment && !busy && !submitted ? 'pointer' : 'not-allowed',
+          cursor: priced && canTakePayment && !busy && !submitted ? 'pointer' : 'not-allowed',
         }}
       >
         {busy ? 'Confirming payment…' : 'Take payment'}

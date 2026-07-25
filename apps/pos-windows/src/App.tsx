@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { ClinicalRail } from './components/tibatrace/ClinicalRail.js';
 import type { ClinicalSummary } from './components/tibatrace/ClinicalRail.js';
+import { CollectionPanel, CounsellingPanel } from './components/tibatrace/CounsellingAndCollection.js';
 import { PatientSafetyBanner } from './components/tibatrace/PatientSafetyBanner.js';
 import { PaymentPanel } from './components/tibatrace/PaymentPanel.js';
 import { PrescriptionWorkspace } from './components/tibatrace/PrescriptionWorkspace.js';
@@ -19,7 +20,8 @@ import { usePosWorkflow } from './state/usePosWorkflow.js';
  * blocking the operator stays on screen while they work.
  */
 export function App() {
-  const { state, refreshQueue, select, refresh, takePayment, confirmCollection } = usePosWorkflow();
+  const { state, refreshQueue, select, refresh, takePayment, confirmCollection, recordCounselling } =
+    usePosWorkflow();
   const [clinical] = useState<ClinicalSummary | null>(null);
 
   useEffect(() => {
@@ -89,13 +91,32 @@ export function App() {
               <div style={{ marginTop: spacing.xxl }}>
                 <PaymentPanel
                   paymentState={state.selected.payment_state}
-                  amountDue={state.selected.paid_amount}
-                  amountSettled={state.selected.paid_amount}
+                  amountDue={state.selected.amount_due ?? null}
+                  amountSettled={state.selected.amount_settled ?? null}
                   canTakePayment={state.gate.canTakePayment}
                   blockedReason={state.gate.canTakePayment ? '' : state.gate.blockedReason}
                   busy={state.busy}
                   onTakePayment={(tender, amount, reference) =>
                     void takePayment(tender, amount, reference)
+                  }
+                />
+              </div>
+              <div style={{ marginTop: spacing.xxl }}>
+                <CounsellingPanel
+                  counsellingStatus={state.selected.counselling_status}
+                  busy={state.busy}
+                  onRecord={(request) => void recordCounselling(request)}
+                />
+              </div>
+              <div style={{ marginTop: spacing.xxl }}>
+                <CollectionPanel
+                  canConfirm={state.gate.canConfirmCollection}
+                  blockedReason={state.gate.canConfirmCollection ? '' : state.gate.blockedReason}
+                  collectedAt={state.selected.collected_at ?? null}
+                  collectorName={state.selected.collector_name}
+                  busy={state.busy}
+                  onConfirm={(name, id, relationship) =>
+                    void confirmCollection(name, id, relationship)
                   }
                 />
               </div>
