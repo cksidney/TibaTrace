@@ -1,0 +1,23 @@
+{
+  "name": "@dawatrace/pos-android",
+  "version": "0.1.0-alpha.1",
+  "private": true,
+  "description": "DawaTrace / TibaTrace Android POS (React Native)",
+  "main": "index.js",
+  "scripts": {
+    "typecheck": "tsc --project tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "android": "react-native run-android",
+    "start": "react-native start"
+  },
+  "dependencies": {
+    "@dawatrace/shared": "*"
+  },
+  "devDependencies": {
+    "@types/react": "18.3.12",
+    "react": "18.3.1",
+    "typescript": "5.7.3",
+    "vitest": "^4.1.10"
+  }
+}

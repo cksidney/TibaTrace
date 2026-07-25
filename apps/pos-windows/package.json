@@ -1,0 +1,33 @@
+{
+  "name": "@dawatrace/pos-windows",
+  "version": "0.1.0-alpha.1",
+  "private": true,
+  "type": "module",
+  "description": "DawaTrace / TibaTrace Windows POS (Electron)",
+  "main": "dist/main/main.js",
+  "scripts": {
+    "typecheck": "tsc --project tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "build:renderer": "vite build",
+    "build:main": "tsc --project tsconfig.main.json",
+    "build": "npm run build:main && npm run build:renderer",
+    "dev": "vite",
+    "start": "electron ."
+  },
+  "dependencies": {
+    "@dawatrace/shared": "*"
+  },
+  "devDependencies": {
+    "@types/react": "18.3.12",
+    "@types/react-dom": "18.3.1",
+    "@vitejs/plugin-react": "^6.0.4",
+    "electron": "^43.2.0",
+    "jsdom": "25.0.1",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "typescript": "5.7.3",
+    "vite": "^8.1.5",
+    "vitest": "^4.1.10"
+  }
+}

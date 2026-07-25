@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist/main",
+    "lib": ["ES2022"],
+    "types": []
+  },
+  "include": ["electron/**/*.ts"]
+}
