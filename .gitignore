@@ -3,6 +3,7 @@
 .env.*
 !.env.example
 !.env.test
+!deploy/tibatrace/.env.production.example
 .venv/
 venv/
 __pycache__/
@@ -24,3 +25,4 @@ staticfiles/
 *.log
 *.pem
 *.key
+apps/*/dist/
