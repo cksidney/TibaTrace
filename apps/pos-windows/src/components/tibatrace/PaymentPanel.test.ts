@@ -2,7 +2,9 @@ import type { PaymentState } from '@dawatrace/shared/dispensing/index.js';
 import { paymentPermitsSupply } from '@dawatrace/shared/dispensing/index.js';
 import { describe, expect, it } from 'vitest';
 
-import { TENDER_OPTIONS, paymentStatusMeta } from './PaymentPanel.js';
+import { TENDER_OPTIONS } from '@dawatrace/shared/dispensing/index.js';
+
+import { paymentStatusMeta } from './PaymentPanel.js';
 import { lineStatus } from './PrescriptionWorkspace.js';
 
 describe('tender availability', () => {

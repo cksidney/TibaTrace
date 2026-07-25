@@ -1,6 +1,6 @@
 import { fontFamily, fontSize, spacing, statusPalette, surface, text } from '@dawatrace/shared/design-system/index.js';
 import type { PaymentMode, PaymentState, PaymentTenderType } from '@dawatrace/shared/dispensing/index.js';
-import { paymentPermitsSupply } from '@dawatrace/shared/dispensing/index.js';
+import { TENDER_OPTIONS, paymentPermitsSupply } from '@dawatrace/shared/dispensing/index.js';
 import { useState } from 'react';
 
 import { BlockingReason, StatusBadge } from './StatusBadge.js';
@@ -14,35 +14,7 @@ import { BlockingReason, StatusBadge } from './StatusBadge.js';
  * finish, which is worse than not offering it.
  */
 
-interface TenderOption {
-  readonly type: PaymentMode;
-  readonly label: string;
-  readonly available: boolean;
-  /** Why this tender cannot be used. Shown to the operator verbatim. */
-  readonly blocker?: string;
-}
 
-/**
- * Cash and card settle through the ledger today. M-PESA has no provider adapter
- * and split tender has no orchestration, so both are disabled rather than
- * presented as working.
- */
-export const TENDER_OPTIONS: readonly TenderOption[] = [
-  { type: 'CASH', label: 'Cash', available: true },
-  { type: 'CARD', label: 'Card (manual approval)', available: true },
-  {
-    type: 'MPESA',
-    label: 'M-PESA',
-    available: false,
-    blocker: 'M-PESA settlement is not yet available on this deployment.',
-  },
-  {
-    type: 'SPLIT',
-    label: 'Split tender',
-    available: false,
-    blocker: 'Split-tender allocation is not yet available on this deployment.',
-  },
-];
 
 export function paymentStatusMeta(state: PaymentState) {
   switch (state) {

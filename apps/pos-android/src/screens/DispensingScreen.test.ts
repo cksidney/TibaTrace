@@ -101,3 +101,29 @@ describe('android accessibility guarantees', () => {
     }
   });
 });
+
+describe('android payment parity with windows', () => {
+  it('offers exactly the tenders the server can settle', async () => {
+    const { TENDER_OPTIONS } = await import('@dawatrace/shared/dispensing/index.js');
+    const available = TENDER_OPTIONS.filter((t) => t.available).map((t) => t.type);
+    expect(available).toEqual(['CASH', 'CARD']);
+  });
+
+  it('states a blocker for every unavailable tender', async () => {
+    const { TENDER_OPTIONS } = await import('@dawatrace/shared/dispensing/index.js');
+    for (const option of TENDER_OPTIONS.filter((t) => !t.available)) {
+      expect(option.blocker, `${option.type} needs a stated blocker`).toBeTruthy();
+    }
+  });
+
+  it('shares one tender declaration with windows', async () => {
+    // Android must not quietly offer a payment route Windows refuses.
+    const { TENDER_OPTIONS } = await import('@dawatrace/shared/dispensing/index.js');
+    expect(TENDER_OPTIONS.map((t) => `${t.type}:${t.available}`)).toEqual([
+      'CASH:true',
+      'CARD:true',
+      'MPESA:false',
+      'SPLIT:false',
+    ]);
+  });
+});
