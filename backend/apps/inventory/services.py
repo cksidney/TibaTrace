@@ -80,7 +80,7 @@ class InventoryLedgerService:
             if balance.on_hand + base_quantity_delta < 0:
                 raise ValidationError(f"Insufficient on-hand stock for SKU {sku.sku_code} at {location.location_code}.")
 
-        entry = InventoryLedgerEntry.objects.create(
+        entry = InventoryLedgerEntry.all_objects.create(
             tenant=tenant,
             branch=branch,
             location=location,

@@ -169,6 +169,7 @@ class InventoryLedgerEntry(TenantConsistencyMixin, TimestampedModel):
     all_objects = models.Manager.from_queryset(InventoryLedgerEntryQuerySet)()
 
     class Meta:
+        ordering = ["-transaction_timestamp"]
         constraints = [
             models.UniqueConstraint(fields=["tenant", "idempotency_key"], name="uq_ledger_idempotency"),
             models.CheckConstraint(condition=~Q(quantity_delta=0), name="chk_ledger_delta_nonzero"),

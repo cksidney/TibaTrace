@@ -884,12 +884,16 @@ class DispensingEpisode(TenantConsistencyMixin, TimestampedModel):
         ("DRAFT", "Draft"),
         ("PREPARING", "Preparing"),
         ("CHECKING", "Checking"),
+        ("READY_FOR_PAYMENT", "Ready for payment"),
+        ("PAID", "Paid"),
+        ("READY_FOR_COLLECTION", "Ready for collection"),
         ("READY_FOR_SUPPLY", "Ready for supply"),
         ("PARTIALLY_SUPPLIED", "Partially supplied"),
         ("SUPPLIED", "Supplied"),
         ("CLOSED", "Closed"),
         ("ON_HOLD", "On hold"),
         ("CANCELLED", "Cancelled"),
+        ("REJECTED", "Rejected"),
         ("REVERSED", "Reversed"),
         ("RETURNED", "Returned"),
     )
@@ -952,6 +956,24 @@ class DispensingEpisode(TenantConsistencyMixin, TimestampedModel):
         choices=PAYMENT_STATES,
         default="NOT_REQUIRED",
     )
+    payment_status = models.CharField(max_length=30, choices=PAYMENT_STATES, default="PENDING")
+    payment_reference = models.CharField(max_length=128, blank=True, default="")
+    tender_type = models.CharField(max_length=64, default="CASH")
+    paid_amount = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+    collector_name = models.CharField(max_length=255, blank=True, default="")
+    collector_id_number = models.CharField(max_length=128, blank=True, default="")
+    collector_phone = models.CharField(max_length=64, blank=True, default="")
+    collector_relationship = models.CharField(max_length=128, blank=True, default="")
+    collection_proof_type = models.CharField(max_length=64, blank=True, default="")
+    collected_at = models.DateTimeField(null=True, blank=True)
+    controlled_witness = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    controlled_authority_checked = models.BooleanField(default=False)
     counselling_status = models.CharField(max_length=30, default="NOT_STARTED")
     notes = models.TextField(blank=True, default="")
     idempotency_key = models.CharField(max_length=255)
@@ -1815,3 +1837,106 @@ class DeadLetterQueue(TenantConsistencyMixin, TimestampedModel):
 
     objects = StrictTenantManager()
     all_objects = models.Manager()
+
+
+class PosShiftRecord(TenantConsistencyMixin, TimestampedModel):
+    class Status(models.TextChoices):
+        OPEN = "OPEN", "Open"
+        CLOSED = "CLOSED", "Closed"
+        RECONCILED = "RECONCILED", "Reconciled"
+
+    tenant_relation_fields = ("location", "cashier", "pharmacist")
+    tenant = models.ForeignKey("tenancy.Tenant", on_delete=models.CASCADE, related_name="+")
+    shift_number = models.CharField(max_length=64)
+    cashier = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    pharmacist = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    location = models.ForeignKey(
+        "organizations.Location",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    started_at = models.DateTimeField(default=timezone.now)
+    ended_at = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(max_length=32, choices=Status.choices, default=Status.OPEN)
+    controlled_stock_start_count = models.IntegerField(default=0)
+    controlled_stock_end_count = models.IntegerField(default=0)
+    discrepancy_declared = models.BooleanField(default=False)
+    declaration_notes = models.TextField(blank=True, default="")
+
+    objects = StrictTenantManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["tenant", "shift_number"], name="uq_pos_shift_number")
+        ]
+
+    def __str__(self):
+        return f"Shift {self.shift_number} [{self.status}]"
+
+
+class PosDeviceHealthRecord(TenantConsistencyMixin, TimestampedModel):
+    class Status(models.TextChoices):
+        OK = "OK", "OK"
+        WARNING = "WARNING", "Warning"
+        ERROR = "ERROR", "Error"
+        OFFLINE = "OFFLINE", "Offline"
+
+    tenant_relation_fields = ()
+    tenant = models.ForeignKey("tenancy.Tenant", on_delete=models.CASCADE, related_name="+")
+    device_id = models.CharField(max_length=128)
+    device_type = models.CharField(max_length=64, default="TERMINAL")
+    status = models.CharField(max_length=32, choices=Status.choices, default=Status.OK)
+    printer_paper_level = models.CharField(max_length=32, default="OK")
+    scanner_connected = models.BooleanField(default=True)
+    cash_drawer_open = models.BooleanField(default=False)
+    network_latency_ms = models.IntegerField(default=0)
+    battery_level_pct = models.IntegerField(null=True, blank=True)
+    storage_used_pct = models.IntegerField(default=0)
+    telemetry_data = models.JSONField(default=dict, blank=True)
+    last_heartbeat = models.DateTimeField(default=timezone.now)
+
+    objects = StrictTenantManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["tenant", "device_id"], name="uq_pos_device_health_id")
+        ]
+
+    def __str__(self):
+        return f"Device {self.device_id} [{self.status}]"
+
+
+class PosLabelReprintAudit(TenantConsistencyMixin, TimestampedModel):
+    tenant_relation_fields = ("label", "reprinted_by")
+    tenant = models.ForeignKey("tenancy.Tenant", on_delete=models.CASCADE, related_name="+")
+    label = models.ForeignKey(DispensingLabel, on_delete=models.CASCADE, related_name="reprints")
+    reprinted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="+",
+    )
+    reprint_reason = models.CharField(max_length=255)
+    reprinted_at = models.DateTimeField(default=timezone.now)
+
+    objects = StrictTenantManager()
+    all_objects = models.Manager()
+
+    def __str__(self):
+        return f"Reprint for {self.label.document_number} by {self.reprinted_by_id}"
+
