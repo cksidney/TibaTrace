@@ -1,4 +1,6 @@
 from django.contrib.auth import get_user_model
+from django.core.exceptions import PermissionDenied
+from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
@@ -35,13 +37,27 @@ class PosClinicalScreeningViewSet(viewsets.GenericViewSet):
         tenant_id = get_current_tenant_id()
         return PosClinicalScreening.all_objects.filter(tenant_id=tenant_id)
 
-    def _get_user(self, user_id):
+    def _actor(self):
+        """The authenticated principal.
+
+        Never derived from a client-supplied id. Accepting `pharmacist_id` from
+        the request body would let any caller nominate whose authority to act
+        under, which defeats capability enforcement entirely -- a cashier could
+        simply pass a pharmacist's id to approve their own override.
+        """
+        return self.request.user
+
+    def _referenced_user(self, user_id):
+        """Resolve a *referenced* user, such as a witness, for recording only.
+
+        Tenant-scoped, and never used as the actor for an authorisation check.
+        """
         if not user_id:
-            return self.request.user
+            return None
         tenant = getattr(self.request, "tenant", None)
         if not tenant:
-            return self.request.user
-        return User.objects.filter(tenant=tenant, id=user_id).first() or self.request.user
+            return None
+        return User.objects.filter(tenant=tenant, id=user_id).first()
 
     @action(detail=False, methods=['post'])
     def evaluate(self, request):
@@ -80,17 +96,20 @@ class PosClinicalScreeningViewSet(viewsets.GenericViewSet):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
         
-        cashier = self._get_user(data.get('cashier_id'))
         try:
             PosClinicalScreeningService.acknowledge_finding(
                 tenant=request.tenant,
                 finding_id=data['finding_id'],
-                cashier=cashier
+                cashier=self._actor(),
+                expected_context_hash=data.get('expected_context_hash'),
             )
             screening.refresh_from_db()
             return Response(PosClinicalScreeningResultSerializer(screening).data)
-        except Exception as e:
-            raise ValidationError(str(e))
+        except PermissionDenied:
+            # Must surface as 403, not be flattened into a 400.
+            raise
+        except DjangoValidationError as e:
+            raise ValidationError(str(e)) from e
 
     @action(detail=True, methods=['post'], url_path='request-pharmacist')
     def request_pharmacist(self, request, screening_id=None):
@@ -99,15 +118,17 @@ class PosClinicalScreeningViewSet(viewsets.GenericViewSet):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
         
-        cashier = self._get_user(data.get('cashier_id'))
         try:
             PosPharmacistReviewService.request_review(
                 screening=screening,
-                cashier=cashier
+                cashier=self._actor(),
+                expected_context_hash=data.get('expected_context_hash'),
             )
             return Response({"status": "requested"})
-        except Exception as e:
-            raise ValidationError(str(e))
+        except PermissionDenied:
+            raise
+        except DjangoValidationError as e:
+            raise ValidationError(str(e)) from e
 
     @action(detail=True, methods=['post'], url_path='pharmacist-review')
     def pharmacist_review(self, request, screening_id=None):
@@ -116,23 +137,24 @@ class PosClinicalScreeningViewSet(viewsets.GenericViewSet):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
         
-        pharmacist = self._get_user(data.get('pharmacist_id'))
-        
         try:
             PosPharmacistReviewService.submit_decision(
                 screening=screening,
                 finding_id=data.get('finding_id'),
-                pharmacist=pharmacist,
+                pharmacist=self._actor(),
                 decision=data['decision'],
                 clinical_justification=data.get('clinical_justification', ''),
                 counselling_notes=data.get('counselling_notes', ''),
                 prescriber_contact_ref=data.get('prescriber_contact_ref', ''),
-                idempotency_key=data['idempotency_key']
+                idempotency_key=data['idempotency_key'],
+                expected_context_hash=data.get('expected_context_hash'),
             )
             screening.refresh_from_db()
             return Response(PosClinicalScreeningResultSerializer(screening).data)
-        except Exception as e:
-            raise ValidationError(str(e))
+        except PermissionDenied:
+            raise
+        except DjangoValidationError as e:
+            raise ValidationError(str(e)) from e
 
     @action(detail=True, methods=['post'], url_path='override')
     def override(self, request, screening_id=None):
@@ -141,21 +163,22 @@ class PosClinicalScreeningViewSet(viewsets.GenericViewSet):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
         
-        pharmacist = self._get_user(data.get('pharmacist_id'))
-        
         try:
             PosPharmacistReviewService.submit_decision(
                 screening=screening,
                 finding_id=data['finding_id'],
-                pharmacist=pharmacist,
+                pharmacist=self._actor(),
                 decision='AUTHORIZED_OVERRIDE',
                 clinical_justification=data['clinical_justification'],
-                idempotency_key=data['idempotency_key']
+                idempotency_key=data['idempotency_key'],
+                expected_context_hash=data.get('expected_context_hash'),
             )
             screening.refresh_from_db()
             return Response(PosClinicalScreeningResultSerializer(screening).data)
-        except Exception as e:
-            raise ValidationError(str(e))
+        except PermissionDenied:
+            raise
+        except DjangoValidationError as e:
+            raise ValidationError(str(e)) from e
 
     @action(detail=True, methods=['post'], url_path='resolve')
     def resolve(self, request, screening_id=None):

@@ -5,7 +5,7 @@ import json
 import uuid
 from decimal import Decimal
 
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 from django.utils import timezone
 
@@ -36,7 +36,55 @@ from apps.patients.models import (
     PatientClinicalSummary,
 )
 from apps.prescription.models import PrescriptionItem
+from apps.prescription.services.clinical_dispensing import _require_capability
 from apps.workflows.service import emit_event
+
+
+class StaleClinicalContext(ValidationError):
+    """Raised when a decision is attempted against a context that has moved on.
+
+    Carries the marker string so API callers and both POS clients can classify
+    it without string-matching a prose message.
+    """
+
+    def __init__(self, message="The prescription or basket changed after this screening."):
+        super().__init__(f"STALE_CLINICAL_CONTEXT: {message}")
+
+
+def _require_actor(actor, capability, tenant_id):
+    """Every clinical write needs an authorised principal.
+
+    Enforced in the service rather than only at the API boundary, so the same
+    rule applies to management commands, background jobs and any future
+    integration -- an alternate entry point must not become a way around it.
+    """
+    if actor is None:
+        raise PermissionDenied(f"Capability {capability} is required; no actor supplied.")
+    _require_capability(actor, tenant_id, capability)
+
+
+def _require_current_context(screening, expected_context_hash):
+    """Refuse a decision whose context has changed since screening.
+
+    An acknowledgement or override is only meaningful for the basket it was made
+    against. Letting one carry across a change is how a patient ends up supplied
+    under an approval that was never given for what is in the bag.
+    """
+    if expected_context_hash is None:
+        raise StaleClinicalContext("An expected context hash is required.")
+    if not PosClinicalApprovalService.validate_basket_unchanged(
+        screening=screening, current_context_hash=expected_context_hash
+    ):
+        PosClinicalAuditEvent.all_objects.create(
+            tenant=screening.tenant,
+            screening=screening,
+            event_type="CLINICAL_CONTEXT_STALE",
+            payload={
+                "expected_context_hash": str(expected_context_hash),
+                "current_context_hash": screening.context_hash,
+            },
+        )
+        raise StaleClinicalContext()
 
 
 class PosTransactionContextBuilder:
@@ -267,9 +315,21 @@ class PosClinicalScreeningService:
         return PosClinicalScreening.all_objects.get(tenant=tenant, pk=screening_id)
 
     @staticmethod
-    @transaction.atomic
-    def acknowledge_finding(*, tenant, finding_id, cashier):
+    def acknowledge_finding(*, tenant, finding_id, cashier, expected_context_hash=None):
         finding = PosClinicalFinding.all_objects.get(tenant=tenant, pk=finding_id)
+        # Checked before the transaction opens, so a refusal is still audited.
+        _require_actor(cashier, "clinical.finding.acknowledge", tenant.id)
+        _require_current_context(finding.screening, expected_context_hash)
+        return PosClinicalScreeningService._apply_acknowledgement(
+            tenant=tenant, finding=finding, cashier=cashier
+        )
+
+    @staticmethod
+    @transaction.atomic
+    def _apply_acknowledgement(*, tenant, finding, cashier):
+        # Acknowledgement can only clear an advisory finding. It must never be
+        # able to turn a blocking finding into a safe state -- that requires a
+        # pharmacist decision or an authorised override.
         if finding.severity in ['INFO', 'LOW'] and not finding.blocking:
             finding.resolution_status = 'ACKNOWLEDGED'
             finding.resolved_by = cashier
@@ -299,8 +359,9 @@ class PosClinicalScreeningService:
 
 class PosPharmacistReviewService:
     @staticmethod
-    @transaction.atomic
-    def request_review(*, screening, cashier):
+    def request_review(*, screening, cashier, expected_context_hash=None):
+        _require_actor(cashier, "clinical.pharmacist_review.request", screening.tenant_id)
+        _require_current_context(screening, expected_context_hash)
         audit = PosClinicalAuditEvent.all_objects.create(
             tenant=screening.tenant,
             screening=screening,
@@ -311,10 +372,35 @@ class PosPharmacistReviewService:
         return audit
 
     @staticmethod
-    @transaction.atomic
-    def submit_decision(*, screening, finding_id, pharmacist, decision, clinical_justification='', counselling_notes='', prescriber_contact_ref='', override_reason='CLINICALLY_JUSTIFIED', override_capability='pos.clinical_findings.override_high', idempotency_key=None):
+    def submit_decision(*, screening, finding_id, pharmacist, decision, clinical_justification='', counselling_notes='', prescriber_contact_ref='', override_reason='CLINICALLY_JUSTIFIED', override_capability='pos.clinical_findings.override_high', idempotency_key=None, expected_context_hash=None):
+        # An override is a strictly higher authority than an ordinary decision,
+        # so it is gated separately rather than folded into one capability.
+        required = (
+            "clinical.override.approve"
+            if decision == 'AUTHORIZED_OVERRIDE'
+            else "clinical.pharmacist_review.decide"
+        )
+        _require_actor(pharmacist, required, screening.tenant_id)
+        _require_current_context(screening, expected_context_hash)
+        # Separation of duties: whoever rang the basket cannot also clear it.
         if screening.cashier_id and screening.cashier_id == pharmacist.id:
-            raise ValueError("Pharmacist cannot be the same as cashier.")
+            raise ValidationError("The pharmacist deciding must differ from the cashier.")
+        return PosPharmacistReviewService._apply_decision(
+            screening=screening,
+            finding_id=finding_id,
+            pharmacist=pharmacist,
+            decision=decision,
+            clinical_justification=clinical_justification,
+            counselling_notes=counselling_notes,
+            prescriber_contact_ref=prescriber_contact_ref,
+            override_reason=override_reason,
+            override_capability=override_capability,
+            idempotency_key=idempotency_key,
+        )
+
+    @staticmethod
+    @transaction.atomic
+    def _apply_decision(*, screening, finding_id, pharmacist, decision, clinical_justification='', counselling_notes='', prescriber_contact_ref='', override_reason='CLINICALLY_JUSTIFIED', override_capability='pos.clinical_findings.override_high', idempotency_key=None):
             
         if screening.status != 'COMPLETE':
             raise ValueError("Screening must be COMPLETE.")
@@ -388,16 +474,35 @@ class PosClinicalApprovalService:
 
     @staticmethod
     @transaction.atomic
-    def invalidate(*, screening, reason=''):
+    def invalidate(*, screening, reason='', actor=None):
         screening.status = 'INVALIDATED'
+        # An invalidated screening can never be safe to proceed: the approval it
+        # carried no longer applies to what is in the basket.
+        screening.safe_to_proceed = False
         screening.save()
         PosClinicalAuditEvent.all_objects.create(
             tenant=screening.tenant,
             screening=screening,
             event_type='SCREENING_INVALIDATED',
-            payload={"reason": reason}
+            payload={"reason": reason, "actor_id": str(actor.id) if actor else ""},
         )
         return screening
+
+    @staticmethod
+    def assert_current_and_safe(*, screening, expected_context_hash):
+        """Gate used before payment progression and supply.
+
+        Both the freshness of the context and the authoritative safe_to_proceed
+        flag are checked; neither alone is sufficient.
+        """
+        _require_current_context(screening, expected_context_hash)
+        if screening.status != 'COMPLETE':
+            raise ValidationError(f"Clinical screening is {screening.status}; it must be COMPLETE.")
+        if not screening.safe_to_proceed:
+            raise ValidationError(
+                "Clinical screening does not permit progression: unresolved blocking findings."
+            )
+        return True
 
     @staticmethod
     def validate_basket_unchanged(*, screening, current_context_hash):

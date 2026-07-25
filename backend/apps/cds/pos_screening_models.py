@@ -295,6 +295,8 @@ class PosClinicalAuditEvent(TenantConsistencyMixin, TimestampedModel):
         SCREENING_UNAVAILABLE = "SCREENING_UNAVAILABLE", "Screening unavailable"
         TRANSACTION_BLOCKED = "TRANSACTION_BLOCKED", "Transaction blocked"
         TRANSACTION_RELEASED = "TRANSACTION_RELEASED", "Transaction released"
+        CLINICAL_CONTEXT_STALE = "CLINICAL_CONTEXT_STALE", "Clinical context stale"
+        CLINICAL_CAPABILITY_DENIED = "CLINICAL_CAPABILITY_DENIED", "Clinical capability denied"
 
     tenant = models.ForeignKey("tenancy.Tenant", on_delete=models.CASCADE, related_name="+")
     event_type = models.CharField(max_length=64, choices=EventType.choices)

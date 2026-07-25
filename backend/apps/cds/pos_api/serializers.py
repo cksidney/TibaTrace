@@ -73,10 +73,16 @@ class PosClinicalScreeningResultSerializer(serializers.ModelSerializer):
 class PosClinicalAcknowledgementSerializer(serializers.Serializer):
     finding_id = serializers.UUIDField(required=True)
     cashier_id = serializers.CharField(required=False, allow_blank=True)
+    #: The context the client believes it is acting on. The server refuses
+    #: the write if the basket has moved on since.
+    expected_context_hash = serializers.CharField(max_length=64)
 
 class PosPharmacistReviewRequestSerializer(serializers.Serializer):
     cashier_id = serializers.CharField(required=True)
     urgency_note = serializers.CharField(required=False, allow_blank=True)
+    #: The context the client believes it is acting on. The server refuses
+    #: the write if the basket has moved on since.
+    expected_context_hash = serializers.CharField(max_length=64)
 
 class PosPharmacistDecisionSerializer(serializers.Serializer):
     finding_id = serializers.UUIDField(required=False, allow_null=True)
@@ -88,6 +94,9 @@ class PosPharmacistDecisionSerializer(serializers.Serializer):
     prescriber_contact_ref = serializers.CharField(required=False, allow_blank=True)
     override_reason = serializers.ChoiceField(choices=PosClinicalOverride.OverrideReason.choices, required=False, allow_blank=True, allow_null=True)
     idempotency_key = serializers.CharField(required=True)
+    #: The context the client believes it is acting on. The server refuses
+    #: the write if the basket has moved on since.
+    expected_context_hash = serializers.CharField(max_length=64)
 
 class PosClinicalOverrideSerializer(serializers.Serializer):
     finding_id = serializers.UUIDField(required=True)
@@ -96,3 +105,6 @@ class PosClinicalOverrideSerializer(serializers.Serializer):
     clinical_justification = serializers.CharField(required=True)
     override_capability = serializers.CharField(required=True)
     idempotency_key = serializers.CharField(required=True)
+    #: The context the client believes it is acting on. The server refuses
+    #: the write if the basket has moved on since.
+    expected_context_hash = serializers.CharField(max_length=64)

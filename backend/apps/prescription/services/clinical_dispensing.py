@@ -84,6 +84,21 @@ CAPABILITY_ALIASES = {
     # reconciling it are supervisory acts, separate from accepting payment.
     "pos.payment.reverse": ("dispensing.reverse",),
     "pos.payment.reconcile": ("dispensing.reverse",),
+    # Clinical POS capabilities. Acknowledgement is a routine counter action;
+    # deciding and overriding are pharmacist authority and alias accordingly, so
+    # a cashier role can never inherit them.
+    "clinical.screening.view": ("dispensing.read",),
+    "clinical.finding.acknowledge": ("dispensing.read",),
+    # Escalating to a pharmacist must be available to whoever is at the till.
+    # Gating it higher leaves a cashier stuck at a blocker with no lawful way
+    # forward, which is how people learn to work around the system.
+    "clinical.pharmacist_review.request": ("dispensing.read",),
+    "clinical.pharmacist_review.decide": ("prescriptions.approve",),
+    "clinical.override.request": ("prescriptions.approve",),
+    "clinical.override.approve": ("cds.override",),
+    "clinical.finding.resolve": ("prescriptions.approve",),
+    "clinical.offline_package.issue": ("prescriptions.approve",),
+    "clinical.offline_package.view": ("dispensing.read",),
 }
 
 

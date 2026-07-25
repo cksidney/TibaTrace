@@ -288,7 +288,7 @@ def test_request_pharmacist_review(tenant, basket_lines, cashier_user, drug_drug
     screening = PosClinicalScreeningService.evaluate(
         tenant=tenant, transaction_id="tx-6", device_id="dev-1", basket_lines=basket_lines, cashier=cashier_user
     )
-    audit = PosPharmacistReviewService.request_review(screening=screening, cashier=cashier_user)
+    audit = PosPharmacistReviewService.request_review(screening=screening, cashier=cashier_user, expected_context_hash=screening.context_hash)
     assert audit.event_type == 'PHARMACIST_REVIEW_REQUESTED'
 
 def test_submit_pharmacist_approval(tenant, basket_lines, cashier_user, pharmacist_user, drug_drug_rule):
@@ -297,7 +297,7 @@ def test_submit_pharmacist_approval(tenant, basket_lines, cashier_user, pharmaci
     )
     finding = PosClinicalFinding.all_objects.filter(screening=screening).first()
     dec = PosPharmacistReviewService.submit_decision(
-        screening=screening, finding_id=finding.id, pharmacist=pharmacist_user, decision="APPROVE_AS_WRITTEN", idempotency_key="idemp-1"
+        screening=screening, finding_id=finding.id, pharmacist=pharmacist_user, decision="APPROVE_AS_WRITTEN", expected_context_hash=screening.context_hash, idempotency_key="idemp-1"
     )
     assert dec.decision == "APPROVE_AS_WRITTEN"
     screening.refresh_from_db()
@@ -309,7 +309,7 @@ def test_submit_pharmacist_rejection(tenant, basket_lines, cashier_user, pharmac
     )
     finding = PosClinicalFinding.all_objects.filter(screening=screening).first()
     dec = PosPharmacistReviewService.submit_decision(
-        screening=screening, finding_id=finding.id, pharmacist=pharmacist_user, decision="REJECT_SUPPLY", idempotency_key="idemp-2"
+        screening=screening, finding_id=finding.id, pharmacist=pharmacist_user, decision="REJECT_SUPPLY", expected_context_hash=screening.context_hash, idempotency_key="idemp-2"
     )
     assert dec.decision == "REJECT_SUPPLY"
     assert not screening.safe_to_proceed
@@ -320,7 +320,7 @@ def test_pharmacist_override_with_justification(tenant, basket_lines, cashier_us
     )
     finding = PosClinicalFinding.all_objects.filter(screening=screening).first()
     dec = PosPharmacistReviewService.submit_decision(
-        screening=screening, finding_id=finding.id, pharmacist=pharmacist_user, decision="AUTHORIZED_OVERRIDE", clinical_justification="Ok", idempotency_key="idemp-3"
+        screening=screening, finding_id=finding.id, pharmacist=pharmacist_user, decision="AUTHORIZED_OVERRIDE", clinical_justification="Ok", expected_context_hash=screening.context_hash, idempotency_key="idemp-3"
     )
     assert PosClinicalOverride.all_objects.filter(decision=dec).exists()
 
@@ -383,13 +383,13 @@ def test_decision_idempotency_key_prevents_duplicate(tenant, basket_lines, cashi
     )
     finding = PosClinicalFinding.all_objects.filter(screening=screening).first()
     dec1 = PosPharmacistReviewService.submit_decision(
-        screening=screening, finding_id=finding.id, pharmacist=pharmacist_user, decision="APPROVE_AS_WRITTEN", idempotency_key="idemp-4"
+        screening=screening, finding_id=finding.id, pharmacist=pharmacist_user, decision="APPROVE_AS_WRITTEN", expected_context_hash=screening.context_hash, idempotency_key="idemp-4"
     )
     assert dec1.decision == "APPROVE_AS_WRITTEN"
     import django.db
     with pytest.raises(django.db.utils.IntegrityError):
         PosPharmacistReviewService.submit_decision(
-            screening=screening, finding_id=finding.id, pharmacist=pharmacist_user, decision="APPROVE_AS_WRITTEN", idempotency_key="idemp-4"
+            screening=screening, finding_id=finding.id, pharmacist=pharmacist_user, decision="APPROVE_AS_WRITTEN", expected_context_hash=screening.context_hash, idempotency_key="idemp-4"
         )
 
 def test_generate_offline_package(tenant, pharmacist_user):
