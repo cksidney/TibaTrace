@@ -13,6 +13,7 @@ ignore = ["E501"]
 # reads as a redefinition when a test takes the fixture as an argument.
 "backend/tests/test_pos_dispensing_controls.py" = ["F811"]
 "backend/tests/test_pos_payment_ledger.py" = ["F811"]
+"backend/tests/test_pos_payment_orchestration.py" = ["F811"]
 "backend/tests/test_pos_clinical_authority.py" = ["F811"]
 
 [tool.bandit]
