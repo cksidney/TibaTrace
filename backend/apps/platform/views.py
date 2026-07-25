@@ -1,13 +1,27 @@
 from __future__ import annotations
 
 from django.conf import settings
+from django.contrib.auth.decorators import login_required
 from django.db import connection
 from django.http import JsonResponse
+from django.shortcuts import render
 from drf_spectacular.utils import extend_schema
 from rest_framework import serializers
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+
+
+@login_required
+def pos_terminal_view(request):
+    """Serve the POS terminal shell.
+
+    Authenticated deliberately: the page renders a dispensing queue with patient
+    names, and every action behind it is a clinical or financial operation. An
+    unauthenticated visitor must not reach it even though the underlying API
+    would reject them separately.
+    """
+    return render(request, "pos/pos.html")
 
 
 def health(request):

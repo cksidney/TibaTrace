@@ -21,9 +21,11 @@
   "scripts": {
     "typecheck": "tsc --project tsconfig.json --noEmit",
     "build": "tsc --project tsconfig.build.json",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "test": "vitest run"
   },
   "devDependencies": {
-    "typescript": "5.7.3"
+    "typescript": "5.7.3",
+    "vitest": "^4.1.10"
   }
 }

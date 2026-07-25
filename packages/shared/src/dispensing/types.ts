@@ -1,15 +1,25 @@
+/**
+ * Mirrors DispensingEpisode.STATUS_CHOICES on the backend, which is the
+ * authority. The previous version of this type declared WAITING,
+ * AWAITING_PHARMACIST, COLLECTED and PARTIALLY_DISPENSED -- none of which the
+ * server ever emits, so any client branching on them was dead code.
+ */
 export type DispensingQueueState =
-  | 'WAITING'
+  | 'DRAFT'
   | 'PREPARING'
-  | 'AWAITING_PHARMACIST'
+  | 'CHECKING'
   | 'READY_FOR_PAYMENT'
   | 'PAID'
   | 'READY_FOR_COLLECTION'
-  | 'COLLECTED'
-  | 'PARTIALLY_DISPENSED'
+  | 'READY_FOR_SUPPLY'
+  | 'PARTIALLY_SUPPLIED'
+  | 'SUPPLIED'
+  | 'CLOSED'
   | 'ON_HOLD'
   | 'CANCELLED'
-  | 'REJECTED';
+  | 'REJECTED'
+  | 'REVERSED'
+  | 'RETURNED';
 
 /**
  * Canonical payment lifecycle for a dispensing episode. Mirrors
@@ -110,6 +120,12 @@ export interface PaymentProcessRequest {
   tender_type: PaymentTenderType;
   paid_amount: string;
   payment_reference?: string;
+  /**
+   * Required by the server. Must stay stable across retries of the *same*
+   * attempt so a dropped connection cannot charge the patient twice; generate a
+   * fresh one only for a genuinely new payment.
+   */
+  idempotency_key: string;
 }
 
 export interface PaymentProcessResponse {
@@ -119,15 +135,19 @@ export interface PaymentProcessResponse {
   payment_reference: string;
   tender_type: PaymentTenderType;
   paid_amount: string;
+  /** True when the server recognised a replay and did not take payment again. */
+  replayed: boolean;
 }
 
 export interface PartialDispenseRequest {
   dispensing_line_id: string;
   quantity_supplied: string;
   reason?: string;
+  idempotency_key: string;
 }
 
 export interface PartialDispenseResponse {
+  supply_id: string;
   line_id: string;
   quantity_authorized: string;
   quantity_supplied: string;
@@ -148,13 +168,22 @@ export interface ControlledVerifyResponse {
   witness_id?: string | null;
 }
 
+/**
+ * Mirrors CounsellingRecordSerializer. Every flag is optional on the wire
+ * because the server declares a default for each.
+ *
+ * Note for the counselling UI: those server-side defaults are `True`, so an
+ * empty body records that every topic was covered. The panel must therefore
+ * send explicit values for what the pharmacist actually did rather than
+ * omitting fields.
+ */
 export interface CounsellingRecordRequest {
-  medicine_explained: boolean;
-  dosage_explained: boolean;
-  storage_explained: boolean;
-  side_effects_discussed: boolean;
-  interaction_advice_given: boolean;
-  patient_acknowledged: boolean;
+  medicine_explained?: boolean;
+  dosage_explained?: boolean;
+  storage_explained?: boolean;
+  side_effects_discussed?: boolean;
+  interaction_advice_given?: boolean;
+  patient_acknowledged?: boolean;
   notes?: string;
 }
 
@@ -165,6 +194,7 @@ export interface CollectionConfirmRequest {
   collector_relationship?: string;
   collection_proof_type?: string;
   signature_ref?: string;
+  idempotency_key: string;
 }
 
 export interface CollectionConfirmResponse {
@@ -209,4 +239,23 @@ export interface DeviceTelemetryDTO {
   network_latency_ms: number;
   battery_level_pct?: number | null;
   storage_used_pct: number;
+}
+
+/**
+ * Payment states in which medicine supply is commercially permitted. Mirrors
+ * DispensingEpisode.PAYMENT_STATES_PERMITTING_SUPPLY. PARTIALLY_PAID is
+ * deliberately absent: part-payment must not release stock.
+ *
+ * This is a *display* helper for greying out controls. The server enforces the
+ * real gate and rejects independently -- never treat this as authorisation.
+ */
+export const PAYMENT_STATES_PERMITTING_SUPPLY: readonly PaymentState[] = [
+  'NOT_REQUIRED',
+  'AUTHORIZED',
+  'PAID',
+  'WAIVED',
+];
+
+export function paymentPermitsSupply(state: PaymentState): boolean {
+  return PAYMENT_STATES_PERMITTING_SUPPLY.includes(state);
 }
