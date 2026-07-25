@@ -1967,8 +1967,21 @@ class PosLabelReprintAudit(TenantConsistencyMixin, TimestampedModel):
         on_delete=models.PROTECT,
         related_name="+",
     )
-    reprint_reason = models.CharField(max_length=255)
+    reprint_reason = models.CharField(max_length=255, blank=True, default="")
     reprinted_at = models.DateTimeField(default=timezone.now)
+    #: Recorded at print time rather than inferred later. Whether a copy was the
+    #: original is a fact about that moment; deriving it from a count afterwards
+    #: breaks as soon as a failed attempt is inserted between prints.
+    is_original = models.BooleanField(default=False)
+    printer = models.CharField(max_length=128, blank=True, default="")
+    #: Failed attempts are kept: a printer that jams three times and succeeds
+    #: once produced one label, and the audit must show that.
+    status = models.CharField(
+        max_length=20,
+        choices=(("SUCCEEDED", "Succeeded"), ("FAILED", "Failed")),
+        default="SUCCEEDED",
+    )
+    failure_reason = models.TextField(blank=True, default="")
 
     objects = StrictTenantManager()
     all_objects = models.Manager()

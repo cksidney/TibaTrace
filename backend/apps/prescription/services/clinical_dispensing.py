@@ -99,6 +99,10 @@ CAPABILITY_ALIASES = {
     "clinical.finding.resolve": ("prescriptions.approve",),
     "clinical.offline_package.issue": ("prescriptions.approve",),
     "clinical.offline_package.view": ("dispensing.read",),
+    # Printing a label is routine. Producing a duplicate is not, so it aliases
+    # to a supervisory capability rather than to dispensing.prepare.
+    "pos.label.print": ("dispensing.prepare",),
+    "pos.label.reprint": ("dispensing.complete",),
 }
 
 
