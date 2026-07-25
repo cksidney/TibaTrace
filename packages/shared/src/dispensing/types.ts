@@ -40,13 +40,22 @@ export type PaymentState =
   | 'REVERSED'
   | 'REFUNDED';
 
-export type PaymentTenderType =
-  | 'CASH'
-  | 'CARD'
-  | 'MPESA'
-  | 'SPLIT'
-  | 'CREDIT_ACCOUNT'
-  | 'INSTITUTIONAL';
+/**
+ * Tender types the server actually accepts, mirroring TENDER_TYPES in
+ * pos_dispensing_api/serializers.py.
+ *
+ * Previously this union also declared SPLIT, CREDIT_ACCOUNT and INSTITUTIONAL.
+ * The server rejects all three, so any client offering them would have produced
+ * a payment the system could not settle. A tender belongs here only once its
+ * settlement path exists.
+ */
+export type PaymentTenderType = 'CASH' | 'CARD' | 'MPESA';
+
+/**
+ * How the operator is paying, which is not the same as a tender type. SPLIT is
+ * a UI mode that allocates across several tenders; it is never sent as one.
+ */
+export type PaymentMode = PaymentTenderType | 'SPLIT';
 
 export type LabelPrintFormat =
   | '70x40'

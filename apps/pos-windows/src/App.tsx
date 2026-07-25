@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { ClinicalRail } from './components/tibatrace/ClinicalRail.js';
 import type { ClinicalSummary } from './components/tibatrace/ClinicalRail.js';
 import { PatientSafetyBanner } from './components/tibatrace/PatientSafetyBanner.js';
+import { PaymentPanel } from './components/tibatrace/PaymentPanel.js';
+import { PrescriptionWorkspace } from './components/tibatrace/PrescriptionWorkspace.js';
 import type { PatientSummary } from './components/tibatrace/PatientSafetyBanner.js';
 import { BlockingReason } from './components/tibatrace/StatusBadge.js';
 import { WorkflowRibbon } from './components/tibatrace/WorkflowRibbon.js';
@@ -75,11 +77,29 @@ export function App() {
           ) : null}
 
           {state.selected ? (
-            <EpisodeWorkspace
-              episode={state.selected}
-              gateReason={state.gate.blockedReason}
-              onRefresh={() => void refresh()}
-            />
+            <>
+              <EpisodeWorkspace
+                episode={state.selected}
+                gateReason={state.gate.blockedReason}
+                onRefresh={() => void refresh()}
+              />
+              <div style={{ marginTop: spacing.xl }}>
+                <PrescriptionWorkspace lines={state.selected.lines} />
+              </div>
+              <div style={{ marginTop: spacing.xxl }}>
+                <PaymentPanel
+                  paymentState={state.selected.payment_state}
+                  amountDue={state.selected.paid_amount}
+                  amountSettled={state.selected.paid_amount}
+                  canTakePayment={state.gate.canTakePayment}
+                  blockedReason={state.gate.canTakePayment ? '' : state.gate.blockedReason}
+                  busy={state.busy}
+                  onTakePayment={(tender, amount, reference) =>
+                    void takePayment(tender, amount, reference)
+                  }
+                />
+              </div>
+            </>
           ) : (
             <Queue queue={state.queue} busy={state.busy} onSelect={(id) => void select(id)} />
           )}
