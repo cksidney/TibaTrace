@@ -102,18 +102,32 @@ class TestSupplierApproval:
         with pytest.raises(ValidationError, match="Reinstate"):
             SupplierGovernanceService.approve_supplier(supplier=supplier, approver=approver)
 
-    def test_suspension_requires_an_approver_and_a_reason(self, supplier, django_user_model):
-        approver = django_user_model.objects.create_user(
-            username="buyer3", password="pw", tenant=supplier.tenant
-        )
-        with pytest.raises(PermissionDenied):
-            SupplierGovernanceService.suspend_supplier(
-                supplier=supplier, approver=None, reason="Quality failures"
-            )
+    def test_suspension_requires_a_reason(self, supplier):
+        # A suspension nobody can explain gets reversed by the next person who
+        # needs stock.
         with pytest.raises(ValidationError):
-            SupplierGovernanceService.suspend_supplier(
-                supplier=supplier, approver=approver, reason="   "
-            )
+            SupplierGovernanceService.suspend_supplier(supplier=supplier, reason="   ")
+
+    def test_suspension_does_not_require_an_approver(self, supplier):
+        """Deliberately asymmetric with approval.
+
+        Suspension is the protective direction -- it stops purchasing. Gating
+        it behind a second signature leaves a supplier orderable while somebody
+        hunts for a manager. Approval, which permits purchasing, does require
+        an approver.
+        """
+        SupplierGovernanceService.suspend_supplier(
+            supplier=supplier, reason="Repeated quality failures"
+        )
+        assert supplier.status == Supplier.Status.SUSPENDED
+
+    def test_the_suspension_reason_is_persisted(self, supplier):
+        # It is what a buyer sees when they find they cannot order.
+        SupplierGovernanceService.suspend_supplier(
+            supplier=supplier, reason="Falsified certificate of analysis"
+        )
+        supplier.refresh_from_db()
+        assert "Falsified" in supplier.suspension_reason
 
 
 # ─── the purchasing gate ─────────────────────────────────────────────────────

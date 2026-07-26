@@ -350,17 +350,54 @@ class ProcurementService:
         if purchase_order.status not in [PurchaseOrder.Status.APPROVED, PurchaseOrder.Status.SENT]:
             raise ValidationError("Revisions can only be performed on Approved or Released Purchase Orders.")
 
-        rev_num = purchase_order.revision_number + 1
+        superseded_revision = purchase_order.revision_number
+        rev_num = superseded_revision + 1
         revision = PurchaseOrderRevision.all_objects.create(
             tenant=purchase_order.tenant,
             purchase_order=purchase_order,
-            revision_number=rev_num,
+            # The version this record supersedes, because that is the version
+            # its snapshot describes. Numbering it with the new revision would
+            # attach the old state to the new version's number.
+            revision_number=superseded_revision,
             actor=actor,
-            reason_summary=reason,
-            snapshot_data={"total_gross": str(purchase_order.total_gross)},
+            change_reason=reason,
+            # The full prior state, not just the total. A revision exists so
+            # somebody can see what the order said before it changed, and a
+            # single figure does not answer that.
+            previous_snapshot={
+                "po_number": purchase_order.po_number,
+                "revision_number": purchase_order.revision_number,
+                "status": purchase_order.status,
+                "total_net": str(purchase_order.total_net),
+                "total_tax": str(purchase_order.total_tax),
+                "total_gross": str(purchase_order.total_gross),
+                "expected_delivery_date": str(purchase_order.expected_delivery_date),
+                "lines": [
+                    {
+                        "sku": str(line.sku_id),
+                        "ordered_quantity": line.ordered_quantity,
+                        "unit_price": str(line.unit_price),
+                        "total_price": str(line.total_price),
+                    }
+                    for line in purchase_order.lines.all()
+                ],
+            },
         )
 
+        # Apply the requested changes, but only to fields the order actually
+        # has. An unknown key is a caller mistake, and silently ignoring it
+        # leaves them believing a price or a date was revised when it was not.
+        for field, value in changed_fields.items():
+            if not hasattr(purchase_order, field):
+                raise ValidationError(
+                    f"{field} is not a field of a purchase order and cannot be revised."
+                )
+            setattr(purchase_order, field, value)
+
         purchase_order.revision_number = rev_num
+        # Back to SUBMITTED, whatever it was before. A released order that has
+        # had its price, quantity or delivery changed is a different commitment
+        # from the one that was approved, and it needs approving again.
         purchase_order.status = PurchaseOrder.Status.SUBMITTED
         purchase_order.save()
         return revision
