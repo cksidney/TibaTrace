@@ -278,3 +278,111 @@ export function formatMoney(value: Money | null | undefined, currency = 'KES'): 
 export function varianceNeedsExplanation(report: ShiftReportSummary): boolean {
   return report.snapshot?.variance?.requires_explanation === true;
 }
+
+/* ────────────────────────────────────────────────────────────────────────────
+   Session
+   
+   A cookie session, not a token. The workspace shows claims, membership numbers
+   and cash positions, and a token kept in localStorage is readable by any
+   script that reaches the page. The cookie is HttpOnly and this code never sees
+   it.
+   
+   The CSRF token is the one piece the client does hold, and it comes from the
+   server on every session read. It is not stored anywhere persistent -- a stale
+   token produces a confusing 403 long after the page that fetched it is gone.
+   ──────────────────────────────────────────────────────────────────────────── */
+
+export interface SessionUser {
+  readonly username: string;
+  readonly display_name: string;
+  readonly tenant_id: string;
+  readonly tenant_name: string;
+  readonly is_platform_admin: boolean;
+}
+
+export interface SessionState {
+  readonly authenticated: boolean;
+  readonly csrf_token: string;
+  readonly user?: SessionUser;
+}
+
+/** Raised when sign-in is refused. Carries the server's own wording. */
+export class SignInError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'SignInError';
+  }
+}
+
+const SESSION_PATH = '/api/identity/session/';
+
+/**
+ * Read the current session.
+ *
+ * Never throws for "not signed in" -- that is an answer, not a failure, and
+ * treating it as an error is what turns a sign-in page into a broken page.
+ */
+export async function readSession(signal?: AbortSignal): Promise<SessionState> {
+  const request: RequestInit = {
+    credentials: 'include',
+    headers: { Accept: 'application/json' },
+  };
+  if (signal) request.signal = signal;
+
+  const response = await fetch(SESSION_PATH, request);
+  if (!response.ok) {
+    throw new HQApiError(response.status, `Session read failed with ${response.status}.`);
+  }
+  return (await response.json()) as SessionState;
+}
+
+/**
+ * Sign in.
+ *
+ * The caller passes the CSRF token from a prior session read. The password is
+ * passed through and not retained here: it exists in the request body and
+ * nowhere else in this module.
+ */
+export async function signIn(
+  username: string,
+  password: string,
+  csrfToken: string,
+): Promise<SessionState> {
+  const response = await fetch(SESSION_PATH, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      'X-CSRFToken': csrfToken,
+    },
+    body: JSON.stringify({ username, password }),
+  });
+
+  if (!response.ok) {
+    // The server's wording, not ours. It deliberately does not say which of the
+    // two fields was wrong, and a client that helpfully guessed would undo
+    // that.
+    const body = (await response.json().catch(() => null)) as { detail?: string } | null;
+    throw new SignInError(
+      response.status,
+      body?.detail ??
+        (response.status === 429
+          ? 'Too many attempts. Wait a moment before trying again.'
+          : 'Sign-in failed.'),
+    );
+  }
+  return (await response.json()) as SessionState;
+}
+
+/** End the session. */
+export async function signOut(csrfToken: string): Promise<void> {
+  await fetch(SESSION_PATH, {
+    method: 'DELETE',
+    credentials: 'include',
+    headers: { Accept: 'application/json', 'X-CSRFToken': csrfToken },
+  });
+}

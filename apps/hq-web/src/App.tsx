@@ -13,6 +13,11 @@ import {
   loadInsurers,
   loadOpenRegisterSessions,
   loadPriceBooks,
+  readSession,
+  SignInError,
+  signIn,
+  signOut,
+  varianceNeedsExplanation,
 } from './api.js';
 import type {
   DashboardMetric,
@@ -22,6 +27,7 @@ import type {
   NetworkItem,
   PriceBookSummary,
   RegisterSessionSummary,
+  SessionState,
   ShiftReportSummary,
 } from './api.js';
 import { Icon } from './icons.js';
@@ -99,12 +105,28 @@ const viewMeta: Record<WorkspaceView, { readonly eyebrow: string; readonly title
 };
 
 export function App() {
+  const [session, setSession] = useState<SessionState | null>(null);
   const [overview, setOverview] = useState<HQOverview | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshFailed, setRefreshFailed] = useState(false);
 
+  // The session is read before anything else. It answers whether to render a
+  // form or a workspace, and it carries the CSRF token the form needs to post
+  // at all -- so fetching the overview first would just produce a 401 and a
+  // sign-in page with no way to submit.
   useEffect(() => {
+    const controller = new AbortController();
+    void readSession(controller.signal)
+      .then(setSession)
+      .catch((reason: unknown) => {
+        if (!controller.signal.aborted) setError(reason);
+      });
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    if (!session?.authenticated) return undefined;
     const controller = new AbortController();
     void loadHQOverview(controller.signal)
       .then(setOverview)
@@ -112,7 +134,17 @@ export function App() {
         if (!controller.signal.aborted) setError(reason);
       });
     return () => controller.abort();
-  }, []);
+  }, [session?.authenticated]);
+
+  const endSession = useCallback(async () => {
+    await signOut(session?.csrf_token ?? '');
+    // Cleared rather than reloaded: the workspace data belongs to the person
+    // who just left, and leaving it on screen while a new sign-in happens shows
+    // one user another's claims.
+    setOverview(null);
+    setError(null);
+    setSession(await readSession());
+  }, [session?.csrf_token]);
 
   const refresh = useCallback(async () => {
     setRefreshing(true);
@@ -127,14 +159,24 @@ export function App() {
   }, []);
 
   if (error instanceof HQApiError && (error.status === 401 || error.status === 403)) {
-    return <AuthenticationRequired />;
+    return (
+      <AuthenticationRequired
+        csrfToken={session?.csrf_token ?? ''}
+        onSignedIn={setSession}
+      />
+    );
   }
   if (error) return <Unavailable />;
+  if (!session) return <LoadingScreen />;
+  if (!session.authenticated) {
+    return <AuthenticationRequired csrfToken={session.csrf_token} onSignedIn={setSession} />;
+  }
   if (!overview) return <LoadingScreen />;
 
   return (
     <Dashboard
       overview={overview}
+      onSignOut={endSession}
       onRefresh={refresh}
       refreshFailed={refreshFailed}
       refreshing={refreshing}
@@ -145,11 +187,13 @@ export function App() {
 function Dashboard({
   overview,
   onRefresh,
+  onSignOut,
   refreshFailed,
   refreshing,
 }: {
   readonly overview: HQOverview;
   readonly onRefresh: () => Promise<void>;
+  readonly onSignOut: () => Promise<void>;
   readonly refreshFailed: boolean;
   readonly refreshing: boolean;
 }) {
@@ -270,7 +314,7 @@ function Dashboard({
                 </div>
                 <Icon name="chevron" />
               </button>
-              {userMenuOpen ? <UserMenu overview={overview} /> : null}
+              {userMenuOpen ? <UserMenu overview={overview} onSignOut={onSignOut} /> : null}
             </div>
           </div>
         </header>
@@ -531,6 +575,22 @@ function OperationsView({ overview }: { readonly overview: HQOverview }) {
   const totalBatches = summary.get('Inventory batches') ?? released + holds;
   const openPrescriptions = metricValue(overview, 'Open prescriptions');
   const releaseRate = totalBatches ? Math.round((released / totalBatches) * 100) : 100;
+  const openGRN = summary.get('Open goods receipts') ?? 0;
+
+  const [sessions, setSessions] = useState<readonly RegisterSessionSummary[] | null>(null);
+  const [priceBooks, setPriceBooks] = useState<readonly PriceBookSummary[] | null>(null);
+  const [opsFailed, setOpsFailed] = useState(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    Promise.all([
+      loadOpenRegisterSessions(controller.signal),
+      loadPriceBooks(controller.signal),
+    ])
+      .then(([s, p]) => { setSessions(s); setPriceBooks(p); })
+      .catch(() => { if (!controller.signal.aborted) setOpsFailed(true); });
+    return () => controller.abort();
+  }, []);
 
   return (
     <>
@@ -560,7 +620,7 @@ function OperationsView({ overview }: { readonly overview: HQOverview }) {
           <div className="priority-list">
             <PriorityItem action="Review prescriptions" detail="Active prescribing and dispensing workflow" href="/admin/prescription/prescription/" icon="clinical" value={openPrescriptions} />
             <PriorityItem action="Release stock" detail="Batches outside the released quality state" href="/admin/inventory/inventorybatch/" icon="inventory" tone="rose" value={holds} />
-            <PriorityItem action="Receive supply" detail="Purchase orders, inspections and receipts" href="/admin/procurement/goodsreceipt/" icon="store" value={0} valueLabel="Open" />
+            <PriorityItem action="Receive supply" detail="Purchase orders, inspections and receipts" href="/admin/procurement/goodsreceipt/" icon="store" value={openGRN} valueLabel={openGRN ? String(openGRN) : 'Open'} />
           </div>
         </article>
       </section>
@@ -574,6 +634,69 @@ function OperationsView({ overview }: { readonly overview: HQOverview }) {
           <WorkflowLink href="/admin/inventory/inventorybatch/" icon="inventory" step="04" title="Inventory control" detail="Release, trace and monitor stock batches." />
         </div>
       </article>
+
+      {opsFailed ? null : (
+        <section className="content-grid">
+          <article className="panel">
+            <PanelHeader eyebrow="Cash operations" title="Open register sessions" actionHref="/admin/pos_shift/shiftrecord/" actionLabel="View all sessions" />
+            {sessions === null ? (
+              <p className="muted-cell">Loading register sessions…</p>
+            ) : sessions.length === 0 ? (
+              <EmptyState icon="check" title="No open registers" detail="All registers are closed for the current business day." />
+            ) : (
+              <div className="table-scroll">
+                <table>
+                  <thead><tr><th>Register</th><th>Cashier</th><th>Business date</th><th>Opened at</th><th>State</th></tr></thead>
+                  <tbody>
+                    {sessions.map((s) => (
+                      <tr key={s.id}>
+                        <td><code>{s.register_code}</code></td>
+                        <td><small>{s.opened_by_username}</small></td>
+                        <td><span className="muted-cell">{s.business_date}</span></td>
+                        <td><small>{formatTime(s.opened_at)}</small></td>
+                        <td>
+                          <span className={`status-badge status-${s.state.toLowerCase()}`}><i /> {titleCase(s.state)}</span>
+                          {s.forced_closure ? <span className="status-badge status-suspended" style={{ marginLeft: 6 }}><i /> Forced</span> : null}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </article>
+
+          <article className="panel">
+            <PanelHeader eyebrow="Pricing" title="Active price books" actionHref="/admin/pricing/pricebook/" actionLabel="Manage books" />
+            {priceBooks === null ? (
+              <p className="muted-cell">Loading price books…</p>
+            ) : priceBooks.length === 0 ? (
+              <EmptyState icon="inventory" title="No price books" detail="Configure price books before tenants can transact." />
+            ) : (
+              <div className="table-scroll">
+                <table>
+                  <thead><tr><th>Code</th><th>Name</th><th>Currency</th><th>Type</th><th>Live version</th></tr></thead>
+                  <tbody>
+                    {priceBooks.map((book) => (
+                      <tr key={book.id}>
+                        <td><code>{book.code}</code></td>
+                        <td><strong>{book.name}</strong></td>
+                        <td><span className="muted-cell">{book.currency}</span></td>
+                        <td><small>{titleCase(book.price_type)}</small></td>
+                        <td>
+                          {book.live_version !== null
+                            ? <span className="status-badge status-active"><i /> v{book.live_version}</span>
+                            : <span className="muted-cell">No live version</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </article>
+        </section>
+      )}
     </>
   );
 }
@@ -847,52 +970,21 @@ function InsuranceView() {
   return (
     <>
       <section className="metric-grid network-metrics" aria-label="Insurance claim positions">
-        <SummaryCard
-          icon="insurance"
-          label="Awaiting insurer decision"
-          value={awaiting.length}
-          detail="Sent and acknowledged, not yet adjudicated"
-        />
-        <SummaryCard
-          icon="check"
-          label="Approved, unpaid"
-          value={unpaid.length}
-          detail="Insurer agreed to pay and has not paid"
-          tone="teal"
-        />
-        <SummaryCard
-          icon="alert"
-          label="Needs attention here"
-          value={attention.length}
-          detail="Rejected, or blocked on this end"
-          tone="rose"
-        />
-        <SummaryCard
-          icon="building"
-          label="Receivable"
-          value={Math.round(receivable)}
-          detail="Approved less received, this tenant"
-          tone="amber"
-        />
+        <SummaryCard icon="insurance" label="Awaiting insurer decision" value={awaiting.length} detail="Sent and acknowledged, not yet adjudicated" />
+        <SummaryCard icon="check" label="Approved, unpaid" value={unpaid.length} detail="Insurer agreed to pay and has not paid" tone="teal" />
+        <SummaryCard icon="alert" label="Needs attention here" value={attention.length} detail="Rejected, or blocked on this end" tone="rose" />
+        <SummaryCard icon="building" label="Receivable" value={Math.round(receivable)} detail="Approved less received, this tenant" tone="amber" />
       </section>
 
       <section className="content-grid content-grid-primary">
         <article className="panel">
-          <PanelHeader eyebrow="Insurer integrations" title="Configured insurers" />
+          <PanelHeader eyebrow="Insurer integrations" title="Configured insurers" actionHref="/admin/insurance/insurer/" actionLabel="Manage insurers" />
           {insurers.length === 0 ? (
-            <p className="muted-cell">No insurers are configured for this tenant.</p>
+            <EmptyState icon="insurance" title="No insurers configured" detail="Add an insurer integration before submitting claims." />
           ) : (
             <div className="table-scroll">
               <table>
-                <thead>
-                  <tr>
-                    <th>Insurer</th>
-                    <th>Adapter</th>
-                    <th>Environment</th>
-                    <th>Status</th>
-                    <th>Can transact</th>
-                  </tr>
-                </thead>
+                <thead><tr><th>Insurer</th><th>Adapter</th><th>Environment</th><th>Status</th><th>Can transact</th></tr></thead>
                 <tbody>
                   {insurers.map((insurer) => (
                     <tr key={insurer.id}>
@@ -901,15 +993,9 @@ function InsuranceView() {
                       <td><span className="muted-cell">{insurer.environment}</span></td>
                       <td><small>{insurer.status}</small></td>
                       <td>
-                        {insurer.adapter_registered ? (
-                          <span className="status-badge status-active"><i /> Adapter ready</span>
-                        ) : (
-                          /* Configured is not the same as implemented. An
-                             insurer with no registered adapter cannot send a
-                             claim, and showing it as ready leaves somebody
-                             wondering why nothing arrives. */
-                          <span className="muted-cell">No adapter implemented</span>
-                        )}
+                        {insurer.adapter_registered
+                          ? <span className="status-badge status-active"><i /> Adapter ready</span>
+                          : <span className="muted-cell">No adapter implemented</span>}
                       </td>
                     </tr>
                   ))}
@@ -920,22 +1006,13 @@ function InsuranceView() {
         </article>
 
         <article className="panel">
-          <PanelHeader eyebrow="Claims workflow" title="Approved and unpaid" />
+          <PanelHeader eyebrow="Claims workflow" title="Approved and unpaid" actionHref="/admin/insurance/claim/?payment_state=UNPAID" actionLabel="View all" />
           {unpaid.length === 0 ? (
-            <p className="muted-cell">No approved claims are outstanding.</p>
+            <EmptyState icon="check" title="No outstanding approved claims" detail="All approved claims have been paid or are not yet due." />
           ) : (
             <div className="table-scroll">
               <table>
-                <thead>
-                  <tr>
-                    <th>Claim</th>
-                    <th>Insurer</th>
-                    <th>Member</th>
-                    <th>Approved</th>
-                    <th>Received</th>
-                    <th>Outstanding</th>
-                  </tr>
-                </thead>
+                <thead><tr><th>Claim</th><th>Insurer</th><th>Member</th><th>Approved</th><th>Received</th><th>Outstanding</th></tr></thead>
                 <tbody>
                   {unpaid.map((claim) => (
                     <tr key={claim.id}>
@@ -953,6 +1030,68 @@ function InsuranceView() {
           )}
         </article>
       </section>
+
+      <section className="content-grid content-grid-primary">
+        <article className="panel">
+          <PanelHeader eyebrow="Pending adjudication" title="Claims awaiting insurer decision" actionHref="/admin/insurance/claim/?adjudication_state=PENDING" actionLabel="View all" />
+          {awaiting.length === 0 ? (
+            <EmptyState icon="insurance" title="No claims pending adjudication" detail="All submitted claims have been adjudicated." />
+          ) : (
+            <div className="table-scroll">
+              <table>
+                <thead><tr><th>Claim</th><th>Insurer</th><th>Member</th><th>Claimed</th><th>Submission</th><th>Adjudication</th></tr></thead>
+                <tbody>
+                  {awaiting.map((claim) => (
+                    <tr key={claim.id}>
+                      <td><code>{claim.claim_number}</code></td>
+                      <td><small>{claim.insurer_code}</small></td>
+                      <td><span className="muted-cell">{claim.membership_number}</span></td>
+                      <td>{formatMoney(claim.claimed_gross_amount, claim.currency)}</td>
+                      <td><span className="status-badge status-suspended"><i /> {titleCase(claim.submission_state)}</span></td>
+                      <td><span className="muted-cell">{titleCase(claim.adjudication_state)}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </article>
+
+        <article className="panel">
+          <PanelHeader eyebrow="Action required" title="Claims needing attention" actionHref="/admin/insurance/claim/?needs_attention=1" actionLabel="View all" />
+          {attention.length === 0 ? (
+            <EmptyState icon="check" title="No claims need attention" detail="No claims are blocked or rejected on this end." />
+          ) : (
+            <div className="table-scroll">
+              <table>
+                <thead><tr><th>Claim</th><th>Insurer</th><th>Member</th><th>Outstanding</th><th>Submission</th><th>Adjudication</th></tr></thead>
+                <tbody>
+                  {attention.map((claim) => (
+                    <tr key={claim.id}>
+                      <td><code>{claim.claim_number}</code></td>
+                      <td><small>{claim.insurer_code}</small></td>
+                      <td><span className="muted-cell">{claim.membership_number}</span></td>
+                      <td><strong className="text-rose">{formatMoney(claim.outstanding_amount, claim.currency)}</strong></td>
+                      <td><span className="status-badge status-suspended"><i /> {titleCase(claim.submission_state)}</span></td>
+                      <td><span className="status-badge status-suspended"><i /> {titleCase(claim.adjudication_state)}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </article>
+      </section>
+
+      <article className="panel workflow-panel">
+        <PanelHeader eyebrow="Claims operations" title="Adjudication workspaces" />
+        <div className="workflow-grid">
+          <WorkflowLink href="/admin/insurance/claim/" icon="insurance" step="01" title="All claims" detail="Search, filter and inspect the full claims register." />
+          <WorkflowLink href="/admin/insurance/claimsubmissionattempt/" icon="docs" step="02" title="Submission attempts" detail="Audit every submission cycle and gateway response." />
+          <WorkflowLink href="/admin/insurance/claimremittance/" icon="building" step="03" title="Remittance" detail="Record insurer remittance and reconcile payments." />
+          <WorkflowLink href="/admin/insurance/insurer/" icon="settings" step="04" title="Insurer config" detail="Manage adapters, environments and credentials." />
+        </div>
+      </article>
     </>
   );
 }
@@ -966,6 +1105,10 @@ function ClinicalView({ overview }: { readonly overview: HQOverview }) {
     { label: 'Knowledge releases', value: summary.get('Active clinical releases') ?? 0, icon: 'shield' as IconName },
   ];
 
+  const codeSystems = summary.get('Code systems') ?? 0;
+  const valueSets = summary.get('Value sets') ?? 0;
+  const fhirIdempotency = summary.get('FHIR idempotency records') ?? 0;
+
   return (
     <>
       <section className="metric-grid network-metrics" aria-label="Clinical governance totals">
@@ -977,9 +1120,24 @@ function ClinicalView({ overview }: { readonly overview: HQOverview }) {
           <PanelHeader eyebrow="Interoperability" title="FHIR R4 readiness" actionHref="/api/fhir/r4/metadata" actionLabel="Open metadata" />
           <div className="readiness-list">
             <Readiness icon="database" label="FHIR R4 gateway" detail="Capability statement and exchange endpoint" status="Available" />
-            <Readiness icon="docs" label="Code systems" detail={`${formatNumber(summary.get('Code systems') ?? 0)} registered sources`} status="Tracked" />
-            <Readiness icon="clinical" label="Value sets" detail={`${formatNumber(summary.get('Value sets') ?? 0)} governed sets`} status="Tracked" />
-            <Readiness icon="security" label="Idempotency records" detail={`${formatNumber(summary.get('FHIR idempotency records') ?? 0)} protected writes`} status="Audited" />
+            <Readiness
+              icon="docs"
+              label="Code systems"
+              detail={codeSystems > 0 ? `${formatNumber(codeSystems)} registered sources` : 'No code systems registered'}
+              status={codeSystems > 0 ? 'Tracked' : 'None registered'}
+            />
+            <Readiness
+              icon="clinical"
+              label="Value sets"
+              detail={valueSets > 0 ? `${formatNumber(valueSets)} governed sets` : 'No value sets configured'}
+              status={valueSets > 0 ? 'Tracked' : 'None configured'}
+            />
+            <Readiness
+              icon="security"
+              label="Idempotency records"
+              detail={fhirIdempotency > 0 ? `${formatNumber(fhirIdempotency)} protected writes` : 'No idempotency records yet'}
+              status={fhirIdempotency > 0 ? 'Audited' : 'No records'}
+            />
           </div>
         </article>
 
@@ -1003,12 +1161,47 @@ function ClinicalView({ overview }: { readonly overview: HQOverview }) {
           <WorkflowLink href="/api/fhir/r4/metadata" icon="external" step="04" title="FHIR gateway" detail="Inspect the R4 capability statement." />
         </div>
       </article>
+
+      <section className="content-grid">
+        <article className="panel">
+          <PanelHeader eyebrow="Prescription governance" title="Active dispensing" />
+          <div className="priority-list">
+            <PriorityItem action="Open prescriptions" detail="Active prescribing and dispensing workflow" href="/admin/prescription/prescription/" icon="clinical" value={metricValue(overview, 'Open prescriptions')} tone={metricValue(overview, 'Open prescriptions') ? 'amber' : 'teal'} />
+            <PriorityItem action="Clinical substitutions" detail="Pharmacist-initiated therapeutic substitutions" href="/admin/prescription/clinicalsubstitution/" icon="activity" value={0} valueLabel="View" />
+            <PriorityItem action="Dispensing labels" detail="Audit label generation and reprints" href="/admin/prescription/dispensinglabel/" icon="docs" value={0} valueLabel="Audit" />
+          </div>
+        </article>
+        <article className="panel">
+          <PanelHeader eyebrow="Formulary" title="Medicines & pricing" />
+          <div className="command-links">
+            <CommandLink href="/admin/medicines/commercialsku/" title="Commercial SKUs" detail="Packaged medicines and identifiers" icon="inventory" />
+            <CommandLink href="/admin/medicines/activesubstance/" title="Active substances" detail="Governed substance register" icon="clinical" />
+            <CommandLink href="/admin/pricing/pricebook/" title="Price books" detail="Formulary pricing and live versions" icon="building" />
+          </div>
+        </article>
+      </section>
     </>
   );
 }
 
 function AccessView({ overview }: { readonly overview: HQOverview }) {
   const summary = useSummary(overview);
+  const [sessions, setSessions] = useState<readonly RegisterSessionSummary[] | null>(null);
+  const [variances, setVariances] = useState<readonly ShiftReportSummary[] | null>(null);
+  const [forcedClosures, setForcedClosures] = useState<readonly ShiftReportSummary[] | null>(null);
+  const [cashFailed, setCashFailed] = useState(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    Promise.all([
+      loadOpenRegisterSessions(controller.signal),
+      loadCashVariances(controller.signal),
+      loadForcedClosures(controller.signal),
+    ])
+      .then(([s, v, f]) => { setSessions(s); setVariances(v); setForcedClosures(f); })
+      .catch(() => { if (!controller.signal.aborted) setCashFailed(true); });
+    return () => controller.abort();
+  }, []);
 
   return (
     <>
@@ -1054,6 +1247,101 @@ function AccessView({ overview }: { readonly overview: HQOverview }) {
           <WorkflowLink href="/admin/identity/serviceaccount/" icon="database" step="04" title="Service accounts" detail="Machine identities and capabilities." />
         </div>
       </article>
+
+      {cashFailed ? (
+        <div className="inline-alert" role="status">
+          <Icon name="alert" />
+          Cash and shift data could not be loaded. Financial custody data requires the POS shift API to be reachable.
+        </div>
+      ) : (
+        <>
+          <section className="content-grid content-grid-primary">
+            <article className="panel">
+              <PanelHeader eyebrow="Cash control" title="Open register sessions" actionHref="/admin/pos_shift/shiftrecord/" actionLabel="View all" />
+              {sessions === null ? (
+                <p className="muted-cell">Loading register sessions…</p>
+              ) : sessions.length === 0 ? (
+                <EmptyState icon="check" title="No open registers" detail="All registers are closed. No open custody positions." />
+              ) : (
+                <div className="table-scroll">
+                  <table>
+                    <thead><tr><th>Register</th><th>Cashier</th><th>Business date</th><th>Opened at</th><th>State</th></tr></thead>
+                    <tbody>
+                      {sessions.map((s) => (
+                        <tr key={s.id}>
+                          <td><code>{s.register_code}</code></td>
+                          <td><small>{s.opened_by_username}</small></td>
+                          <td><span className="muted-cell">{s.business_date}</span></td>
+                          <td><small>{formatTime(s.opened_at)}</small></td>
+                          <td>
+                            <span className={`status-badge status-${s.state.toLowerCase()}`}><i /> {titleCase(s.state)}</span>
+                            {s.forced_closure ? <span className="status-badge status-suspended" style={{ marginLeft: 6 }}><i /> Forced</span> : null}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </article>
+
+            <article className="panel">
+              <PanelHeader eyebrow="Financial audit" title="Cash variance watchlist" actionHref="/admin/pos_shift/shiftreport/?has_variance=1" actionLabel="View all" />
+              {variances === null ? (
+                <p className="muted-cell">Loading variance reports…</p>
+              ) : variances.length === 0 ? (
+                <EmptyState icon="check" title="No cash variances" detail="All Z-reports balanced. No unexplained differences." />
+              ) : (
+                <div className="table-scroll">
+                  <table>
+                    <thead><tr><th>Report</th><th>Register</th><th>Date</th><th>Expected</th><th>Declared</th><th>Difference</th><th>Flag</th></tr></thead>
+                    <tbody>
+                      {variances.map((r) => (
+                        <tr key={r.id}>
+                          <td><code>{r.report_number}</code></td>
+                          <td><small>{r.register_code}</small></td>
+                          <td><span className="muted-cell">{r.business_date}</span></td>
+                          <td>{formatMoney(r.snapshot?.cash?.expected_closing, 'KES')}</td>
+                          <td>{formatMoney(r.snapshot?.variance?.declared, 'KES')}</td>
+                          <td><strong className="text-rose">{formatMoney(r.snapshot?.variance?.difference, 'KES')}</strong></td>
+                          <td>{varianceNeedsExplanation(r) ? <span className="status-badge status-suspended"><i /> Explanation required</span> : <span className="muted-cell">—</span>}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </article>
+          </section>
+
+          <article className="panel">
+            <PanelHeader eyebrow="Custody audit" title="Forced register closures" actionHref="/admin/pos_shift/shiftreport/?forced_closure=1" actionLabel="View all" />
+            {forcedClosures === null ? (
+              <p className="muted-cell">Loading forced closures…</p>
+            ) : forcedClosures.length === 0 ? (
+              <EmptyState icon="check" title="No forced closures" detail="No registers have been closed by an unaccountable operator." />
+            ) : (
+              <div className="table-scroll">
+                <table>
+                  <thead><tr><th>Report</th><th>Register</th><th>Date</th><th>Closed by</th><th>Closure type</th><th>Reason</th></tr></thead>
+                  <tbody>
+                    {forcedClosures.map((r) => (
+                      <tr key={r.id}>
+                        <td><code>{r.report_number}</code></td>
+                        <td><small>{r.register_code}</small></td>
+                        <td><span className="muted-cell">{r.business_date}</span></td>
+                        <td><small>{r.generated_by_username}</small></td>
+                        <td><span className="status-badge status-suspended"><i /> {titleCase(r.closure_type)}</span></td>
+                        <td><small className="muted-cell">{r.closure_reason || '—'}</small></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </article>
+        </>
+      )}
     </>
   );
 }
@@ -1187,14 +1475,19 @@ function NotificationPopover({ overview }: { readonly overview: HQOverview }) {
   );
 }
 
-function UserMenu({ overview }: { readonly overview: HQOverview }) {
+function UserMenu({ overview, onSignOut }: {
+  readonly overview: HQOverview;
+  readonly onSignOut: () => Promise<void>;
+}) {
   return (
     <div className="popover user-menu">
       <div className="user-menu-head"><span>{initials(overview.user_name)}</span><div><strong>{displayName(overview.user_name)}</strong><small>{overview.tenant_name}</small></div></div>
       <a href="#access"><Icon name="security" /> Access overview</a>
       <a href="/admin/"><Icon name="settings" /> Administration</a>
       <a href="/api/docs/"><Icon name="docs" /> API workspace</a>
-      <a className="signout-link" href="/admin/logout/"><Icon name="external" /> Sign out</a>
+      <button className="signout-link" type="button" onClick={onSignOut}>
+        <Icon name="external" /> Sign out
+      </button>
     </div>
   );
 }
@@ -1248,7 +1541,42 @@ function Brand() {
   );
 }
 
-function AuthenticationRequired() {
+function AuthenticationRequired({ csrfToken, onSignedIn }: {
+  readonly csrfToken: string;
+  readonly onSignedIn: (session: SessionState) => void;
+}) {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const submit = useCallback(
+    async (event: React.FormEvent) => {
+      event.preventDefault();
+      // Guarded rather than merely disabled: a second submit while the first is
+      // in flight spends another attempt against a throttle of ten a minute.
+      if (busy) return;
+
+      setBusy(true);
+      setError('');
+      try {
+        const session = await signIn(username, password, csrfToken);
+        // Cleared on the way out. There is no reason for it to outlive the
+        // request, and React state ends up in devtools and error reports.
+        setPassword('');
+        onSignedIn(session);
+      } catch (caught: unknown) {
+        // The server's wording. It deliberately does not say which field was
+        // wrong, and guessing here would undo that.
+        setError(caught instanceof SignInError ? caught.message : 'Sign-in failed.');
+        setPassword('');
+      } finally {
+        setBusy(false);
+      }
+    },
+    [busy, csrfToken, onSignedIn, password, username],
+  );
+
   return (
     <div className="auth-page">
       <header><Brand /><span><Icon name="shield" /> Secure headquarters access</span></header>
@@ -1267,8 +1595,45 @@ function AuthenticationRequired() {
           <span className="auth-icon"><Icon name="security" /></span>
           <p className="eyebrow">Protected workspace</p>
           <h2>Sign in to TibaTrace HQ</h2>
-          <p>Use your authorised account to access operations, inventory oversight and clinical governance.</p>
-          <a className="primary-button" href="/admin/login/?next=/">Continue to secure sign in <Icon name="arrow" /></a>
+
+          <form className="auth-form" onSubmit={submit}>
+            <label htmlFor="signin-username">Username</label>
+            <input
+              id="signin-username"
+              name="username"
+              autoComplete="username"
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              disabled={busy}
+              required
+            />
+
+            <label htmlFor="signin-password">Password</label>
+            <input
+              id="signin-password"
+              name="password"
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              disabled={busy}
+              required
+            />
+
+            {error ? (
+              // Assertive: the operator has just acted and is waiting on the
+              // result, so a polite region would leave a screen-reader user
+              // unaware the attempt failed.
+              <p className="auth-error" role="alert" aria-live="assertive">
+                <Icon name="alert" /> {error}
+              </p>
+            ) : null}
+
+            <button className="primary-button" type="submit" disabled={busy}>
+              {busy ? 'Signing in…' : 'Sign in'} <Icon name="arrow" />
+            </button>
+          </form>
+
           <small><Icon name="shield" /> Access is audited and restricted to authorised operations staff.</small>
         </section>
       </main>
