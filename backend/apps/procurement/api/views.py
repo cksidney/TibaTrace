@@ -37,7 +37,21 @@ from apps.procurement.services import (
 )
 
 
-class BaseProcurementViewSet(viewsets.ModelViewSet):
+class BaseProcurementViewSet(viewsets.ReadOnlyModelViewSet):
+    """Read, plus the service-routed actions each subclass declares.
+
+    Read-only deliberately. These were ModelViewSets, which put a generic
+    PATCH and DELETE alongside the approve, send and close actions -- writing
+    the same columns with none of the checks. A PATCH setting status to APPROVED
+    skipped approve_purchase_order and with it the re-check that refuses a
+    supplier suspended between drafting and approval; a DELETE removed a
+    purchase order outright, when cancellation is a state and deleting the row
+    loses what was committed to.
+
+    Every state change goes through an @action that calls a service. Nothing
+    reaches these columns any other way.
+    """
+
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
@@ -45,8 +59,13 @@ class BaseProcurementViewSet(viewsets.ModelViewSet):
         if not tenant_id and hasattr(self.request.user, "tenant_id"):
             tenant_id = self.request.user.tenant_id
         if tenant_id:
-            return self.model.objects.filter(tenant_id=tenant_id)
-        return self.model.objects.none()
+            # all_objects with an explicit tenant filter, not the default
+            # manager. The default is tenant-strict and returns nothing unless
+            # tenant context has been set on the thread, which does not happen
+            # for an ordinary API request -- so every list came back empty and
+            # every detail route 404'd for data that exists.
+            return self.model.all_objects.filter(tenant_id=tenant_id)
+        return self.model.all_objects.none()
 
     def perform_create(self, serializer):
         tenant_id = get_current_tenant_id() or getattr(self.request, "tenant_id", None) or getattr(self.request.user, "tenant_id", None)
