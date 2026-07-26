@@ -14,7 +14,7 @@ User = get_user_model()
 
 
 @pytest.mark.django_db
-def test_purchase_requisition_lifecycle_and_segregation_of_duties():
+def test_purchase_requisition_lifecycle_and_segregation_of_duties(client):
     tenant = Tenant.objects.create(name="Req Tenant", slug="req-tenant")
     requester = User.objects.create_user(username="requester", email="req@test.com", password="password123", tenant=tenant)  # nosec B106
     approver = User.objects.create_user(username="approver", email="app@test.com", password="password123", tenant=tenant)  # nosec B106
@@ -44,7 +44,14 @@ def test_purchase_requisition_lifecycle_and_segregation_of_duties():
     line = PurchaseRequisitionService.add_line(requisition=req, sku=sku, requested_quantity=100)
     # A draft is the requester's working copy. Handing it to an approver is a
     # deliberate act, so a draft cannot be approved straight from creation.
-    PurchaseRequisitionService.submit_requisition(requisition=req)
+    client.force_login(requester)
+    response = client.post(
+        f"/api/procurement/requisitions/{req.id}/submit/",
+        HTTP_X_TENANT_ID=str(tenant.id),
+    )
+    assert response.status_code == 200
+    req.refresh_from_db()
+    assert req.status == PurchaseRequisition.Status.SUBMITTED
     assert line.requested_quantity == 100
 
     # 3. Segregation of duties check: Requester cannot approve their own requisition

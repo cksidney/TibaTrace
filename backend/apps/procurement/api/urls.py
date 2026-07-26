@@ -1,7 +1,9 @@
+from django.urls import path
 from rest_framework.routers import DefaultRouter
 
 from apps.procurement.api.views import (
     GoodsReceiptViewSet,
+    ProcurementContextView,
     PurchaseOrderViewSet,
     PurchaseRequisitionViewSet,
     ReceivedBatchViewSet,
@@ -25,4 +27,7 @@ router.register(r"inspections", ReceivingInspectionViewSet, basename="receiving-
 router.register(r"supplier-returns", SupplierReturnViewSet, basename="supplier-return")
 router.register(r"matching", ThreeWayMatchViewSet, basename="three-way-match")
 
-urlpatterns = router.urls
+urlpatterns = [
+    path("context/", ProcurementContextView.as_view(), name="procurement-context"),
+    *router.urls,
+]

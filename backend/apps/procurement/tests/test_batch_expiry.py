@@ -37,13 +37,13 @@ class BatchExpiryTest(TestCase):
         pkg = PackageDefinition.objects.create(code="BOX", description="Box", unit_of_measure="box")
         self.sku = CommercialSKU.objects.create(tenant=self.tenant, sku_code="SKU-1", display_name="SKU 1", manufactured_product=man, package_definition=pkg)
         
-        self.po = PurchaseOrder.objects.create(tenant=self.tenant, po_number="PO-BE", supplier=self.supplier, ordering_branch=self.branch, order_date=timezone.now().date(), expected_delivery_date=timezone.now().date(), status=PurchaseOrder.Status.SENT)
+        self.po = PurchaseOrder.objects.create(tenant=self.tenant, po_number="PO-BE", supplier=self.supplier, ordering_branch=self.branch, order_date=timezone.localdate(), expected_delivery_date=timezone.localdate(), status=PurchaseOrder.Status.SENT)
         self.po_line = PurchaseOrderLine.objects.create(tenant=self.tenant, purchase_order=self.po, sku=self.sku, ordered_quantity=100, unit_price=10.0, total_price=1000.0)
         self.grn = GoodsReceipt.objects.create(tenant=self.tenant, grn_number="GRN-BE", purchase_order=self.po, supplier=self.supplier, receiving_branch=self.branch, received_by=self.user, delivery_note_number="DN-BE", arrival_time=timezone.now(), status=GoodsReceipt.Status.RECEIVING)
         self.grn_line = GoodsReceiptLine.objects.create(tenant=self.tenant, goods_receipt=self.grn, po_line=self.po_line, sku=self.sku, delivered_quantity=100)
 
     def test_manufacture_date_must_precede_expiry(self):
-        mfg = timezone.now().date()
+        mfg = timezone.localdate()
         exp = mfg - datetime.timedelta(days=1)
         
         with self.assertRaises(ValidationError) as ctx:
@@ -57,7 +57,7 @@ class BatchExpiryTest(TestCase):
         self.assertIn("Manufacture date must precede expiry date", str(ctx.exception))
 
     def test_cannot_receive_expired_batch(self):
-        exp = timezone.now().date() - datetime.timedelta(days=1)
+        exp = timezone.localdate() - datetime.timedelta(days=1)
         
         with self.assertRaises(ValidationError) as ctx:
             BatchReceivingService.capture_batch(

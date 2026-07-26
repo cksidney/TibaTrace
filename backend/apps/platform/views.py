@@ -10,7 +10,10 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.platform.admin_shell import build_hq_dashboard_context
+from apps.platform.admin_shell import (
+    build_hq_dashboard_context,
+    build_hq_workspace_context,
+)
 
 
 def pos_terminal_view(request):
@@ -76,3 +79,28 @@ class HQOverviewView(APIView):
     def get(self, request):
         tenant_id = getattr(request, "tenant_id", None) or request.user.tenant_id
         return Response(build_hq_dashboard_context(request.user, tenant_id))
+
+
+class HQWorkspaceSerializer(serializers.Serializer):
+    generated_at = serializers.DateTimeField()
+    business_modules = serializers.ListField(child=serializers.DictField())
+    people = serializers.DictField()
+    catalogue = serializers.DictField()
+    commerce = serializers.DictField()
+    governance = serializers.DictField()
+
+
+class HQWorkspaceView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(responses=HQWorkspaceSerializer)
+    def get(self, request):
+        tenant_id = getattr(request, "tenant_id", None) or request.user.tenant_id
+        if not tenant_id and not (
+            request.user.is_superuser or request.user.is_platform_admin
+        ):
+            return Response(
+                {"detail": "A tenant workspace is required."},
+                status=403,
+            )
+        return Response(build_hq_workspace_context(tenant_id))

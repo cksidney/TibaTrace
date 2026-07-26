@@ -43,7 +43,7 @@ services:
           "CMD",
           "python",
           "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health/', timeout=3)",
+          "import os, urllib.request; request = urllib.request.Request('http://127.0.0.1:8000/api/health/', headers={'Host': os.getenv('TIBATRACE_HOST', 'localhost'), 'X-Forwarded-Proto': 'https'}); urllib.request.urlopen(request, timeout=3)",
         ]
       interval: 30s
       timeout: 5s
@@ -56,15 +56,42 @@ services:
     restart: unless-stopped
     read_only: true
     tmpfs: [/tmp]
+    healthcheck:
+      disable: true
     volumes:
       - clinical-objects:/data/clinical
 
   beat:
     <<: *backend
-    command: ["celery", "-A", "dawatrace", "beat", "--loglevel=INFO"]
+    command:
+      [
+        "celery",
+        "-A",
+        "dawatrace",
+        "beat",
+        "--loglevel=INFO",
+        "--schedule=/tmp/celerybeat-schedule",
+      ]
     restart: unless-stopped
     read_only: true
     tmpfs: [/tmp]
+    healthcheck:
+      disable: true
+
+  hq:
+    image: ${TIBATRACE_HQ_IMAGE:?Set TIBATRACE_HQ_IMAGE to an immutable release image.}
+    init: true
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   edge:
     image: caddy:2.8.4-alpine@sha256:af32e97399febea808609119bb21544d0265c58a02836576e32a2d082c262c17
@@ -79,6 +106,8 @@ services:
       - caddy-config:/config
     depends_on:
       api:
+        condition: service_healthy
+      hq:
         condition: service_healthy
     restart: unless-stopped
 

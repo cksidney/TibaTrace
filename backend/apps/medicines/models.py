@@ -434,3 +434,74 @@ class MedicineIdentifier(TimestampedModel):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=["system", "value"], name="uq_medicine_identifier")]
+
+
+class TenantCatalogueProduct(TimestampedModel):
+    STATUS_SELECTED = "SELECTED"
+    STATUS_REMOVED = "REMOVED"
+    STATUS_CHOICES = (
+        (STATUS_SELECTED, "Selected"),
+        (STATUS_REMOVED, "Removed"),
+    )
+
+    tenant = models.ForeignKey(
+        "tenancy.Tenant",
+        on_delete=models.CASCADE,
+        related_name="catalogue_products",
+    )
+    master_medicine = models.ForeignKey(
+        Medicine,
+        on_delete=models.PROTECT,
+        related_name="tenant_catalogue_products",
+    )
+    tenant_code = models.CharField(max_length=120)
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default=STATUS_SELECTED,
+    )
+    selected_by = models.ForeignKey(
+        "identity.User",
+        on_delete=models.PROTECT,
+        related_name="selected_catalogue_products",
+    )
+    selected_at = models.DateTimeField()
+    removed_by = models.ForeignKey(
+        "identity.User",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="removed_catalogue_products",
+    )
+    removed_at = models.DateTimeField(null=True, blank=True)
+
+    objects = StrictTenantManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["tenant", "master_medicine"],
+                name="uq_tenant_catalogue_master_medicine",
+            ),
+            models.UniqueConstraint(
+                fields=["tenant", "tenant_code"],
+                name="uq_tenant_catalogue_code",
+            ),
+        ]
+
+    def clean(self):
+        super().clean()
+        if not self.tenant_id:
+            raise ValidationError({"tenant": "Tenant ownership is required."})
+        if self.master_medicine_id and (
+            self.master_medicine.tenant_id is not None
+            or not self.master_medicine.is_global
+        ):
+            raise ValidationError(
+                {"master_medicine": "Tenant products must originate from the universal catalogue."}
+            )
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)

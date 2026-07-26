@@ -20,6 +20,11 @@ import {
 
 const DEFAULT_TIMEOUT_MS = 15000;
 
+export interface PosDispensingClientOptions {
+  readonly fetcher?: typeof fetch;
+  readonly tenantId?: string;
+}
+
 /**
  * Typed client for the POS dispensing API.
  *
@@ -31,15 +36,20 @@ export class PosDispensingClient {
   private baseUrl: string;
   private token: string;
   private timeoutMs: number;
+  private fetcher: typeof fetch;
+  private tenantId: string;
 
   constructor(
     baseUrl: string = '/api/pos/dispensing',
     token: string = '',
     timeoutMs: number = DEFAULT_TIMEOUT_MS,
+    options: PosDispensingClientOptions = {},
   ) {
     this.baseUrl = baseUrl;
     this.token = token;
     this.timeoutMs = timeoutMs;
+    this.fetcher = options.fetcher ?? fetch;
+    this.tenantId = options.tenantId ?? '';
   }
 
   private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -51,12 +61,15 @@ export class PosDispensingClient {
     if (this.token) {
       headers['Authorization'] = `Bearer ${this.token}`;
     }
+    if (this.tenantId) {
+      headers['X-Tenant-ID'] = this.tenantId;
+    }
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     let response: Response;
     try {
-      response = await fetch(`${this.baseUrl}${path}`, {
+      response = await this.fetcher(`${this.baseUrl}${path}`, {
         ...options,
         headers,
         credentials: 'include',

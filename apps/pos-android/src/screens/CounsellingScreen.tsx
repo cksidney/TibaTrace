@@ -10,7 +10,7 @@ import type { CounsellingRecordRequest } from '@dawatrace/shared/dispensing/inde
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
-import { TibaTraceBrand } from '../components/tibatrace/TibaTraceBrand.js';
+import { TibaTraceBrand } from '../components/tibatrace/TibaTraceBrand';
 
 /**
  * Android counselling.
@@ -53,7 +53,7 @@ export function CounsellingScreen({
   const complete = counsellingStatus === 'COMPLETED';
 
   return (
-    <ScrollView contentContainerStyle={styles.root}>
+    <ScrollView style={styles.scroll} contentContainerStyle={styles.root}>
       <TibaTraceBrand />
       <View style={styles.header}>
         <Text style={styles.heading}>Counselling</Text>
@@ -157,7 +157,7 @@ export function CollectionScreen({
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.root}>
+    <ScrollView style={styles.scroll} contentContainerStyle={styles.root}>
       <TibaTraceBrand />
       <Text style={styles.heading}>Collection</Text>
 
@@ -218,6 +218,7 @@ export function CollectionScreen({
 }
 
 const styles = StyleSheet.create({
+  scroll: { flex: 1 },
   root: { padding: spacing.lg, gap: spacing.md },
   header: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   heading: { fontSize: fontSize.screenTitle, fontWeight: '700', color: text.primary },

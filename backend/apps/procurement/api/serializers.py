@@ -13,11 +13,15 @@ from apps.procurement.models import (
     SupplierProductAgreement,
     SupplierQualification,
     SupplierReturn,
+    SupplierReturnLine,
     ThreeWayMatch,
 )
 
 
 class SupplierSerializer(serializers.ModelSerializer):
+    eligibility_reasons = serializers.SerializerMethodField()
+    purchase_eligible = serializers.SerializerMethodField()
+
     class Meta:
         model = Supplier
         fields = [
@@ -36,12 +40,46 @@ class SupplierSerializer(serializers.ModelSerializer):
             "status",
             "risk_category",
             "suspension_reason",
+            "purchase_eligible",
+            "eligibility_reasons",
             "approved_at",
             "approved_by",
             "created_at",
             "updated_at",
         ]
         read_only_fields = ["id", "status", "approved_at", "approved_by", "created_at", "updated_at"]
+
+    def get_eligibility_reasons(self, supplier):
+        from apps.procurement.services import SupplierGovernanceService
+
+        cache_name = "_purchase_eligibility_reasons"
+        cached = getattr(supplier, cache_name, None)
+        if cached is not None:
+            return cached
+
+        held_qualifications = None
+        annotated_fields = {
+            SupplierQualification.QualificationType.BUSINESS_REGISTRATION:
+                "has_valid_business_registration",
+            SupplierQualification.QualificationType.WHOLESALE_DEALER_LICENCE:
+                "has_valid_wholesale_dealer_licence",
+        }
+        if all(hasattr(supplier, field) for field in annotated_fields.values()):
+            held_qualifications = {
+                qualification_type
+                for qualification_type, field in annotated_fields.items()
+                if getattr(supplier, field)
+            }
+
+        reasons = SupplierGovernanceService.ineligibility_reasons(
+            supplier=supplier,
+            held_qualifications=held_qualifications,
+        )
+        setattr(supplier, cache_name, reasons)
+        return reasons
+
+    def get_purchase_eligible(self, supplier):
+        return not self.get_eligibility_reasons(supplier)
 
 
 class SupplierQualificationSerializer(serializers.ModelSerializer):
@@ -254,10 +292,35 @@ class ReceivingInspectionSerializer(serializers.ModelSerializer):
 
 
 class SupplierReturnSerializer(serializers.ModelSerializer):
+    lines = serializers.SerializerMethodField()
+
     class Meta:
         model = SupplierReturn
-        fields = ["id", "return_number", "goods_receipt", "supplier", "status", "reason", "created_at"]
+        fields = [
+            "id",
+            "return_number",
+            "goods_receipt",
+            "supplier",
+            "status",
+            "reason",
+            "lines",
+            "created_at",
+        ]
         read_only_fields = ["id", "status", "created_at"]
+
+    def get_lines(self, supplier_return):
+        return [
+            {
+                "id": str(line.pk),
+                "sku": str(line.sku_id),
+                "sku_code": line.sku.sku_code,
+                "quantity": line.quantity,
+            }
+            for line in SupplierReturnLine.all_objects.filter(
+                tenant_id=supplier_return.tenant_id,
+                supplier_return=supplier_return,
+            ).select_related("sku")
+        ]
 
 
 class ThreeWayMatchSerializer(serializers.ModelSerializer):
@@ -274,3 +337,114 @@ class ThreeWayMatchSerializer(serializers.ModelSerializer):
             "created_at",
         ]
         read_only_fields = ["id", "created_at"]
+
+
+class ProcurementLineInputSerializer(serializers.Serializer):
+    sku = serializers.UUIDField(required=False)
+    requisition_line = serializers.UUIDField(required=False)
+    requested_quantity = serializers.IntegerField(min_value=1, required=False)
+    quantity = serializers.IntegerField(min_value=1, required=False)
+    unit_cost = serializers.DecimalField(max_digits=12, decimal_places=2, required=False)
+    purchase_unit = serializers.CharField(max_length=64, default="pack")
+    requires_cold_chain = serializers.BooleanField(default=False)
+
+
+class PurchaseRequisitionCreateSerializer(serializers.Serializer):
+    requesting_branch = serializers.UUIDField()
+    requested_delivery_date = serializers.DateField()
+    priority = serializers.ChoiceField(
+        choices=["LOW", "NORMAL", "HIGH", "URGENT"],
+        default="NORMAL",
+    )
+    justification = serializers.CharField(max_length=2000)
+    lines = ProcurementLineInputSerializer(many=True, allow_empty=False)
+
+    def validate_lines(self, value):
+        if any("sku" not in line or "requested_quantity" not in line for line in value):
+            raise serializers.ValidationError(
+                "Each requisition line requires a SKU and requested quantity."
+            )
+        return value
+
+
+class PurchaseOrderCreateSerializer(serializers.Serializer):
+    supplier = serializers.UUIDField()
+    originating_requisition = serializers.UUIDField(required=False, allow_null=True)
+    ordering_branch = serializers.UUIDField()
+    order_date = serializers.DateField(required=False)
+    expected_delivery_date = serializers.DateField()
+    currency = serializers.CharField(max_length=3, default="KES")
+    lines = ProcurementLineInputSerializer(many=True, allow_empty=False)
+
+    def validate_lines(self, value):
+        for line in value:
+            if "unit_cost" not in line:
+                raise serializers.ValidationError(
+                    "Each purchase-order line requires a unit cost."
+                )
+            if "requisition_line" not in line and (
+                "sku" not in line or "quantity" not in line
+            ):
+                raise serializers.ValidationError(
+                    "Manual purchase-order lines require a SKU and quantity."
+                )
+        return value
+
+
+class GoodsReceiptCreateSerializer(serializers.Serializer):
+    purchase_order = serializers.UUIDField()
+    receiving_branch = serializers.UUIDField()
+    delivery_note_number = serializers.CharField(max_length=128)
+
+
+class ReceiveBatchSerializer(serializers.Serializer):
+    po_line = serializers.UUIDField()
+    manufacturer_batch_number = serializers.CharField(max_length=128)
+    manufacture_date = serializers.DateField(required=False, allow_null=True)
+    expiry_date = serializers.DateField()
+    received_quantity = serializers.IntegerField(min_value=1)
+    discrepancy_reason = serializers.CharField(
+        max_length=1000,
+        required=False,
+        allow_blank=True,
+        default="",
+    )
+    idempotency_key = serializers.CharField(
+        max_length=128,
+        required=False,
+        allow_blank=True,
+        default="",
+    )
+
+
+class ReceivingInspectionCreateSerializer(serializers.Serializer):
+    decision = serializers.ChoiceField(
+        choices=["RELEASE", "QUARANTINE", "REJECT", "HOLD_FOR_INVESTIGATION", "DESTROY"]
+    )
+    reason = serializers.CharField(max_length=2000)
+    temperature_excursion = serializers.BooleanField(default=False)
+
+
+class BatchReleaseSerializer(serializers.Serializer):
+    reason = serializers.CharField(max_length=2000)
+    quantity = serializers.IntegerField(min_value=1, required=False)
+    inventory_location = serializers.UUIDField(required=False)
+
+
+class SupplierReturnCreateSerializer(serializers.Serializer):
+    return_number = serializers.CharField(max_length=64)
+    goods_receipt = serializers.UUIDField()
+    reason = serializers.CharField(max_length=2000)
+    lines = ProcurementLineInputSerializer(many=True, allow_empty=False)
+
+    def validate_lines(self, value):
+        if any("sku" not in line or "quantity" not in line for line in value):
+            raise serializers.ValidationError("Each return line requires a SKU and quantity.")
+        return value
+
+
+class ThreeWayMatchCreateSerializer(serializers.Serializer):
+    purchase_order = serializers.UUIDField()
+    goods_receipt = serializers.UUIDField()
+    invoice_reference = serializers.CharField(max_length=128)
+    invoice_amount = serializers.DecimalField(max_digits=14, decimal_places=2)

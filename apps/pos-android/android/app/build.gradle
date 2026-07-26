@@ -1,0 +1,86 @@
+apply plugin: "com.android.application"
+apply plugin: "org.jetbrains.kotlin.android"
+apply plugin: "com.facebook.react"
+
+react {
+    root = file("../../")
+    reactNativeDir = file("../../../../node_modules/react-native")
+    codegenDir = file("../../../../node_modules/@react-native/codegen")
+    cliFile = file("../../../../node_modules/react-native/cli.js")
+    nodeExecutableAndArgs = [System.getenv("NODE_BINARY") ?: "node"]
+    autolinkLibrariesWithApp()
+}
+
+def releaseSigningValues = [
+    storeFile: System.getenv("TIBATRACE_ANDROID_KEYSTORE"),
+    storePassword: System.getenv("TIBATRACE_ANDROID_STORE_PASSWORD"),
+    keyAlias: System.getenv("TIBATRACE_ANDROID_KEY_ALIAS"),
+    keyPassword: System.getenv("TIBATRACE_ANDROID_KEY_PASSWORD"),
+]
+def releaseRequested = gradle.startParameter.taskNames.any {
+    it.toLowerCase().contains("release")
+}
+def apiBaseUrl = System.getenv("TIBATRACE_API_BASE_URL") ?: "https://tibatrace.esenai.co.ke"
+def jscFlavor = "io.github.react-native-community:jsc-android:2026004.+"
+
+android {
+    ndkVersion rootProject.ext.ndkVersion
+    buildToolsVersion rootProject.ext.buildToolsVersion
+    compileSdk rootProject.ext.compileSdkVersion
+    namespace "co.ke.esenai.tibatrace.pos"
+
+    defaultConfig {
+        applicationId "co.ke.esenai.tibatrace.pos"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode 1
+        versionName "0.1.0-alpha.1"
+        buildConfigField "String", "TIBATRACE_API_BASE_URL", "\"${apiBaseUrl}\""
+    }
+
+    signingConfigs {
+        if (releaseSigningValues.values().every { it }) {
+            release {
+                storeFile file(releaseSigningValues.storeFile)
+                storePassword releaseSigningValues.storePassword
+                keyAlias releaseSigningValues.keyAlias
+                keyPassword releaseSigningValues.keyPassword
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            manifestPlaceholders = [usesCleartextTraffic: "true"]
+        }
+        release {
+            signingConfig signingConfigs.findByName("release")
+            manifestPlaceholders = [usesCleartextTraffic: "false"]
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
+        }
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+}
+
+if (releaseRequested && releaseSigningValues.values().any { !it }) {
+    throw new GradleException(
+        "Release signing requires TIBATRACE_ANDROID_KEYSTORE, " +
+        "TIBATRACE_ANDROID_STORE_PASSWORD, TIBATRACE_ANDROID_KEY_ALIAS and " +
+        "TIBATRACE_ANDROID_KEY_PASSWORD."
+    )
+}
+
+dependencies {
+    implementation("com.facebook.react:react-android")
+
+    if (hermesEnabled.toBoolean()) {
+        implementation("com.facebook.react:hermes-android")
+    } else {
+        implementation jscFlavor
+    }
+}

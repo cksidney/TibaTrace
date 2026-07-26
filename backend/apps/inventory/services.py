@@ -226,10 +226,11 @@ class InventoryReceiptService:
             raise ValidationError("This batch has already been posted to inventory.")
             
         # Create the inventory batch representation
-        inv_batch = InventoryBatch.objects.create(
+        receipt_line = received_batch.grn_line
+        inv_batch = InventoryBatch.all_objects.create(
             tenant=tenant,
-            sku=received_batch.goods_receipt_line.sku,
-            manufactured_product=received_batch.goods_receipt_line.sku.manufactured_product,
+            sku=receipt_line.sku,
+            manufactured_product=receipt_line.sku.manufactured_product,
             source_received_batch=received_batch,
             manufacturer_batch_number=received_batch.manufacturer_batch_number,
             manufacture_date=received_batch.manufacture_date,
@@ -239,7 +240,7 @@ class InventoryReceiptService:
         
         # Post to ledger
         qty = received_batch.received_quantity
-        unit = received_batch.goods_receipt_line.sku.package_definition.unit_of_measure
+        unit = receipt_line.sku.package_definition.unit_of_measure
         
         InventoryLedgerService.post_entry(
             tenant=tenant,
@@ -300,7 +301,7 @@ class FEFOAllocationService:
             available__gt=0,
             inventory_batch__quality_status=InventoryBatch.QualityStatus.RELEASED,
             inventory_batch__recall_status=InventoryBatch.RecallStatus.NONE,
-            inventory_batch__expiry_date__gte=minimum_expiry_date or timezone.now().date(),
+            inventory_batch__expiry_date__gte=minimum_expiry_date or timezone.localdate(),
         ).exclude(
             inventory_batch__in=exclude_batches
         )
@@ -825,7 +826,7 @@ class ExpiryControlService:
         expired_batches = InventoryBatch.all_objects.filter(
             tenant=tenant,
             quality_status__in=[InventoryBatch.QualityStatus.RELEASED, InventoryBatch.QualityStatus.QUARANTINED],
-            expiry_date__lt=timezone.now().date()
+            expiry_date__lt=timezone.localdate()
         )
         
         for batch in expired_batches:

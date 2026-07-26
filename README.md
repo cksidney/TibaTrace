@@ -23,13 +23,16 @@ Included:
 - provider-based CDS and drug-interaction infrastructure
 - HL7 FHIR R4 4.0.1 gateway and terminology operations
 - audit, workflow, notification, crosswalk and document-security foundations
-- minimal server-rendered administrative shell
+- TibaTrace HQ web workspace
+- native Android and Electron Windows POS clients
+- signed-release gates for Android App Bundle and Windows MSIX distribution
 
 Not included in Phase 2:
 
 - complete medicine inventory, procurement, finance or payment gateways
 - controlled-drug operations
-- packaged Windows or Android POS releases
+- externally held Windows Authenticode and Android upload signing credentials
+- production app-store, MDM, and staged rollout approvals
 - production clinical knowledge content
 - production data migration or deployment
 
@@ -41,6 +44,9 @@ Not included in Phase 2:
 - `pydantic==1.10.26`
 - PostgreSQL 18
 - Redis 7
+- Node.js 22.13+
+- React Native 0.86
+- Electron 43
 
 DawaTrace is currently measured against HAPI R4 evidence inherited as source
 provenance. It is not declared `FHIR_PORTABLE`, Firely-compatible, or production
@@ -59,6 +65,19 @@ python3.11 -m venv .venv
 
 Open `http://127.0.0.1:8000/admin-shell/` for the verification shell and
 `http://127.0.0.1:8000/api/health/` for health metadata.
+
+The standalone TibaTrace HQ web application lives in `apps/hq-web`. With the
+backend running on port `8000`, start it with:
+
+```bash
+npm --prefix apps/hq-web run dev
+```
+
+Open `http://127.0.0.1:5173/` for the headquarters web experience.
+
+The POS clients live in `apps/pos-windows` and `apps/pos-android`. Their
+platform-specific build, signing, and local-run instructions are documented in
+each application directory.
 
 ## Docker
 

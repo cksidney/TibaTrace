@@ -81,7 +81,7 @@ class CommercialPricingService:
         quantity = _decimal(quantity)
         if quantity <= 0:
             raise ValidationError("Pricing quantity must be positive.")
-        now = timezone.now().date()
+        now = timezone.localdate()
 
         agreement = (
             CustomerPriceAgreement.all_objects.filter(
@@ -288,7 +288,7 @@ class QuotationService:
             raise ValidationError("Only DRAFT quotations can be submitted")
         if not quotation.lines.exists():
             raise ValidationError("A quotation requires at least one line.")
-        if quotation.valid_until and quotation.valid_until < timezone.now().date():
+        if quotation.valid_until and quotation.valid_until < timezone.localdate():
             raise ValidationError("An expired quotation cannot be submitted.")
         quotation.status = "SUBMITTED"
         quotation.save()
@@ -344,7 +344,7 @@ class QuotationService:
         quotation = _lock(quotation)
         if quotation.status != "SENT":
             raise ValidationError("Only SENT quotations can be accepted")
-        if quotation.valid_until and quotation.valid_until < timezone.now().date():
+        if quotation.valid_until and quotation.valid_until < timezone.localdate():
             quotation.status = Quotation.Status.EXPIRED
             quotation.save(update_fields=["status", "updated_at"])
             raise ValidationError("Quotation has expired.")
@@ -616,7 +616,7 @@ class SalesOrderService:
             raise ValidationError("Only DRAFT orders can be submitted")
         if not sales_order.lines.exists():
             raise ValidationError("A sales order requires at least one line.")
-        if sales_order.requested_delivery_date and sales_order.requested_delivery_date < timezone.now().date():
+        if sales_order.requested_delivery_date and sales_order.requested_delivery_date < timezone.localdate():
             raise ValidationError("Requested delivery date cannot be in the past.")
         sales_order.status = "SUBMITTED"
         sales_order.save()
@@ -793,7 +793,7 @@ class SalesReservationService:
             already_reserved = existing_reservations.aggregate(total=Sum("allocated_quantity"))["total"] or ZERO
             remaining = max(target_quantity - already_reserved, ZERO)
 
-            min_expiry = timezone.now().date() + timedelta(days=line.minimum_shelf_life_days or 0)
+            min_expiry = timezone.localdate() + timedelta(days=line.minimum_shelf_life_days or 0)
             eligible_balances = InventoryBalance.all_objects.select_for_update().filter(
                 tenant=sales_order.tenant,
                 branch=sales_order.branch,
@@ -1119,7 +1119,7 @@ class PickingService:
             raise ValidationError("Only released inventory batches can be picked.")
         if batch.recall_status != InventoryBatch.RecallStatus.NONE:
             raise ValidationError("Recalled or held inventory batches cannot be picked.")
-        if batch.expiry_date < timezone.now().date():
+        if batch.expiry_date < timezone.localdate():
             raise ValidationError("Expired inventory batches cannot be picked.")
         if picking_wave and picking_wave.status != PickingWave.Status.RELEASED:
             raise ValidationError("Picking wave must be released.")
@@ -1192,7 +1192,7 @@ class PickingService:
             raise ValidationError("Batch is no longer released for picking.")
         if task.batch.recall_status != InventoryBatch.RecallStatus.NONE:
             raise ValidationError("Batch is recalled or held.")
-        if task.batch.expiry_date < timezone.now().date():
+        if task.batch.expiry_date < timezone.localdate():
             raise ValidationError("Batch expired before picking.")
 
         task.picked_quantity = picked_quantity
@@ -1623,7 +1623,7 @@ class DispatchService:
 
         dispatch.status = DispatchOrder.Status.DISPATCHED
         dispatch.dispatched_by = dispatched_by
-        dispatch.dispatch_date = timezone.now().date()
+        dispatch.dispatch_date = timezone.localdate()
         dispatch.save(update_fields=["status", "dispatched_by", "dispatch_date", "updated_at"])
 
         for line in dispatch.lines.select_related(

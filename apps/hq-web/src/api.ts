@@ -30,6 +30,14 @@ export interface NetworkItem {
   readonly time_zone: string;
 }
 
+export interface TenantWorkspace extends NetworkItem {
+  readonly active_organization_count: number;
+  readonly created_at: string;
+  readonly metadata: Readonly<Record<string, unknown>>;
+  readonly suspension_reason: string;
+  readonly updated_at: string;
+}
+
 export interface HQOverview {
   readonly attention_items: readonly AttentionItem[];
   readonly data_summary: readonly DataSummaryItem[];
@@ -159,7 +167,7 @@ export interface HQCrosswalk {
   readonly target_entity_type: string;
 }
 
-export type HQActionFieldType = 'checkbox' | 'number' | 'select' | 'text' | 'textarea';
+export type HQActionFieldType = 'checkbox' | 'hidden' | 'number' | 'select' | 'text' | 'textarea';
 
 export interface HQActionField {
   readonly default: boolean | number | string;
@@ -305,8 +313,9 @@ export async function executeHQBusinessAction(
   values: Readonly<Record<string, boolean | number | string>>,
 ): Promise<unknown> {
   const tenantHeaders = item.tenant_id ? { 'X-Tenant-ID': item.tenant_id } : {};
+  const payload = expandActionValues(values);
   const response = await fetch(action.path, {
-    body: JSON.stringify(values),
+    body: JSON.stringify(payload),
     credentials: 'include',
     headers: {
       Accept: 'application/json',
@@ -317,19 +326,57 @@ export async function executeHQBusinessAction(
     method: action.method,
   });
   if (!response.ok) {
-    const body = await response.json().catch(() => null) as {
-      readonly detail?: string;
-      readonly error?: string | Record<string, unknown>;
-    } | null;
-    const serviceMessage = typeof body?.error === 'string'
-      ? body.error
-      : body?.detail;
+    const body = await response.json().catch(() => null) as unknown;
+    const serviceMessage = apiErrorMessage(body);
     throw new HQApiError(
       response.status,
       serviceMessage ?? `Action failed with ${response.status}.`,
     );
   }
   return response.status === 204 ? null : response.json();
+}
+
+function apiErrorMessage(value: unknown): string | null {
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) {
+    const messages = value.map(apiErrorMessage).filter((message): message is string => Boolean(message));
+    return messages.length ? messages.join(' ') : null;
+  }
+  if (!value || typeof value !== 'object') return null;
+  const body = value as Record<string, unknown>;
+  const primary = apiErrorMessage(body.error) ?? apiErrorMessage(body.detail);
+  if (primary) return primary;
+  const fields = Object.entries(body)
+    .filter(([field]) => field !== 'request_id')
+    .map(([field, error]) => {
+      const message = apiErrorMessage(error);
+      return message ? `${field.replace(/_/g, ' ')}: ${message}` : null;
+    })
+    .filter((message): message is string => Boolean(message));
+  return fields.length ? fields.join(' ') : null;
+}
+
+function expandActionValues(
+  values: Readonly<Record<string, boolean | number | string>>,
+): Record<string, unknown> {
+  const payload: Record<string, unknown> = {};
+  for (const [name, value] of Object.entries(values)) {
+    const separator = name.indexOf('.');
+    if (separator === -1) {
+      payload[name] = value;
+      continue;
+    }
+    const group = name.slice(0, separator);
+    const child = name.slice(separator + 1);
+    const nested = (
+      typeof payload[group] === 'object'
+      && payload[group] !== null
+      && !Array.isArray(payload[group])
+    ) ? payload[group] as Record<string, unknown> : {};
+    nested[child] = value;
+    payload[group] = nested;
+  }
+  return payload;
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -374,6 +421,372 @@ async function getCollection<T>(path: string, signal?: AbortSignal): Promise<rea
   }
   return collectionRows<T>(await response.json());
 }
+
+async function getTenantCollection<T>(
+  path: string,
+  tenantId: string,
+  signal?: AbortSignal,
+): Promise<readonly T[]> {
+  const request: RequestInit = {
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'X-Tenant-ID': tenantId,
+    },
+  };
+  if (signal) request.signal = signal;
+  const response = await fetch(path, request);
+  if (!response.ok) {
+    throw new HQApiError(response.status, `${path} failed with ${response.status}.`);
+  }
+  return collectionRows<T>(await response.json());
+}
+
+async function mutateJson<T>(
+  path: string,
+  method: 'PATCH' | 'POST',
+  payload: unknown,
+  csrfToken: string,
+  tenantId = '',
+): Promise<T> {
+  const response = await fetch(path, {
+    body: JSON.stringify(payload),
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      'X-CSRFToken': csrfToken,
+      ...(tenantId ? { 'X-Tenant-ID': tenantId } : {}),
+    },
+    method,
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => null) as unknown;
+    throw new HQApiError(
+      response.status,
+      apiErrorMessage(body) ?? `${path} failed with ${response.status}.`,
+    );
+  }
+  return (await response.json()) as T;
+}
+
+/* ── tenant management ────────────────────────────────────────────────────── */
+
+export interface TenantInput {
+  readonly country_code: string;
+  readonly metadata?: Readonly<Record<string, unknown>>;
+  readonly name: string;
+  readonly slug: string;
+  readonly time_zone: string;
+}
+
+export const loadTenants = (signal?: AbortSignal) =>
+  getCollection<TenantWorkspace>('/api/tenancy/tenants/', signal);
+
+export const createTenant = (
+  values: TenantInput,
+  csrfToken: string,
+) => mutateJson<TenantWorkspace>(
+  '/api/tenancy/tenants/',
+  'POST',
+  values,
+  csrfToken,
+);
+
+export const updateTenant = (
+  tenantId: string,
+  values: TenantInput,
+  csrfToken: string,
+) => mutateJson<TenantWorkspace>(
+  `/api/tenancy/tenants/${encodeURIComponent(tenantId)}/`,
+  'PATCH',
+  values,
+  csrfToken,
+);
+
+export const suspendTenant = (
+  tenantId: string,
+  reason: string,
+  csrfToken: string,
+) => mutateJson<TenantWorkspace>(
+  `/api/tenancy/tenants/${encodeURIComponent(tenantId)}/suspend/`,
+  'POST',
+  { reason },
+  csrfToken,
+);
+
+export const activateTenant = (
+  tenantId: string,
+  csrfToken: string,
+) => mutateJson<TenantWorkspace>(
+  `/api/tenancy/tenants/${encodeURIComponent(tenantId)}/activate/`,
+  'POST',
+  {},
+  csrfToken,
+);
+
+/* ── procurement cockpit ──────────────────────────────────────────────────── */
+
+export interface ProcurementSupplier {
+  readonly id: string;
+  readonly supplier_code: string;
+  readonly legal_name: string;
+  readonly trading_name: string;
+  readonly contact_email: string;
+  readonly contact_phone: string;
+  readonly payment_terms: string;
+  readonly default_currency: string;
+  readonly eligibility_reasons: readonly string[];
+  readonly purchase_eligible: boolean;
+  readonly status: string;
+  readonly risk_category: string;
+  readonly suspension_reason: string;
+}
+
+export interface SupplierQualification {
+  readonly id: string;
+  readonly supplier: string;
+  readonly supplier_code: string;
+  readonly qualification_type: string;
+  readonly licence_number: string;
+  readonly issuing_authority: string;
+  readonly effective_date: string;
+  readonly expiry_date: string;
+  readonly verification_status: string;
+}
+
+export interface ProcurementRequisitionLine {
+  readonly id: string;
+  readonly sku: string;
+  readonly sku_code: string;
+  readonly requested_quantity: number;
+  readonly approved_quantity: number;
+  readonly outstanding_quantity: number;
+  readonly purchase_unit: string;
+  readonly status: string;
+}
+
+export interface ProcurementRequisition {
+  readonly id: string;
+  readonly requisition_number: string;
+  readonly requesting_branch: string;
+  readonly requesting_branch_name: string;
+  readonly requested_delivery_date: string;
+  readonly priority: string;
+  readonly justification: string;
+  readonly status: string;
+  readonly lines: readonly ProcurementRequisitionLine[];
+  readonly created_at: string;
+}
+
+export interface ProcurementOrderLine {
+  readonly id: string;
+  readonly sku: string;
+  readonly sku_code: string;
+  readonly ordered_quantity: number;
+  readonly received_quantity: number;
+  readonly rejected_quantity: number;
+  readonly unit_price: Money;
+  readonly total_price: Money;
+  readonly purchase_unit: string;
+  readonly requires_cold_chain: boolean;
+}
+
+export interface ProcurementOrder {
+  readonly id: string;
+  readonly po_number: string;
+  readonly supplier: string;
+  readonly supplier_name: string;
+  readonly originating_requisition: string | null;
+  readonly ordering_branch: string;
+  readonly order_date: string;
+  readonly expected_delivery_date: string;
+  readonly currency: string;
+  readonly total_gross: Money;
+  readonly status: string;
+  readonly lines: readonly ProcurementOrderLine[];
+}
+
+export interface ProcurementReceiptLine {
+  readonly id: string;
+  readonly po_line: string;
+  readonly sku: string;
+  readonly sku_code: string;
+  readonly delivered_quantity: number;
+  readonly accepted_quantity: number;
+  readonly quarantined_quantity: number;
+  readonly rejected_quantity: number;
+  readonly discrepancy_reason: string;
+}
+
+export interface ProcurementReceipt {
+  readonly id: string;
+  readonly grn_number: string;
+  readonly purchase_order: string;
+  readonly supplier: string;
+  readonly receiving_branch: string;
+  readonly delivery_note_number: string;
+  readonly arrival_time: string;
+  readonly status: string;
+  readonly discrepancy_summary: string;
+  readonly lines: readonly ProcurementReceiptLine[];
+}
+
+export interface ProcurementBatch {
+  readonly id: string;
+  readonly grn_line: string;
+  readonly sku: string;
+  readonly sku_code: string;
+  readonly manufacturer_batch_number: string;
+  readonly manufacture_date: string | null;
+  readonly expiry_date: string;
+  readonly received_quantity: number;
+  readonly accepted_quantity: number;
+  readonly quarantined_quantity: number;
+  readonly rejected_quantity: number;
+  readonly quality_status: string;
+  readonly temperature_excursion: boolean;
+}
+
+export interface ProcurementInspection {
+  readonly id: string;
+  readonly goods_receipt: string;
+  readonly decision: string;
+  readonly reason: string;
+  readonly inspected_at: string;
+}
+
+export interface ProcurementReturn {
+  readonly id: string;
+  readonly return_number: string;
+  readonly goods_receipt: string;
+  readonly supplier: string;
+  readonly status: string;
+  readonly reason: string;
+  readonly lines: readonly {
+    readonly id: string;
+    readonly sku: string;
+    readonly sku_code: string;
+    readonly quantity: number;
+  }[];
+}
+
+export interface ProcurementMatch {
+  readonly id: string;
+  readonly purchase_order: string;
+  readonly goods_receipt: string;
+  readonly invoice_reference: string;
+  readonly matching_status: string;
+  readonly quantity_variance: number;
+  readonly price_variance: Money;
+}
+
+export interface ProcurementLocation {
+  readonly id: string;
+  readonly name: string;
+  readonly code?: string;
+  readonly branch?: string;
+  readonly location_type: string;
+  readonly status: string;
+  readonly quarantine_capability?: boolean;
+}
+
+export interface ProcurementSku {
+  readonly id: string;
+  readonly sku_code: string;
+  readonly display_name: string;
+  readonly status: string;
+}
+
+export interface ProcurementData {
+  readonly batches: readonly ProcurementBatch[];
+  readonly inspections: readonly ProcurementInspection[];
+  readonly inventoryLocations: readonly ProcurementLocation[];
+  readonly locations: readonly ProcurementLocation[];
+  readonly matches: readonly ProcurementMatch[];
+  readonly orders: readonly ProcurementOrder[];
+  readonly qualifications: readonly SupplierQualification[];
+  readonly receipts: readonly ProcurementReceipt[];
+  readonly requisitions: readonly ProcurementRequisition[];
+  readonly returns: readonly ProcurementReturn[];
+  readonly skus: readonly ProcurementSku[];
+  readonly suppliers: readonly ProcurementSupplier[];
+}
+
+interface ProcurementContext {
+  readonly inventory_locations: readonly ProcurementLocation[];
+  readonly locations: readonly ProcurementLocation[];
+  readonly skus: readonly ProcurementSku[];
+}
+
+async function loadProcurementContext(
+  tenantId: string,
+  signal?: AbortSignal,
+): Promise<ProcurementContext> {
+  const request: RequestInit = {
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'X-Tenant-ID': tenantId,
+    },
+  };
+  if (signal) request.signal = signal;
+  const response = await fetch('/api/procurement/context/', request);
+  if (!response.ok) {
+    throw new HQApiError(response.status, `Procurement context failed with ${response.status}.`);
+  }
+  return (await response.json()) as ProcurementContext;
+}
+
+export async function loadProcurementData(
+  tenantId: string,
+  signal?: AbortSignal,
+): Promise<ProcurementData> {
+  const [
+    suppliers,
+    qualifications,
+    requisitions,
+    orders,
+    receipts,
+    batches,
+    inspections,
+    returns,
+    matches,
+    context,
+  ] = await Promise.all([
+    getTenantCollection<ProcurementSupplier>('/api/procurement/suppliers/', tenantId, signal),
+    getTenantCollection<SupplierQualification>('/api/procurement/supplier-qualifications/', tenantId, signal),
+    getTenantCollection<ProcurementRequisition>('/api/procurement/requisitions/', tenantId, signal),
+    getTenantCollection<ProcurementOrder>('/api/procurement/purchase-orders/', tenantId, signal),
+    getTenantCollection<ProcurementReceipt>('/api/procurement/goods-receipts/', tenantId, signal),
+    getTenantCollection<ProcurementBatch>('/api/procurement/received-batches/', tenantId, signal),
+    getTenantCollection<ProcurementInspection>('/api/procurement/inspections/', tenantId, signal),
+    getTenantCollection<ProcurementReturn>('/api/procurement/supplier-returns/', tenantId, signal),
+    getTenantCollection<ProcurementMatch>('/api/procurement/matching/', tenantId, signal),
+    loadProcurementContext(tenantId, signal),
+  ]);
+  return {
+    batches,
+    inspections,
+    inventoryLocations: context.inventory_locations,
+    locations: context.locations,
+    matches,
+    orders,
+    qualifications,
+    receipts,
+    requisitions,
+    returns,
+    skus: context.skus,
+    suppliers,
+  };
+}
+
+export const procurementCommand = <T>(
+  path: string,
+  payload: unknown,
+  tenantId: string,
+  csrfToken: string,
+) => mutateJson<T>(path, 'POST', payload, csrfToken, tenantId);
 
 /* ── insurance ─────────────────────────────────────────────────────────────── */
 
@@ -510,6 +923,53 @@ export interface ManufacturerSummary {
   readonly is_active: boolean;
 }
 
+export interface GovernmentCatalogueMedicine {
+  readonly id: string;
+  readonly code: string;
+  readonly generic_name: string;
+  readonly brand_name: string;
+  readonly dosage_form: string;
+  readonly strength: string;
+  readonly route: string;
+  readonly licence_identifier: string;
+  readonly manufacturer_name: string;
+  readonly keml_status: string;
+  readonly level_of_use: string;
+  readonly status: string;
+  readonly catalogue_standard: string;
+  readonly source_updated_at: string;
+  readonly selected: boolean;
+  readonly selection_status: string;
+  readonly tenant_code: string;
+}
+
+export interface GovernmentCatalogueFilters {
+  readonly kemlStatus?: string;
+  readonly levelOfUse?: string;
+  readonly page?: number;
+  readonly pageSize?: number;
+  readonly query?: string;
+  readonly selectedOnly?: boolean;
+  readonly tenantId?: string;
+}
+
+export interface GovernmentCataloguePage {
+  readonly available_keml_statuses: readonly string[];
+  readonly available_levels_of_use: readonly string[];
+  readonly catalogue_count: number;
+  readonly count: number;
+  readonly page: number;
+  readonly page_size: number;
+  readonly pages: number;
+  readonly results: readonly GovernmentCatalogueMedicine[];
+  readonly selected_count: number;
+  readonly source: string;
+  readonly source_version: string;
+  readonly tenant_id: string;
+  readonly tenant_name: string;
+  readonly can_manage: boolean;
+}
+
 export const loadActiveSubstances = (signal?: AbortSignal) =>
   getCollection<ActiveSubstanceSummary>('/api/medicines/substances/', signal);
 
@@ -524,6 +984,63 @@ export const loadManufacturedProducts = (signal?: AbortSignal) =>
 
 export const loadManufacturers = (signal?: AbortSignal) =>
   getCollection<ManufacturerSummary>('/api/medicines/manufacturers/', signal);
+
+export async function loadGovernmentCatalogue(
+  filters: GovernmentCatalogueFilters = {},
+  signal?: AbortSignal,
+): Promise<GovernmentCataloguePage> {
+  const parameters = new URLSearchParams();
+  if (filters.query?.trim()) parameters.set('q', filters.query.trim());
+  if (filters.kemlStatus) parameters.set('keml_status', filters.kemlStatus);
+  if (filters.levelOfUse) parameters.set('level_of_use', filters.levelOfUse);
+  if (filters.selectedOnly) parameters.set('selected_only', 'true');
+  if (filters.page) parameters.set('page', String(filters.page));
+  if (filters.pageSize) parameters.set('page_size', String(filters.pageSize));
+
+  const request: RequestInit = {
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      ...(filters.tenantId ? { 'X-Tenant-ID': filters.tenantId } : {}),
+    },
+  };
+  if (signal) request.signal = signal;
+  const query = parameters.toString();
+  const path = `/api/medicines/government-catalogue/${query ? `?${query}` : ''}`;
+  const response = await fetch(path, request);
+  if (!response.ok) {
+    throw new HQApiError(response.status, `Government catalogue request failed with ${response.status}.`);
+  }
+  return (await response.json()) as GovernmentCataloguePage;
+}
+
+export async function updateGovernmentCatalogueSelection(
+  medicineId: string,
+  selected: boolean,
+  tenantId: string,
+  csrfToken: string,
+): Promise<{ readonly selected: boolean }> {
+  const response = await fetch(
+    `/api/medicines/government-catalogue/${encodeURIComponent(medicineId)}/selection/`,
+    {
+      credentials: 'include',
+      headers: {
+        Accept: 'application/json',
+        'X-CSRFToken': csrfToken,
+        'X-Tenant-ID': tenantId,
+      },
+      method: selected ? 'POST' : 'DELETE',
+    },
+  );
+  if (!response.ok) {
+    const body = await response.json().catch(() => null) as unknown;
+    throw new HQApiError(
+      response.status,
+      apiErrorMessage(body) ?? `Catalogue selection failed with ${response.status}.`,
+    );
+  }
+  return (await response.json()) as { readonly selected: boolean };
+}
 
 /* ── shift and cash control ────────────────────────────────────────────────── */
 

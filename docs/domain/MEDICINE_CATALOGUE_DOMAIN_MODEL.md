@@ -21,6 +21,8 @@ graph TD
     Manufactured --> SKU[CommercialSKU]
     Package[PackageDefinition] --> SKU
     
+    Master[Universal Medicine Catalogue] --> TenantProduct[TenantCatalogueProduct]
+    TenantProduct --> Manufactured
     SKU --> Assortment[BranchAssortment]
     SKU --> Identifier[ProductIdentifier]
 ```
@@ -34,3 +36,5 @@ graph TD
 5. **`PackageDefinition`**: Physical package hierarchy (blister, box, bottle).
 6. **`CommercialSKU`**: Sellable/purchasable product unit (e.g., Panadol 500mg 100s Box).
 7. **`BranchAssortment`**: Tenant and branch-specific availability rules.
+8. **`Medicine` (global)**: Versioned universal reference records imported from authoritative catalogues such as Kenya eTCD.
+9. **`TenantCatalogueProduct`**: The explicit, audited selection of a universal medicine into one tenant's catalogue. Selection does not automatically create a sellable SKU; packaging, identifiers, pricing and branch assortment remain tenant-owned governance steps.

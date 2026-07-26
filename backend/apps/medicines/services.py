@@ -4,6 +4,7 @@ import decimal
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.utils import timezone
 
 from apps.medicines.models import (
     ActiveSubstance,
@@ -14,10 +15,12 @@ from apps.medicines.models import (
     IngredientComposition,
     ManufacturedMedicinalProduct,
     Manufacturer,
+    Medicine,
     PackageDefinition,
     ProductIdentifier,
     SubstitutionGroup,
     SubstitutionPolicy,
+    TenantCatalogueProduct,
 )
 from apps.workflows.service import emit_event
 
@@ -161,6 +164,70 @@ class MedicineCatalogueService:
             payload={"sku_code": sku_code, "display_name": display_name},
         )
         return sku
+
+
+class TenantCatalogueService:
+    @staticmethod
+    @transaction.atomic
+    def select_master_product(*, tenant, master_medicine: Medicine, actor):
+        if (
+            master_medicine.tenant_id is not None
+            or not master_medicine.is_global
+        ):
+            raise ValidationError(
+                "Tenant products must originate from the universal catalogue."
+            )
+
+        selection = TenantCatalogueProduct.all_objects.filter(
+            tenant=tenant,
+            master_medicine=master_medicine,
+        ).first()
+        created = selection is None
+        if selection is None:
+            selection = TenantCatalogueProduct(
+                tenant=tenant,
+                master_medicine=master_medicine,
+                tenant_code=master_medicine.code,
+                selected_by=actor,
+                selected_at=timezone.now(),
+            )
+        else:
+            selection.status = TenantCatalogueProduct.STATUS_SELECTED
+            selection.selected_by = actor
+            selection.selected_at = timezone.now()
+            selection.removed_by = None
+            selection.removed_at = None
+        selection.save()
+
+        _emit_medicine_event(
+            event_type="MasterCatalogueProductSelected",
+            tenant=tenant,
+            aggregate_id=str(selection.pk),
+            payload={
+                "master_medicine_id": str(master_medicine.pk),
+                "etcd_product_id": master_medicine.code,
+            },
+        )
+        return selection, created
+
+    @staticmethod
+    @transaction.atomic
+    def remove_master_product(*, selection: TenantCatalogueProduct, actor):
+        selection.status = TenantCatalogueProduct.STATUS_REMOVED
+        selection.removed_by = actor
+        selection.removed_at = timezone.now()
+        selection.save()
+
+        _emit_medicine_event(
+            event_type="MasterCatalogueProductRemoved",
+            tenant=selection.tenant,
+            aggregate_id=str(selection.pk),
+            payload={
+                "master_medicine_id": str(selection.master_medicine_id),
+                "etcd_product_id": selection.master_medicine.code,
+            },
+        )
+        return selection
 
 
 class IngredientCompositionService:

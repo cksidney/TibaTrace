@@ -41,8 +41,8 @@ class ProcurementIdempotencyTest(TestCase):
             po_number="PO-123",
             supplier=self.supplier,
             ordering_branch=self.branch,
-            order_date=timezone.now().date(),
-            expected_delivery_date=timezone.now().date(),
+            order_date=timezone.localdate(),
+            expected_delivery_date=timezone.localdate(),
             status=PurchaseOrder.Status.SENT
         )
         self.po_line = PurchaseOrderLine.objects.create(

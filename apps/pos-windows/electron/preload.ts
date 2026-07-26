@@ -1,11 +1,19 @@
-import { contextBridge } from 'electron';
+import { contextBridge, ipcRenderer } from 'electron';
 
-/**
- * Deliberately minimal. The renderer talks to the DawaTrace API over HTTPS like
- * any other client; it does not get privileged main-process helpers, because
- * anything exposed here becomes reachable from page content.
- */
 contextBridge.exposeInMainWorld('tibatrace', {
   platform: 'windows' as const,
   version: process.env['npm_package_version'] ?? '0.0.0',
+  auth: {
+    restore: () => ipcRenderer.invoke('auth:restore'),
+    login: (username: string, password: string) =>
+      ipcRenderer.invoke('auth:login', { username, password }),
+    logout: () => ipcRenderer.invoke('auth:logout'),
+  },
+  api: {
+    request: (request: unknown) => ipcRenderer.invoke('api:request', request),
+  },
+  offline: {
+    read: () => ipcRenderer.invoke('offline:read'),
+    write: (actions: unknown) => ipcRenderer.invoke('offline:write', actions),
+  },
 });

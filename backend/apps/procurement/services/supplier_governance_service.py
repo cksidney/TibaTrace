@@ -131,6 +131,28 @@ class SupplierGovernanceService:
         supplier.save(update_fields=["status", "suspension_reason", "updated_at"])
         return supplier
 
+    @staticmethod
+    @transaction.atomic
+    def verify_qualification(*, qualification: SupplierQualification, verifier) -> SupplierQualification:
+        if verifier is None:
+            raise ValidationError("Qualification verification requires a named verifier.")
+        if qualification.expiry_date < timezone.localdate():
+            raise ValidationError("An expired supplier qualification cannot be verified.")
+        qualification.verification_status = (
+            SupplierQualification.QualificationVerificationStatus.VERIFIED
+        )
+        qualification.verified_at = timezone.now()
+        qualification.verified_by = verifier
+        qualification.save(
+            update_fields=[
+                "verification_status",
+                "verified_at",
+                "verified_by",
+                "updated_at",
+            ]
+        )
+        return qualification
+
     # ------------------------------------------------------------ eligibility
 
     @staticmethod
@@ -141,7 +163,7 @@ class SupplierGovernanceService:
         that lapses next week was valid for an order placed today, and one that
         lapsed last month was not valid for a backdated order.
         """
-        on_date = on_date or timezone.now().date()
+        on_date = on_date or timezone.localdate()
         current = set()
 
         for qualification in SupplierQualification.all_objects.filter(supplier=supplier):
@@ -164,12 +186,14 @@ class SupplierGovernanceService:
 
     @classmethod
     def ineligibility_reasons(cls, *, supplier: Supplier, on_date=None,
-                              controlled: bool = False, cold_chain: bool = False) -> list[str]:
+                              controlled: bool = False, cold_chain: bool = False,
+                              held_qualifications: set[str] | None = None) -> list[str]:
         """Every reason this supplier cannot be sent an order.
 
         All of them, not the first. A buyer told one problem at a time chases
         one document at a time, and the order slips a week per document.
         """
+        effective_date = on_date or timezone.localdate()
         reasons: list[str] = []
 
         if supplier.status not in PURCHASABLE_STATUSES:
@@ -184,11 +208,15 @@ class SupplierGovernanceService:
         if cold_chain:
             required |= COLD_CHAIN_QUALIFICATIONS
 
-        held = cls.valid_qualifications(supplier=supplier, on_date=on_date)
+        held = (
+            held_qualifications
+            if held_qualifications is not None
+            else cls.valid_qualifications(supplier=supplier, on_date=effective_date)
+        )
         for missing in sorted(required - held):
             reasons.append(
                 f"{missing} is missing, unverified or expired as at "
-                f"{on_date or timezone.now().date()}."
+                f"{effective_date}."
             )
         return reasons
 

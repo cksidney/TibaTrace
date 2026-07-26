@@ -1,6 +1,12 @@
+from django.core.exceptions import ValidationError
+from django.core.paginator import Paginator
+from django.db.models import Q
+from django.shortcuts import get_object_or_404
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from apps.core.tenant_context import get_current_tenant_id
 from apps.medicines.api.serializers import (
@@ -10,6 +16,7 @@ from apps.medicines.api.serializers import (
     ClinicalMedicinalProductSerializer,
     CommercialSKUSerializer,
     DoseFormSerializer,
+    GovernmentCatalogueMedicineSerializer,
     IngredientCompositionSerializer,
     ManufacturedMedicinalProductSerializer,
     ManufacturerSerializer,
@@ -20,6 +27,7 @@ from apps.medicines.api.serializers import (
     SubstitutionPolicySerializer,
     TherapeuticClassificationSerializer,
 )
+from apps.medicines.government_catalogue import KEML_STATUSES, LEVELS_OF_USE, SOURCE_NAME
 from apps.medicines.models import (
     ActiveSubstance,
     AdministrationRoute,
@@ -35,9 +43,11 @@ from apps.medicines.models import (
     ProductIdentifier,
     SubstitutionGroup,
     SubstitutionPolicy,
+    TenantCatalogueProduct,
     TherapeuticClassification,
 )
-from apps.medicines.services import MedicineCatalogueService
+from apps.medicines.services import MedicineCatalogueService, TenantCatalogueService
+from apps.tenancy.models import Tenant
 
 
 class TenantScopedQuerysetMixin:
@@ -258,3 +268,211 @@ class MedicineViewSet(TenantScopedQuerysetMixin, viewsets.ModelViewSet):
     serializer_class = MedicineSerializer
     filter_backends = [filters.SearchFilter]
     search_fields = ["code", "generic_name", "brand_name", "gtin", "primary_barcode"]
+
+
+class GovernmentCatalogueView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        tenant = self._tenant(request)
+        base_queryset = Medicine.all_objects.filter(
+            tenant__isnull=True,
+            is_global=True,
+            source=SOURCE_NAME,
+        )
+        catalogue_count = base_queryset.count()
+        source_version = (
+            base_queryset.order_by("-updated_at")
+            .values_list("source_version", flat=True)
+            .first()
+            or ""
+        )
+
+        queryset = base_queryset
+        query = request.query_params.get("q", "").strip()[:200]
+        if query:
+            queryset = queryset.filter(
+                Q(code__icontains=query)
+                | Q(generic_name__icontains=query)
+                | Q(brand_name__icontains=query)
+                | Q(dosage_form__icontains=query)
+                | Q(strength__icontains=query)
+                | Q(licence_identifier__icontains=query)
+                | Q(metadata__manufacturer_name__icontains=query)
+                | Q(metadata__route__display_name__icontains=query)
+            )
+
+        keml_status = request.query_params.get("keml_status", "").strip()
+        if keml_status in KEML_STATUSES:
+            queryset = queryset.filter(metadata__keml__status=keml_status)
+
+        level_of_use = request.query_params.get("level_of_use", "").strip()
+        if level_of_use in LEVELS_OF_USE:
+            queryset = queryset.filter(metadata__keml__level_of_use=level_of_use)
+
+        selected_count = 0
+        if tenant is not None:
+            selected_queryset = TenantCatalogueProduct.all_objects.filter(
+                tenant=tenant,
+                status=TenantCatalogueProduct.STATUS_SELECTED,
+            )
+            selected_count = selected_queryset.count()
+            if request.query_params.get("selected_only", "").lower() in {
+                "1",
+                "true",
+                "yes",
+            }:
+                queryset = queryset.filter(
+                    tenant_catalogue_products__tenant=tenant,
+                    tenant_catalogue_products__status=TenantCatalogueProduct.STATUS_SELECTED,
+                )
+
+        page_size = self._bounded_integer(
+            request.query_params.get("page_size"),
+            default=50,
+            minimum=10,
+            maximum=100,
+        )
+        paginator = Paginator(
+            queryset.order_by("generic_name", "brand_name", "code"),
+            page_size,
+        )
+        page = paginator.get_page(request.query_params.get("page", "1"))
+        selections = {}
+        if tenant is not None:
+            selections = {
+                str(selection.master_medicine_id): selection
+                for selection in TenantCatalogueProduct.all_objects.filter(
+                    tenant=tenant,
+                    master_medicine_id__in=[
+                        medicine.pk for medicine in page.object_list
+                    ],
+                )
+            }
+        serializer = GovernmentCatalogueMedicineSerializer(
+            page.object_list,
+            many=True,
+            context={"selections": selections},
+        )
+
+        return Response(
+            {
+                "source": SOURCE_NAME,
+                "source_version": source_version,
+                "catalogue_count": catalogue_count,
+                "count": paginator.count,
+                "page": page.number,
+                "page_size": page_size,
+                "pages": paginator.num_pages,
+                "tenant_id": str(tenant.pk) if tenant else "",
+                "tenant_name": tenant.name if tenant else "",
+                "selected_count": selected_count,
+                "can_manage": self._can_manage(request, tenant),
+                "available_keml_statuses": sorted(KEML_STATUSES),
+                "available_levels_of_use": sorted(LEVELS_OF_USE, key=int),
+                "results": serializer.data,
+            }
+        )
+
+    @staticmethod
+    def _bounded_integer(value, *, default, minimum, maximum):
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            return default
+        return max(minimum, min(parsed, maximum))
+
+    @staticmethod
+    def _tenant(request):
+        tenant_id = getattr(request, "tenant_id", None) or request.user.tenant_id
+        if not tenant_id:
+            return None
+        return Tenant.objects.filter(pk=tenant_id, status=Tenant.STATUS_ACTIVE).first()
+
+    @staticmethod
+    def _can_manage(request, tenant):
+        if tenant is None:
+            return False
+        return bool(
+            request.user.is_superuser
+            or request.user.is_platform_admin
+            or request.user.has_capability(
+                "catalogue.manage",
+                tenant_id=tenant.pk,
+            )
+        )
+
+
+class GovernmentCatalogueSelectionView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        tenant = GovernmentCatalogueView._tenant(request)
+        permission_error = self._permission_error(request, tenant)
+        if permission_error:
+            return permission_error
+        medicine = get_object_or_404(
+            Medicine.all_objects,
+            pk=pk,
+            tenant__isnull=True,
+            is_global=True,
+            source=SOURCE_NAME,
+        )
+        try:
+            selection, created = TenantCatalogueService.select_master_product(
+                tenant=tenant,
+                master_medicine=medicine,
+                actor=request.user,
+            )
+        except ValidationError as exc:
+            return Response(
+                {"detail": " ".join(exc.messages)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(
+            {
+                "selected": True,
+                "selection_id": str(selection.pk),
+                "tenant_id": str(tenant.pk),
+                "master_medicine_id": str(medicine.pk),
+            },
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
+
+    def delete(self, request, pk):
+        tenant = GovernmentCatalogueView._tenant(request)
+        permission_error = self._permission_error(request, tenant)
+        if permission_error:
+            return permission_error
+        selection = get_object_or_404(
+            TenantCatalogueProduct.all_objects.select_related("master_medicine", "tenant"),
+            tenant=tenant,
+            master_medicine_id=pk,
+            status=TenantCatalogueProduct.STATUS_SELECTED,
+        )
+        TenantCatalogueService.remove_master_product(
+            selection=selection,
+            actor=request.user,
+        )
+        return Response(
+            {
+                "selected": False,
+                "selection_id": str(selection.pk),
+                "tenant_id": str(tenant.pk),
+                "master_medicine_id": str(pk),
+            }
+        )
+
+    @staticmethod
+    def _permission_error(request, tenant):
+        if tenant is None:
+            return Response(
+                {"detail": "Select an active tenant workspace first."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not GovernmentCatalogueView._can_manage(request, tenant):
+            return Response(
+                {"detail": "Catalogue management permission is required."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return None

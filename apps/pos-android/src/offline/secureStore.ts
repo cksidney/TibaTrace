@@ -85,7 +85,12 @@ export class SecureOfflineStore implements OfflineStore {
         'Offline queue belongs to a different tenant or device and will not be used.',
       );
     }
-    return envelope.actions ?? [];
+    if (!Array.isArray(envelope.actions)) {
+      throw new OfflineStoreUnreadable(
+        'The offline queue contained no valid action list and will not be used.',
+      );
+    }
+    return envelope.actions;
   }
 
   async write(actions: readonly OfflineAction[]): Promise<void> {
@@ -106,7 +111,7 @@ export class SecureOfflineStore implements OfflineStore {
     await this.keystore.setItem(this.key, JSON.stringify(envelope));
   }
 
-  /** Clear on logout or tenant switch. */
+  /** Clear only after every queued action is terminal and retained elsewhere. */
   async clear(): Promise<void> {
     await this.keystore.removeItem(this.key);
   }

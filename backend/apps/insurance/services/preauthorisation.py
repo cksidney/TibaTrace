@@ -251,7 +251,7 @@ class PreauthorisationService:
             PrescriptionPreauthorisation.Status.PARTIALLY_APPROVED,
         }:
             return False
-        on_date = on_date or timezone.now().date()
+        on_date = on_date or timezone.localdate()
         if preauth.valid_from and on_date < preauth.valid_from:
             return False
         if preauth.valid_to and on_date > preauth.valid_to:

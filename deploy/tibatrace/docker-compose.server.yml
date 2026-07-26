@@ -1,0 +1,87 @@
+services:
+  migrate:
+    network_mode: host
+
+  api:
+    network_mode: host
+    command:
+      [
+        "gunicorn",
+        "dawatrace.wsgi:application",
+        "--bind",
+        "172.17.0.1:${TIBATRACE_API_PORT:-28110}",
+        "--workers",
+        "3",
+        "--timeout",
+        "60",
+        "--worker-tmp-dir",
+        "/dev/shm",
+        "--access-logfile",
+        "-",
+        "--error-logfile",
+        "-",
+      ]
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import os, urllib.request; port = os.getenv('TIBATRACE_API_PORT', '28110'); request = urllib.request.Request(f'http://172.17.0.1:{port}/api/health/', headers={'Host': os.getenv('TIBATRACE_HOST', 'localhost'), 'X-Forwarded-Proto': 'https'}); urllib.request.urlopen(request, timeout=3)",
+        ]
+
+  worker:
+    network_mode: host
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  beat:
+    network_mode: host
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  hq:
+    ports:
+      - "172.17.0.1:${TIBATRACE_HQ_PORT:-28111}:8080"
+
+  redis:
+    image: redis:7-alpine@sha256:02f2cc4882f8bf87c79a220ac958f58c700bdec0dfb9b9ea61b62fb0e8f1bfcf
+    env_file:
+      - ${TIBATRACE_ENV_FILE:-.env.production}
+    command:
+      [
+        "sh",
+        "-ec",
+        "exec redis-server --appendonly yes --requirepass \"$${TIBATRACE_REDIS_PASSWORD}\"",
+      ]
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    ports:
+      - "127.0.0.1:${TIBATRACE_REDIS_PORT:-6382}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "REDISCLI_AUTH=\"$${TIBATRACE_REDIS_PASSWORD}\" redis-cli ping | grep -q PONG",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+
+  edge:
+    profiles: ["standalone-edge"]
+
+volumes:
+  redis-data:

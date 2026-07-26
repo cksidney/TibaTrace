@@ -49,12 +49,19 @@ export class EncryptedOfflineStore {
     return join(this.directory, 'queue.enc.tmp');
   }
 
+  private get backup(): string {
+    return join(this.directory, 'queue.enc.bak');
+  }
+
   /** Whether the OS can actually encrypt. Refuses to degrade silently. */
   static encryptionAvailable(): boolean {
     return safeStorage.isEncryptionAvailable();
   }
 
   async read(): Promise<unknown[]> {
+    if (!existsSync(this.file) && existsSync(this.backup)) {
+      await rename(this.backup, this.file);
+    }
     if (!existsSync(this.file)) return [];
 
     let plaintext: string;
@@ -70,7 +77,14 @@ export class EncryptedOfflineStore {
       );
     }
 
-    const envelope = JSON.parse(plaintext) as StoredEnvelope;
+    let envelope: StoredEnvelope;
+    try {
+      envelope = JSON.parse(plaintext) as StoredEnvelope;
+    } catch {
+      throw new OfflineStoreUnreadable(
+        'The offline queue was not valid data. It must be reconciled with the server before dispensing continues.',
+      );
+    }
     if (envelope.version !== FILE_VERSION) {
       throw new OfflineStoreUnreadable(
         `Offline queue was written by an unsupported version (${envelope.version}).`,
@@ -81,6 +95,11 @@ export class EncryptedOfflineStore {
     if (envelope.tenantId !== this.tenantId || envelope.deviceId !== this.deviceId) {
       throw new OfflineStoreUnreadable(
         'Offline queue belongs to a different tenant or device and will not be used.',
+      );
+    }
+    if (!Array.isArray(envelope.actions)) {
+      throw new OfflineStoreUnreadable(
+        'The offline queue contained no valid action list and will not be used.',
       );
     }
     return envelope.actions;
@@ -108,15 +127,27 @@ export class EncryptedOfflineStore {
     // Write-then-rename: a power cut mid-write must leave the previous queue
     // intact rather than a truncated file that reads as an empty queue.
     await writeFile(this.temp, ciphertext);
-    await rename(this.temp, this.file);
+    await replaceFile(this.file, this.temp, this.backup);
   }
 
-  /** Clear on logout or tenant switch. */
+  /** Clear only after every queued action is terminal and retained elsewhere. */
   async clear(): Promise<void> {
-    for (const path of [this.file, this.temp]) {
+    for (const path of [this.file, this.temp, this.backup]) {
       if (existsSync(path)) await unlink(path);
     }
   }
+}
+
+async function replaceFile(file: string, temp: string, backup: string): Promise<void> {
+  if (existsSync(backup)) await unlink(backup);
+  if (existsSync(file)) await rename(file, backup);
+  try {
+    await rename(temp, file);
+  } catch (cause) {
+    if (!existsSync(file) && existsSync(backup)) await rename(backup, file);
+    throw cause;
+  }
+  if (existsSync(backup)) await unlink(backup);
 }
 
 export class OfflineStoreUnreadable extends Error {

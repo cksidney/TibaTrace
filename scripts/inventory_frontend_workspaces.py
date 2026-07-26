@@ -35,15 +35,15 @@ def inventory_frontend_workspaces():
         },
         {
             "name": "@dawatrace/pos-android",
-            "type": "deployable frontend scaffold",
+            "type": "deployable Android application",
             "path": "apps/pos-android",
-            "description": "Reserved for Phase 3 Android POS client application scaffold."
+            "description": "React Native Android POS with native Gradle packaging and Keystore-backed recovery."
         },
         {
             "name": "@dawatrace/pos-windows",
-            "type": "deployable frontend scaffold",
+            "type": "deployable Windows application",
             "path": "apps/pos-windows",
-            "description": "Reserved for Phase 3 Windows POS client application scaffold."
+            "description": "Electron Windows POS with restricted IPC, DPAPI sessions, and MSIX packaging."
         }
     ]
 
@@ -67,10 +67,10 @@ def inventory_frontend_workspaces():
         status = "PASSED"
         skip_reason = None
 
-        if ws["name"] == "@dawatrace/shared":
+        if pkg_json_file.exists() and "typecheck" in available_scripts:
             if tsc_bin.exists():
                 start = time.time()
-                cmd = [str(tsc_bin), "--noEmit", "-p", str(ws_path / "tsconfig.json")]
+                cmd = ["npm", "run", "typecheck", "--workspace", ws["name"]]
                 res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
                 dur = round(time.time() - start, 3)
 
@@ -85,7 +85,7 @@ def inventory_frontend_workspaces():
             else:
                 skip_reason = "tsc binary not found in node_modules"
         else:
-            skip_reason = "Phase 3 UI scaffold placeholder; no package-level build script configured."
+            skip_reason = "No package-level typecheck script is configured."
 
         results.append({
             "workspace_name": ws["name"],
@@ -104,7 +104,7 @@ def inventory_frontend_workspaces():
 
     matrix_data = {
         "version": "1.0.0",
-        "baseline_note": "No deployable frontend application exists in the current Phase 3.0 repository baseline (apps/hq, apps/portal, apps/pos-android, apps/pos-windows are Phase 3 UI scaffolds). Administrative UI is served via Django admin-shell.",
+        "baseline_note": "TibaTrace HQ, Android POS, and Windows POS are deployable clients; signing credentials and distribution approvals remain external release gates.",
         "total_workspaces": len(results),
         "workspaces": results
     }

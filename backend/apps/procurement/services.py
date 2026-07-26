@@ -259,7 +259,7 @@ class PurchaseOrderService:
             tenant=purchase_order.tenant,
             supplier=purchase_order.supplier,
             verification_status=SupplierQualification.QualificationVerificationStatus.VERIFIED,
-            expiry_date__gte=timezone.now().date(),
+            expiry_date__gte=timezone.localdate(),
         ).values_list("qualification_type", flat=True)
 
         if SupplierQualification.QualificationType.BUSINESS_REGISTRATION not in active_qualifications:
@@ -458,7 +458,7 @@ class BatchReceivingService:
         if manufacture_date and manufacture_date >= expiry_date:
             raise ValidationError("Manufacture date must precede expiry date.")
         
-        if expiry_date <= timezone.now().date():
+        if expiry_date <= timezone.localdate():
             raise ValidationError("Cannot receive expired batch.")
 
         batch = ReceivedBatch.objects.create(

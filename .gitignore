@@ -35,3 +35,14 @@ apps/pos-windows/visual/__screenshots__/darwin/
 apps/pos-windows/visual/__screenshots__/win32/
 apps/pos-windows/test-results/
 apps/pos-windows/playwright-report/
+apps/pos-windows/release/
+apps/pos-android/android/.gradle/
+apps/pos-android/android/app/build/
+# Native build output: compiled .o objects, ninja state and CMake caches. Around
+# 9 MB of binaries per configure, and regenerated on every build.
+apps/pos-android/android/app/.cxx/
+apps/pos-android/.metro-health-check*
+*.aab
+*.apk
+*.keystore
+*.jks

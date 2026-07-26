@@ -24,6 +24,7 @@ export interface PosClinicalApiConfig {
   baseUrl: string;
   tenantId: string;
   authToken: string;
+  fetcher?: typeof fetch;
   timeout?: number;
   retryCount?: number;
 }
@@ -205,7 +206,7 @@ async function apiGet<T>(
   );
 
   try {
-    const response = await fetch(url, {
+    const response = await (config.fetcher ?? fetch)(url, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${config.authToken}`,
@@ -254,7 +255,7 @@ async function apiPost<T>(
   );
 
   try {
-    const response = await fetch(url, {
+    const response = await (config.fetcher ?? fetch)(url, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${config.authToken}`,

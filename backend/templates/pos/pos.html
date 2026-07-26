@@ -151,7 +151,7 @@
         </div>
 
         <div class="active-episode-view" id="active-episode-view" style="display: none;">
-          <!-- Patient & Prescriber Cards -->
+          <!-- Patient, Insurance & Prescriber Metadata Cards -->
           <div class="info-grid">
             <div class="info-card">
               <div class="card-label">PATIENT DEMOGRAPHICS</div>
@@ -165,11 +165,25 @@
             </div>
 
             <div class="info-card">
-              <div class="card-label">PRESCRIPTION &amp; CLINICAL METADATA</div>
+              <div class="card-label">INSURANCE &amp; COVERAGE ADJUDICATION</div>
+              <div class="card-main-val" id="ins-name">SHA / Jubilee Health</div>
+              <div class="card-sub-info">
+                <span>Scheme: <strong id="ins-scheme">Standard Comprehensive</strong></span> &bull;
+                <span>Member #: <strong id="ins-member-num">MEM-889012</strong></span>
+              </div>
+              <div class="insurance-benefit-pill" id="ins-benefit-pill">
+                <span>Remaining Limit: <strong>KES 48,500.00</strong></span> &bull;
+                <span>Co-pay: <strong>KES 0.00 (0%)</strong></span>
+              </div>
+            </div>
+
+            <div class="info-card">
+              <div class="card-label">PRESCRIPTION &amp; STOCK TELEMETRY</div>
               <div class="card-main-val" id="rx-num">-</div>
               <div class="card-sub-info">
                 <span>Prescriber: <strong id="prac-name">Dr. David Ochieng</strong></span> &bull;
-                <span>Refills Remaining: <strong id="rx-repeats">2 / 3</strong></span>
+                <span>Refills: <strong id="rx-repeats">2 / 3</strong></span> &bull;
+                <span>Stock FEFO: <strong class="text-emerald">VERIFIED</strong></span>
               </div>
               <div class="payment-tag" id="payment-status-tag">Payment: PENDING</div>
             </div>

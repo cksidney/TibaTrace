@@ -1,7 +1,11 @@
 services:
   api:
     ports:
-      - "127.0.0.1:${TIBATRACE_API_PORT:-28110}:8000"
+      - "172.17.0.1:${TIBATRACE_API_PORT:-28110}:8000"
+
+  hq:
+    ports:
+      - "172.17.0.1:${TIBATRACE_HQ_PORT:-28111}:8080"
 
   edge:
     profiles: ["standalone-edge"]

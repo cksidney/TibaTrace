@@ -9,7 +9,7 @@ import {
   text,
 } from '@dawatrace/shared/design-system/index.js';
 
-import { liveRegionFor } from './liveRegion.js';
+import { liveRegionFor } from './liveRegion';
 import type {
   AllergyStatus,
   ClinicalStatus,

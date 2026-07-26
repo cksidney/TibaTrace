@@ -167,7 +167,7 @@ class Command(BaseCommand):
         )
 
     def _coverages(self, tenant, scheme, plan, members):
-        today = timezone.now().date()
+        today = timezone.localdate()
 
         patients = self._patients(tenant, members)
 
@@ -283,7 +283,7 @@ class Command(BaseCommand):
                 "insurer": insurer,
                 "total_remitted_amount": Decimal("2500.00"),
                 "payment_reference": "DEMO-BANK-REF-0001",
-                "remittance_date": timezone.now().date(),
+                "remittance_date": timezone.localdate(),
                 "status": "IMPORTED",
             },
         )

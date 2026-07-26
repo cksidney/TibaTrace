@@ -1,3 +1,4 @@
+from django.urls import path
 from rest_framework.routers import DefaultRouter
 
 from apps.medicines.api.views import (
@@ -7,6 +8,8 @@ from apps.medicines.api.views import (
     ClinicalMedicinalProductViewSet,
     CommercialSKUViewSet,
     DoseFormViewSet,
+    GovernmentCatalogueSelectionView,
+    GovernmentCatalogueView,
     IngredientCompositionViewSet,
     ManufacturedMedicinalProductViewSet,
     ManufacturerViewSet,
@@ -35,4 +38,16 @@ router.register("substitution-policies", SubstitutionPolicyViewSet, basename="su
 router.register("branch-assortments", BranchAssortmentViewSet, basename="branch-assortments")
 router.register("catalog", MedicineViewSet, basename="catalog")
 
-urlpatterns = router.urls
+urlpatterns = [
+    path(
+        "government-catalogue/",
+        GovernmentCatalogueView.as_view(),
+        name="government-catalogue",
+    ),
+    path(
+        "government-catalogue/<uuid:pk>/selection/",
+        GovernmentCatalogueSelectionView.as_view(),
+        name="government-catalogue-selection",
+    ),
+    *router.urls,
+]

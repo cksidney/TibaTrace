@@ -4,47 +4,127 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>TibaTrace Administrative Shell</title>
+  <title>TibaTrace HQ</title>
   <link rel="icon" href="{% static 'brand/tibatrace-logo.jpeg' %}" type="image/jpeg">
-  <style>
-    body { font-family: system-ui, sans-serif; margin: 0; color: #17212b; background: #f5f7f9; }
-    header { background: #061d49; color: white; padding: 14px 28px; }
-    .brand { display: flex; align-items: center; gap: 12px; }
-    .brand-mark { width: 42px; height: 42px; overflow: hidden; border-radius: 10px; background: white; flex: 0 0 auto; }
-    .brand-mark img { display: block; width: 105px; height: 105px; max-width: none; transform: translate(-30px, -16px); }
-    .brand-copy { display: flex; flex-direction: column; gap: 2px; }
-    .brand-copy strong { font-size: 20px; }
-    .brand-copy span { color: #cbd5e1; font-size: 13px; }
-    main { max-width: 1100px; margin: 24px auto; padding: 0 20px; }
-    nav { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
-    a { color: #075f4c; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
-    .metric { background: white; border: 1px solid #d8e0e5; padding: 16px; border-radius: 6px; }
-    .metric strong { display: block; font-size: 28px; margin-top: 5px; }
-  </style>
+  <link rel="stylesheet" href="{% static 'platform/hq.css' %}">
 </head>
 <body>
-  <header>
-    <div class="brand">
-      <span class="brand-mark"><img src="{% static 'brand/tibatrace-logo.jpeg' %}" alt="TibaTrace logo"></span>
-      <span class="brand-copy"><strong>TibaTrace</strong><span>Administrative Shell</span></span>
+  <div class="hq-layout">
+    <aside class="hq-sidebar" aria-label="TibaTrace HQ navigation">
+      <a class="hq-brand" href="/admin-shell/" aria-label="TibaTrace HQ home">
+        <span class="hq-brand-mark"><img src="{% static 'brand/tibatrace-logo.jpeg' %}" alt=""></span>
+        <span><strong>TibaTrace</strong><small>Health HQ</small></span>
+      </a>
+
+      <nav class="hq-nav">
+        <a class="hq-nav-link hq-nav-link--active" href="/admin-shell/">
+          <span aria-hidden="true">⌂</span> Overview
+        </a>
+        <a class="hq-nav-link" href="/#access">
+          <span aria-hidden="true">▦</span> System controls
+        </a>
+        <a class="hq-nav-link" href="/pos/">
+          <span aria-hidden="true">▣</span> Point of sale
+        </a>
+        <a class="hq-nav-link" href="/api/docs/">
+          <span aria-hidden="true">⌘</span> API workspace
+        </a>
+      </nav>
+
+      <div class="hq-sidebar-footer">
+        <span class="hq-status-dot"></span>
+        <span>Secure local session</span>
+      </div>
+    </aside>
+
+    <div class="hq-content">
+      <header class="hq-topbar">
+        <div class="hq-breadcrumb">
+          <span>Operations</span>
+          <span aria-hidden="true">/</span>
+          <strong>{{ scope_label }}</strong>
+        </div>
+        <div class="hq-user">
+          <span class="hq-user-avatar">{{ user_name|first|upper }}</span>
+          <span><strong>{{ user_name }}</strong><small>{% if is_platform_overview %}Platform administrator{% else %}Tenant operator{% endif %}</small></span>
+        </div>
+      </header>
+
+      <main class="hq-main">
+        <section class="hq-hero">
+          <div>
+            <p class="hq-eyebrow">TibaTrace health operations</p>
+            <h1>{{ scope_label }}</h1>
+            <p>{{ scope_description }}</p>
+          </div>
+          <div class="hq-workspace-chip">
+            <span class="hq-workspace-icon" aria-hidden="true">✦</span>
+            <span><small>Current workspace</small><strong>{{ tenant_name }}</strong></span>
+          </div>
+        </section>
+
+        <section class="hq-metrics" aria-label="Operational summary">
+          {% for metric in metrics %}
+            <article class="hq-metric-card hq-metric-card--{{ metric.accent }}">
+              <p>{{ metric.label }}</p>
+              <strong>{{ metric.value }}</strong>
+              <small>{{ metric.detail }}</small>
+            </article>
+          {% endfor %}
+        </section>
+
+        <section class="hq-dashboard-grid">
+          <article class="hq-panel hq-panel--attention">
+            <div class="hq-panel-heading">
+              <div>
+                <p class="hq-eyebrow">Operational focus</p>
+                <h2>Items to watch</h2>
+              </div>
+              <span class="hq-live-pill"><i></i> Live data</span>
+            </div>
+            <div class="hq-attention-list">
+              {% for item in attention_items %}
+                <div class="hq-attention-item">
+                  <span class="hq-attention-indicator hq-attention-indicator--{{ item.tone }}"></span>
+                  <div><strong>{{ item.label }}</strong><p>{{ item.detail }}</p></div>
+                  <b>{{ item.value }}</b>
+                </div>
+              {% endfor %}
+            </div>
+          </article>
+
+          <article class="hq-panel hq-panel--access">
+            <div class="hq-panel-heading">
+              <div>
+                <p class="hq-eyebrow">Quick access</p>
+                <h2>Command centre</h2>
+              </div>
+            </div>
+            <div class="hq-action-list">
+              <a href="/#access"><span><b>System controls</b><small>Review identity, security and governance.</small></span><i aria-hidden="true">→</i></a>
+              <a href="/pos/"><span><b>POS terminal</b><small>Open the dispensing and sales workspace.</small></span><i aria-hidden="true">→</i></a>
+              <a href="/api/fhir/r4/metadata"><span><b>FHIR metadata</b><small>Review the active interoperability profile.</small></span><i aria-hidden="true">→</i></a>
+              <a href="/api/health/"><span><b>System health</b><small>Confirm the API and database connection.</small></span><i aria-hidden="true">→</i></a>
+            </div>
+          </article>
+
+          <article class="hq-panel hq-panel--data">
+            <div class="hq-panel-heading">
+              <div>
+                <p class="hq-eyebrow">Data coverage</p>
+                <h2>Clinical and interoperability records</h2>
+              </div>
+              <a href="/api/schema/">View schema <span aria-hidden="true">↗</span></a>
+            </div>
+            <dl class="hq-data-list">
+              {% for item in data_summary %}
+                <div><dt>{{ item.label }}</dt><dd>{{ item.value }}</dd></div>
+              {% endfor %}
+            </dl>
+          </article>
+        </section>
+      </main>
     </div>
-  </header>
-  <main>
-    <p>Active tenant: <code>{{ tenant_id|default:"none" }}</code></p>
-    <nav>
-      <a href="/admin/">Django administration</a>
-      <a href="/api/schema/">OpenAPI schema</a>
-      <a href="/api/fhir/r4/metadata">FHIR metadata</a>
-      <a href="/api/health/">System health</a>
-    </nav>
-    <section class="grid">
-      {% for label, value in counts.items %}
-        <div class="metric">{{ label }}<strong>{{ value }}</strong></div>
-      {% empty %}
-        <p>Select or authenticate into a tenant to view clinical counts.</p>
-      {% endfor %}
-    </section>
-  </main>
+  </div>
 </body>
 </html>

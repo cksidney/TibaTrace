@@ -13,9 +13,9 @@ import type { StageView } from '@dawatrace/shared/design-system/index.js';
 import type { DispensingEpisodeDTO } from '@dawatrace/shared/dispensing/index.js';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { ClinicalSummaryCard, PatientBanner } from '../components/tibatrace/ClinicalSummaryCard.js';
-import type { AndroidClinicalSummary } from '../components/tibatrace/ClinicalSummaryCard.js';
-import { TibaTraceBrand } from '../components/tibatrace/TibaTraceBrand.js';
+import { ClinicalSummaryCard, PatientBanner } from '../components/tibatrace/ClinicalSummaryCard';
+import type { AndroidClinicalSummary } from '../components/tibatrace/ClinicalSummaryCard';
+import { TibaTraceBrand } from '../components/tibatrace/TibaTraceBrand';
 
 /**
  * Android dispensing episode.

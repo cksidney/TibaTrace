@@ -1,5 +1,5 @@
 import { deriveStages, fontFamily, fontSize, nextAction, spacing, surface, text } from '@dawatrace/shared/design-system/index.js';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { ClinicalRail } from './components/tibatrace/ClinicalRail.js';
 import { CollectionPanel, CounsellingPanel } from './components/tibatrace/CounsellingAndCollection.js';
@@ -11,6 +11,9 @@ import { BlockingReason } from './components/tibatrace/StatusBadge.js';
 import { WorkflowRibbon } from './components/tibatrace/WorkflowRibbon.js';
 import { useClinicalScreening } from './state/useClinicalScreening.js';
 import { usePosWorkflow } from './state/usePosWorkflow.js';
+import { createPosRuntime } from './runtime.js';
+
+const runtime = createPosRuntime();
 
 /**
  * TibaTrace Windows clinical operations console.
@@ -20,12 +23,73 @@ import { usePosWorkflow } from './state/usePosWorkflow.js';
  * blocking the operator stays on screen while they work.
  */
 export function App() {
+  const [session, setSession] = useState<TibaTraceSessionInfo | null>(null);
+  const [restoring, setRestoring] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    runtime
+      .restore()
+      .then(setSession)
+      .catch((cause: unknown) => {
+        setError(cause instanceof Error ? cause.message : String(cause));
+        setSession({
+          authenticated: false,
+          tenantId: '',
+          userId: '',
+          deviceId: '',
+          apiBaseUrl: '',
+        });
+      })
+      .finally(() => setRestoring(false));
+  }, []);
+
+  if (restoring) {
+    return <CenteredMessage message="Restoring secure till session…" />;
+  }
+  if (!session?.authenticated) {
+    return (
+      <SignInScreen
+        initialError={error}
+        onSignIn={async (username, password) => {
+          const signedIn = await runtime.login(username, password);
+          setError('');
+          setSession(signedIn);
+        }}
+      />
+    );
+  }
+
+  return (
+    <OperationsConsole
+      session={session}
+      apiFetch={runtime.fetch}
+      onLogout={async () => {
+        await runtime.logout();
+        setSession({ ...session, authenticated: false, tenantId: '', userId: '' });
+      }}
+    />
+  );
+}
+
+function OperationsConsole({
+  session,
+  apiFetch,
+  onLogout,
+}: {
+  readonly session: TibaTraceSessionInfo;
+  readonly apiFetch: typeof fetch;
+  readonly onLogout: () => Promise<void>;
+}) {
   const { state, refreshQueue, select, refresh, takePayment, confirmCollection, recordCounselling } =
-    usePosWorkflow();
+    usePosWorkflow('/api/pos/dispensing', apiFetch, runtime.offline);
   // Was `useState<ClinicalSummary | null>(null)` with no setter, so the rail
   // rendered "No clinical result" for every episode and the screening endpoint
   // had no caller anywhere in the repository.
-  const { summary: clinical, error: clinicalError } = useClinicalScreening(state.selected);
+  const { summary: clinical, error: clinicalError } = useClinicalScreening(state.selected, {
+    deviceId: session.deviceId,
+    fetcher: apiFetch,
+  });
 
   useEffect(() => {
     void refreshQueue();
@@ -66,7 +130,7 @@ export function App() {
         color: text.primary,
       }}
     >
-      <Header busy={state.busy} />
+      <Header busy={state.busy} userId={session.userId} onLogout={onLogout} />
       <PatientSafetyBanner patient={patient} />
       <WorkflowRibbon stages={stages} />
 
@@ -153,7 +217,15 @@ export function App() {
   );
 }
 
-function Header({ busy }: { readonly busy: boolean }) {
+function Header({
+  busy,
+  userId,
+  onLogout,
+}: {
+  readonly busy: boolean;
+  readonly userId: string;
+  readonly onLogout: () => Promise<void>;
+}) {
   return (
     <header
       style={{
@@ -177,7 +249,7 @@ function Header({ busy }: { readonly busy: boolean }) {
           }}
         >
           <img
-            src="/brand/tibatrace-logo.jpeg"
+            src="./brand/tibatrace-logo.jpeg"
             alt="TibaTrace logo"
             style={{ display: 'block', width: 100, height: 100, maxWidth: 'none', transform: 'translate(-29px, -15px)' }}
           />
@@ -187,10 +259,159 @@ function Header({ busy }: { readonly busy: boolean }) {
           <span style={{ fontSize: fontSize.caption, opacity: 0.8 }}>Clinical operations console</span>
         </div>
       </div>
-      <span style={{ marginLeft: 'auto', fontSize: fontSize.caption, opacity: 0.8 }}>
-        {busy ? 'Working…' : 'Ready'}
-      </span>
+      <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: spacing.md }}>
+        <span style={{ fontSize: fontSize.caption, opacity: 0.8 }}>
+          {busy ? 'Working…' : `Operator ${userId.slice(0, 8)}`}
+        </span>
+        <button
+          type="button"
+          onClick={() => void onLogout()}
+          style={{
+            minHeight: 36,
+            padding: '6px 12px',
+            border: '1px solid rgba(255,255,255,0.35)',
+            borderRadius: 8,
+            background: 'transparent',
+            color: '#fff',
+            cursor: 'pointer',
+          }}
+        >
+          Sign out
+        </button>
+      </div>
     </header>
+  );
+}
+
+function CenteredMessage({ message }: { readonly message: string }) {
+  return (
+    <main
+      style={{
+        minHeight: '100vh',
+        display: 'grid',
+        placeItems: 'center',
+        background: surface.page,
+        color: text.secondary,
+        fontFamily: fontFamily.sans,
+      }}
+    >
+      <p>{message}</p>
+    </main>
+  );
+}
+
+function SignInScreen({
+  initialError,
+  onSignIn,
+}: {
+  readonly initialError: string;
+  readonly onSignIn: (username: string, password: string) => Promise<void>;
+}) {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(initialError);
+
+  return (
+    <main
+      style={{
+        minHeight: '100vh',
+        display: 'grid',
+        placeItems: 'center',
+        padding: spacing.xl,
+        boxSizing: 'border-box',
+        background: surface.page,
+        fontFamily: fontFamily.sans,
+        color: text.primary,
+      }}
+    >
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          setBusy(true);
+          setError('');
+          void onSignIn(username.trim(), password)
+            .catch((cause: unknown) =>
+              setError(cause instanceof Error ? cause.message : String(cause)),
+            )
+            .finally(() => setBusy(false));
+        }}
+        style={{
+          width: 'min(420px, 100%)',
+          display: 'grid',
+          gap: spacing.md,
+          padding: spacing.xxl,
+          border: `1px solid ${surface.border}`,
+          borderRadius: 16,
+          background: surface.raised,
+          boxShadow: '0 20px 50px rgba(0, 20, 50, 0.12)',
+        }}
+      >
+        <img
+          src="./brand/tibatrace-logo.jpeg"
+          alt="TibaTrace — Trace. Trust. Health."
+          style={{ width: 180, maxWidth: '100%', margin: '0 auto' }}
+        />
+        <div>
+          <h1 style={{ margin: 0, fontSize: fontSize.screenTitle }}>Windows POS</h1>
+          <p style={{ color: text.secondary, marginBottom: 0 }}>
+            Sign in with your assigned TibaTrace operator account.
+          </p>
+        </div>
+        {error ? <BlockingReason status="BLOCKING" reason={error} /> : null}
+        <label style={{ display: 'grid', gap: spacing.xs, fontSize: fontSize.caption }}>
+          Username
+          <input
+            autoComplete="username"
+            value={username}
+            onChange={(event) => setUsername(event.target.value)}
+            required
+            maxLength={150}
+            style={{
+              minHeight: 44,
+              border: `1px solid ${surface.borderStrong}`,
+              borderRadius: 8,
+              padding: '0 12px',
+              fontSize: fontSize.body,
+            }}
+          />
+        </label>
+        <label style={{ display: 'grid', gap: spacing.xs, fontSize: fontSize.caption }}>
+          Password
+          <input
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            required
+            maxLength={256}
+            style={{
+              minHeight: 44,
+              border: `1px solid ${surface.borderStrong}`,
+              borderRadius: 8,
+              padding: '0 12px',
+              fontSize: fontSize.body,
+            }}
+          />
+        </label>
+        <button
+          type="submit"
+          disabled={busy || !username.trim() || !password}
+          style={{
+            minHeight: 44,
+            border: 'none',
+            borderRadius: 8,
+            background: busy || !username.trim() || !password ? surface.sunken : '#12854A',
+            color: busy || !username.trim() || !password ? text.tertiary : '#fff',
+            fontSize: fontSize.body,
+            fontWeight: 600,
+            cursor: busy || !username.trim() || !password ? 'not-allowed' : 'pointer',
+          }}
+        >
+          {busy ? 'Signing in…' : 'Sign in'}
+        </button>
+      </form>
+    </main>
   );
 }
 

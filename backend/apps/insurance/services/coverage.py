@@ -55,7 +55,7 @@ class CoverageService:
         submitted late is still judged against the date of service, and a
         coverage that lapsed in between did not cover it.
         """
-        service_date = service_date or timezone.now().date()
+        service_date = service_date or timezone.localdate()
         query = InsuranceCoverage.all_objects.filter(
             tenant_id=tenant_id,
             patient=patient,
@@ -130,7 +130,7 @@ class EligibilityService:
         request = {
             "member_number": member.membership_number,
             "patient_reference": str(patient.pk),
-            "service_date": str(service_date or timezone.now().date()),
+            "service_date": str(service_date or timezone.localdate()),
             "insurer": insurer.code,
         }
         result: AdapterResult = adapter.verify_coverage(request=request)

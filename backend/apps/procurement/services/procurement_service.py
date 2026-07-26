@@ -220,8 +220,8 @@ class ProcurementService:
             # Both are required by the model. Defaulting them to today keeps a
             # PO raised without an explicit date valid rather than silently
             # unsaveable.
-            order_date=order_date or timezone.now().date(),
-            expected_delivery_date=expected_delivery_date or timezone.now().date(),
+            order_date=order_date or timezone.localdate(),
+            expected_delivery_date=expected_delivery_date or timezone.localdate(),
             currency=currency,
             status=PurchaseOrder.Status.DRAFT,
         )
@@ -303,6 +303,111 @@ class ProcurementService:
         requisition.status = PurchaseRequisition.Status.FULLY_ORDERED
         requisition.save(update_fields=["status", "updated_at"])
         return po
+
+    @staticmethod
+    @transaction.atomic
+    def create_priced_po_from_requisition(
+        *,
+        tenant,
+        supplier,
+        requisition,
+        ordering_branch,
+        creator,
+        lines_data,
+        po_number=None,
+        order_date=None,
+        expected_delivery_date=None,
+        currency="KES",
+    ) -> PurchaseOrder:
+        if requisition.status != PurchaseRequisition.Status.APPROVED:
+            raise ValidationError(
+                f"A purchase order requires an approved requisition; "
+                f"{requisition.requisition_number} is {requisition.status}."
+            )
+        SupplierGovernanceService.assert_can_receive_purchase_order(
+            supplier=supplier,
+            on_date=order_date,
+            cold_chain=any(bool(item.get("requires_cold_chain")) for item in lines_data),
+        )
+
+        requisition_lines = {
+            str(line.pk): line
+            for line in PurchaseRequisitionLine.all_objects.select_for_update().filter(
+                tenant=tenant,
+                requisition=requisition,
+            )
+        }
+        purchase_lines = []
+        selected_lines = []
+        for item in lines_data:
+            requisition_line = requisition_lines.get(str(item["requisition_line"]))
+            if requisition_line is None:
+                raise ValidationError("A purchase-order line is outside the selected requisition.")
+            quantity = int(item.get("quantity") or requisition_line.outstanding_quantity)
+            if quantity <= 0 or quantity > requisition_line.outstanding_quantity:
+                raise ValidationError(
+                    f"Order quantity for {requisition_line.sku.sku_code} must be between "
+                    f"1 and {requisition_line.outstanding_quantity}."
+                )
+            purchase_lines.append(
+                {
+                    "sku": requisition_line.sku,
+                    "quantity": quantity,
+                    "unit_cost": item["unit_cost"],
+                    "purchase_unit": requisition_line.purchase_unit,
+                    "requires_cold_chain": bool(item.get("requires_cold_chain", False)),
+                }
+            )
+            selected_lines.append((requisition_line, quantity))
+
+        if not purchase_lines:
+            raise ValidationError("Select at least one requisition line to order.")
+
+        purchase_order = ProcurementService.create_purchase_order(
+            tenant=tenant,
+            supplier=supplier,
+            ordering_branch=ordering_branch,
+            lines_data=purchase_lines,
+            created_by=creator,
+            currency=currency,
+            requisition=requisition,
+            po_number=po_number,
+            order_date=order_date,
+            expected_delivery_date=expected_delivery_date,
+        )
+
+        for requisition_line, quantity in selected_lines:
+            requisition_line.approved_quantity = max(
+                requisition_line.approved_quantity,
+                requisition_line.requested_quantity,
+            )
+            requisition_line.outstanding_quantity -= quantity
+            requisition_line.status = (
+                PurchaseRequisitionLine.LineStatus.ORDERED
+                if requisition_line.outstanding_quantity == 0
+                else PurchaseRequisitionLine.LineStatus.APPROVED
+            )
+            requisition_line.save(
+                update_fields=[
+                    "approved_quantity",
+                    "outstanding_quantity",
+                    "status",
+                    "updated_at",
+                ]
+            )
+
+        remaining = PurchaseRequisitionLine.all_objects.filter(
+            tenant=tenant,
+            requisition=requisition,
+            outstanding_quantity__gt=0,
+        ).exists()
+        requisition.status = (
+            PurchaseRequisition.Status.PARTIALLY_ORDERED
+            if remaining
+            else PurchaseRequisition.Status.FULLY_ORDERED
+        )
+        requisition.save(update_fields=["status", "updated_at"])
+        return purchase_order
 
     @staticmethod
     @transaction.atomic
@@ -397,7 +502,10 @@ class ProcurementService:
                         "unit_price": str(line.unit_price),
                         "total_price": str(line.total_price),
                     }
-                    for line in purchase_order.lines.all()
+                    for line in PurchaseOrderLine.all_objects.filter(
+                        tenant_id=purchase_order.tenant_id,
+                        purchase_order=purchase_order,
+                    )
                 ],
             },
         )

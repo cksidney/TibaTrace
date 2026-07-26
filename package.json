@@ -15,6 +15,6 @@
     "validate:full": "./scripts/validate_repository.sh --full"
   },
   "engines": {
-    "node": ">=20 <21"
+    "node": ">=22.13 <23"
   }
 }

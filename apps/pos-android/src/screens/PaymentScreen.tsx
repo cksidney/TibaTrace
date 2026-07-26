@@ -10,8 +10,8 @@ import type { PaymentState, PaymentTenderType } from '@dawatrace/shared/dispensi
 import { TENDER_OPTIONS, paymentPermitsSupply } from '@dawatrace/shared/dispensing/index.js';
 import { useState } from 'react';
 
-import { liveRegionFor } from '../components/tibatrace/liveRegion.js';
-import { TibaTraceBrand } from '../components/tibatrace/TibaTraceBrand.js';
+import { liveRegionFor } from '../components/tibatrace/liveRegion';
+import { TibaTraceBrand } from '../components/tibatrace/TibaTraceBrand';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 /**
@@ -52,7 +52,7 @@ export function PaymentScreen({
   const enabled = priced && canTakePayment && !busy && !submitted && (selected?.available ?? false);
 
   return (
-    <ScrollView contentContainerStyle={styles.root}>
+    <ScrollView style={styles.scroll} contentContainerStyle={styles.root}>
       <TibaTraceBrand />
       <Text style={styles.heading}>Payment</Text>
 
@@ -189,6 +189,7 @@ function Notice({
 }
 
 const styles = StyleSheet.create({
+  scroll: { flex: 1 },
   root: { padding: spacing.lg, gap: spacing.md },
   heading: { fontSize: fontSize.screenTitle, fontWeight: '700', color: text.primary },
   amounts: { flexDirection: 'row', gap: spacing.lg },

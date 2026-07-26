@@ -172,6 +172,10 @@ function selectEpisode(ep) {
   document.getElementById('pat-gender').innerText = ep.patient_gender || 'FEMALE';
   document.getElementById('pat-dob').innerText = ep.patient_dob || '1985-05-12';
 
+  document.getElementById('ins-name').innerText = ep.insurer_name || 'SHA / Jubilee Health';
+  document.getElementById('ins-scheme').innerText = ep.scheme_name || 'Standard Comprehensive';
+  document.getElementById('ins-member-num').innerText = ep.membership_number || 'MEM-889012';
+
   document.getElementById('rx-num').innerText = ep.prescription_number || 'DEMO-RX-8001';
   document.getElementById('prac-name').innerText = ep.prescriber_name || 'Dr. David Ochieng';
 

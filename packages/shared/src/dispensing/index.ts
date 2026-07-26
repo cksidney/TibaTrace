@@ -8,4 +8,5 @@ export * from './splitTender.js';
 export * from './timeline.js';
 export * from './taskQueue.js';
 export * from './offlineQueue.js';
+export * from './durableJournal.js';
 export * from './telemetry.js';

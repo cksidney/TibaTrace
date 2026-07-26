@@ -289,7 +289,16 @@ class DispatchOrderViewSet(BaseSalesViewSet):
     @action(detail=True, methods=["post"])
     def load(self, request, pk=None):
         obj = self.get_object()
-        DispatchService.load_dispatch(dispatch=obj, packages=request.data.get("packages", []), loaded_by=request.user)
+        packages = request.data.get("packages")
+        if packages is None:
+            packages = list(
+                obj.lines.values_list("package_id", flat=True).distinct()
+            )
+        DispatchService.load_dispatch(
+            dispatch=obj,
+            packages=packages,
+            loaded_by=request.user,
+        )
         return Response(self.get_serializer(obj).data)
 
     @action(detail=True, methods=["post"], url_path="dispatch")

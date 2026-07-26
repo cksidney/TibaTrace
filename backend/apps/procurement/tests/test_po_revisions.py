@@ -39,8 +39,8 @@ class PurchaseOrderRevisionTest(TestCase):
             po_number="PO-REV-1",
             supplier=self.supplier,
             ordering_branch=self.branch,
-            order_date=timezone.now().date(),
-            expected_delivery_date=timezone.now().date(),
+            order_date=timezone.localdate(),
+            expected_delivery_date=timezone.localdate(),
             status=PurchaseOrder.Status.SENT,
             total_net=1000.0
         )

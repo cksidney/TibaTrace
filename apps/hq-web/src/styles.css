@@ -59,6 +59,31 @@
   --glow-emerald: 0 0 16px rgba(16, 169, 141, 0.15);
 }
 
+/* Surfaces that are light in BOTH themes.
+   Each of these hardcodes a white or near-white background but took its text
+   colour from the theme, so under the default dark theme --ink (#f8fafc) landed
+   on white. The sign-in card had exactly this fault and was unreadable; these
+   are the same shape:
+     .popover        -- nothing inside it sets a colour at all
+     .workflow-link  -- its <strong> title sets none, so the title vanished
+     .command-dialog -- .command-search input is explicitly var(--ink)
+     .search-trigger -- var(--muted) on #f8fafc is about 2.3:1
+   Redeclaring the palette here cascades to every descendant, so a child that
+   correctly asks for var(--muted) gets the light muted rather than the dark one.
+   Anything added inside these later inherits the right values by default. */
+.popover,
+.workflow-link,
+.command-dialog,
+.search-trigger {
+  --ink: #13213a;
+  --muted: #66748b;
+  --muted-2: #8c98aa;
+  --line: #dfe5ed;
+  --line-soft: #ecf0f4;
+  --panel: #ffffff;
+  color: var(--ink);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -1077,7 +1102,8 @@ kbd {
   padding: 19px;
   border: 1px solid var(--line);
   border-radius: 13px;
-  background: #ffffff;
+  color: var(--ink);
+  background: var(--panel);
   box-shadow: var(--shadow);
 }
 
@@ -1627,6 +1653,255 @@ kbd {
 .table-scroll {
   width: 100%;
   overflow-x: auto;
+}
+
+.government-catalogue {
+  border-top: 3px solid var(--teal-600);
+}
+
+.government-catalogue-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 32px;
+  padding: 23px 22px 18px;
+}
+
+.government-catalogue-head h2 {
+  margin: 3px 0 7px;
+  font-size: 1.05rem;
+  letter-spacing: -0.025em;
+}
+
+.government-catalogue-head > div:first-child > p:last-child {
+  max-width: 680px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.67rem;
+  line-height: 1.55;
+}
+
+.government-catalogue-summary {
+  display: grid;
+  min-width: 185px;
+  gap: 5px;
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--line-soft);
+}
+
+.government-catalogue-summary span {
+  color: var(--ink);
+  font-size: 0.65rem;
+  font-weight: 700;
+}
+
+.government-catalogue-summary strong {
+  margin-right: 3px;
+  color: var(--teal-700);
+  font-size: 1rem;
+}
+
+.government-catalogue-summary small {
+  color: var(--muted);
+  font-size: 0.58rem;
+}
+
+.government-catalogue-filters {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 14px 22px;
+  border-top: 1px solid var(--line-soft);
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--line-soft);
+}
+
+.catalogue-scopebar {
+  display: flex;
+  min-height: 64px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 12px 22px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.catalogue-tenant-select,
+.catalogue-tenant-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.catalogue-tenant-select > span,
+.catalogue-tenant-label > span {
+  color: var(--muted);
+  font-size: 0.59rem;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.catalogue-tenant-select select {
+  height: 36px;
+  min-width: 210px;
+  padding: 0 31px 0 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: #394960;
+  background: #ffffff;
+  font-size: 0.66rem;
+}
+
+.catalogue-tenant-label strong {
+  font-size: 0.68rem;
+}
+
+.catalogue-action-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 22px;
+  border-bottom: 1px solid #f0c9ce;
+  color: #8e2e3a;
+  background: #fff5f6;
+  font-size: 0.64rem;
+}
+
+.catalogue-action-error svg {
+  width: 15px;
+  height: 15px;
+}
+
+.government-catalogue-filters .search-field {
+  min-width: 280px;
+  flex: 1;
+}
+
+.government-catalogue-filters .search-field input {
+  width: 100%;
+}
+
+.government-catalogue-filters select {
+  height: 41px;
+  padding: 0 32px 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: #394960;
+  background: #ffffff;
+  font-size: 0.66rem;
+}
+
+.catalogue-loading {
+  margin: 0;
+  padding: 38px 22px;
+  color: var(--muted);
+  font-size: 0.68rem;
+  text-align: center;
+}
+
+.catalogue-table {
+  transition: opacity 120ms ease;
+}
+
+.catalogue-table.is-loading {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.keml-mark,
+.reference-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 23px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 0.57rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.keml-mark {
+  color: #7b4d08;
+  background: #fff2cc;
+}
+
+.keml-mark.is-listed {
+  color: #08715e;
+  background: var(--teal-100);
+}
+
+.reference-badge {
+  color: #4c5e75;
+  background: #edf1f5;
+}
+
+.reference-badge.is-selected {
+  color: #08715e;
+  background: var(--teal-100);
+}
+
+.catalogue-add-button,
+.catalogue-remove-button {
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 7px;
+  font-size: 0.59rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.catalogue-add-button {
+  border: 1px solid var(--teal-600);
+  color: #ffffff;
+  background: var(--teal-600);
+}
+
+.catalogue-remove-button {
+  border: 1px solid #e4b6bc;
+  color: #923441;
+  background: #fff5f6;
+}
+
+.catalogue-add-button:disabled,
+.catalogue-remove-button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.catalogue-pagination {
+  display: flex;
+  min-height: 64px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 11px 22px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.catalogue-pagination > span,
+.catalogue-pagination > div > strong {
+  color: var(--muted);
+  font-size: 0.62rem;
+}
+
+.catalogue-pagination > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.catalogue-pagination .secondary-button {
+  min-height: 34px;
+  padding: 0 11px;
+  font-size: 0.61rem;
+}
+
+.catalogue-pagination .secondary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
 }
 
 table {
@@ -2257,6 +2532,722 @@ tbody tr:hover {
 .status-warning {
   color: #9a6500;
   background: #fff2cc;
+}
+
+/* ── Tenant management ───────────────────────────────────────────────────── */
+
+.tenant-management {
+  margin-bottom: 18px;
+}
+
+.tenant-management .panel-header {
+  flex: 1 1 auto;
+}
+
+.tenant-management .panel-header > button,
+.procurement-section-head .primary-button {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 9px;
+  color: #ffffff;
+  background: var(--teal-600);
+  font-size: 0.59rem;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.tenant-management .panel-header > button svg,
+.procurement-section-head .primary-button svg {
+  width: 14px;
+  height: 14px;
+}
+
+.tenant-slug {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.54rem;
+}
+
+.tenant-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.tenant-row-actions button {
+  min-height: 29px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: var(--teal-700);
+  background: var(--canvas);
+  font-size: 0.53rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.tenant-row-actions button:hover {
+  border-color: var(--teal-600);
+  background: var(--teal-50);
+}
+
+.tenant-row-actions button.danger-link {
+  color: var(--red-700);
+}
+
+.tenant-row-actions button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
+.tenant-empty,
+.procurement-empty {
+  display: grid;
+  min-height: 210px;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  padding: 30px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.tenant-empty svg,
+.procurement-empty > svg {
+  width: 31px;
+  height: 31px;
+  color: var(--teal-600);
+}
+
+.tenant-empty strong,
+.procurement-empty h2,
+.procurement-empty h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.86rem;
+}
+
+.tenant-empty span,
+.procurement-empty p {
+  margin: 0;
+  font-size: 0.61rem;
+  line-height: 1.55;
+}
+
+.tenant-control-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.tenant-control-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 15px;
+}
+
+.tenant-control-icon {
+  display: grid;
+  width: 39px;
+  height: 39px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 10px;
+  color: var(--teal-700);
+  background: var(--teal-50);
+}
+
+.tenant-control-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.tenant-control-card p,
+.procurement-section-head p {
+  margin: 0 0 5px;
+  color: var(--teal-700);
+  font-size: 0.51rem;
+  font-weight: 850;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.tenant-control-card h2 {
+  margin: 0 0 7px;
+  color: var(--ink);
+  font-size: 0.76rem;
+}
+
+.tenant-control-card div > span {
+  color: var(--muted);
+  font-size: 0.59rem;
+  line-height: 1.55;
+}
+
+.tenant-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+/* ── Procurement cockpit ─────────────────────────────────────────────────── */
+
+.procurement-scope {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 28px;
+  margin-bottom: 18px;
+  border-left: 3px solid var(--teal-600);
+}
+
+.procurement-scope h2 {
+  margin: 2px 0 7px;
+  color: var(--ink);
+  font-size: 1.08rem;
+  letter-spacing: -0.035em;
+}
+
+.procurement-scope div > span {
+  display: block;
+  max-width: 760px;
+  color: var(--muted);
+  font-size: 0.63rem;
+  line-height: 1.55;
+}
+
+.procurement-scope > label {
+  display: grid;
+  min-width: 240px;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.51rem;
+  font-weight: 850;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.procurement-scope select {
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  background: var(--canvas);
+  font-size: 0.62rem;
+}
+
+.procurement-workspace {
+  margin-bottom: 18px;
+  overflow: hidden;
+  padding-top: 0;
+}
+
+.procurement-tabs {
+  display: flex;
+  overflow-x: auto;
+  margin: 0 -22px 20px;
+  padding: 0 22px;
+  border-bottom: 1px solid var(--line);
+}
+
+.procurement-tabs button {
+  display: inline-flex;
+  min-height: 54px;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  padding: 0 13px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  background: transparent;
+  font-size: 0.59rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.procurement-tabs button.active {
+  border-bottom-color: var(--teal-600);
+  color: var(--teal-700);
+}
+
+.procurement-tabs b {
+  display: grid;
+  min-width: 21px;
+  height: 21px;
+  place-items: center;
+  border-radius: 999px;
+  color: var(--muted);
+  background: var(--line);
+  font-size: 0.51rem;
+}
+
+.procurement-tabs button.active b {
+  color: #ffffff;
+  background: var(--teal-600);
+}
+
+.procurement-section {
+  min-height: 350px;
+}
+
+.procurement-section-head,
+.reconciliation-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 17px;
+}
+
+.procurement-section-head h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.96rem;
+  letter-spacing: -0.025em;
+}
+
+.procurement-loading {
+  display: flex;
+  min-height: 310px;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  color: var(--muted);
+  font-size: 0.63rem;
+}
+
+.procurement-loading svg,
+.procurement-notice svg {
+  width: 16px;
+  height: 16px;
+}
+
+.procurement-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 9px 11px;
+  border: 1px solid var(--teal-600);
+  border-radius: 8px;
+  color: var(--teal-700);
+  background: var(--teal-50);
+  font-size: 0.59rem;
+  font-weight: 750;
+}
+
+.procurement-record-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr));
+  gap: 12px;
+}
+
+.procurement-record {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--canvas);
+}
+
+.procurement-record > header {
+  display: flex;
+  min-height: 47px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.procurement-record > header code {
+  color: var(--ink);
+  font-size: 0.59rem;
+  font-weight: 850;
+}
+
+.procurement-record > div {
+  flex: 1;
+  padding: 14px;
+}
+
+.procurement-record h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.75rem;
+}
+
+.procurement-record p {
+  margin: 5px 0 13px;
+  color: var(--muted);
+  font-size: 0.57rem;
+}
+
+.procurement-record dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+  margin: 0;
+}
+
+.procurement-record dl div {
+  min-width: 0;
+  padding: 8px;
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.procurement-record dt {
+  color: var(--muted);
+  font-size: 0.49rem;
+}
+
+.procurement-record dd {
+  overflow: hidden;
+  margin: 3px 0 0;
+  color: var(--ink);
+  font-size: 0.57rem;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.procurement-record > footer {
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.procurement-record > footer button {
+  min-height: 31px;
+  padding: 0 10px;
+  border: 1px solid var(--teal-600);
+  border-radius: 7px;
+  color: #ffffff;
+  background: var(--teal-600);
+  font-size: 0.53rem;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.qualification-queue {
+  display: grid;
+  gap: 0;
+  margin-top: 18px;
+  padding: 14px;
+  border: 1px solid var(--amber-700);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--amber-100) 55%, var(--panel));
+}
+
+.qualification-queue > div:first-child {
+  margin-bottom: 7px;
+}
+
+.qualification-queue p {
+  margin: 0 0 4px;
+  color: var(--amber-700);
+  font-size: 0.5rem;
+  font-weight: 850;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.qualification-queue h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.7rem;
+}
+
+.qualification-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 0;
+  border-top: 1px solid var(--line-soft);
+}
+
+.qualification-row > div {
+  display: grid;
+  gap: 3px;
+}
+
+.qualification-row strong {
+  color: var(--ink);
+  font-size: 0.59rem;
+}
+
+.qualification-row small {
+  color: var(--muted);
+  font-size: 0.52rem;
+}
+
+.supplier-readiness {
+  display: inline-flex;
+  margin-top: 6px;
+  padding: 3px 6px;
+  border-radius: 999px;
+  font-size: 0.47rem;
+  font-weight: 850;
+}
+
+.supplier-readiness.ready {
+  color: var(--teal-700);
+  background: var(--teal-50);
+}
+
+.supplier-readiness.blocked {
+  color: var(--red-700);
+  background: var(--red-100);
+}
+
+.procurement-flow {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--line);
+}
+
+.procurement-flow article {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  min-height: 132px;
+  padding: 16px;
+  background: var(--panel);
+}
+
+.procurement-flow b {
+  color: var(--teal-600);
+  font-size: 0.55rem;
+}
+
+.procurement-flow strong {
+  color: var(--ink);
+  font-size: 0.68rem;
+}
+
+.procurement-flow span {
+  color: var(--muted);
+  font-size: 0.54rem;
+  line-height: 1.55;
+}
+
+.reconciliation-head > div:last-child {
+  display: flex;
+  gap: 8px;
+}
+
+.procurement-split {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+}
+
+.procurement-split > div {
+  min-width: 0;
+}
+
+.procurement-split h3 {
+  margin: 0 0 10px;
+  color: var(--ink);
+  font-size: 0.7rem;
+}
+
+.reconciliation-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.reconciliation-row > div:first-child {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.reconciliation-row code,
+.reconciliation-row strong,
+.reconciliation-row small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reconciliation-row code {
+  color: var(--teal-700);
+  font-size: 0.53rem;
+}
+
+.reconciliation-row strong {
+  color: var(--ink);
+  font-size: 0.61rem;
+}
+
+.reconciliation-row small {
+  color: var(--muted);
+  font-size: 0.52rem;
+}
+
+.procurement-dialog {
+  width: min(680px, 100%);
+}
+
+.procurement-line-editor {
+  display: grid;
+  gap: 9px;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--canvas);
+}
+
+.procurement-line-editor > div:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.procurement-line-editor > div:first-child strong {
+  color: var(--ink);
+  font-size: 0.62rem;
+}
+
+.procurement-line-editor > div:first-child small {
+  color: var(--muted);
+  font-size: 0.51rem;
+}
+
+.procurement-line {
+  display: grid;
+  grid-template-columns: 24px minmax(160px, 1fr) 78px 105px 30px;
+  gap: 7px;
+  align-items: center;
+}
+
+.procurement-line > span {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border-radius: 999px;
+  color: var(--muted);
+  background: var(--line);
+  font-size: 0.5rem;
+  font-weight: 850;
+}
+
+.procurement-line select,
+.procurement-line input {
+  min-width: 0;
+  min-height: 36px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: var(--ink);
+  background: var(--panel);
+  font-size: 0.57rem;
+}
+
+.procurement-line > button {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: var(--red-700);
+  background: var(--panel);
+  cursor: pointer;
+}
+
+.procurement-line > button svg {
+  width: 13px;
+  height: 13px;
+}
+
+.procurement-line-editor > .secondary-button {
+  width: fit-content;
+  min-height: 32px;
+  font-size: 0.54rem;
+}
+
+@media (max-width: 900px) {
+  .tenant-control-grid,
+  .procurement-split {
+    grid-template-columns: 1fr;
+  }
+
+  .procurement-flow {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .procurement-scope {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .procurement-scope > label {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 620px) {
+  .tenant-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .procurement-section-head,
+  .reconciliation-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .reconciliation-head > div:last-child {
+    width: 100%;
+  }
+
+  .reconciliation-head > div:last-child button {
+    flex: 1;
+  }
+
+  .procurement-flow {
+    grid-template-columns: 1fr;
+  }
+
+  .procurement-flow article {
+    min-height: 0;
+  }
+
+  .procurement-line {
+    grid-template-columns: 24px minmax(0, 1fr);
+  }
+
+  .procurement-line input,
+  .procurement-line > button {
+    grid-column: 2;
+  }
 }
 
 .status-warning i {
@@ -2903,7 +3894,7 @@ tbody tr:hover {
   grid-template-columns: minmax(0, 1.15fr) minmax(380px, 0.85fr);
   align-items: center;
   gap: clamp(50px, 8vw, 130px);
-  padding: clamp(45px, 7vw, 100px) clamp(24px, 8vw, 130px);
+  padding: clamp(28px, 4vw, 64px) clamp(24px, 8vw, 130px);
 }
 
 .auth-layout-single {
@@ -2922,9 +3913,9 @@ tbody tr:hover {
 .auth-intro h1 {
   max-width: 690px;
   margin: 0;
-  font-size: clamp(2.7rem, 5.5vw, 5.2rem);
-  line-height: 0.98;
-  letter-spacing: -0.065em;
+  font-size: clamp(2.1rem, 4.2vw, 3.9rem);
+  line-height: 1.06;
+  letter-spacing: -0.04em;
 }
 
 .auth-intro > p:not(.eyebrow) {
@@ -2972,7 +3963,7 @@ tbody tr:hover {
 
   max-width: 490px;
   justify-self: end;
-  padding: clamp(30px, 4vw, 45px);
+  padding: clamp(26px, 2.8vw, 36px);
   border: 1px solid rgba(255, 255, 255, 0.8);
   border-radius: 16px;
   color: var(--ink);
@@ -3072,9 +4063,9 @@ tbody tr:hover {
 
 .auth-card h2 {
   margin: 0;
-  font-size: clamp(1.8rem, 4vw, 2.6rem);
-  line-height: 1.05;
-  letter-spacing: -0.055em;
+  font-size: clamp(1.35rem, 2.1vw, 1.8rem);
+  line-height: 1.18;
+  letter-spacing: -0.03em;
 }
 
 .auth-card > p:not(.eyebrow) {
@@ -3301,6 +4292,10 @@ tbody tr:hover {
     width: 100%;
     max-width: 580px;
     justify-self: start;
+    /* The form first. Once the columns stack, source order puts the whole
+       marketing hero above the fold and the reason somebody opened the page
+       below it. */
+    order: -1;
   }
 }
 
@@ -3417,6 +4412,56 @@ tbody tr:hover {
     align-items: stretch;
   }
 
+  .government-catalogue-head {
+    display: grid;
+    gap: 16px;
+  }
+
+  .government-catalogue-summary {
+    width: 100%;
+  }
+
+  .government-catalogue-filters {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+
+  .catalogue-scopebar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .catalogue-tenant-select,
+  .catalogue-tenant-label {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .catalogue-tenant-select select {
+    width: 100%;
+  }
+
+  .government-catalogue-filters .search-field {
+    min-width: 100%;
+  }
+
+  .government-catalogue-filters label:not(.search-field) {
+    flex: 1;
+  }
+
+  .government-catalogue-filters select {
+    width: 100%;
+  }
+
+  .catalogue-pagination {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .catalogue-pagination > div {
+    justify-content: space-between;
+  }
+
   .search-field {
     flex: 1;
   }
@@ -3491,7 +4536,8 @@ tbody tr:hover {
   }
 
   .auth-intro h1 {
-    font-size: clamp(2.5rem, 14vw, 3.8rem);
+    font-size: clamp(1.85rem, 7.5vw, 2.5rem);
+    line-height: 1.1;
   }
 
   .auth-features {

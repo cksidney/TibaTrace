@@ -1,5 +1,6 @@
 import {
   DispensingWorkflow,
+  DurableActionJournal,
   PosApiError,
   PosDispensingClient,
   actionIdempotencyKey,
@@ -9,8 +10,9 @@ import type {
   CounsellingRecordRequest,
   DispensingEpisodeDTO,
   GateState,
+  OfflineStore,
 } from '@dawatrace/shared/dispensing/index.js';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 export interface PosState {
   readonly queue: readonly DispensingEpisodeDTO[];
@@ -28,15 +30,28 @@ const EMPTY_GATE: GateState = {
   outcomeUnknown: false,
 };
 
-export function usePosWorkflow(baseUrl = '/api/pos/dispensing') {
-  const client = useMemo(() => new PosDispensingClient(baseUrl), [baseUrl]);
+export function usePosWorkflow(
+  baseUrl = '/api/pos/dispensing',
+  fetcher: typeof fetch = fetch,
+  offlineStore?: OfflineStore,
+) {
+  const client = useMemo(
+    () => new PosDispensingClient(baseUrl, '', 15000, { fetcher }),
+    [baseUrl, fetcher],
+  );
   const workflow = useMemo(() => new DispensingWorkflow(client), [client]);
+  const journal = useMemo(
+    () => (offlineStore ? new DurableActionJournal(offlineStore) : null),
+    [offlineStore],
+  );
 
   const [queue, setQueue] = useState<readonly DispensingEpisodeDTO[]>([]);
   const [selected, setSelected] = useState<DispensingEpisodeDTO | null>(null);
   const [gate, setGate] = useState<GateState>(EMPTY_GATE);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<PosState['notice']>(null);
+  const [journalReady, setJournalReady] = useState(journal === null);
+  const [journalBlocked, setJournalBlocked] = useState(false);
 
   /**
    * One attempt id per in-flight action. Retrying the *same* attempt reuses the
@@ -44,10 +59,24 @@ export function usePosWorkflow(baseUrl = '/api/pos/dispensing') {
    */
   const attemptId = useRef<string>(crypto.randomUUID());
 
+  useEffect(() => {
+    if (!journal) return;
+    void journal
+      .initialise()
+      .then(() => setJournalReady(true))
+      .catch((error: unknown) => {
+        setNotice(describe(error));
+        setJournalReady(false);
+      });
+  }, [journal]);
+
   const sync = useCallback(() => {
     setSelected(workflow.current);
     setGate(workflow.gate());
-  }, [workflow]);
+    setJournalBlocked(
+      workflow.current ? !(journal?.canProceed(workflow.current.id) ?? true) : false,
+    );
+  }, [workflow, journal]);
 
   const refreshQueue = useCallback(async () => {
     setBusy(true);
@@ -118,32 +147,66 @@ export function usePosWorkflow(baseUrl = '/api/pos/dispensing') {
     (tenderType: 'CASH' | 'CARD' | 'MPESA', amount: string, reference: string) => {
       const episode = workflow.current;
       if (!episode) return Promise.resolve(null);
-      return run(() =>
-        workflow.takePayment({
+      const idempotencyKey = actionIdempotencyKey(
+        episode.id,
+        'payment',
+        attemptId.current,
+      );
+      const request = {
           tender_type: tenderType,
           paid_amount: amount,
           payment_reference: reference,
-          idempotency_key: actionIdempotencyKey(episode.id, 'payment', attemptId.current),
-        }),
+          idempotency_key: idempotencyKey,
+        };
+      return run(() =>
+        journal
+          ? journal.run(
+              {
+                id: crypto.randomUUID(),
+                type: 'PAYMENT',
+                episodeId: episode.id,
+                idempotencyKey,
+                payload: request,
+              },
+              () => workflow.takePayment(request),
+            )
+          : workflow.takePayment(request),
       );
     },
-    [workflow, run],
+    [workflow, run, journal],
   );
 
   const confirmCollection = useCallback(
     (collectorName: string, idNumber: string, relationship: string) => {
       const episode = workflow.current;
       if (!episode) return Promise.resolve(null);
-      return run(() =>
-        workflow.confirmCollection({
+      const idempotencyKey = actionIdempotencyKey(
+        episode.id,
+        'collection',
+        attemptId.current,
+      );
+      const request = {
           collector_name: collectorName,
           collector_id_number: idNumber,
           collector_relationship: relationship,
-          idempotency_key: actionIdempotencyKey(episode.id, 'collection', attemptId.current),
-        }),
+          idempotency_key: idempotencyKey,
+        };
+      return run(() =>
+        journal
+          ? journal.run(
+              {
+                id: crypto.randomUUID(),
+                type: 'COLLECTION',
+                episodeId: episode.id,
+                idempotencyKey,
+                payload: request,
+              },
+              () => workflow.confirmCollection(request),
+            )
+          : workflow.confirmCollection(request),
       );
     },
-    [workflow, run],
+    [workflow, run, journal],
   );
 
   const recordCounselling = useCallback(
@@ -159,9 +222,21 @@ export function usePosWorkflow(baseUrl = '/api/pos/dispensing') {
     [workflow, run],
   );
 
+  const effectiveGate: GateState =
+    !journalReady || journalBlocked
+      ? {
+          canTakePayment: false,
+          canConfirmCollection: false,
+          blockedReason: !journalReady
+            ? 'Secure action recovery is still starting.'
+            : 'A previous payment or collection has an unknown outcome. Reconcile it before continuing.',
+          outcomeUnknown: journalBlocked,
+        }
+      : gate;
+
   return {
     client,
-    state: { queue, selected, gate, busy, notice } satisfies PosState,
+    state: { queue, selected, gate: effectiveGate, busy, notice } satisfies PosState,
     refreshQueue,
     select,
     refresh,

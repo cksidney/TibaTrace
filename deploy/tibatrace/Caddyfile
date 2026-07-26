@@ -8,8 +8,15 @@
 		Referrer-Policy "same-origin"
 	}
 
-	reverse_proxy api:8000 {
-		header_up Host {http.request.host}
-		header_up X-Forwarded-Proto https
+	@backend path /api/* /admin* /admin-shell* /static/* /media/*
+	handle @backend {
+		reverse_proxy api:8000 {
+			header_up Host {http.request.host}
+			header_up X-Forwarded-Proto https
+		}
+	}
+
+	handle {
+		reverse_proxy hq:8080
 	}
 }

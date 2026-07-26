@@ -5,7 +5,7 @@ import decimal
 from django.core.exceptions import ValidationError
 from django.db import transaction
 
-from apps.procurement.models import ThreeWayMatch
+from apps.procurement.models import GoodsReceiptLine, ThreeWayMatch
 
 
 def _accepted_value(goods_receipt) -> decimal.Decimal:
@@ -17,7 +17,9 @@ def _accepted_value(goods_receipt) -> decimal.Decimal:
     itself, which is the failure a three-way match exists to catch.
     """
     total = decimal.Decimal("0.00")
-    for line in goods_receipt.lines.select_related("po_line").all():
+    for line in GoodsReceiptLine.all_objects.filter(
+        tenant_id=goods_receipt.tenant_id, goods_receipt=goods_receipt
+    ).select_related("po_line"):
         unit_price = getattr(line.po_line, "unit_price", None) or decimal.Decimal("0.00")
         total += decimal.Decimal(line.accepted_quantity or 0) * decimal.Decimal(unit_price)
     return total
@@ -40,7 +42,9 @@ class ThreeWayMatchService:
         price_variance = decimal.Decimal(invoice_amount) - expected_amount
         qty_variance = 0
 
-        for line in goods_receipt.lines.all():
+        for line in GoodsReceiptLine.all_objects.filter(
+            tenant_id=goods_receipt.tenant_id, goods_receipt=goods_receipt
+        ):
             po_line = line.po_line
             if line.accepted_quantity != po_line.ordered_quantity:
                 qty_variance += (line.accepted_quantity - po_line.ordered_quantity)

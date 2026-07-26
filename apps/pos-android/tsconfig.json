@@ -15,7 +15,8 @@
     "skipLibCheck": true,
     "noEmit": true,
     "types": [
-      "vitest/globals"
+      "vitest/globals",
+      "react-native"
     ]
   },
   "include": [

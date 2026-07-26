@@ -69,7 +69,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm audit --audit-level=high
@@ -88,7 +88,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm run build --workspace @dawatrace/shared
@@ -106,3 +106,47 @@ jobs:
             apps/pos-windows/test-results
             apps/pos-windows/playwright-report
           retention-days: 14
+
+  pos-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npm run build --workspace @dawatrace/shared
+      - run: npm run typecheck --workspace @dawatrace/pos-windows
+      - run: npm run test --workspace @dawatrace/pos-windows
+      - run: npm run package:windows --workspace @dawatrace/pos-windows
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tibatrace-pos-windows-unsigned-msix
+          path: apps/pos-windows/release
+
+  pos-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+      - uses: android-actions/setup-android@v3
+      - run: npm ci --ignore-scripts
+      - run: npm run build --workspace @dawatrace/shared
+      - run: npm run typecheck --workspace @dawatrace/pos-android
+      - run: npm run test --workspace @dawatrace/pos-android
+      - run: npm run android:assemble:debug --workspace @dawatrace/pos-android
+        env:
+          NODE_BINARY: node
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tibatrace-pos-android-debug
+          path: apps/pos-android/android/app/build/outputs/apk/debug

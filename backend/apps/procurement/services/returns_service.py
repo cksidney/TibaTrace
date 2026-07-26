@@ -66,7 +66,6 @@ class SupplierReturnService:
             supplier_return=supplier_return,
             sku=sku,
             quantity=quantity,
-            reason=reason or supplier_return.reason,
         )
 
     @staticmethod

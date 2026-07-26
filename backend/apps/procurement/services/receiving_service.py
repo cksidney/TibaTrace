@@ -3,7 +3,7 @@ from __future__ import annotations
 import decimal
 
 from django.core.exceptions import ValidationError
-from django.db import transaction
+from django.db import models, transaction
 from django.utils import timezone
 
 from apps.inventory.models import InventoryBatch, InventoryLedgerEntry
@@ -50,11 +50,18 @@ class ReceivingService:
         if session.status != "ACTIVE":
             raise ValidationError("Cannot record scans on an inactive receiving session.")
 
-        po_lines = session.purchase_order.lines.filter(sku=sku)
+        # Explicit tenant filter rather than `session.purchase_order.lines`.
+        # A related manager uses the model's default manager, which here is the
+        # tenant-strict one: with no tenant context it returns nothing, and this
+        # method then tells the operator the item is not on the order. Scanning a
+        # legitimate delivery would read as the wrong goods arriving.
+        po_lines = PurchaseOrderLine.all_objects.filter(
+            tenant_id=session.tenant_id, purchase_order=session.purchase_order, sku=sku
+        )
         if not po_lines.exists():
             raise ValidationError(f"Item {sku.sku_code} is not included in Purchase Order {session.purchase_order.po_number}.")
 
-        if expiry_date <= timezone.now().date():
+        if expiry_date <= timezone.localdate():
             raise ValidationError(f"Scanned batch {batch_number} has already expired.")
 
         scan = ReceivingScan.all_objects.create(
@@ -74,7 +81,9 @@ class ReceivingService:
         if session.status != "ACTIVE":
             raise ValidationError("Receiving session has already been posted or closed.")
 
-        scans = session.scans.all()
+        scans = ReceivingScan.all_objects.filter(
+            tenant_id=session.tenant_id, session=session
+        )
         if not scans.exists():
             raise ValidationError("Cannot post a GRN for a session with no scanned items.")
 
@@ -86,46 +95,61 @@ class ReceivingService:
             supplier=session.supplier,
             receiving_branch=session.branch,
             delivery_note_number=session.delivery_note_number,
-            receiver=actor,
+            received_by=actor,
             arrival_time=timezone.now(),
-            status=GoodsReceipt.Status.POSTED,
+            # RECEIVED, not POSTED: there is no POSTED state on this model, so
+            # every GRN posting raised AttributeError here. The goods have
+            # arrived and are awaiting inspection, which is what RECEIVED means
+            # -- ACCEPTED comes later, from QualityService.
+            status=GoodsReceipt.Status.RECEIVED,
         )
 
         for scan in scans:
-            po_line = session.purchase_order.lines.get(sku=scan.sku)
-            unit_cost = po_line.unit_cost
-
-            ReceivedBatch.all_objects.create(
+            po_line = PurchaseOrderLine.all_objects.get(
+                tenant_id=session.tenant_id,
+                purchase_order=session.purchase_order,
+                sku=scan.sku,
+            )
+            # The line first: a received batch hangs off the receipt line, not
+            # off the receipt.
+            grn_line = GoodsReceiptLine.all_objects.create(
                 tenant=session.tenant,
                 goods_receipt=goods_receipt,
+                po_line=po_line,
+                sku=scan.sku,
+                delivered_quantity=scan.scanned_quantity,
+                accepted_quantity=scan.scanned_quantity,
+            )
+
+            # No unit cost is copied onto the receipt. Receipt lines carry
+            # quantities and the purchase order carries the money, so the price
+            # cannot drift between the two and a receipt can never be valued at
+            # anything other than what was agreed.
+            ReceivedBatch.all_objects.create(
+                tenant=session.tenant,
+                grn_line=grn_line,
                 sku=scan.sku,
                 manufacturer_batch_number=scan.batch_number,
                 expiry_date=scan.expiry_date,
                 received_quantity=scan.scanned_quantity,
                 accepted_quantity=scan.scanned_quantity,
-                unit_cost=unit_cost,
                 quality_status=ReceivedBatch.QualityStatus.QUARANTINED,
-            )
-
-            GoodsReceiptLine.all_objects.create(
-                tenant=session.tenant,
-                goods_receipt=goods_receipt,
-                po_line=po_line,
-                sku=scan.sku,
-                received_quantity=scan.scanned_quantity,
-                accepted_quantity=scan.scanned_quantity,
-                unit_cost=unit_cost,
-                line_total=scan.scanned_quantity * unit_cost,
             )
 
             po_line.received_quantity += scan.scanned_quantity
             po_line.save()
 
+            # Keyed on the batch's real identity, which is the unique
+            # constraint on the model: the same manufacturer batch number from
+            # the same manufactured product is the same physical batch, whichever
+            # SKU packs it. manufactured_product is required and was never set,
+            # so this get_or_create could not insert at all.
             inv_batch, _ = InventoryBatch.all_objects.get_or_create(
                 tenant=session.tenant,
-                sku=scan.sku,
-                batch_number=scan.batch_number,
+                manufactured_product=scan.sku.manufactured_product,
+                manufacturer_batch_number=scan.batch_number,
                 defaults={
+                    "sku": scan.sku,
                     "expiry_date": scan.expiry_date,
                     "quality_status": "QUARANTINED",
                 },
@@ -136,7 +160,7 @@ class ReceivingService:
                 branch=session.branch,
                 location=destination_location,
                 sku=scan.sku,
-                entry_type=InventoryLedgerEntry.EntryType.PURCHASE_RECEIPT,
+                entry_type=InventoryLedgerEntry.EntryType.RECEIPT,
                 quantity_delta=decimal.Decimal(scan.scanned_quantity),
                 unit="pack",
                 base_quantity_delta=decimal.Decimal(scan.scanned_quantity),
@@ -153,7 +177,15 @@ class ReceivingService:
         session.save()
 
         po = session.purchase_order
-        if all(line.received_quantity >= line.ordered_quantity for line in po.lines.all()):
+        po_lines = list(
+            PurchaseOrderLine.all_objects.filter(tenant_id=po.tenant_id, purchase_order=po)
+        )
+        # `all()` of an empty sequence is True, so without the emptiness check an
+        # order whose lines could not be read would be marked fully received
+        # having had nothing verified at all.
+        if po_lines and all(
+            line.received_quantity >= line.ordered_quantity for line in po_lines
+        ):
             po.status = PurchaseOrder.Status.FULLY_RECEIVED
         else:
             po.status = PurchaseOrder.Status.PARTIALLY_RECEIVED
@@ -355,7 +387,7 @@ class GoodsReceivingService:
                 f"{manufacturer_batch_number} is dated {manufacture_date} "
                 f"expiring {expiry_date}."
             )
-        if expiry_date <= timezone.now().date():
+        if expiry_date <= timezone.localdate():
             raise ValidationError(
                 f"Cannot receive expired batch: {manufacturer_batch_number} "
                 f"expires on {expiry_date}."
@@ -363,7 +395,8 @@ class GoodsReceivingService:
         if received_quantity <= 0:
             raise ValidationError("A received quantity must be positive.")
 
-        if grn_line is None:
+        created_line = grn_line is None
+        if created_line:
             if goods_receipt is None or po_line is None:
                 raise ValidationError(
                     "A batch needs either a receipt line, or a receipt and a "
@@ -391,14 +424,59 @@ class GoodsReceivingService:
             quarantined_quantity=received_quantity,
         )
 
-        line.delivered_quantity = (line.delivered_quantity or 0) + received_quantity
-        line.quarantined_quantity = (line.quarantined_quantity or 0) + received_quantity
-        line.save(update_fields=["delivered_quantity", "quarantined_quantity", "updated_at"])
+        if created_line:
+            line.delivered_quantity = (line.delivered_quantity or 0) + received_quantity
+            line.quarantined_quantity = (line.quarantined_quantity or 0) + received_quantity
+            line.save(update_fields=["delivered_quantity", "quarantined_quantity", "updated_at"])
+        else:
+            captured = (
+                ReceivedBatch.all_objects.filter(
+                    tenant_id=line.tenant_id,
+                    grn_line=line,
+                )
+                .exclude(pk=batch.pk)
+                .aggregate(total=models.Sum("received_quantity"))["total"]
+                or 0
+            )
+            if captured + received_quantity > line.delivered_quantity:
+                raise ValidationError(
+                    f"Captured batch quantity exceeds the {line.delivered_quantity} "
+                    "units recorded on the receipt line."
+                )
 
         receipt = line.goods_receipt
         receipt.status = GoodsReceipt.Status.UNDER_INSPECTION
         receipt.save(update_fields=["status", "updated_at"])
         return batch
+
+    @staticmethod
+    @transaction.atomic
+    def receive_batch(
+        *,
+        goods_receipt,
+        po_line,
+        manufacturer_batch_number,
+        expiry_date,
+        received_quantity,
+        manufacture_date=None,
+        discrepancy_reason="",
+        idempotency_key="",
+    ):
+        line = GoodsReceivingService.receive_line(
+            goods_receipt=goods_receipt,
+            po_line=po_line,
+            delivered_quantity=received_quantity,
+            quarantined_quantity=received_quantity,
+            discrepancy_reason=discrepancy_reason,
+            idempotency_key=idempotency_key,
+        )
+        return GoodsReceivingService.capture_batch(
+            grn_line=line,
+            manufacturer_batch_number=manufacturer_batch_number,
+            manufacture_date=manufacture_date,
+            expiry_date=expiry_date,
+            received_quantity=received_quantity,
+        )
 
     @staticmethod
     @transaction.atomic
@@ -424,7 +502,11 @@ class GoodsReceivingService:
         goods_receipt.save(update_fields=["status", "updated_at"])
 
         purchase_order = goods_receipt.purchase_order
-        lines = list(purchase_order.lines.all())
+        lines = list(
+            PurchaseOrderLine.all_objects.filter(
+                tenant_id=purchase_order.tenant_id, purchase_order=purchase_order
+            )
+        )
         if lines and all(
             (line.received_quantity or 0) >= line.ordered_quantity for line in lines
         ):

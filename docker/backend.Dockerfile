@@ -44,6 +44,6 @@ RUN DAWATRACE_SECRET_KEY=build-only-staticfiles-not-a-secret \
 USER dawatrace
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health/', timeout=3)"
+  CMD python -c "import os, urllib.request; request = urllib.request.Request('http://127.0.0.1:8000/api/health/', headers={'Host': os.getenv('TIBATRACE_HOST', 'localhost'), 'X-Forwarded-Proto': 'https'}); urllib.request.urlopen(request, timeout=3)"
 
 CMD ["gunicorn", "dawatrace.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "3", "--timeout", "60", "--access-logfile", "-", "--error-logfile", "-"]

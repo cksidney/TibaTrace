@@ -6,9 +6,11 @@ import {
   formatMoney,
   loadApprovedUnpaidClaims,
   loadClaimsAwaitingDecision,
+  loadGovernmentCatalogue,
   loadHQOverview,
   loadHQWorkspace,
   loadInsurers,
+  updateGovernmentCatalogueSelection,
   varianceNeedsExplanation,
 } from './api.js';
 import type { HQBusinessAction, HQWorkItem } from './api.js';
@@ -124,6 +126,78 @@ describe('loadHQWorkspace', () => {
   });
 });
 
+describe('loadGovernmentCatalogue', () => {
+  it('builds the searchable government catalogue request', async () => {
+    const payload = {
+      available_keml_statuses: ['No', 'Yes'],
+      available_levels_of_use: ['1', '2', '3', '4', '5', '6', '9'],
+      catalogue_count: 11467,
+      count: 1,
+      page: 2,
+      page_size: 50,
+      pages: 1,
+      results: [{ code: 'PH7839', generic_name: 'Diazepam' }],
+      selected_count: 3,
+      source: 'Kenya eTCD Product Catalogue',
+      source_version: 'sha256:test;updated:2026-07-14',
+      tenant_id: 'tenant-1',
+      tenant_name: 'Demo Tenant',
+      can_manage: true,
+    };
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(payload), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(loadGovernmentCatalogue({
+      kemlStatus: 'Yes',
+      levelOfUse: '4',
+      page: 2,
+      pageSize: 50,
+      query: 'Diazepam',
+      selectedOnly: true,
+      tenantId: 'tenant-1',
+    })).resolves.toEqual(payload);
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/medicines/government-catalogue/?q=Diazepam&keml_status=Yes&level_of_use=4&selected_only=true&page=2&page_size=50',
+      expect.objectContaining({
+        credentials: 'include',
+        headers: expect.objectContaining({ 'X-Tenant-ID': 'tenant-1' }),
+      }),
+    );
+  });
+
+  it('adds a master product to one tenant catalogue', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ selected: true }), {
+        status: 201,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(updateGovernmentCatalogueSelection(
+      'medicine-1',
+      true,
+      'tenant-1',
+      'csrf-1',
+    )).resolves.toEqual({ selected: true });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/medicines/government-catalogue/medicine-1/selection/',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          'X-CSRFToken': 'csrf-1',
+          'X-Tenant-ID': 'tenant-1',
+        }),
+      }),
+    );
+  });
+});
+
 describe('executeHQBusinessAction', () => {
   it('posts the action with CSRF and tenant context', async () => {
     const action: HQBusinessAction = {
@@ -206,6 +280,94 @@ describe('executeHQBusinessAction', () => {
     await expect(
       executeHQBusinessAction(action, item, 'csrf-123', {}),
     ).rejects.toThrow('Inspection is incomplete.');
+  });
+
+  it('flattens field-level domain validation for the action dialog', async () => {
+    const action = {
+      confirm: '',
+      fields: [],
+      key: 'hold-prescription',
+      label: 'Place clinical hold',
+      method: 'POST',
+      path: '/api/prescriptions/prescription-1/hold/',
+      tone: 'warning',
+    } satisfies HQBusinessAction;
+    const item = {
+      actions: [action],
+      detail: '',
+      id: 'prescription-1',
+      metrics: [],
+      reference: 'RX-1',
+      status: 'LEGALLY_VALIDATED',
+      tenant_id: 'tenant-1',
+      tenant_name: 'HQ Demo',
+      title: 'Demo Patient',
+    } satisfies HQWorkItem;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ reason: ['A hold reason is required.'] }), {
+          headers: { 'Content-Type': 'application/json' },
+          status: 400,
+        }),
+      ),
+    );
+
+    await expect(
+      executeHQBusinessAction(action, item, 'csrf-123', {}),
+    ).rejects.toThrow('reason: A hold reason is required.');
+  });
+
+  it('expands dotted field names into nested service payloads', async () => {
+    const action = {
+      confirm: '',
+      fields: [],
+      key: 'receive-return',
+      label: 'Receive return',
+      method: 'POST',
+      path: '/api/sales/returns/return-1/receive/',
+      tone: 'primary',
+    } satisfies HQBusinessAction;
+    const item = {
+      actions: [action],
+      detail: '',
+      id: 'return-1',
+      metrics: [],
+      reference: 'RTN-1',
+      status: 'APPROVED',
+      tenant_id: 'tenant-1',
+      tenant_name: 'HQ Demo',
+      title: 'Demo Pharmacy',
+    } satisfies HQWorkItem;
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response('{}', {
+        headers: { 'Content-Type': 'application/json' },
+        status: 200,
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await executeHQBusinessAction(
+      action,
+      item,
+      'csrf-123',
+      {
+        'received_quantities.line-1': 2,
+        'received_quantities.line-2': 1,
+      },
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      action.path,
+      expect.objectContaining({
+        body: JSON.stringify({
+          received_quantities: {
+            'line-1': 2,
+            'line-2': 1,
+          },
+        }),
+      }),
+    );
   });
 });
 

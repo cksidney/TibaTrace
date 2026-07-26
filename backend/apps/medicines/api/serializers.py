@@ -295,3 +295,70 @@ class MedicineSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         )
+
+
+class GovernmentCatalogueMedicineSerializer(serializers.ModelSerializer):
+    catalogue_standard = serializers.SerializerMethodField()
+    keml_status = serializers.SerializerMethodField()
+    level_of_use = serializers.SerializerMethodField()
+    manufacturer_name = serializers.SerializerMethodField()
+    route = serializers.SerializerMethodField()
+    source_updated_at = serializers.SerializerMethodField()
+    selected = serializers.SerializerMethodField()
+    selection_status = serializers.SerializerMethodField()
+    tenant_code = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Medicine
+        fields = (
+            "id",
+            "code",
+            "generic_name",
+            "brand_name",
+            "dosage_form",
+            "strength",
+            "route",
+            "licence_identifier",
+            "manufacturer_name",
+            "keml_status",
+            "level_of_use",
+            "status",
+            "catalogue_standard",
+            "source_updated_at",
+            "selected",
+            "selection_status",
+            "tenant_code",
+        )
+
+    def get_catalogue_standard(self, medicine):
+        return medicine.metadata.get("catalogue_standard", "")
+
+    def get_keml_status(self, medicine):
+        return medicine.metadata.get("keml", {}).get("status", "UNKNOWN")
+
+    def get_level_of_use(self, medicine):
+        return medicine.metadata.get("keml", {}).get("level_of_use", "")
+
+    def get_manufacturer_name(self, medicine):
+        return medicine.metadata.get("manufacturer_name", "")
+
+    def get_route(self, medicine):
+        return medicine.metadata.get("route", {}).get("display_name", "")
+
+    def get_source_updated_at(self, medicine):
+        return medicine.metadata.get("source_updated_at", "")
+
+    def get_selected(self, medicine):
+        selection = self._selection(medicine)
+        return bool(selection and selection.status == "SELECTED")
+
+    def get_selection_status(self, medicine):
+        selection = self._selection(medicine)
+        return selection.status if selection else ""
+
+    def get_tenant_code(self, medicine):
+        selection = self._selection(medicine)
+        return selection.tenant_code if selection else ""
+
+    def _selection(self, medicine):
+        return self.context.get("selections", {}).get(str(medicine.pk))

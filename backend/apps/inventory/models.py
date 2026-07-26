@@ -404,3 +404,74 @@ class StocktakeCount(TenantConsistencyMixin, TimestampedModel):
     
     objects = StrictTenantManager()
     all_objects = models.Manager()
+
+
+# ==============================================================================
+# EXTENDED WAREHOUSE & BARCODE MODELS
+# ==============================================================================
+
+class WarehouseTask(TenantConsistencyMixin, TimestampedModel):
+    class TaskType(models.TextChoices):
+        RECEIVE = "RECEIVE", "Receive"
+        INSPECT = "INSPECT", "Inspect"
+        PUTAWAY = "PUTAWAY", "Putaway"
+        PICK = "PICK", "Pick"
+        PACK = "PACK", "Pack"
+        DISPATCH = "DISPATCH", "Dispatch"
+        TRANSFER_RECEIVE = "TRANSFER_RECEIVE", "Transfer Receive"
+        REPLENISH = "REPLENISH", "Replenish"
+        COUNT = "COUNT", "Count"
+
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "Pending"
+        ASSIGNED = "ASSIGNED", "Assigned"
+        IN_PROGRESS = "IN_PROGRESS", "In Progress"
+        COMPLETED = "COMPLETED", "Completed"
+        CANCELLED = "CANCELLED", "Cancelled"
+
+    tenant_relation_fields = ("branch", "location", "sku")
+    tenant = models.ForeignKey("tenancy.Tenant", on_delete=models.CASCADE, related_name="+")
+    branch = models.ForeignKey("organizations.Location", on_delete=models.PROTECT, related_name="+")
+    task_type = models.CharField(max_length=50, choices=TaskType.choices, default=TaskType.PICK)
+    status = models.CharField(max_length=50, choices=Status.choices, default=Status.PENDING)
+    priority = models.IntegerField(default=1)
+    assigned_user = models.ForeignKey("identity.User", on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    location = models.ForeignKey(InventoryLocation, on_delete=models.PROTECT, null=True, blank=True, related_name="+")
+    sku = models.ForeignKey("medicines.CommercialSKU", on_delete=models.PROTECT, null=True, blank=True, related_name="+")
+    batch = models.ForeignKey(InventoryBatch, on_delete=models.PROTECT, null=True, blank=True, related_name="+")
+    quantity = models.DecimalField(max_digits=15, decimal_places=4, default=0)
+
+    objects = StrictTenantManager()
+    all_objects = models.Manager()
+
+
+class BarcodeMaster(TenantConsistencyMixin, TimestampedModel):
+    tenant_relation_fields = ("sku",)
+    tenant = models.ForeignKey("tenancy.Tenant", on_delete=models.CASCADE, related_name="+")
+    sku = models.ForeignKey("medicines.CommercialSKU", on_delete=models.CASCADE, related_name="barcodes")
+    barcode = models.CharField(max_length=128, db_index=True)
+    barcode_type = models.CharField(max_length=64, default="GS1_128")
+    pack_conversion = models.DecimalField(max_digits=10, decimal_places=4, default=1)
+    is_active = models.BooleanField(default=True)
+
+    objects = StrictTenantManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["tenant", "barcode"], name="uq_barcode_master")
+        ]
+
+
+class ReplenishmentRecommendation(TenantConsistencyMixin, TimestampedModel):
+    tenant_relation_fields = ("branch", "sku")
+    tenant = models.ForeignKey("tenancy.Tenant", on_delete=models.CASCADE, related_name="+")
+    branch = models.ForeignKey("organizations.Location", on_delete=models.PROTECT, related_name="+")
+    sku = models.ForeignKey("medicines.CommercialSKU", on_delete=models.CASCADE, related_name="+")
+    recommended_quantity = models.DecimalField(max_digits=15, decimal_places=4)
+    reason = models.TextField(blank=True, default="")
+    status = models.CharField(max_length=32, default="PENDING")
+
+    objects = StrictTenantManager()
+    all_objects = models.Manager()
+

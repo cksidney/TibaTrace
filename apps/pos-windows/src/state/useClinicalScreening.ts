@@ -91,7 +91,11 @@ function toSummary(result: ScreeningResult): ClinicalSummary {
 
 export function useClinicalScreening(
   episode: EpisodeLike | null,
-  options: { readonly deviceId?: string; readonly baseUrl?: string } = {},
+  options: {
+    readonly deviceId?: string;
+    readonly baseUrl?: string;
+    readonly fetcher?: typeof fetch;
+  } = {},
 ): ClinicalScreeningState & { readonly refresh: () => Promise<void> } {
   const [state, setState] = useState<ClinicalScreeningState>({
     summary: null,
@@ -101,6 +105,7 @@ export function useClinicalScreening(
 
   const deviceId = options.deviceId ?? 'POS-WINDOWS';
   const baseUrl = options.baseUrl ?? '';
+  const fetcher = options.fetcher ?? fetch;
 
   const refresh = useCallback(async () => {
     if (!episode) {
@@ -121,7 +126,7 @@ export function useClinicalScreening(
     setState((previous) => ({ ...previous, loading: true, error: '' }));
 
     try {
-      const response = await fetch(`${baseUrl}/api/pos/clinical-screening/evaluate/`, {
+      const response = await fetcher(`${baseUrl}/api/pos/clinical-screening/evaluate/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         credentials: 'same-origin',
@@ -162,7 +167,7 @@ export function useClinicalScreening(
           : 'Clinical screening could not be reached. Supply is not authorised until screening completes.',
       });
     }
-  }, [episode, deviceId, baseUrl]);
+  }, [episode, deviceId, baseUrl, fetcher]);
 
   useEffect(() => {
     void refresh();

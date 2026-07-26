@@ -12,6 +12,7 @@ import {
   loadClaimsNeedingAttention,
   loadCashVariances,
   loadForcedClosures,
+  loadGovernmentCatalogue,
   loadHQOverview,
   loadHQWorkspace,
   loadInsurers,
@@ -25,6 +26,7 @@ import {
   SignInError,
   signIn,
   signOut,
+  updateGovernmentCatalogueSelection,
   varianceNeedsExplanation,
 } from './api.js';
 import type {
@@ -32,6 +34,7 @@ import type {
   ClaimFilters,
   ClinicalProductSummary,
   DashboardMetric,
+  GovernmentCataloguePage,
   HQBusinessAction,
   HQOverview,
   HQWorkItem,
@@ -40,7 +43,6 @@ import type {
   Insurer,
   ManufacturedProductSummary,
   ManufacturerSummary,
-  NetworkItem,
   PriceBookSummary,
   RegisterSessionSummary,
   SessionState,
@@ -48,6 +50,8 @@ import type {
 } from './api.js';
 import { Icon } from './icons.js';
 import type { IconName } from './icons.js';
+import { ProcurementWorkspace } from './ProcurementWorkspace.js';
+import { TenantManagement } from './TenantManagement.js';
 
 type WorkspaceView =
   | 'overview'
@@ -410,9 +414,9 @@ function Dashboard({
           ) : null}
 
           {activeView === 'overview' ? <OverviewView overview={overview} onNavigate={setActiveView} /> : null}
-          {activeView === 'network' ? <NetworkView overview={overview} /> : null}
+          {activeView === 'network' ? <NetworkView csrfToken={csrfToken} onChanged={onRefresh} overview={overview} /> : null}
           {activeView === 'people' ? <PeopleView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} /> : null}
-          {activeView === 'catalogue' ? <CatalogueView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} /> : null}
+          {activeView === 'catalogue' ? <CatalogueView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} overview={overview} /> : null}
           {activeView === 'operations' ? <OperationsView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} overview={overview} /> : null}
           {activeView === 'commerce' ? <CommerceView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} /> : null}
           {activeView === 'pricing' ? <PricingView /> : null}
@@ -555,85 +559,16 @@ function OverviewView({ overview, onNavigate }: { readonly overview: HQOverview;
   );
 }
 
-function NetworkView({ overview }: { readonly overview: HQOverview }) {
-  const [query, setQuery] = useState('');
-  const [status, setStatus] = useState('ALL');
-  const items = overview.network_items ?? [];
-  const visibleItems = items.filter((item) => {
-    const matchesQuery = `${item.name} ${item.slug} ${item.country_code}`.toLowerCase().includes(query.toLowerCase());
-    return matchesQuery && (status === 'ALL' || item.status === status);
-  });
-  const totals = items.reduce(
-    (result, item) => ({
-      locations: result.locations + item.active_location_count,
-      patients: result.patients + item.active_patient_count,
-      practitioners: result.practitioners + item.active_practitioner_count,
-      users: result.users + item.active_user_count,
-    }),
-    { locations: 0, patients: 0, practitioners: 0, users: 0 },
-  );
-
-  return (
-    <>
-      <section className="metric-grid network-metrics" aria-label="Network totals">
-        <SummaryCard icon="building" label="Workspaces" value={items.length} detail={`${items.filter((item) => item.status === 'ACTIVE').length} active`} />
-        <SummaryCard icon="store" label="Care locations" value={totals.locations} detail="Active network sites" />
-        <SummaryCard icon="patients" label="Patient records" value={totals.patients} detail="Active records in scope" />
-        <SummaryCard icon="users" label="Network users" value={totals.users} detail="Active user accounts" />
-      </section>
-
-      <article className="panel table-panel">
-        <div className="table-toolbar">
-          <PanelHeader eyebrow="Workspace directory" title="Connected organisations" />
-          <div className="table-filters">
-            <label className="search-field">
-              <span className="sr-only">Search workspaces</span>
-              <Icon name="search" />
-              <input onChange={(event) => setQuery(event.target.value)} placeholder="Search workspaces" type="search" value={query} />
-            </label>
-            <label>
-              <span className="sr-only">Filter by status</span>
-              <select onChange={(event) => setStatus(event.target.value)} value={status}>
-                <option value="ALL">All statuses</option>
-                <option value="ACTIVE">Active</option>
-                <option value="SUSPENDED">Suspended</option>
-              </select>
-            </label>
-          </div>
-        </div>
-        {visibleItems.length ? (
-          <div className="table-scroll">
-            <table>
-              <thead><tr><th>Workspace</th><th>Status</th><th>Locations</th><th>Patients</th><th>Practitioners</th><th>Users</th><th>Time zone</th></tr></thead>
-              <tbody>{visibleItems.map((item) => <NetworkRow item={item} key={item.id} />)}</tbody>
-            </table>
-          </div>
-        ) : (
-          <EmptyState icon="network" title="No workspaces found" detail={items.length ? 'Adjust the search or status filter.' : 'Connected tenant workspaces will appear here once provisioned.'} />
-        )}
-      </article>
-
-      <section className="content-grid">
-        <article className="panel">
-          <PanelHeader eyebrow="Network distribution" title="Operational footprint" />
-          <div className="data-bars">
-            <DataBar icon="store" label="Locations" max={largestValue(Object.values(totals))} value={totals.locations} />
-            <DataBar icon="patients" label="Patients" max={largestValue(Object.values(totals))} value={totals.patients} />
-            <DataBar icon="clinical" label="Practitioners" max={largestValue(Object.values(totals))} value={totals.practitioners} />
-            <DataBar icon="users" label="Users" max={largestValue(Object.values(totals))} value={totals.users} />
-          </div>
-        </article>
-        <article className="panel">
-          <PanelHeader eyebrow="Network controls" title="Organisation administration" />
-          <div className="command-links">
-            <CommandLink href="/admin/tenancy/tenant/" title="Manage tenants" detail="Status, scope and metadata" icon="building" />
-            <CommandLink href="/admin/organizations/location/" title="Manage locations" detail="Care sites and identifiers" icon="store" />
-            <CommandLink href="/admin/organizations/organization/" title="Manage organisations" detail="Pharmacies, clinics and hospitals" icon="network" />
-          </div>
-        </article>
-      </section>
-    </>
-  );
+function NetworkView({
+  csrfToken,
+  onChanged,
+  overview,
+}: {
+  readonly csrfToken: string;
+  readonly onChanged: () => Promise<void>;
+  readonly overview: HQOverview;
+}) {
+  return <TenantManagement csrfToken={csrfToken} onChanged={onChanged} overview={overview} />;
 }
 
 interface BusinessViewProps {
@@ -645,147 +580,9 @@ interface BusinessViewProps {
 
 function OperationsView({
   csrfToken,
-  data,
-  failed,
-  onWorkspaceChanged,
   overview,
 }: BusinessViewProps & { readonly overview: HQOverview }) {
-  const summary = useSummary(overview);
-  const released = metricValue(overview, 'Released stock batches');
-  const holds = attentionValue(overview, 'Inventory quality holds');
-  const totalBatches = summary.get('Inventory batches') ?? released + holds;
-  const openPrescriptions = metricValue(overview, 'Open prescriptions');
-  const releaseRate = totalBatches ? Math.round((released / totalBatches) * 100) : 100;
-  const openGRN = summary.get('Open goods receipts') ?? 0;
-
-  const [sessions, setSessions] = useState<readonly RegisterSessionSummary[] | null>(null);
-  const [priceBooks, setPriceBooks] = useState<readonly PriceBookSummary[] | null>(null);
-  const [opsFailed, setOpsFailed] = useState(false);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    Promise.all([
-      loadOpenRegisterSessions(controller.signal),
-      loadPriceBooks(controller.signal),
-    ])
-      .then(([s, p]) => { setSessions(s); setPriceBooks(p); })
-      .catch(() => { if (!controller.signal.aborted) setOpsFailed(true); });
-    return () => controller.abort();
-  }, []);
-
-  return (
-    <>
-      <section className="metric-grid network-metrics" aria-label="Supply operations totals">
-        <SummaryCard icon="inventory" label="Inventory batches" value={totalBatches} detail="All quality states" />
-        <SummaryCard icon="check" label="Released batches" value={released} detail={`${releaseRate}% release readiness`} tone="teal" />
-        <SummaryCard icon="alert" label="Quality holds" value={holds} detail="Review or disposition required" tone={holds ? 'rose' : 'teal'} />
-        <SummaryCard icon="clinical" label="Open prescriptions" value={openPrescriptions} detail="Active dispensing demand" tone={openPrescriptions ? 'amber' : 'navy'} />
-      </section>
-
-      {failed
-        ? <WorkspaceSectionError domain="inventory and procurement workflow" />
-        : data
-          ? <BusinessWorkbench csrfToken={csrfToken} data={data} domain="operations" onChanged={onWorkspaceChanged} />
-          : <WorkspaceSectionLoading domain="inventory and procurement workflow" />}
-
-      <section className="content-grid content-grid-primary">
-        <article className="panel readiness-panel">
-          <PanelHeader eyebrow="Stock quality" title="Release readiness" />
-          <div className="readiness-score">
-            <div className="score-value"><strong>{releaseRate}%</strong><span>of batches released</span></div>
-            <div className="progress-track"><span style={{ width: `${releaseRate}%` }} /></div>
-            <div className="readiness-legend">
-              <div><i className="legend-released" /><span>Released</span><strong>{formatNumber(released)}</strong></div>
-              <div><i className="legend-hold" /><span>Other quality states</span><strong>{formatNumber(Math.max(totalBatches - released, 0))}</strong></div>
-            </div>
-          </div>
-          <div className="panel-note"><Icon name="shield" /><p>Batch quality remains authoritative in the inventory ledger. Review exceptions before stock is supplied.</p></div>
-        </article>
-
-        <article className="panel work-queue-panel">
-          <PanelHeader eyebrow="Work queue" title="Operational priorities" />
-          <div className="priority-list">
-            <PriorityItem action="Review prescriptions" detail="Active prescribing and dispensing workflow" href="/admin/prescription/prescription/" icon="clinical" value={openPrescriptions} />
-            <PriorityItem action="Release stock" detail="Batches outside the released quality state" href="/admin/inventory/inventorybatch/" icon="inventory" tone="rose" value={holds} />
-            <PriorityItem action="Receive supply" detail="Purchase orders, inspections and receipts" href="/admin/procurement/goodsreceipt/" icon="store" value={openGRN} valueLabel={openGRN ? String(openGRN) : 'Open'} />
-          </div>
-        </article>
-      </section>
-
-      <article className="panel workflow-panel">
-        <PanelHeader eyebrow="Supply chain" title="Operations workspaces" />
-        <div className="workflow-grid">
-          <WorkflowLink href="/admin/procurement/purchaserequisition/" icon="docs" step="01" title="Requisitions" detail="Capture and approve replenishment demand." />
-          <WorkflowLink href="/admin/procurement/purchaseorder/" icon="building" step="02" title="Purchase orders" detail="Manage supplier commitments and revisions." />
-          <WorkflowLink href="/admin/procurement/goodsreceipt/" icon="store" step="03" title="Receiving" detail="Inspect deliveries and post goods receipts." />
-          <WorkflowLink href="/admin/inventory/inventorybatch/" icon="inventory" step="04" title="Inventory control" detail="Release, trace and monitor stock batches." />
-        </div>
-      </article>
-
-      {opsFailed ? null : (
-        <section className="content-grid">
-          <article className="panel">
-            <PanelHeader eyebrow="Cash operations" title="Open register sessions" actionHref="/admin/pos_shift/shiftrecord/" actionLabel="View all sessions" />
-            {sessions === null ? (
-              <p className="muted-cell">Loading register sessions…</p>
-            ) : sessions.length === 0 ? (
-              <EmptyState icon="check" title="No open registers" detail="All registers are closed for the current business day." />
-            ) : (
-              <div className="table-scroll">
-                <table>
-                  <thead><tr><th>Register</th><th>Cashier</th><th>Business date</th><th>Opened at</th><th>State</th></tr></thead>
-                  <tbody>
-                    {sessions.map((s) => (
-                      <tr key={s.id}>
-                        <td><code>{s.register_code}</code></td>
-                        <td><small>{s.opened_by_username}</small></td>
-                        <td><span className="muted-cell">{s.business_date}</span></td>
-                        <td><small>{formatTime(s.opened_at)}</small></td>
-                        <td>
-                          <span className={`status-badge status-${s.state.toLowerCase()}`}><i /> {titleCase(s.state)}</span>
-                          {s.forced_closure ? <span className="status-badge status-suspended" style={{ marginLeft: 6 }}><i /> Forced</span> : null}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </article>
-
-          <article className="panel">
-            <PanelHeader eyebrow="Pricing" title="Active price books" actionHref="/admin/pricing/pricebook/" actionLabel="Manage books" />
-            {priceBooks === null ? (
-              <p className="muted-cell">Loading price books…</p>
-            ) : priceBooks.length === 0 ? (
-              <EmptyState icon="inventory" title="No price books" detail="Configure price books before tenants can transact." />
-            ) : (
-              <div className="table-scroll">
-                <table>
-                  <thead><tr><th>Code</th><th>Name</th><th>Currency</th><th>Type</th><th>Live version</th></tr></thead>
-                  <tbody>
-                    {priceBooks.map((book) => (
-                      <tr key={book.id}>
-                        <td><code>{book.code}</code></td>
-                        <td><strong>{book.name}</strong></td>
-                        <td><span className="muted-cell">{book.currency}</span></td>
-                        <td><small>{titleCase(book.price_type)}</small></td>
-                        <td>
-                          {book.live_version !== null
-                            ? <span className="status-badge status-active"><i /> v{book.live_version}</span>
-                            : <span className="muted-cell">No live version</span>}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </article>
-        </section>
-      )}
-    </>
-  );
+  return <ProcurementWorkspace csrfToken={csrfToken} overview={overview} />;
 }
 
 function PricingView() {
@@ -1573,7 +1370,8 @@ function CatalogueView({
   data,
   failed,
   onWorkspaceChanged,
-}: BusinessViewProps) {
+  overview,
+}: BusinessViewProps & { readonly overview: HQOverview }) {
   if (failed) return <WorkspaceSectionError domain="medicine catalogue" />;
   if (!data) return <WorkspaceSectionLoading domain="medicine catalogue" />;
 
@@ -1586,6 +1384,8 @@ function CatalogueView({
         <SummaryCard icon="building" label="Manufacturers" value={counts.manufacturers} detail="Registered product sources" />
         <SummaryCard icon="alert" label="Inactive SKUs" value={Math.max(counts.skus - counts.active_skus, 0)} detail="Draft, inactive or recalled" tone={counts.skus === counts.active_skus ? 'teal' : 'amber'} />
       </section>
+
+      <GovernmentCatalogue csrfToken={csrfToken} overview={overview} />
 
       <BusinessWorkbench csrfToken={csrfToken} data={data} domain="catalogue" onChanged={onWorkspaceChanged} />
 
@@ -1617,6 +1417,335 @@ function CatalogueView({
 
       <CatalogueLayers />
     </>
+  );
+}
+
+function GovernmentCatalogue({
+  csrfToken,
+  overview,
+}: {
+  readonly csrfToken: string;
+  readonly overview: HQOverview;
+}) {
+  const [query, setQuery] = useState('');
+  const [appliedQuery, setAppliedQuery] = useState('');
+  const [kemlStatus, setKemlStatus] = useState('');
+  const [levelOfUse, setLevelOfUse] = useState('');
+  const [catalogueMode, setCatalogueMode] = useState<'master' | 'tenant'>('master');
+  const [tenantId, setTenantId] = useState(
+    overview.tenant_id || overview.network_items[0]?.id || '',
+  );
+  const [page, setPage] = useState(1);
+  const [catalogue, setCatalogue] = useState<GovernmentCataloguePage | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [mutationId, setMutationId] = useState('');
+  const [mutationError, setMutationError] = useState('');
+  const [reloadVersion, setReloadVersion] = useState(0);
+
+  useEffect(() => {
+    const nextTenantId = overview.tenant_id || overview.network_items[0]?.id || '';
+    setTenantId((current) => current || nextTenantId);
+  }, [overview.network_items, overview.tenant_id]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setLoading(true);
+    setFailed(false);
+    loadGovernmentCatalogue(
+      {
+        kemlStatus,
+        levelOfUse,
+        page,
+        pageSize: 50,
+        query: appliedQuery,
+        selectedOnly: catalogueMode === 'tenant',
+        tenantId,
+      },
+      controller.signal,
+    )
+      .then((response) => {
+        if (!controller.signal.aborted) {
+          setCatalogue(response);
+          setPage(response.page);
+        }
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setFailed(true);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+    return () => controller.abort();
+  }, [appliedQuery, catalogueMode, kemlStatus, levelOfUse, page, reloadVersion, tenantId]);
+
+  const submitSearch = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setPage(1);
+    setAppliedQuery(query.trim());
+  };
+  const resetFilters = () => {
+    setQuery('');
+    setAppliedQuery('');
+    setKemlStatus('');
+    setLevelOfUse('');
+    setPage(1);
+  };
+  const changeSelection = async (medicineId: string, selected: boolean) => {
+    if (!tenantId) return;
+    setMutationId(medicineId);
+    setMutationError('');
+    try {
+      await updateGovernmentCatalogueSelection(
+        medicineId,
+        selected,
+        tenantId,
+        csrfToken,
+      );
+      setReloadVersion((version) => version + 1);
+    } catch (reason) {
+      setMutationError(
+        reason instanceof Error ? reason.message : 'The tenant catalogue could not be updated.',
+      );
+    } finally {
+      setMutationId('');
+    }
+  };
+  const filterActive = Boolean(appliedQuery || kemlStatus || levelOfUse);
+  const sourceDate = catalogue?.source_version.match(/updated:([^;]+)/)?.[1] ?? '';
+  const resultStart = catalogue && catalogue.count
+    ? ((catalogue.page - 1) * catalogue.page_size) + 1
+    : 0;
+  const resultEnd = catalogue
+    ? Math.min(catalogue.page * catalogue.page_size, catalogue.count)
+    : 0;
+
+  return (
+    <article className="panel table-panel government-catalogue">
+      <div className="government-catalogue-head">
+        <div>
+          <p className="eyebrow">Universal medicine master</p>
+          <h2>Kenya eTCD product catalogue</h2>
+          <p>
+            The national catalogue is shared across TibaTrace. Each tenant selects only
+            the medicines it carries, then completes package, price and branch governance.
+          </p>
+        </div>
+        <div className="government-catalogue-summary">
+          <span><strong>{formatNumber(catalogue?.catalogue_count ?? 0)}</strong> reference products</span>
+          <small>
+            {catalogue?.tenant_name
+              ? `${formatNumber(catalogue.selected_count)} selected for ${catalogue.tenant_name}`
+              : sourceDate
+                ? `Source updated ${formatDate(sourceDate)}`
+                : 'Government catalogue source'}
+          </small>
+        </div>
+      </div>
+
+      <div className="catalogue-scopebar">
+        <nav className="segmented" aria-label="Catalogue scope">
+          <button
+            aria-pressed={catalogueMode === 'master'}
+            className={catalogueMode === 'master' ? 'segmented-option is-active' : 'segmented-option'}
+            onClick={() => {
+              setCatalogueMode('master');
+              setPage(1);
+            }}
+            type="button"
+          >
+            Universal master
+          </button>
+          <button
+            aria-pressed={catalogueMode === 'tenant'}
+            className={catalogueMode === 'tenant' ? 'segmented-option is-active' : 'segmented-option'}
+            disabled={!tenantId}
+            onClick={() => {
+              setCatalogueMode('tenant');
+              setPage(1);
+            }}
+            type="button"
+          >
+            Tenant catalogue
+          </button>
+        </nav>
+        {overview.is_platform_overview ? (
+          <label className="catalogue-tenant-select">
+            <span>Tenant workspace</span>
+            <select
+              onChange={(event) => {
+                setTenantId(event.target.value);
+                setPage(1);
+              }}
+              value={tenantId}
+            >
+              {overview.network_items.map((tenant) => (
+                <option key={tenant.id} value={tenant.id}>{tenant.name}</option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <div className="catalogue-tenant-label">
+            <span>Tenant catalogue</span>
+            <strong>{overview.tenant_name}</strong>
+          </div>
+        )}
+      </div>
+
+      <form className="government-catalogue-filters" onSubmit={submitSearch}>
+        <label className="search-field">
+          <span className="sr-only">Search national catalogue</span>
+          <Icon name="search" />
+          <input
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search eTCD ID, generic, brand, PPB or manufacturer"
+            type="search"
+            value={query}
+          />
+        </label>
+        <label>
+          <span className="sr-only">KEML status</span>
+          <select
+            aria-label="KEML status"
+            onChange={(event) => {
+              setKemlStatus(event.target.value);
+              setPage(1);
+            }}
+            value={kemlStatus}
+          >
+            <option value="">All KEML statuses</option>
+            {(catalogue?.available_keml_statuses ?? ['No', 'Yes']).map((status) => (
+              <option key={status} value={status}>{status === 'Yes' ? 'On KEML' : 'Not on KEML'}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span className="sr-only">Level of use</span>
+          <select
+            aria-label="Level of use"
+            onChange={(event) => {
+              setLevelOfUse(event.target.value);
+              setPage(1);
+            }}
+            value={levelOfUse}
+          >
+            <option value="">All levels of use</option>
+            {(catalogue?.available_levels_of_use ?? ['1', '2', '3', '4', '5', '6', '9']).map((level) => (
+              <option key={level} value={level}>Level {level}</option>
+            ))}
+          </select>
+        </label>
+        <button className="primary-button" type="submit">Search</button>
+        {filterActive ? <button className="secondary-button" onClick={resetFilters} type="button">Clear</button> : null}
+      </form>
+
+      {mutationError ? <div className="catalogue-action-error" role="status"><Icon name="alert" />{mutationError}</div> : null}
+
+      {failed ? (
+        <EmptyState icon="alert" title="National catalogue unavailable" detail="The government catalogue could not be loaded. Try again after checking the API service." />
+      ) : catalogue === null ? (
+        <p className="catalogue-loading">Loading national catalogue…</p>
+      ) : catalogue.results.length === 0 ? (
+        <EmptyState
+          icon="clinical"
+          title={catalogueMode === 'tenant' ? 'No medicines selected for this tenant' : 'No matching master products'}
+          detail={catalogueMode === 'tenant'
+            ? 'Use the Universal master tab to add medicines to this tenant catalogue.'
+            : 'Adjust the search or KEML filters to broaden the catalogue results.'}
+        />
+      ) : (
+        <>
+          <div className={loading ? 'table-scroll catalogue-table is-loading' : 'table-scroll catalogue-table'}>
+            <table>
+              <thead>
+                <tr>
+                  <th>eTCD ID</th>
+                  <th>Generic / brand</th>
+                  <th>Strength & form</th>
+                  <th>Route</th>
+                  <th>PPB registration</th>
+                  <th>KEML / level</th>
+                  <th>Manufacturer</th>
+                  <th>Tenant catalogue</th>
+                </tr>
+              </thead>
+              <tbody>
+                {catalogue.results.map((medicine) => (
+                  <tr key={medicine.id}>
+                    <td><code>{medicine.code}</code></td>
+                    <td>
+                      <strong>{medicine.generic_name || 'Unnamed product'}</strong>
+                      <small className="row-detail">{medicine.brand_name || 'Generic / unbranded'}</small>
+                    </td>
+                    <td>
+                      <strong>{medicine.strength || '—'}</strong>
+                      <small className="row-detail">{medicine.dosage_form || 'Form not stated'}</small>
+                    </td>
+                    <td><small>{medicine.route || '—'}</small></td>
+                    <td><code>{medicine.licence_identifier || '—'}</code></td>
+                    <td>
+                      <span className={medicine.keml_status === 'Yes' ? 'keml-mark is-listed' : 'keml-mark'}>
+                        {medicine.keml_status === 'Yes' ? 'KEML' : 'Not KEML'}
+                      </span>
+                      <small className="row-detail">{medicine.level_of_use ? `Level ${medicine.level_of_use}` : 'Level not stated'}</small>
+                    </td>
+                    <td><small>{medicine.manufacturer_name || '—'}</small></td>
+                    <td>
+                      {medicine.selected ? (
+                        catalogueMode === 'tenant' && catalogue.can_manage ? (
+                          <button
+                            className="catalogue-remove-button"
+                            disabled={mutationId === medicine.id}
+                            onClick={() => void changeSelection(medicine.id, false)}
+                            type="button"
+                          >
+                            {mutationId === medicine.id ? 'Removing…' : 'Remove'}
+                          </button>
+                        ) : <span className="reference-badge is-selected">Selected</span>
+                      ) : catalogue.can_manage ? (
+                        <button
+                          className="catalogue-add-button"
+                          disabled={mutationId === medicine.id}
+                          onClick={() => void changeSelection(medicine.id, true)}
+                          type="button"
+                        >
+                          {mutationId === medicine.id ? 'Adding…' : 'Add to tenant'}
+                        </button>
+                      ) : <span className="reference-badge">Master only</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <footer className="catalogue-pagination">
+            <span>
+              Showing {formatNumber(resultStart)}–{formatNumber(resultEnd)} of {formatNumber(catalogue.count)}
+              {filterActive ? ` matches · ${formatNumber(catalogue.catalogue_count)} master total` : ''}
+            </span>
+            <div>
+              <button
+                className="secondary-button"
+                disabled={loading || catalogue.page <= 1}
+                onClick={() => setPage((current) => Math.max(current - 1, 1))}
+                type="button"
+              >
+                Previous
+              </button>
+              <strong>Page {formatNumber(catalogue.page)} of {formatNumber(catalogue.pages)}</strong>
+              <button
+                className="secondary-button"
+                disabled={loading || catalogue.page >= catalogue.pages}
+                onClick={() => setPage((current) => current + 1)}
+                type="button"
+              >
+                Next
+              </button>
+            </div>
+          </footer>
+        </>
+      )}
+    </article>
   );
 }
 
@@ -2130,20 +2259,6 @@ function SummaryCard({ detail, icon, label, tone = 'navy', value }: { readonly d
   );
 }
 
-function NetworkRow({ item }: { readonly item: NetworkItem }) {
-  return (
-    <tr>
-      <td><div className="workspace-cell"><span>{item.name.slice(0, 2).toUpperCase()}</span><div><strong>{item.name}</strong><small>{item.slug}</small></div></div></td>
-      <td><span className={`status-badge status-${item.status.toLowerCase()}`}><i /> {titleCase(item.status)}</span></td>
-      <td>{formatNumber(item.active_location_count)}</td>
-      <td>{formatNumber(item.active_patient_count)}</td>
-      <td>{formatNumber(item.active_practitioner_count)}</td>
-      <td>{formatNumber(item.active_user_count)}</td>
-      <td><span className="muted-cell">{item.time_zone}</span></td>
-    </tr>
-  );
-}
-
 function PanelHeader({
   actionHref,
   actionLabel,
@@ -2551,6 +2666,7 @@ function ActionField({
   readonly value: boolean | number | string | undefined;
 }) {
   const fieldId = `business-field-${field.name}`;
+  if (field.type === 'hidden') return null;
   if (field.type === 'checkbox') {
     return (
       <label className="business-checkbox" htmlFor={fieldId}>
@@ -2876,10 +2992,6 @@ function isCurrentHqDestination(destination: string) {
 
 function metricValue(overview: HQOverview, label: string) {
   return overview.metrics.find((metric) => metric.label === label)?.value ?? 0;
-}
-
-function attentionValue(overview: HQOverview, label: string) {
-  return overview.attention_items.find((item) => item.label === label)?.value ?? 0;
 }
 
 function largestOverviewValue(overview: HQOverview) {

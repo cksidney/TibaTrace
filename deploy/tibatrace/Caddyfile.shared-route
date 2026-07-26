@@ -1,16 +1,30 @@
 tibatrace.esenai.co.ke {
 	encode zstd gzip
 
+	request_body {
+		max_size 20MB
+	}
+
 	header {
 		-Server
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "DENY"
 		Referrer-Policy "same-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
 	}
 
-	reverse_proxy 172.17.0.1:28110 {
-		header_up Host {host}
-		header_up X-Real-IP {remote_host}
-		header_up X-Request-Id {http.request.id}
+	@backend path /api/* /admin* /admin-shell* /static/* /media/*
+	handle @backend {
+		reverse_proxy 172.17.0.1:28110 {
+			header_up Host {host}
+			header_up X-Forwarded-Proto https
+			header_up X-Real-IP {remote_host}
+			header_up X-Request-Id {http.request.id}
+		}
+	}
+
+	handle {
+		reverse_proxy 172.17.0.1:28111
 	}
 }
