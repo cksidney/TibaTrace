@@ -7,8 +7,12 @@ import {
   loadApprovedUnpaidClaims,
   loadClaimsAwaitingDecision,
   loadClaimsNeedingAttention,
+  loadCashVariances,
+  loadForcedClosures,
   loadHQOverview,
   loadInsurers,
+  loadOpenRegisterSessions,
+  loadPriceBooks,
 } from './api.js';
 import type {
   DashboardMetric,
@@ -16,11 +20,22 @@ import type {
   InsuranceClaim,
   Insurer,
   NetworkItem,
+  PriceBookSummary,
+  RegisterSessionSummary,
+  ShiftReportSummary,
 } from './api.js';
 import { Icon } from './icons.js';
 import type { IconName } from './icons.js';
 
-type WorkspaceView = 'overview' | 'network' | 'operations' | 'insurance' | 'clinical' | 'access';
+type WorkspaceView =
+  | 'overview'
+  | 'network'
+  | 'operations'
+  | 'pricing'
+  | 'cash'
+  | 'insurance'
+  | 'clinical'
+  | 'access';
 
 interface NavigationItem {
   readonly caption: string;
@@ -33,6 +48,8 @@ const navigation: readonly NavigationItem[] = [
   { key: 'overview', label: 'Overview', caption: 'Command centre', icon: 'overview' },
   { key: 'network', label: 'Pharmacy network', caption: 'Tenants and locations', icon: 'network' },
   { key: 'operations', label: 'Inventory & procurement', caption: 'Stock and supply', icon: 'inventory' },
+  { key: 'pricing', label: 'Pricing', caption: 'Branch price books', icon: 'database' },
+  { key: 'cash', label: 'Cash control', caption: 'Shifts, tills and variances', icon: 'building' },
   { key: 'insurance', label: 'Insurance & Claims', caption: 'Adjudication & SHA', icon: 'insurance' },
   { key: 'clinical', label: 'Clinical governance', caption: 'Safety and standards', icon: 'clinical' },
   { key: 'access', label: 'Users & access', caption: 'Roles and security', icon: 'users' },
@@ -53,6 +70,16 @@ const viewMeta: Record<WorkspaceView, { readonly eyebrow: string; readonly title
     eyebrow: 'Supply operations',
     title: 'Inventory & procurement',
     description: 'Track stock readiness, quality holds and active dispensing demand before it affects patient care.',
+  },
+  pricing: {
+    eyebrow: 'Commercial control',
+    title: 'Branch price books',
+    description: 'Which price book each branch charges from, and whether it has a version a till can actually use.',
+  },
+  cash: {
+    eyebrow: 'Till accountability',
+    title: 'Shifts, tills and cash variances',
+    description: 'Registers still trading, drawers that did not balance, and closures performed by somebody other than the accountable operator.',
   },
   insurance: {
     eyebrow: 'Claims & Adjudication',
@@ -277,6 +304,8 @@ function Dashboard({
           {activeView === 'overview' ? <OverviewView overview={overview} onNavigate={setActiveView} /> : null}
           {activeView === 'network' ? <NetworkView overview={overview} /> : null}
           {activeView === 'operations' ? <OperationsView overview={overview} /> : null}
+          {activeView === 'pricing' ? <PricingView /> : null}
+          {activeView === 'cash' ? <CashControlView /> : null}
           {activeView === 'insurance' ? <InsuranceView /> : null}
           {activeView === 'clinical' ? <ClinicalView overview={overview} /> : null}
           {activeView === 'access' ? <AccessView overview={overview} /> : null}
@@ -545,6 +574,230 @@ function OperationsView({ overview }: { readonly overview: HQOverview }) {
           <WorkflowLink href="/admin/inventory/inventorybatch/" icon="inventory" step="04" title="Inventory control" detail="Release, trace and monitor stock batches." />
         </div>
       </article>
+    </>
+  );
+}
+
+function PricingView() {
+  const [books, setBooks] = useState<readonly PriceBookSummary[] | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    loadPriceBooks(controller.signal)
+      .then(setBooks)
+      .catch(() => {
+        if (!controller.signal.aborted) setFailed(true);
+      });
+    return () => controller.abort();
+  }, []);
+
+  if (failed) return <Unavailable />;
+  if (!books) return <p className="muted-cell">Loading price books…</p>;
+
+  // A book with no live version is configured but inert: nothing can charge
+  // from it. Counted separately because it is the failure somebody discovers
+  // at a till rather than on this screen.
+  const inert = books.filter((book) => book.live_version === null);
+  const branchScoped = books.filter((book) => book.scope_type === 'BRANCH');
+
+  return (
+    <>
+      <section className="metric-grid network-metrics" aria-label="Price book totals">
+        <SummaryCard icon="database" label="Price books" value={books.length} detail="All scopes" />
+        <SummaryCard
+          icon="building"
+          label="Branch overrides"
+          value={branchScoped.length}
+          detail="Branches charging their own price"
+          tone="teal"
+        />
+        <SummaryCard
+          icon="alert"
+          label="Without a live version"
+          value={inert.length}
+          detail="Configured, but nothing a till can charge"
+          tone={inert.length ? 'rose' : 'navy'}
+        />
+      </section>
+
+      <section className="content-grid content-grid-primary">
+        <article className="panel">
+          <PanelHeader eyebrow="Commercial control" title="Price books" />
+          {books.length === 0 ? (
+            <p className="muted-cell">No price books are configured for this tenant.</p>
+          ) : (
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Code</th>
+                    <th>Scope</th>
+                    <th>Type</th>
+                    <th>Currency</th>
+                    <th>Live version</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {books.map((book) => (
+                    <tr key={book.id}>
+                      <td><code>{book.code}</code></td>
+                      <td><small>{book.scope_type}</small></td>
+                      <td><span className="muted-cell">{book.price_type}</span></td>
+                      <td>{book.currency}</td>
+                      <td>
+                        {book.live_version === null ? (
+                          <span className="muted-cell">No live version</span>
+                        ) : (
+                          <strong>v{book.live_version}</strong>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </article>
+      </section>
+    </>
+  );
+}
+
+function CashControlView() {
+  const [open, setOpen] = useState<readonly RegisterSessionSummary[] | null>(null);
+  const [variances, setVariances] = useState<readonly ShiftReportSummary[] | null>(null);
+  const [forced, setForced] = useState<readonly ShiftReportSummary[] | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    Promise.all([
+      loadOpenRegisterSessions(controller.signal),
+      loadCashVariances(controller.signal),
+      loadForcedClosures(controller.signal),
+    ])
+      .then(([a, b, c]) => {
+        setOpen(a);
+        setVariances(b);
+        setForced(c);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setFailed(true);
+      });
+    return () => controller.abort();
+  }, []);
+
+  if (failed) return <Unavailable />;
+  if (!open || !variances || !forced) {
+    return <p className="muted-cell">Loading cash control data…</p>;
+  }
+
+  return (
+    <>
+      <section className="metric-grid network-metrics" aria-label="Cash control totals">
+        <SummaryCard
+          icon="building"
+          label="Tills still trading"
+          value={open.length}
+          detail="Open register sessions"
+          tone={open.length ? 'amber' : 'navy'}
+        />
+        <SummaryCard
+          icon="alert"
+          label="Drawers that did not balance"
+          value={variances.length}
+          detail="Z reports carrying a variance"
+          tone={variances.length ? 'rose' : 'navy'}
+        />
+        <SummaryCard
+          icon="shield"
+          label="Forced closures"
+          value={forced.length}
+          detail="Closed by somebody other than the operator"
+          tone={forced.length ? 'amber' : 'navy'}
+        />
+      </section>
+
+      <section className="content-grid content-grid-primary">
+        <article className="panel">
+          <PanelHeader eyebrow="Till accountability" title="Cash variances" />
+          {variances.length === 0 ? (
+            <p className="muted-cell">Every closed drawer balanced.</p>
+          ) : (
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Report</th>
+                    <th>Register</th>
+                    <th>Business date</th>
+                    <th>Expected</th>
+                    <th>Counted</th>
+                    <th>Difference</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {variances.map((report) => {
+                    /* Read from the report's own frozen snapshot, never
+                       recomputed. The snapshot is what was counted and signed,
+                       and a screen that recalculates can disagree with the
+                       paper the operator is holding. */
+                    const variance = report.snapshot?.variance;
+                    return (
+                      <tr key={report.id}>
+                        <td><code>{report.report_number}</code></td>
+                        <td>{report.register_code}</td>
+                        <td><span className="muted-cell">{report.business_date}</span></td>
+                        <td>{formatMoney(variance?.expected)}</td>
+                        <td>{formatMoney(variance?.declared)}</td>
+                        <td>
+                          <strong style={{ color: 'var(--rose-600, #b3261e)' }}>
+                            {formatMoney(variance?.difference)}
+                          </strong>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </article>
+
+        <article className="panel">
+          <PanelHeader eyebrow="Exception review" title="Forced closures" />
+          {forced.length === 0 ? (
+            <p className="muted-cell">No forced closures to review.</p>
+          ) : (
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Report</th>
+                    <th>Register</th>
+                    <th>Closed by</th>
+                    <th>Reason</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {forced.map((report) => (
+                    <tr key={report.id}>
+                      <td><code>{report.report_number}</code></td>
+                      <td>{report.register_code}</td>
+                      <td>{report.generated_by_username}</td>
+                      {/* Each of these is a drawer counted by somebody who was
+                          not accountable for it, so the reason is shown rather
+                          than hidden behind a detail view. */}
+                      <td><span className="muted-cell">{report.closure_reason || '—'}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </article>
+      </section>
     </>
   );
 }
