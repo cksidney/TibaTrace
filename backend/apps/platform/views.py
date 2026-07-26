@@ -10,6 +10,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.platform.admin_shell import build_hq_dashboard_context
+
 
 def pos_terminal_view(request):
     """Serve the POS terminal shell."""
@@ -51,3 +53,26 @@ class PlatformInfoView(APIView):
                 "tenant_id": str(getattr(request, "tenant_id", "")),
             }
         )
+
+
+class HQOverviewSerializer(serializers.Serializer):
+    attention_items = serializers.ListField(child=serializers.DictField())
+    data_summary = serializers.ListField(child=serializers.DictField())
+    generated_at = serializers.DateTimeField()
+    is_platform_overview = serializers.BooleanField()
+    metrics = serializers.ListField(child=serializers.DictField())
+    network_items = serializers.ListField(child=serializers.DictField())
+    scope_description = serializers.CharField()
+    scope_label = serializers.CharField()
+    tenant_id = serializers.CharField(allow_blank=True)
+    tenant_name = serializers.CharField()
+    user_name = serializers.CharField()
+
+
+class HQOverviewView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(responses=HQOverviewSerializer)
+    def get(self, request):
+        tenant_id = getattr(request, "tenant_id", None) or request.user.tenant_id
+        return Response(build_hq_dashboard_context(request.user, tenant_id))
