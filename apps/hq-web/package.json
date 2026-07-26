@@ -1,0 +1,26 @@
+{
+  "name": "@dawatrace/hq-web",
+  "version": "0.1.0-alpha.1",
+  "private": true,
+  "type": "module",
+  "description": "TibaTrace headquarters web application",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "typecheck": "tsc --project tsconfig.json --noEmit",
+    "test": "vitest run",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.4",
+    "jsdom": "25.0.1",
+    "typescript": "5.7.3",
+    "vite": "^8.1.5",
+    "vitest": "^4.1.10"
+  }
+}
