@@ -684,7 +684,16 @@ class InsuranceRemittance(TenantConsistencyMixin, TimestampedModel):
 class InsuranceRemittanceLine(TenantConsistencyMixin, TimestampedModel):
     tenant = models.ForeignKey("tenancy.Tenant", on_delete=models.CASCADE, related_name="+")
     remittance = models.ForeignKey(InsuranceRemittance, on_delete=models.CASCADE, related_name="lines")
-    claim = models.ForeignKey(PrescriptionClaim, on_delete=models.PROTECT, related_name="remittance_lines")
+    # Nullable, because insurers send payment lines naming claim references we
+    # do not hold -- a typo, another provider's claim, or a claim raised in a
+    # system we have since replaced. That money physically arrived. Forcing a
+    # claim here would mean either dropping the line or attaching the payment to
+    # the wrong claim, and both are worse than recording it as unmatched for
+    # somebody to investigate.
+    claim = models.ForeignKey(
+        PrescriptionClaim, on_delete=models.PROTECT, null=True, blank=True,
+        related_name="remittance_lines",
+    )
     claimed_amount = models.DecimalField(max_digits=15, decimal_places=2)
     paid_amount = models.DecimalField(max_digits=15, decimal_places=2)
     adjustment_amount = models.DecimalField(max_digits=15, decimal_places=2, default=Decimal("0.00"))
@@ -738,7 +747,12 @@ class ClaimReconciliation(TenantConsistencyMixin, TimestampedModel):
 
 class ClaimReconciliationException(TenantConsistencyMixin, TimestampedModel):
     tenant = models.ForeignKey("tenancy.Tenant", on_delete=models.CASCADE, related_name="+")
-    claim = models.ForeignKey(PrescriptionClaim, on_delete=models.CASCADE, related_name="exceptions")
+    # Also nullable: the most important exception to raise is an unidentifiable
+    # payment, which by definition has no claim to point at.
+    claim = models.ForeignKey(
+        PrescriptionClaim, on_delete=models.CASCADE, null=True, blank=True,
+        related_name="exceptions",
+    )
     remittance = models.ForeignKey(InsuranceRemittance, on_delete=models.CASCADE, related_name="+")
     exception_type = models.CharField(max_length=64)
     variance_amount = models.DecimalField(max_digits=15, decimal_places=2)
