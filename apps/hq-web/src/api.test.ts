@@ -1,6 +1,17 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { HQApiError, formatMoney, loadApprovedUnpaidClaims, loadClaimsAwaitingDecision, loadHQOverview, loadInsurers, varianceNeedsExplanation } from './api.js';
+import {
+  HQApiError,
+  executeHQBusinessAction,
+  formatMoney,
+  loadApprovedUnpaidClaims,
+  loadClaimsAwaitingDecision,
+  loadHQOverview,
+  loadHQWorkspace,
+  loadInsurers,
+  varianceNeedsExplanation,
+} from './api.js';
+import type { HQBusinessAction, HQWorkItem } from './api.js';
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -84,6 +95,117 @@ describe('workbench collections', () => {
     // Showing them together is how transport acceptance starts looking like a
     // debt.
     expect(called[0]).not.toBe(called[1]);
+  });
+});
+
+describe('loadHQWorkspace', () => {
+  it('loads the cross-domain HQ workspace with the authenticated session', async () => {
+    const payload = {
+      business_modules: [],
+      generated_at: '2026-07-26T12:00:00Z',
+      people: { counts: {}, customers: [], patients: [], practitioners: [] },
+      catalogue: { counts: {}, skus: [] },
+      commerce: { counts: {}, dispatches: [], orders: [] },
+      governance: { counts: {}, audit_events: [], crosswalks: [], documents: [], domain_events: [], notifications: [] },
+    };
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(payload), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(loadHQWorkspace()).resolves.toEqual(payload);
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/hq/workspace/',
+      expect.objectContaining({ credentials: 'include' }),
+    );
+  });
+});
+
+describe('executeHQBusinessAction', () => {
+  it('posts the action with CSRF and tenant context', async () => {
+    const action: HQBusinessAction = {
+      confirm: 'Approve this customer?',
+      fields: [],
+      key: 'approve-customer',
+      label: 'Approve customer',
+      method: 'POST',
+      path: '/api/customers/customers/customer-1/approve/',
+      tone: 'primary',
+    };
+    const item: HQWorkItem = {
+      actions: [action],
+      detail: 'Pharmacy',
+      id: 'customer-1',
+      metrics: [],
+      reference: 'CUS-001',
+      status: 'PROSPECTIVE',
+      tenant_id: 'tenant-1',
+      tenant_name: 'HQ Demo',
+      title: 'Demo Pharmacy',
+    };
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ status: 'approved' }), {
+        headers: { 'Content-Type': 'application/json' },
+        status: 200,
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      executeHQBusinessAction(action, item, 'csrf-123', { reason: 'Verified' }),
+    ).resolves.toEqual({ status: 'approved' });
+    expect(fetchMock).toHaveBeenCalledWith(
+      action.path,
+      expect.objectContaining({
+        body: JSON.stringify({ reason: 'Verified' }),
+        credentials: 'include',
+        headers: expect.objectContaining({
+          'Content-Type': 'application/json',
+          'X-CSRFToken': 'csrf-123',
+          'X-Tenant-ID': 'tenant-1',
+        }),
+        method: 'POST',
+      }),
+    );
+  });
+
+  it('surfaces the service error message', async () => {
+    const action = {
+      confirm: '',
+      fields: [],
+      key: 'release-batch',
+      label: 'Release batch',
+      method: 'POST',
+      path: '/api/procurement/received-batches/batch-1/release/',
+      tone: 'primary',
+    } satisfies HQBusinessAction;
+    const item = {
+      actions: [action],
+      detail: '',
+      id: 'batch-1',
+      metrics: [],
+      reference: 'B-1',
+      status: 'QUARANTINED',
+      tenant_id: 'tenant-1',
+      tenant_name: 'HQ Demo',
+      title: 'Demo medicine',
+    } satisfies HQWorkItem;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ error: 'Inspection is incomplete.' }), {
+          headers: { 'Content-Type': 'application/json' },
+          status: 400,
+        }),
+      ),
+    );
+
+    await expect(
+      executeHQBusinessAction(action, item, 'csrf-123', {}),
+    ).rejects.toThrow('Inspection is incomplete.');
   });
 });
 

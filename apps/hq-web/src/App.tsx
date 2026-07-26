@@ -1,19 +1,25 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { CSSProperties } from 'react';
+import type { CSSProperties, FormEvent } from 'react';
 
 import {
   CLAIM_STATES,
   HQApiError,
+  executeHQBusinessAction,
   formatMoney,
+  loadActiveSubstances,
   loadApprovedUnpaidClaims,
   loadClaimsAwaitingDecision,
   loadClaimsNeedingAttention,
   loadCashVariances,
   loadForcedClosures,
   loadHQOverview,
+  loadHQWorkspace,
   loadInsurers,
   loadOpenRegisterSessions,
   loadClaims,
+  loadClinicalProducts,
+  loadManufacturedProducts,
+  loadManufacturers,
   loadPriceBooks,
   readSession,
   SignInError,
@@ -22,11 +28,18 @@ import {
   varianceNeedsExplanation,
 } from './api.js';
 import type {
+  ActiveSubstanceSummary,
   ClaimFilters,
+  ClinicalProductSummary,
   DashboardMetric,
+  HQBusinessAction,
   HQOverview,
+  HQWorkItem,
+  HQWorkspaceData,
   InsuranceClaim,
   Insurer,
+  ManufacturedProductSummary,
+  ManufacturerSummary,
   NetworkItem,
   PriceBookSummary,
   RegisterSessionSummary,
@@ -39,11 +52,15 @@ import type { IconName } from './icons.js';
 type WorkspaceView =
   | 'overview'
   | 'network'
+  | 'people'
+  | 'catalogue'
   | 'operations'
+  | 'commerce'
   | 'pricing'
   | 'cash'
   | 'insurance'
   | 'clinical'
+  | 'governance'
   | 'access';
 
 interface NavigationItem {
@@ -56,11 +73,15 @@ interface NavigationItem {
 const navigation: readonly NavigationItem[] = [
   { key: 'overview', label: 'Overview', caption: 'Command centre', icon: 'overview' },
   { key: 'network', label: 'Pharmacy network', caption: 'Tenants and locations', icon: 'network' },
+  { key: 'people', label: 'People & customers', caption: 'Care and commercial records', icon: 'patients' },
+  { key: 'catalogue', label: 'Medicine catalogue', caption: 'SKUs and product governance', icon: 'clinical' },
   { key: 'operations', label: 'Inventory & procurement', caption: 'Stock and supply', icon: 'inventory' },
+  { key: 'commerce', label: 'Sales & fulfilment', caption: 'Orders through delivery', icon: 'store' },
   { key: 'pricing', label: 'Pricing', caption: 'Branch price books', icon: 'database' },
   { key: 'cash', label: 'Cash control', caption: 'Shifts, tills and variances', icon: 'building' },
   { key: 'insurance', label: 'Insurance & Claims', caption: 'Adjudication & SHA', icon: 'insurance' },
   { key: 'clinical', label: 'Clinical governance', caption: 'Safety and standards', icon: 'clinical' },
+  { key: 'governance', label: 'System governance', caption: 'Audit, events and documents', icon: 'shield' },
   { key: 'access', label: 'Users & access', caption: 'Roles and security', icon: 'users' },
 ];
 
@@ -75,10 +96,25 @@ const viewMeta: Record<WorkspaceView, { readonly eyebrow: string; readonly title
     title: 'Pharmacy network coverage',
     description: 'Review connected tenants, active care locations and the people operating across the network.',
   },
+  people: {
+    eyebrow: 'People operations',
+    title: 'People & customers',
+    description: 'Review patient records, verified practitioners and commercial customers without exposing sensitive clinical details.',
+  },
+  catalogue: {
+    eyebrow: 'Product governance',
+    title: 'Medicine catalogue',
+    description: 'Inspect commercial SKUs, governed substances and manufacturer coverage used throughout stock, pricing and dispensing.',
+  },
   operations: {
     eyebrow: 'Supply operations',
     title: 'Inventory & procurement',
     description: 'Track stock readiness, quality holds and active dispensing demand before it affects patient care.',
+  },
+  commerce: {
+    eyebrow: 'Order operations',
+    title: 'Sales & fulfilment',
+    description: 'Follow customer demand from quotation and order through dispatch, delivery and return.',
   },
   pricing: {
     eyebrow: 'Commercial control',
@@ -99,6 +135,11 @@ const viewMeta: Record<WorkspaceView, { readonly eyebrow: string; readonly title
     eyebrow: 'Clinical governance',
     title: 'Safety & interoperability',
     description: 'Monitor clinical records, governed terminology and the FHIR R4 exchange surface.',
+  },
+  governance: {
+    eyebrow: 'Platform assurance',
+    title: 'System governance',
+    description: 'Monitor immutable audit records, clinical documents, domain events, notifications and legacy identifier migration.',
   },
   access: {
     eyebrow: 'Identity & control',
@@ -178,6 +219,7 @@ export function App() {
 
   return (
     <Dashboard
+      csrfToken={session.csrf_token}
       overview={overview}
       onSignOut={endSession}
       onRefresh={refresh}
@@ -188,12 +230,14 @@ export function App() {
 }
 
 function Dashboard({
+  csrfToken,
   overview,
   onRefresh,
   onSignOut,
   refreshFailed,
   refreshing,
 }: {
+  readonly csrfToken: string;
   readonly overview: HQOverview;
   readonly onRefresh: () => Promise<void>;
   readonly onSignOut: () => Promise<void>;
@@ -201,6 +245,8 @@ function Dashboard({
   readonly refreshing: boolean;
 }) {
   const [activeView, setActiveView] = useState<WorkspaceView>(() => viewFromHash());
+  const [workspaceData, setWorkspaceData] = useState<HQWorkspaceData | null>(null);
+  const [workspaceFailed, setWorkspaceFailed] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -213,6 +259,21 @@ function Dashboard({
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('hq-theme', theme);
   }, [theme]);
+
+  const reloadWorkspace = useCallback(async (signal?: AbortSignal) => {
+    setWorkspaceFailed(false);
+    try {
+      setWorkspaceData(await loadHQWorkspace(signal));
+    } catch {
+      if (!signal?.aborted) setWorkspaceFailed(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void reloadWorkspace(controller.signal);
+    return () => controller.abort();
+  }, [overview.generated_at, reloadWorkspace]);
 
   const toggleTheme = () => {
     setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
@@ -350,12 +411,16 @@ function Dashboard({
 
           {activeView === 'overview' ? <OverviewView overview={overview} onNavigate={setActiveView} /> : null}
           {activeView === 'network' ? <NetworkView overview={overview} /> : null}
-          {activeView === 'operations' ? <OperationsView overview={overview} /> : null}
+          {activeView === 'people' ? <PeopleView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} /> : null}
+          {activeView === 'catalogue' ? <CatalogueView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} /> : null}
+          {activeView === 'operations' ? <OperationsView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} overview={overview} /> : null}
+          {activeView === 'commerce' ? <CommerceView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} /> : null}
           {activeView === 'pricing' ? <PricingView /> : null}
           {activeView === 'cash' ? <CashControlView /> : null}
           {activeView === 'insurance' ? <InsuranceView /> : null}
-          {activeView === 'clinical' ? <ClinicalView overview={overview} /> : null}
-          {activeView === 'access' ? <AccessView overview={overview} /> : null}
+          {activeView === 'clinical' ? <ClinicalView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} overview={overview} /> : null}
+          {activeView === 'governance' ? <GovernanceView data={workspaceData} failed={workspaceFailed} /> : null}
+          {activeView === 'access' ? <AccessView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} overview={overview} /> : null}
         </main>
       </div>
 
@@ -481,7 +546,7 @@ function OverviewView({ overview, onNavigate }: { readonly overview: HQOverview;
           <PanelHeader eyebrow="Command centre" title="Move into a workspace" />
           <div className="command-links">
             <CommandLink href="/pos/" title="Point of sale" detail="Dispensing and sales operations" icon="store" />
-            <CommandLink href="/admin/" title="Administration" detail="Reference data and controls" icon="settings" />
+            <CommandLink href="#access" title="System controls" detail="Identity, security and governance" icon="settings" />
             <CommandLink href="/api/docs/" title="API workspace" detail="Integration contracts and testing" icon="docs" />
           </div>
         </article>
@@ -571,7 +636,20 @@ function NetworkView({ overview }: { readonly overview: HQOverview }) {
   );
 }
 
-function OperationsView({ overview }: { readonly overview: HQOverview }) {
+interface BusinessViewProps {
+  readonly csrfToken: string;
+  readonly data: HQWorkspaceData | null;
+  readonly failed: boolean;
+  readonly onWorkspaceChanged: () => Promise<void>;
+}
+
+function OperationsView({
+  csrfToken,
+  data,
+  failed,
+  onWorkspaceChanged,
+  overview,
+}: BusinessViewProps & { readonly overview: HQOverview }) {
   const summary = useSummary(overview);
   const released = metricValue(overview, 'Released stock batches');
   const holds = attentionValue(overview, 'Inventory quality holds');
@@ -603,6 +681,12 @@ function OperationsView({ overview }: { readonly overview: HQOverview }) {
         <SummaryCard icon="alert" label="Quality holds" value={holds} detail="Review or disposition required" tone={holds ? 'rose' : 'teal'} />
         <SummaryCard icon="clinical" label="Open prescriptions" value={openPrescriptions} detail="Active dispensing demand" tone={openPrescriptions ? 'amber' : 'navy'} />
       </section>
+
+      {failed
+        ? <WorkspaceSectionError domain="inventory and procurement workflow" />
+        : data
+          ? <BusinessWorkbench csrfToken={csrfToken} data={data} domain="operations" onChanged={onWorkspaceChanged} />
+          : <WorkspaceSectionLoading domain="inventory and procurement workflow" />}
 
       <section className="content-grid content-grid-primary">
         <article className="panel readiness-panel">
@@ -1119,7 +1203,7 @@ function InsuranceView() {
 
       <section className="content-grid content-grid-primary">
         <article className="panel">
-          <PanelHeader eyebrow="Insurer integrations" title="Configured insurers" actionHref="/admin/insurance/insurer/" actionLabel="Manage in admin" />
+          <PanelHeader eyebrow="Insurer integrations" title="Configured insurers" actionHref="#insurance" actionLabel="Open insurance workspace" />
           {insurers.length === 0 ? (
             <EmptyState icon="insurance" title="No insurers configured" detail="Add an insurer integration before submitting claims." />
           ) : (
@@ -1229,7 +1313,535 @@ function InsuranceView() {
   );
 }
 
-function ClinicalView({ overview }: { readonly overview: HQOverview }) {
+function PeopleView({
+  csrfToken,
+  data,
+  failed,
+  onWorkspaceChanged,
+}: BusinessViewProps) {
+  if (failed) return <WorkspaceSectionError domain="people and customer" />;
+  if (!data) return <WorkspaceSectionLoading domain="people and customer" />;
+
+  const { counts, customers, patients, practitioners } = data.people;
+  return (
+    <>
+      <section className="metric-grid network-metrics" aria-label="People and customer totals">
+        <SummaryCard icon="patients" label="Patient records" value={counts.patients} detail={`${formatNumber(counts.active_patients)} active`} />
+        <SummaryCard icon="clinical" label="Practitioners" value={counts.practitioners} detail={`${formatNumber(counts.verified_practitioners)} verified`} tone="teal" />
+        <SummaryCard icon="building" label="Customers" value={counts.customers} detail={`${formatNumber(counts.active_customers)} active`} />
+        <SummaryCard icon="shield" label="Verification gap" value={Math.max(counts.practitioners - counts.verified_practitioners, 0)} detail="Practitioners needing review" tone={counts.practitioners === counts.verified_practitioners ? 'teal' : 'amber'} />
+      </section>
+
+      <BusinessWorkbench csrfToken={csrfToken} data={data} domain="people" onChanged={onWorkspaceChanged} />
+
+      <section className="content-grid content-grid-primary">
+        <article className="panel">
+          <PanelHeader eyebrow="Care records" title="Recently updated patients" actionHref="/admin/patients/patient/" actionLabel="Manage patients" />
+          {patients.length ? (
+            <div className="table-scroll">
+              <table>
+                <thead><tr><th>Patient</th><th>Reference</th><th>Verification</th><th>Consent</th><th>Updated</th></tr></thead>
+                <tbody>
+                  {patients.map((patient) => (
+                    <tr key={patient.id}>
+                      <td><strong>{patient.full_name}</strong></td>
+                      <td><code>{patient.patient_number}</code></td>
+                      <td><StatusBadge value={patient.verification_status} /></td>
+                      <td><small>{titleCase(patient.consent_status)}</small></td>
+                      <td><span className="muted-cell">{formatDate(patient.updated_at)}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : <EmptyState icon="patients" title="No patient records" detail="Registered patient records will appear here without exposing sensitive clinical fields." />}
+        </article>
+
+        <article className="panel">
+          <PanelHeader eyebrow="Clinical workforce" title="Practitioner verification" actionHref="/admin/practitioners/practitioner/" actionLabel="Manage practitioners" />
+          {practitioners.length ? (
+            <div className="table-scroll">
+              <table>
+                <thead><tr><th>Practitioner</th><th>Profession</th><th>Registration</th><th>Licence</th><th>Verification</th></tr></thead>
+                <tbody>
+                  {practitioners.map((practitioner) => (
+                    <tr key={practitioner.id}>
+                      <td><strong>{practitioner.full_name}</strong></td>
+                      <td><small>{titleCase(practitioner.profession)}</small></td>
+                      <td><code>{practitioner.registration_number || '—'}</code></td>
+                      <td><StatusBadge value={practitioner.licence_status} /></td>
+                      <td><StatusBadge value={practitioner.verification_state} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : <EmptyState icon="clinical" title="No practitioner records" detail="Practitioners will appear here when added to the current workspace." />}
+        </article>
+      </section>
+
+      <article className="panel">
+        <PanelHeader eyebrow="Commercial records" title="Customer directory" actionHref="/admin/customers/customer/" actionLabel="Manage customers" />
+        {customers.length ? (
+          <div className="table-scroll">
+            <table>
+              <thead><tr><th>Customer</th><th>Number</th><th>Type</th><th>Status</th><th>Risk</th><th>Credit</th></tr></thead>
+              <tbody>
+                {customers.map((customer) => (
+                  <tr key={customer.id}>
+                    <td><strong>{customer.legal_name}</strong></td>
+                    <td><code>{customer.customer_number}</code></td>
+                    <td><small>{titleCase(customer.customer_type)}</small></td>
+                    <td><StatusBadge value={customer.status} /></td>
+                    <td><StatusBadge value={customer.risk_classification} /></td>
+                    <td><StatusBadge value={customer.credit_status} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : <EmptyState icon="building" title="No commercial customers" detail="Approved pharmacy, hospital and institutional customers will appear here." />}
+      </article>
+    </>
+  );
+}
+
+/**
+ * The catalogue layers, in the app rather than in Django admin.
+ *
+ * These four panels replace four links into `/admin/medicines/…`. The admin is
+ * a database editor: it shows every column, enforces none of the service rules,
+ * and is reachable only by staff accounts. Reading the product master should not
+ * require either.
+ *
+ * Read-only for now. The write path for these records goes through
+ * MedicineCatalogueService, and putting an edit form here before that is wired
+ * up would either bypass it or pretend to.
+ */
+type CatalogueLayer = 'substances' | 'clinical' | 'manufactured' | 'manufacturers';
+
+const CATALOGUE_LAYERS: readonly { readonly key: CatalogueLayer; readonly label: string; readonly detail: string }[] = [
+  { key: 'substances', label: 'Substances', detail: 'Canonical active ingredients' },
+  { key: 'clinical', label: 'Clinical products', detail: 'Strength, dose form and route' },
+  { key: 'manufactured', label: 'Manufactured products', detail: 'Brands and market authorisations' },
+  { key: 'manufacturers', label: 'Manufacturers', detail: 'Registered product sources' },
+];
+
+function CatalogueLayers() {
+  const [layer, setLayer] = useState<CatalogueLayer>('substances');
+  const [substances, setSubstances] = useState<readonly ActiveSubstanceSummary[] | null>(null);
+  const [clinical, setClinical] = useState<readonly ClinicalProductSummary[] | null>(null);
+  const [manufactured, setManufactured] = useState<readonly ManufacturedProductSummary[] | null>(null);
+  const [manufacturers, setManufacturers] = useState<readonly ManufacturerSummary[] | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const fail = () => {
+      if (!controller.signal.aborted) setFailed(true);
+    };
+    // Each layer is fetched once and kept. Switching tabs should not re-request
+    // data that has not changed.
+    loadActiveSubstances(controller.signal).then(setSubstances).catch(fail);
+    loadClinicalProducts(controller.signal).then(setClinical).catch(fail);
+    loadManufacturedProducts(controller.signal).then(setManufactured).catch(fail);
+    loadManufacturers(controller.signal).then(setManufacturers).catch(fail);
+    return () => controller.abort();
+  }, []);
+
+  if (failed) return <Unavailable />;
+
+  const rows = { substances, clinical, manufactured, manufacturers }[layer];
+
+  return (
+    <article className="panel table-panel">
+      <div className="table-toolbar">
+        <PanelHeader eyebrow="Catalogue layers" title="Product governance records" />
+        <nav className="segmented" aria-label="Catalogue layer">
+          {CATALOGUE_LAYERS.map((option) => (
+            <button
+              key={option.key}
+              type="button"
+              className={option.key === layer ? 'segmented-option is-active' : 'segmented-option'}
+              aria-pressed={option.key === layer}
+              title={option.detail}
+              onClick={() => setLayer(option.key)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </nav>
+      </div>
+
+      {rows === null ? (
+        <p className="muted-cell">Loading {layer === 'clinical' ? 'clinical products' : layer}…</p>
+      ) : rows.length === 0 ? (
+        <EmptyState
+          icon="clinical"
+          title={`No ${CATALOGUE_LAYERS.find((o) => o.key === layer)?.label.toLowerCase()}`}
+          detail="Records added to the product master appear here."
+        />
+      ) : (
+        <div className="table-scroll">
+          {layer === 'substances' && (
+            <table>
+              <thead><tr><th>Code</th><th>Canonical name</th><th>Type</th><th>Controlled</th><th>Scope</th><th>Status</th></tr></thead>
+              <tbody>
+                {substances?.map((row) => (
+                  <tr key={row.id}>
+                    <td><code>{row.code}</code></td>
+                    <td><strong>{row.canonical_name}</strong>{row.display_name && row.display_name !== row.canonical_name ? <small> · {row.display_name}</small> : null}</td>
+                    <td><small>{row.substance_type || '—'}</small></td>
+                    <td>{row.controlled_classification && row.controlled_classification !== 'NONE'
+                      ? <StatusBadge value={row.controlled_classification} />
+                      : <span className="muted-cell">—</span>}</td>
+                    <td><small>{row.is_global ? 'Global' : 'Tenant'}</small></td>
+                    <td><StatusBadge value={row.status} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {layer === 'clinical' && (
+            <table>
+              <thead><tr><th>Code</th><th>Product</th><th>Dose form</th><th>Ingredients</th><th>Classification</th><th>Status</th></tr></thead>
+              <tbody>
+                {clinical?.map((row) => (
+                  <tr key={row.id}>
+                    <td><code>{row.code}</code></td>
+                    <td><strong>{row.canonical_name}</strong></td>
+                    <td><small>{row.dose_form_name || '—'}</small></td>
+                    <td><small>{row.ingredients.length
+                      ? row.ingredients.map((i) => `${i.active_substance_name} ${i.numerator_value}${i.numerator_unit}`).join(' + ')
+                      : '—'}</small></td>
+                    <td><small>{[
+                      row.prescription_classification,
+                      row.controlled_classification !== 'NONE' ? row.controlled_classification : null,
+                      row.antimicrobial_classification !== 'NONE' ? row.antimicrobial_classification : null,
+                    ].filter(Boolean).join(' · ') || '—'}</small></td>
+                    <td><StatusBadge value={row.status} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {layer === 'manufactured' && (
+            <table>
+              <thead><tr><th>Code</th><th>Brand</th><th>Clinical product</th><th>Manufacturer</th><th>Authorisation</th><th>Licence</th></tr></thead>
+              <tbody>
+                {manufactured?.map((row) => (
+                  <tr key={row.id}>
+                    <td><code>{row.code}</code></td>
+                    <td><strong>{row.brand_name}</strong></td>
+                    <td><small>{row.clinical_product_name || '—'}</small></td>
+                    <td><span className="muted-cell">{row.manufacturer_name || '—'}</span></td>
+                    <td><code>{row.market_authorisation_number || '—'}</code></td>
+                    <td><StatusBadge value={row.licence_status || row.status} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {layer === 'manufacturers' && (
+            <table>
+              <thead><tr><th>Code</th><th>Legal name</th><th>Trading as</th><th>Country</th><th>Regulator ID</th><th>Status</th></tr></thead>
+              <tbody>
+                {manufacturers?.map((row) => (
+                  <tr key={row.id}>
+                    <td><code>{row.code}</code></td>
+                    <td><strong>{row.legal_name}</strong></td>
+                    <td><span className="muted-cell">{row.trading_name || '—'}</span></td>
+                    <td><small>{row.country || '—'}</small></td>
+                    <td><code>{row.regulator_identifier || '—'}</code></td>
+                    <td><StatusBadge value={row.is_active ? 'ACTIVE' : 'INACTIVE'} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+    </article>
+  );
+}
+
+function CatalogueView({
+  csrfToken,
+  data,
+  failed,
+  onWorkspaceChanged,
+}: BusinessViewProps) {
+  if (failed) return <WorkspaceSectionError domain="medicine catalogue" />;
+  if (!data) return <WorkspaceSectionLoading domain="medicine catalogue" />;
+
+  const { counts, skus } = data.catalogue;
+  return (
+    <>
+      <section className="metric-grid network-metrics" aria-label="Medicine catalogue totals">
+        <SummaryCard icon="inventory" label="Commercial SKUs" value={counts.skus} detail={`${formatNumber(counts.active_skus)} active`} />
+        <SummaryCard icon="clinical" label="Active substances" value={counts.substances} detail="Governed ingredient records" tone="teal" />
+        <SummaryCard icon="building" label="Manufacturers" value={counts.manufacturers} detail="Registered product sources" />
+        <SummaryCard icon="alert" label="Inactive SKUs" value={Math.max(counts.skus - counts.active_skus, 0)} detail="Draft, inactive or recalled" tone={counts.skus === counts.active_skus ? 'teal' : 'amber'} />
+      </section>
+
+      <BusinessWorkbench csrfToken={csrfToken} data={data} domain="catalogue" onChanged={onWorkspaceChanged} />
+
+      <article className="panel table-panel">
+        <div className="table-toolbar">
+          <PanelHeader eyebrow="Product master" title="Commercial medicine catalogue" />
+        </div>
+        {skus.length ? (
+          <div className="table-scroll">
+            <table>
+              <thead><tr><th>SKU</th><th>Display name</th><th>Medicine</th><th>Brand</th><th>Barcode</th><th>Uses</th><th>Status</th></tr></thead>
+              <tbody>
+                {skus.map((sku) => (
+                  <tr key={sku.id}>
+                    <td><code>{sku.sku_code}</code></td>
+                    <td><strong>{sku.display_name}</strong></td>
+                    <td><small>{sku.canonical_medicine_name}</small></td>
+                    <td><span className="muted-cell">{sku.brand_name || 'Generic'}</span></td>
+                    <td><code>{sku.default_barcode || '—'}</code></td>
+                    <td><small>{[sku.is_saleable && 'Sale', sku.is_purchasable && 'Purchase', sku.is_dispensable && 'Dispense'].filter(Boolean).join(' · ') || 'Reference only'}</small></td>
+                    <td><StatusBadge value={sku.status} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : <EmptyState icon="inventory" title="No commercial SKUs" detail="Create governed products, packages and identifiers before stock can be transacted." />}
+      </article>
+
+      <CatalogueLayers />
+    </>
+  );
+}
+
+function CommerceView({
+  csrfToken,
+  data,
+  failed,
+  onWorkspaceChanged,
+}: BusinessViewProps) {
+  if (failed) return <WorkspaceSectionError domain="sales and fulfilment" />;
+  if (!data) return <WorkspaceSectionLoading domain="sales and fulfilment" />;
+
+  const { counts, dispatches, orders } = data.commerce;
+  return (
+    <>
+      <section className="metric-grid network-metrics" aria-label="Sales and fulfilment totals">
+        <SummaryCard icon="docs" label="Quotations" value={counts.quotations} detail="Commercial offers" />
+        <SummaryCard icon="store" label="Open orders" value={counts.open_orders} detail={`${formatNumber(counts.orders)} total orders`} tone={counts.open_orders ? 'amber' : 'teal'} />
+        <SummaryCard icon="inventory" label="Dispatches" value={counts.dispatches} detail={`${formatNumber(counts.deliveries)} delivery records`} />
+        <SummaryCard icon="refresh" label="Returns" value={counts.returns} detail="Authorised return records" tone={counts.returns ? 'amber' : 'teal'} />
+      </section>
+
+      <BusinessWorkbench csrfToken={csrfToken} data={data} domain="commerce" onChanged={onWorkspaceChanged} />
+
+      <section className="content-grid content-grid-primary">
+        <article className="panel">
+          <PanelHeader eyebrow="Order book" title="Recent sales orders" actionHref="/admin/sales/salesorder/" actionLabel="Manage orders" />
+          {orders.length ? (
+            <div className="table-scroll">
+              <table>
+                <thead><tr><th>Order</th><th>Customer</th><th>Date</th><th>Priority</th><th>Total</th><th>Status</th></tr></thead>
+                <tbody>
+                  {orders.map((order) => (
+                    <tr key={order.id}>
+                      <td><code>{order.order_number}</code></td>
+                      <td><strong>{order.customer_name}</strong></td>
+                      <td><span className="muted-cell">{formatDate(order.order_date)}</span></td>
+                      <td><small>{order.priority ? `Priority ${order.priority}` : 'Standard'}</small></td>
+                      <td><strong>{formatMoney(order.total, order.currency)}</strong></td>
+                      <td><StatusBadge value={order.status} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : <EmptyState icon="store" title="No sales orders" detail="Approved customer demand will appear here as orders enter fulfilment." />}
+        </article>
+
+        <article className="panel">
+          <PanelHeader eyebrow="Outbound logistics" title="Recent dispatches" actionHref="/admin/sales/dispatchorder/" actionLabel="Manage dispatches" />
+          {dispatches.length ? (
+            <div className="table-scroll">
+              <table>
+                <thead><tr><th>Dispatch</th><th>Customer</th><th>Carrier</th><th>Dispatch date</th><th>Expected</th><th>Status</th></tr></thead>
+                <tbody>
+                  {dispatches.map((dispatch) => (
+                    <tr key={dispatch.id}>
+                      <td><code>{dispatch.dispatch_number}</code></td>
+                      <td><strong>{dispatch.customer_name}</strong></td>
+                      <td><small>{dispatch.carrier || 'Internal fleet'}</small></td>
+                      <td><span className="muted-cell">{formatDate(dispatch.dispatch_date)}</span></td>
+                      <td><span className="muted-cell">{formatDate(dispatch.expected_delivery_date)}</span></td>
+                      <td><StatusBadge value={dispatch.status} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : <EmptyState icon="inventory" title="No dispatches" detail="Packed orders will appear here when released to outbound logistics." />}
+        </article>
+      </section>
+
+      <article className="panel workflow-panel">
+        <PanelHeader eyebrow="Order-to-delivery" title="Fulfilment workspaces" />
+        <div className="workflow-grid">
+          <WorkflowLink href="/admin/sales/quotation/" icon="docs" step="01" title="Quotations" detail="Price and approve customer demand." />
+          <WorkflowLink href="/admin/sales/salesorder/" icon="store" step="02" title="Sales orders" detail="Control holds, allocation and approval." />
+          <WorkflowLink href="/admin/sales/pickingwave/" icon="inventory" step="03" title="Pick & pack" detail="Coordinate warehouse fulfilment." />
+          <WorkflowLink href="/admin/sales/deliveryrecord/" icon="check" step="04" title="Delivery & returns" detail="Capture proof, exceptions and returns." />
+        </div>
+      </article>
+    </>
+  );
+}
+
+function GovernanceView({ data, failed }: { readonly data: HQWorkspaceData | null; readonly failed: boolean }) {
+  if (failed) return <WorkspaceSectionError domain="system governance" />;
+  if (!data) return <WorkspaceSectionLoading domain="system governance" />;
+
+  const { audit_events: auditEvents, counts, crosswalks, documents, domain_events: domainEvents, notifications } = data.governance;
+  return (
+    <>
+      <section className="metric-grid network-metrics" aria-label="System governance totals">
+        <SummaryCard icon="shield" label="Audit events" value={counts.audit_events} detail="Immutable activity records" />
+        <SummaryCard icon="docs" label="Clinical documents" value={counts.documents} detail="Stored governed files" />
+        <SummaryCard icon="activity" label="Failed events" value={counts.failed_domain_events} detail={`${formatNumber(counts.domain_events)} domain events`} tone={counts.failed_domain_events ? 'rose' : 'teal'} />
+        <SummaryCard icon="external" label="Pending notifications" value={counts.pending_notifications} detail={`${formatNumber(counts.crosswalks)} legacy crosswalks`} tone={counts.pending_notifications ? 'amber' : 'teal'} />
+      </section>
+
+      <article className="panel">
+        <PanelHeader eyebrow="Immutable record" title="Recent audit activity" actionHref="/api/audit/events/" actionLabel="Open audit API" />
+        {auditEvents.length ? (
+          <div className="table-scroll">
+            <table>
+              <thead><tr><th>Time</th><th>Actor</th><th>Action</th><th>Record</th><th>Object</th><th>Outcome</th><th>Correlation</th></tr></thead>
+              <tbody>
+                {auditEvents.map((event) => (
+                  <tr key={event.id}>
+                    <td><span className="muted-cell">{formatDateTime(event.created_at)}</span></td>
+                    <td><strong>{event.actor}</strong></td>
+                    <td><small>{titleCase(event.action)}</small></td>
+                    <td><code>{event.model_name}</code></td>
+                    <td><code>{event.object_id}</code></td>
+                    <td><StatusBadge value={event.outcome} /></td>
+                    <td><code>{event.correlation_id || '—'}</code></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : <EmptyState icon="shield" title="No audit events" detail="Immutable activity records will appear as governed actions occur." />}
+      </article>
+
+      <section className="content-grid content-grid-primary governance-grid">
+        <article className="panel">
+          <PanelHeader eyebrow="Workflow engine" title="Domain event queue" />
+          {domainEvents.length ? (
+            <div className="table-scroll">
+              <table>
+                <thead><tr><th>Event</th><th>Aggregate</th><th>Attempts</th><th>Status</th><th>Created</th></tr></thead>
+                <tbody>
+                  {domainEvents.map((event) => (
+                    <tr key={event.id}>
+                      <td><strong>{event.event_type}</strong>{event.last_error ? <small className="row-detail text-rose">{event.last_error}</small> : null}</td>
+                      <td><code>{event.aggregate_type}</code></td>
+                      <td>{formatNumber(event.attempts)}</td>
+                      <td><StatusBadge value={event.status} /></td>
+                      <td><span className="muted-cell">{formatDateTime(event.created_at)}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : <EmptyState icon="activity" title="No domain events" detail="Workflow events will appear as asynchronous processing begins." />}
+        </article>
+
+        <article className="panel">
+          <PanelHeader eyebrow="Communications" title="Notification outbox" />
+          {notifications.length ? (
+            <div className="table-scroll">
+              <table>
+                <thead><tr><th>Channel</th><th>Recipient</th><th>Template</th><th>Status</th><th>Created</th></tr></thead>
+                <tbody>
+                  {notifications.map((notification) => (
+                    <tr key={notification.id}>
+                      <td><strong>{titleCase(notification.channel)}</strong></td>
+                      <td><code>{notification.recipient}</code></td>
+                      <td><small>{notification.template_code}</small></td>
+                      <td><StatusBadge value={notification.status} /></td>
+                      <td><span className="muted-cell">{formatDateTime(notification.created_at)}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : <EmptyState icon="external" title="Notification outbox is empty" detail="Queued patient and operational communications will appear here with masked recipients." />}
+        </article>
+      </section>
+
+      <section className="content-grid">
+        <article className="panel">
+          <PanelHeader eyebrow="Clinical storage" title="Recent documents" actionHref="/api/documents/" actionLabel="Open documents API" />
+          {documents.length ? (
+            <div className="table-scroll">
+              <table>
+                <thead><tr><th>Document</th><th>Type</th><th>Size</th><th>Malware scan</th><th>Created</th></tr></thead>
+                <tbody>
+                  {documents.map((document) => (
+                    <tr key={document.id}>
+                      <td><strong>{document.original_name}</strong></td>
+                      <td><small>{document.content_type}</small></td>
+                      <td>{formatBytes(document.size_bytes)}</td>
+                      <td><StatusBadge value={document.malware_scan_status} /></td>
+                      <td><span className="muted-cell">{formatDateTime(document.created_at)}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : <EmptyState icon="docs" title="No stored documents" detail="Clinical uploads will appear after storage and malware scanning." />}
+        </article>
+
+        <article className="panel">
+          <PanelHeader eyebrow="Migration assurance" title="Legacy identifier crosswalks" />
+          {crosswalks.length ? (
+            <div className="table-scroll">
+              <table>
+                <thead><tr><th>Source</th><th>Source type</th><th>Target type</th><th>Batch</th><th>Migrated</th></tr></thead>
+                <tbody>
+                  {crosswalks.map((crosswalk) => (
+                    <tr key={crosswalk.id}>
+                      <td><code>{crosswalk.source_system}</code></td>
+                      <td><small>{titleCase(crosswalk.source_entity_type)}</small></td>
+                      <td><small>{titleCase(crosswalk.target_entity_type)}</small></td>
+                      <td><code>{crosswalk.migration_batch || '—'}</code></td>
+                      <td><span className="muted-cell">{formatDateTime(crosswalk.migrated_at)}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : <EmptyState icon="database" title="No legacy crosswalks" detail="Immutable source-to-TibaTrace identifier mappings will appear during migration." />}
+        </article>
+      </section>
+    </>
+  );
+}
+
+function ClinicalView({
+  csrfToken,
+  data,
+  failed,
+  onWorkspaceChanged,
+  overview,
+}: BusinessViewProps & { readonly overview: HQOverview }) {
   const summary = useSummary(overview);
   const clinicalMetrics = [
     { label: 'Encounters', value: summary.get('Clinical encounters') ?? 0, icon: 'clinical' as IconName },
@@ -1247,6 +1859,12 @@ function ClinicalView({ overview }: { readonly overview: HQOverview }) {
       <section className="metric-grid network-metrics" aria-label="Clinical governance totals">
         {clinicalMetrics.map((metric) => <SummaryCard detail="Records in the current scope" icon={metric.icon} key={metric.label} label={metric.label} value={metric.value} />)}
       </section>
+
+      {failed
+        ? <WorkspaceSectionError domain="clinical workflow" />
+        : data
+          ? <BusinessWorkbench csrfToken={csrfToken} data={data} domain="clinical" onChanged={onWorkspaceChanged} />
+          : <WorkspaceSectionLoading domain="clinical workflow" />}
 
       <section className="content-grid content-grid-primary">
         <article className="panel">
@@ -1317,7 +1935,13 @@ function ClinicalView({ overview }: { readonly overview: HQOverview }) {
   );
 }
 
-function AccessView({ overview }: { readonly overview: HQOverview }) {
+function AccessView({
+  csrfToken,
+  data,
+  failed,
+  onWorkspaceChanged,
+  overview,
+}: BusinessViewProps & { readonly overview: HQOverview }) {
   const summary = useSummary(overview);
   const [sessions, setSessions] = useState<readonly RegisterSessionSummary[] | null>(null);
   const [variances, setVariances] = useState<readonly ShiftReportSummary[] | null>(null);
@@ -1347,8 +1971,14 @@ function AccessView({ overview }: { readonly overview: HQOverview }) {
             <p>{overview.is_platform_overview ? 'Platform-wide administrative access' : `Tenant-scoped access for ${overview.tenant_name}`}</p>
           </div>
         </div>
-        <a className="primary-button" href="/admin/identity/user/">Manage user accounts <Icon name="arrow" /></a>
+        <span className="status-badge status-active"><i /> Access controls active</span>
       </section>
+
+      {failed
+        ? <WorkspaceSectionError domain="user access register" />
+        : data
+          ? <BusinessWorkbench csrfToken={csrfToken} data={data} domain="access" onChanged={onWorkspaceChanged} />
+          : <WorkspaceSectionLoading domain="user access register" />}
 
       <section className="content-grid content-grid-primary">
         <article className="panel">
@@ -1366,7 +1996,7 @@ function AccessView({ overview }: { readonly overview: HQOverview }) {
           <div className="security-checks">
             <SecurityCheck title="Authenticated session" detail="HQ data requires a valid server-side session." />
             <SecurityCheck title="Tenant-aware access" detail="Operational queries respect the active workspace scope." />
-            <SecurityCheck title="Audited administration" detail="Sensitive changes remain in Django administration." />
+            <SecurityCheck title="Audited administration" detail="Sensitive changes remain behind governed service interfaces." />
           </div>
         </article>
       </section>
@@ -1527,10 +2157,11 @@ function PanelHeader({
   readonly onAction?: () => void;
   readonly title: string;
 }) {
+  const destination = actionHref ? hqDestinationFor(actionHref) : '';
   return (
     <header className="panel-header">
       <div><p className="eyebrow">{eyebrow}</p><h2>{title}</h2></div>
-      {actionHref && actionLabel ? <a href={actionHref}>{actionLabel} <Icon name="arrow" /></a> : null}
+      {destination && actionLabel && !isCurrentHqDestination(destination) ? <a href={destination}>{actionLabel} <Icon name="arrow" /></a> : null}
       {onAction && actionLabel ? <button onClick={onAction} type="button">{actionLabel} <Icon name="arrow" /></button> : null}
     </header>
   );
@@ -1554,28 +2185,46 @@ function Readiness({ detail, icon, label, status }: { readonly detail: string; r
 }
 
 function CommandLink({ detail, href, icon, title }: { readonly detail: string; readonly href: string; readonly icon: IconName; readonly title: string }) {
-  return <a href={href}><span><Icon name={icon} /></span><div><strong>{title}</strong><small>{detail}</small></div><Icon className="command-arrow" name="arrow" /></a>;
+  const destination = hqDestinationFor(href);
+  const content = <><span><Icon name={icon} /></span><div><strong>{title}</strong><small>{detail}</small></div>{!isCurrentHqDestination(destination) ? <Icon className="command-arrow" name="arrow" /> : null}</>;
+  return isCurrentHqDestination(destination)
+    ? <div className="command-link-static">{content}</div>
+    : <a href={destination}>{content}</a>;
 }
 
 function WorkflowLink({ detail, href, icon, step, title }: { readonly detail: string; readonly href: string; readonly icon: IconName; readonly step: string; readonly title: string }) {
-  return (
-    <a className="workflow-link" href={href}>
+  const destination = hqDestinationFor(href);
+  const content = (
+    <>
       <div className="workflow-top"><span><Icon name={icon} /></span><small>{step}</small></div>
       <strong>{title}</strong>
       <p>{detail}</p>
-      <b>Open workspace <Icon name="arrow" /></b>
-    </a>
+      <b>{isCurrentHqDestination(destination) ? 'Current workspace' : <>Open workspace <Icon name="arrow" /></>}</b>
+    </>
+  );
+  if (isCurrentHqDestination(destination)) {
+    return <div className="workflow-link workflow-link-static">{content}</div>;
+  }
+  return (
+    <a className="workflow-link" href={destination}>{content}</a>
   );
 }
 
 function PriorityItem({ action, detail, href, icon, tone = 'amber', value, valueLabel }: { readonly action: string; readonly detail: string; readonly href: string; readonly icon: IconName; readonly tone?: string; readonly value: number; readonly valueLabel?: string }) {
-  return (
-    <a className="priority-item" href={href}>
+  const destination = hqDestinationFor(href);
+  const content = (
+    <>
       <span className={`priority-icon priority-${tone}`}><Icon name={icon} /></span>
       <div><strong>{action}</strong><small>{detail}</small></div>
       <b>{valueLabel ?? formatNumber(value)}</b>
-      <Icon className="priority-arrow" name="chevron" />
-    </a>
+      {!isCurrentHqDestination(destination) ? <Icon className="priority-arrow" name="chevron" /> : null}
+    </>
+  );
+  if (isCurrentHqDestination(destination)) {
+    return <div className="priority-item priority-item-static">{content}</div>;
+  }
+  return (
+    <a className="priority-item" href={destination}>{content}</a>
   );
 }
 
@@ -1589,6 +2238,377 @@ function Stat({ label, value }: { readonly label: string; readonly value: number
 
 function EmptyState({ detail, icon, title }: { readonly detail: string; readonly icon: IconName; readonly title: string }) {
   return <div className="empty-state"><span><Icon name={icon} /></span><strong>{title}</strong><p>{detail}</p></div>;
+}
+
+function WorkspaceSectionLoading({ domain }: { readonly domain: string }) {
+  return (
+    <article className="panel">
+      <EmptyState icon="refresh" title={`Loading ${domain} data`} detail="The latest governed records are being prepared for this workspace." />
+    </article>
+  );
+}
+
+function WorkspaceSectionError({ domain }: { readonly domain: string }) {
+  return (
+    <div className="inline-alert" role="status">
+      <Icon name="alert" />
+      The {domain} workspace could not be loaded. Refresh the HQ snapshot to try again.
+    </div>
+  );
+}
+
+interface BusinessWorkbenchProps {
+  readonly csrfToken: string;
+  readonly data: HQWorkspaceData;
+  readonly domain: string;
+  readonly onChanged: () => Promise<void>;
+}
+
+interface PendingBusinessAction {
+  readonly action: HQBusinessAction;
+  readonly item: HQWorkItem;
+}
+
+function BusinessWorkbench({
+  csrfToken,
+  data,
+  domain,
+  onChanged,
+}: BusinessWorkbenchProps) {
+  const modules = useMemo(
+    () => data.business_modules.filter((module) => module.domain === domain),
+    [data.business_modules, domain],
+  );
+  const [activeModuleKey, setActiveModuleKey] = useState('');
+  const [query, setQuery] = useState('');
+  const [pendingAction, setPendingAction] = useState<PendingBusinessAction | null>(null);
+
+  useEffect(() => {
+    if (!modules.some((module) => module.key === activeModuleKey)) {
+      setActiveModuleKey(modules[0]?.key ?? '');
+    }
+  }, [activeModuleKey, modules]);
+
+  const activeModule = modules.find((module) => module.key === activeModuleKey) ?? modules[0];
+  const records = useMemo(() => {
+    if (!activeModule) return [];
+    const normalizedQuery = query.trim().toLowerCase();
+    if (!normalizedQuery) return activeModule.records;
+    return activeModule.records.filter((record) => (
+      [
+        record.reference,
+        record.title,
+        record.status,
+        record.detail,
+        record.tenant_name,
+      ].some((value) => value.toLowerCase().includes(normalizedQuery))
+    ));
+  }, [activeModule, query]);
+  const actionableCount = activeModule?.records.filter((record) => record.actions.length > 0).length ?? 0;
+
+  return (
+    <article className="panel business-workbench">
+      <header className="business-workbench-head">
+        <div>
+          <p className="eyebrow">Native business desk</p>
+          <h2>{activeModule?.title ?? 'Governed workflow'}</h2>
+          <p>{activeModule?.description ?? 'No workflow modules are configured for this domain.'}</p>
+        </div>
+        {activeModule ? (
+          <div className="business-workbench-summary">
+            <span><strong>{formatNumber(activeModule.records.length)}</strong> records</span>
+            <span><strong>{formatNumber(actionableCount)}</strong> actionable</span>
+          </div>
+        ) : null}
+      </header>
+
+      {modules.length ? (
+        <>
+          <div className="module-tabs" role="tablist" aria-label="Business workflow modules">
+            {modules.map((module) => (
+              <button
+                aria-selected={module.key === activeModule?.key}
+                className={module.key === activeModule?.key ? 'module-tab module-tab-active' : 'module-tab'}
+                key={module.key}
+                onClick={() => {
+                  setActiveModuleKey(module.key);
+                  setQuery('');
+                }}
+                role="tab"
+                type="button"
+              >
+                <span>{module.title}</span>
+                <b>{formatNumber(module.records.length)}</b>
+              </button>
+            ))}
+          </div>
+
+          <div className="business-toolbar">
+            <label>
+              <Icon name="search" />
+              <span className="sr-only">Search {activeModule?.title}</span>
+              <input
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder={`Search ${activeModule?.title.toLowerCase() ?? 'records'}`}
+                type="search"
+                value={query}
+              />
+            </label>
+            <small>Actions shown are valid for the record’s current state.</small>
+          </div>
+
+          {records.length ? (
+            <div className="business-records">
+              {records.map((item) => (
+                <BusinessRecord
+                  item={item}
+                  key={`${activeModule?.key ?? domain}-${item.id}`}
+                  onAction={(action) => setPendingAction({ action, item })}
+                />
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              detail={query ? 'Clear the search to restore the complete governed queue.' : 'Records will appear as this workflow receives business activity.'}
+              icon={query ? 'search' : 'check'}
+              title={query ? 'No matching records' : `No ${activeModule?.title.toLowerCase() ?? 'workflow'} records`}
+            />
+          )}
+        </>
+      ) : (
+        <EmptyState icon="shield" title="Oversight only" detail="This domain has no state-changing HQ workflow. Its authoritative records remain visible in the panels below." />
+      )}
+
+      {pendingAction ? (
+        <BusinessActionDialog
+          csrfToken={csrfToken}
+          onChanged={onChanged}
+          onClose={() => setPendingAction(null)}
+          pending={pendingAction}
+        />
+      ) : null}
+    </article>
+  );
+}
+
+function BusinessRecord({
+  item,
+  onAction,
+}: {
+  readonly item: HQWorkItem;
+  readonly onAction: (action: HQBusinessAction) => void;
+}) {
+  return (
+    <section className="business-record">
+      <div className="record-identity">
+        <div>
+          <code>{item.reference || 'No reference'}</code>
+          <span>{item.tenant_name}</span>
+        </div>
+        <StatusBadge value={item.status} />
+      </div>
+      <div className="record-body">
+        <div>
+          <h3>{item.title}</h3>
+          <p>{item.detail || 'No additional detail recorded.'}</p>
+        </div>
+        {item.metrics.length ? (
+          <dl className="record-metrics">
+            {item.metrics.map((metric) => (
+              <div key={`${item.id}-${metric.label}`}>
+                <dt>{metric.label}</dt>
+                <dd>{friendlyMetricValue(metric.value)}</dd>
+              </div>
+            ))}
+          </dl>
+        ) : null}
+      </div>
+      <footer className="record-actions">
+        {item.actions.length ? (
+          item.actions.map((action) => (
+            <button
+              className={`business-action business-action-${action.tone}`}
+              key={action.key}
+              onClick={() => onAction(action)}
+              type="button"
+            >
+              {action.label}
+              <Icon name="arrow" />
+            </button>
+          ))
+        ) : (
+          <span><Icon name="check" /> No action required in this state</span>
+        )}
+      </footer>
+    </section>
+  );
+}
+
+function BusinessActionDialog({
+  csrfToken,
+  onChanged,
+  onClose,
+  pending,
+}: {
+  readonly csrfToken: string;
+  readonly onChanged: () => Promise<void>;
+  readonly onClose: () => void;
+  readonly pending: PendingBusinessAction;
+}) {
+  const { action, item } = pending;
+  const [values, setValues] = useState<Record<string, boolean | number | string>>(
+    () => Object.fromEntries(action.fields.map((field) => [field.name, field.default])),
+  );
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !busy) onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [busy, onClose]);
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const missingField = action.fields.find((field) => {
+      const value = values[field.name];
+      return field.required && (
+        value === undefined
+        || value === false
+        || (typeof value === 'string' && !value.trim())
+      );
+    });
+    if (missingField) {
+      setError(`${missingField.label} is required.`);
+      return;
+    }
+
+    setBusy(true);
+    setError('');
+    try {
+      await executeHQBusinessAction(action, item, csrfToken, values);
+      await onChanged();
+      onClose();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'The workflow action could not be completed.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div
+      className="business-dialog-backdrop"
+      onMouseDown={(event) => {
+        if (event.currentTarget === event.target && !busy) onClose();
+      }}
+      role="presentation"
+    >
+      <section aria-labelledby="business-dialog-title" aria-modal="true" className="business-dialog" role="dialog">
+        <header>
+          <div>
+            <p className="eyebrow">Governed action</p>
+            <h2 id="business-dialog-title">{action.label}</h2>
+          </div>
+          <button aria-label="Close action" disabled={busy} onClick={onClose} type="button"><Icon name="close" /></button>
+        </header>
+        <div className="business-dialog-record">
+          <div><code>{item.reference}</code><strong>{item.title}</strong></div>
+          <StatusBadge value={item.status} />
+        </div>
+        <p className="business-dialog-confirm"><Icon name="shield" /> {action.confirm || 'Confirm this state transition.'}</p>
+        <form onSubmit={(event) => void submit(event)}>
+          {action.fields.map((field) => (
+            <ActionField
+              field={field}
+              key={field.name}
+              onChange={(value) => setValues((current) => ({ ...current, [field.name]: value }))}
+              value={values[field.name]}
+            />
+          ))}
+          {error ? <div className="business-dialog-error" role="alert"><Icon name="alert" /> {error}</div> : null}
+          <footer>
+            <button className="secondary-button" disabled={busy} onClick={onClose} type="button">Cancel</button>
+            <button className={`primary-button business-action-${action.tone}`} disabled={busy} type="submit">
+              {busy ? 'Completing action…' : action.label}
+            </button>
+          </footer>
+        </form>
+      </section>
+    </div>
+  );
+}
+
+function ActionField({
+  field,
+  onChange,
+  value,
+}: {
+  readonly field: HQBusinessAction['fields'][number];
+  readonly onChange: (value: boolean | number | string) => void;
+  readonly value: boolean | number | string | undefined;
+}) {
+  const fieldId = `business-field-${field.name}`;
+  if (field.type === 'checkbox') {
+    return (
+      <label className="business-checkbox" htmlFor={fieldId}>
+        <input
+          checked={Boolean(value)}
+          id={fieldId}
+          onChange={(event) => onChange(event.target.checked)}
+          type="checkbox"
+        />
+        <span>{field.label}</span>
+      </label>
+    );
+  }
+  return (
+    <label className="business-field" htmlFor={fieldId}>
+      <span>{field.label}{field.required ? <b>Required</b> : null}</span>
+      {field.type === 'textarea' ? (
+        <textarea
+          autoFocus
+          id={fieldId}
+          onChange={(event) => onChange(event.target.value)}
+          required={field.required}
+          rows={4}
+          value={String(value ?? '')}
+        />
+      ) : field.type === 'select' ? (
+        <select
+          autoFocus
+          id={fieldId}
+          onChange={(event) => onChange(event.target.value)}
+          required={field.required}
+          value={String(value ?? '')}
+        >
+          {field.options.map((option) => <option key={option} value={option}>{titleCase(option)}</option>)}
+        </select>
+      ) : (
+        <input
+          autoFocus
+          id={fieldId}
+          onChange={(event) => onChange(field.type === 'number' ? Number(event.target.value) : event.target.value)}
+          required={field.required}
+          type={field.type}
+          value={String(value ?? '')}
+        />
+      )}
+    </label>
+  );
+}
+
+function friendlyMetricValue(value: string) {
+  if (!value) return '—';
+  if (/^\d{4}-\d{2}-\d{2}T/.test(value)) return formatDateTime(value);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return formatDate(value);
+  return titleCase(value);
+}
+
+function StatusBadge({ value }: { readonly value: string }) {
+  return <span className={`status-badge status-${statusTone(value)}`}><i /> {titleCase(value)}</span>;
 }
 
 function NotificationPopover({ overview }: { readonly overview: HQOverview }) {
@@ -1616,7 +2636,7 @@ function UserMenu({ overview, onSignOut }: {
     <div className="popover user-menu">
       <div className="user-menu-head"><span>{initials(overview.user_name)}</span><div><strong>{displayName(overview.user_name)}</strong><small>{overview.tenant_name}</small></div></div>
       <a href="#access"><Icon name="security" /> Access overview</a>
-      <a href="/admin/"><Icon name="settings" /> Administration</a>
+      <a href="#access"><Icon name="settings" /> System controls</a>
       <a href="/api/docs/"><Icon name="docs" /> API workspace</a>
       <button className="signout-link" type="button" onClick={onSignOut}>
         <Icon name="external" /> Sign out
@@ -1629,7 +2649,7 @@ function CommandPalette({ onClose, onNavigate }: { readonly onClose: () => void;
   const [query, setQuery] = useState('');
   const actions = [
     ...navigation.map((item) => ({ ...item, href: `#${item.key}`, type: 'HQ view' })),
-    { key: 'admin', label: 'Administration', caption: 'Manage reference data and controls', icon: 'settings' as IconName, href: '/admin/', type: 'Workspace' },
+    { key: 'controls', label: 'System controls', caption: 'Identity, security and governance', icon: 'settings' as IconName, href: '#access', type: 'HQ view' },
     { key: 'pos', label: 'Point of sale', caption: 'Open dispensing operations', icon: 'store' as IconName, href: '/pos/', type: 'Workspace' },
     { key: 'api', label: 'API documentation', caption: 'Inspect integration contracts', icon: 'docs' as IconName, href: '/api/docs/', type: 'Workspace' },
   ];
@@ -1820,6 +2840,40 @@ function navigateTo(view: WorkspaceView, onNavigate: (view: WorkspaceView) => vo
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
+function hqDestinationFor(href: string) {
+  if (!href.startsWith('/admin/')) return href;
+  const routes: readonly [string, WorkspaceView][] = [
+    ['/admin/tenancy/', 'network'],
+    ['/admin/organizations/', 'network'],
+    ['/admin/patients/', 'people'],
+    ['/admin/practitioners/', 'people'],
+    ['/admin/customers/', 'people'],
+    ['/admin/medicines/', 'catalogue'],
+    ['/admin/procurement/', 'operations'],
+    ['/admin/inventory/', 'operations'],
+    ['/admin/sales/', 'commerce'],
+    ['/admin/pricing/', 'pricing'],
+    ['/admin/pos_shift/', 'cash'],
+    ['/admin/insurance/', 'insurance'],
+    ['/admin/prescription/', 'clinical'],
+    ['/admin/clinical/', 'clinical'],
+    ['/admin/cds/', 'clinical'],
+    ['/admin/terminology/', 'clinical'],
+    ['/admin/audit/', 'governance'],
+    ['/admin/documents/', 'governance'],
+    ['/admin/workflows/', 'governance'],
+    ['/admin/notifications/', 'governance'],
+    ['/admin/crosswalks/', 'governance'],
+    ['/admin/identity/', 'access'],
+  ];
+  const route = routes.find(([prefix]) => href.startsWith(prefix));
+  return `#${route?.[1] ?? 'access'}`;
+}
+
+function isCurrentHqDestination(destination: string) {
+  return destination === `#${viewFromHash()}`;
+}
+
 function metricValue(overview: HQOverview, label: string) {
   return overview.metrics.find((metric) => metric.label === label)?.value ?? 0;
 }
@@ -1870,6 +2924,39 @@ function formatTime(value: string) {
   return new Intl.DateTimeFormat('en-KE', { hour: '2-digit', minute: '2-digit' }).format(date);
 }
 
-function titleCase(value: string) {
-  return value.toLowerCase().replace(/(^|\s)\S/g, (letter) => letter.toUpperCase());
+function formatDate(value: string | null) {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat('en-KE', { day: '2-digit', month: 'short', year: 'numeric' }).format(date);
+}
+
+function formatDateTime(value: string | null) {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat('en-KE', {
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  }).format(date);
+}
+
+function formatBytes(value: number) {
+  if (value < 1024) return `${formatNumber(value)} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function statusTone(value: string) {
+  const status = value.toUpperCase();
+  if (['ACTIVE', 'APPROVED', 'CLEAN', 'COMPLETED', 'DELIVERED', 'PASSED', 'PROCESSED', 'SUCCESS', 'VALID', 'VERIFIED'].includes(status)) return 'active';
+  if (['BLOCKED', 'CRITICAL', 'FAILED', 'HIGH', 'INVALID', 'RECALLED', 'REJECTED', 'SUSPENDED'].includes(status)) return 'suspended';
+  return 'warning';
+}
+
+function titleCase(value: string | number) {
+  return String(value).replace(/[_-]+/g, ' ').toLowerCase().replace(/(^|\s)\S/g, (letter) => letter.toUpperCase());
 }

@@ -44,6 +44,222 @@ export interface HQOverview {
   readonly user_name: string;
 }
 
+export interface HQPatient {
+  readonly consent_status: string;
+  readonly full_name: string;
+  readonly id: string;
+  readonly is_active: boolean;
+  readonly patient_number: string;
+  readonly updated_at: string;
+  readonly verification_status: string;
+}
+
+export interface HQPractitioner {
+  readonly full_name: string;
+  readonly id: string;
+  readonly licence_status: string;
+  readonly profession: string;
+  readonly registration_number: string;
+  readonly status: string;
+  readonly verification_state: string;
+}
+
+export interface HQCustomer {
+  readonly credit_status: string;
+  readonly customer_number: string;
+  readonly customer_type: string;
+  readonly id: string;
+  readonly legal_name: string;
+  readonly risk_classification: string;
+  readonly status: string;
+}
+
+export interface HQSku {
+  readonly brand_name: string;
+  readonly canonical_medicine_name: string;
+  readonly default_barcode: string;
+  readonly display_name: string;
+  readonly id: string;
+  readonly is_dispensable: boolean;
+  readonly is_purchasable: boolean;
+  readonly is_saleable: boolean;
+  readonly sku_code: string;
+  readonly status: string;
+}
+
+export interface HQSalesOrder {
+  readonly currency: string;
+  readonly customer_name: string;
+  readonly id: string;
+  readonly order_date: string;
+  readonly order_number: string;
+  readonly priority: number;
+  readonly requested_delivery_date: string | null;
+  readonly status: string;
+  readonly total: Money;
+}
+
+export interface HQDispatch {
+  readonly carrier: string;
+  readonly customer_name: string;
+  readonly dispatch_date: string | null;
+  readonly dispatch_number: string;
+  readonly expected_delivery_date: string | null;
+  readonly id: string;
+  readonly status: string;
+}
+
+export interface HQAuditEvent {
+  readonly action: string;
+  readonly actor: string;
+  readonly correlation_id: string;
+  readonly created_at: string;
+  readonly id: string;
+  readonly model_name: string;
+  readonly object_id: string;
+  readonly outcome: string;
+}
+
+export interface HQDocument {
+  readonly content_type: string;
+  readonly created_at: string;
+  readonly id: string;
+  readonly malware_scan_status: string;
+  readonly original_name: string;
+  readonly size_bytes: number;
+}
+
+export interface HQDomainEvent {
+  readonly aggregate_type: string;
+  readonly attempts: number;
+  readonly created_at: string;
+  readonly event_type: string;
+  readonly id: string;
+  readonly last_error: string;
+  readonly status: string;
+}
+
+export interface HQNotification {
+  readonly channel: string;
+  readonly created_at: string;
+  readonly id: string;
+  readonly last_error: string;
+  readonly recipient: string;
+  readonly status: string;
+  readonly template_code: string;
+}
+
+export interface HQCrosswalk {
+  readonly created_at: string;
+  readonly id: string;
+  readonly migrated_at: string | null;
+  readonly migration_batch: string;
+  readonly source_entity_type: string;
+  readonly source_system: string;
+  readonly target_entity_type: string;
+}
+
+export type HQActionFieldType = 'checkbox' | 'number' | 'select' | 'text' | 'textarea';
+
+export interface HQActionField {
+  readonly default: boolean | number | string;
+  readonly label: string;
+  readonly name: string;
+  readonly options: readonly string[];
+  readonly required: boolean;
+  readonly type: HQActionFieldType;
+}
+
+export interface HQBusinessAction {
+  readonly confirm: string;
+  readonly fields: readonly HQActionField[];
+  readonly key: string;
+  readonly label: string;
+  readonly method: 'POST';
+  readonly path: string;
+  readonly tone: 'danger' | 'primary' | 'warning';
+}
+
+export interface HQWorkMetric {
+  readonly label: string;
+  readonly value: string;
+}
+
+export interface HQWorkItem {
+  readonly actions: readonly HQBusinessAction[];
+  readonly detail: string;
+  readonly id: string;
+  readonly metrics: readonly HQWorkMetric[];
+  readonly reference: string;
+  readonly status: string;
+  readonly tenant_id: string;
+  readonly tenant_name: string;
+  readonly title: string;
+}
+
+export interface HQBusinessModule {
+  readonly description: string;
+  readonly domain: string;
+  readonly key: string;
+  readonly records: readonly HQWorkItem[];
+  readonly title: string;
+}
+
+export interface HQWorkspaceData {
+  readonly business_modules: readonly HQBusinessModule[];
+  readonly generated_at: string;
+  readonly people: {
+    readonly counts: {
+      readonly active_customers: number;
+      readonly active_patients: number;
+      readonly customers: number;
+      readonly patients: number;
+      readonly practitioners: number;
+      readonly verified_practitioners: number;
+    };
+    readonly customers: readonly HQCustomer[];
+    readonly patients: readonly HQPatient[];
+    readonly practitioners: readonly HQPractitioner[];
+  };
+  readonly catalogue: {
+    readonly counts: {
+      readonly active_skus: number;
+      readonly manufacturers: number;
+      readonly skus: number;
+      readonly substances: number;
+    };
+    readonly skus: readonly HQSku[];
+  };
+  readonly commerce: {
+    readonly counts: {
+      readonly deliveries: number;
+      readonly dispatches: number;
+      readonly open_orders: number;
+      readonly orders: number;
+      readonly quotations: number;
+      readonly returns: number;
+    };
+    readonly dispatches: readonly HQDispatch[];
+    readonly orders: readonly HQSalesOrder[];
+  };
+  readonly governance: {
+    readonly counts: {
+      readonly audit_events: number;
+      readonly crosswalks: number;
+      readonly documents: number;
+      readonly domain_events: number;
+      readonly failed_domain_events: number;
+      readonly notifications: number;
+      readonly pending_notifications: number;
+    };
+    readonly audit_events: readonly HQAuditEvent[];
+    readonly crosswalks: readonly HQCrosswalk[];
+    readonly documents: readonly HQDocument[];
+    readonly domain_events: readonly HQDomainEvent[];
+    readonly notifications: readonly HQNotification[];
+  };
+}
+
 export class HQApiError extends Error {
   constructor(
     readonly status: number,
@@ -66,6 +282,54 @@ export async function loadHQOverview(signal?: AbortSignal): Promise<HQOverview> 
     throw new HQApiError(response.status, `HQ overview request failed with ${response.status}.`);
   }
   return (await response.json()) as HQOverview;
+}
+
+export async function loadHQWorkspace(signal?: AbortSignal): Promise<HQWorkspaceData> {
+  const request: RequestInit = {
+    credentials: 'include',
+    headers: { Accept: 'application/json' },
+  };
+  if (signal) request.signal = signal;
+
+  const response = await fetch('/api/hq/workspace/', request);
+  if (!response.ok) {
+    throw new HQApiError(response.status, `HQ workspace request failed with ${response.status}.`);
+  }
+  return (await response.json()) as HQWorkspaceData;
+}
+
+export async function executeHQBusinessAction(
+  action: HQBusinessAction,
+  item: HQWorkItem,
+  csrfToken: string,
+  values: Readonly<Record<string, boolean | number | string>>,
+): Promise<unknown> {
+  const tenantHeaders = item.tenant_id ? { 'X-Tenant-ID': item.tenant_id } : {};
+  const response = await fetch(action.path, {
+    body: JSON.stringify(values),
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      'X-CSRFToken': csrfToken,
+      ...tenantHeaders,
+    },
+    method: action.method,
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => null) as {
+      readonly detail?: string;
+      readonly error?: string | Record<string, unknown>;
+    } | null;
+    const serviceMessage = typeof body?.error === 'string'
+      ? body.error
+      : body?.detail;
+    throw new HQApiError(
+      response.status,
+      serviceMessage ?? `Action failed with ${response.status}.`,
+    );
+  }
+  return response.status === 204 ? null : response.json();
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -182,6 +446,84 @@ export interface PriceBookSummary {
 
 export const loadPriceBooks = (signal?: AbortSignal) =>
   getCollection<PriceBookSummary>('/api/pricing/books/', signal);
+
+/* ── product master ────────────────────────────────────────────────────────────
+
+   The catalogue layers, each a governed record in its own right: a substance is
+   the ingredient, a clinical product is what was prescribed, a manufactured
+   product is the brand, and a SKU is the pack that crosses the counter.
+
+   Fields here mirror the serialisers exactly. Anything absent from the response
+   is absent from the type, so a section cannot render a field the server never
+   sends.
+   ────────────────────────────────────────────────────────────────────────────── */
+
+export interface ActiveSubstanceSummary {
+  readonly id: string;
+  readonly code: string;
+  readonly canonical_name: string;
+  readonly display_name: string;
+  readonly substance_type: string;
+  readonly controlled_classification: string;
+  readonly status: string;
+  /** Reference data shared across tenants rather than owned by one. */
+  readonly is_global: boolean;
+}
+
+export interface ClinicalProductSummary {
+  readonly id: string;
+  readonly code: string;
+  readonly canonical_name: string;
+  readonly dose_form_name: string;
+  readonly prescription_classification: string;
+  readonly controlled_classification: string;
+  readonly antimicrobial_classification: string;
+  readonly paediatric_suitable: boolean;
+  readonly status: string;
+  readonly ingredients: readonly {
+    readonly id: string;
+    readonly active_substance_name: string;
+    readonly numerator_value: string;
+    readonly numerator_unit: string;
+    readonly role: string;
+  }[];
+}
+
+export interface ManufacturedProductSummary {
+  readonly id: string;
+  readonly code: string;
+  readonly brand_name: string;
+  readonly clinical_product_name: string;
+  readonly manufacturer_name: string;
+  readonly market_authorisation_number: string;
+  readonly licence_status: string;
+  readonly status: string;
+}
+
+export interface ManufacturerSummary {
+  readonly id: string;
+  readonly code: string;
+  readonly legal_name: string;
+  readonly trading_name: string;
+  readonly country: string;
+  readonly regulator_identifier: string;
+  readonly is_active: boolean;
+}
+
+export const loadActiveSubstances = (signal?: AbortSignal) =>
+  getCollection<ActiveSubstanceSummary>('/api/medicines/substances/', signal);
+
+export const loadClinicalProducts = (signal?: AbortSignal) =>
+  getCollection<ClinicalProductSummary>('/api/medicines/clinical-products/', signal);
+
+export const loadManufacturedProducts = (signal?: AbortSignal) =>
+  getCollection<ManufacturedProductSummary>(
+    '/api/medicines/manufactured-products/',
+    signal,
+  );
+
+export const loadManufacturers = (signal?: AbortSignal) =>
+  getCollection<ManufacturerSummary>('/api/medicines/manufacturers/', signal);
 
 /* ── shift and cash control ────────────────────────────────────────────────── */
 
