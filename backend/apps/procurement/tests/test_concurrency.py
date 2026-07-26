@@ -36,11 +36,21 @@ class TestGoodsReceiptConcurrency(TransactionTestCase):
         self.tenant = Tenant.objects.create(name="Concurrency Tenant", slug="concurrency-tenant")
         set_current_tenant_id(str(self.tenant.pk))
         self.user = User.objects.create_user(username="concuser", email="conc@test.com", password="password123", tenant=self.tenant)  # nosec B106
+        # A second person, because the requester may not approve their own
+        # requisition.
+        self.approver = User.objects.create_user(username="concapprover", email="concapp@test.com", password="password123", tenant=self.tenant)  # nosec B106
 
         self.supplier = SupplierGovernanceService.create_supplier(tenant=self.tenant, supplier_code="SUP-CONC", legal_name="Conc Supplier")
         SupplierGovernanceService.approve_supplier(supplier=self.supplier, approver=self.user)
         SupplierQualification.objects.create(
             tenant=self.tenant, supplier=self.supplier, qualification_type=SupplierQualification.QualificationType.BUSINESS_REGISTRATION,
+            verification_status=SupplierQualification.QualificationVerificationStatus.VERIFIED, effective_date=datetime.date.today(), expiry_date=datetime.date.today() + datetime.timedelta(days=365)
+        )
+        # A pharmaceutical supplier needs a dealer licence as well as a company
+        # registration before it may be sent an order.
+        SupplierQualification.objects.create(
+            tenant=self.tenant, supplier=self.supplier, qualification_type=SupplierQualification.QualificationType.WHOLESALE_DEALER_LICENCE,
+            licence_number="WDL-CONC",
             verification_status=SupplierQualification.QualificationVerificationStatus.VERIFIED, effective_date=datetime.date.today(), expiry_date=datetime.date.today() + datetime.timedelta(days=365)
         )
 

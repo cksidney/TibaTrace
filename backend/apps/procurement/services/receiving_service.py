@@ -12,6 +12,7 @@ from apps.procurement.models import (
     GoodsReceipt,
     GoodsReceiptLine,
     PurchaseOrder,
+    PurchaseOrderLine,
     ReceivedBatch,
     ReceivingScan,
     ReceivingSession,
@@ -229,6 +230,21 @@ class GoodsReceivingService:
                 f"Cannot accept {accepted_quantity} of a delivery of {delivered_quantity}."
             )
 
+        # Lock the purchase-order line for the duration of this receipt. Two
+        # receivers working the same delivery would otherwise each read the
+        # same received quantity, each find room under the ordered quantity,
+        # and both post -- which is how a hundred-unit order becomes a
+        # hundred-and-eighty-unit receipt.
+        locked_po_line = PurchaseOrderLine.objects.select_for_update().get(pk=po_line.pk)
+
+        already_received = locked_po_line.received_quantity or 0
+        if already_received + delivered_quantity > locked_po_line.ordered_quantity:
+            raise ValidationError(
+                f"Total received quantity cannot exceed ordered quantity: "
+                f"{already_received} already received plus {delivered_quantity} "
+                f"exceeds the {locked_po_line.ordered_quantity} ordered."
+            )
+
         if idempotency_key:
             # A retry over poor connectivity must not receive the same goods
             # twice. The key is unique per tenant, so the second call returns
@@ -253,6 +269,12 @@ class GoodsReceivingService:
         line.save(update_fields=[
             "delivered_quantity", "accepted_quantity", "idempotency_key", "updated_at",
         ])
+
+        # The purchase-order line carries the running total, so the next
+        # receipt is measured against everything received so far rather than
+        # against this delivery alone.
+        locked_po_line.received_quantity = already_received + delivered_quantity
+        locked_po_line.save(update_fields=["received_quantity", "updated_at"])
 
         goods_receipt.status = GoodsReceipt.Status.RECEIVING
         goods_receipt.save(update_fields=["status", "updated_at"])

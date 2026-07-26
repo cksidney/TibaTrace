@@ -1,3 +1,5 @@
+from apps.procurement.models import PurchaseOrderLine  # noqa: F401 - patched by concurrency tests
+
 from .procurement_service import ProcurementService
 from .quality_service import QualityService
 from .receiving_service import GoodsReceivingService, ReceivingService
@@ -28,4 +30,5 @@ __all__ = [
     "ReceivingInspectionService",
     "SupplierReturnService",
     "ProcurementMatchingService",
+    "PurchaseOrderLine",
 ]
