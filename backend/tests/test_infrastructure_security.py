@@ -485,6 +485,9 @@ def test_administrative_shell_is_authenticated_and_tenant_scoped(clinical_setup,
     client.force_login(clinical_user)
     response = client.get("/admin-shell/")
     assert response.status_code == 200
-    assert b"DawaTrace" in response.content
+    # The shell is an operator-facing surface, so it carries the customer-facing
+    # name. DawaTrace remains the API, package and FHIR identifier -- see the
+    # health endpoint above, which still reports it and must keep doing so.
+    assert b"TibaTrace" in response.content
     assert b"Patients" in response.content
     assert b">1<" in response.content
