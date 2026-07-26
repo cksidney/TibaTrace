@@ -1,13 +1,12 @@
 from .procurement_service import ProcurementService
 from .quality_service import QualityService
-from .receiving_service import ReceivingService
+from .receiving_service import GoodsReceivingService, ReceivingService
 from .returns_service import SupplierReturnService
 from .supplier_governance_service import SupplierGovernanceService, SupplierNotQualified
 from .three_way_match_service import ProcurementMatchingService, ThreeWayMatchService
 
 # Service aliases for viewsets and existing callers
-BatchReceivingService = ReceivingService
-GoodsReceivingService = ReceivingService
+BatchReceivingService = GoodsReceivingService
 PurchaseOrderService = ProcurementService
 PurchaseRequisitionService = ProcurementService
 SupplierQualificationService = ProcurementService

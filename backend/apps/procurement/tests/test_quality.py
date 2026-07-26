@@ -28,11 +28,21 @@ User = get_user_model()
 def test_receiving_inspection_decision():
     tenant = Tenant.objects.create(name="Insp Tenant", slug="insp-tenant")
     user = User.objects.create_user(username="inspuser", email="insp@test.com", password="password123", tenant=tenant)  # nosec B106
+    # A second person, because the requester may not approve their own
+    # requisition.
+    approver = User.objects.create_user(username="inspapprover", email="inspapp@test.com", password="password123", tenant=tenant)  # nosec B106
 
     supplier = SupplierGovernanceService.create_supplier(tenant=tenant, supplier_code="SUP-INSP", legal_name="Insp Supplier")
-    SupplierGovernanceService.approve_supplier(supplier=supplier, approver=user)
+    SupplierGovernanceService.approve_supplier(supplier=supplier, approver=approver)
     SupplierQualification.objects.create(
         tenant=tenant, supplier=supplier, qualification_type=SupplierQualification.QualificationType.BUSINESS_REGISTRATION,
+        verification_status=SupplierQualification.QualificationVerificationStatus.VERIFIED, effective_date=datetime.date.today(), expiry_date=datetime.date.today() + datetime.timedelta(days=365)
+    )
+    # A pharmaceutical supplier needs a dealer licence as well as a company
+    # registration before it may be sent an order.
+    SupplierQualification.objects.create(
+        tenant=tenant, supplier=supplier, qualification_type=SupplierQualification.QualificationType.WHOLESALE_DEALER_LICENCE,
+        licence_number="WDL-INSP",
         verification_status=SupplierQualification.QualificationVerificationStatus.VERIFIED, effective_date=datetime.date.today(), expiry_date=datetime.date.today() + datetime.timedelta(days=365)
     )
 
@@ -47,6 +57,10 @@ def test_receiving_inspection_decision():
 
     req = PurchaseRequisitionService.create_requisition(tenant=tenant, requisition_number="REQ-INSP", requesting_branch=branch, requester=user, requested_delivery_date=datetime.date.today())
     PurchaseRequisitionService.add_line(requisition=req, sku=sku, requested_quantity=20)
+    # A purchase order requires an approved requisition, so the demand has to
+    # be submitted and signed off before it can be ordered against.
+    PurchaseRequisitionService.submit_requisition(requisition=req)
+    PurchaseRequisitionService.approve_requisition(requisition=req, approver=approver)
     po = PurchaseOrderService.create_po_from_requisition(tenant=tenant, po_number="PO-INSP", supplier=supplier, requisition=req, ordering_branch=branch, order_date=datetime.date.today(), expected_delivery_date=datetime.date.today(), creator=user)
     PurchaseOrderService.approve_po(purchase_order=po, approver=user)
     PurchaseOrderService.send_po(purchase_order=po)

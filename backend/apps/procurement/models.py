@@ -487,3 +487,116 @@ class ThreeWayMatch(TimestampedModel):
 
     def __str__(self):
         return f"3-Way Match PO {self.purchase_order.po_number} / GRN {self.goods_receipt.grn_number} - {self.matching_status}"
+
+
+# ==============================================================================
+# EXTENDED PROCUREMENT & SUPPLIER GOVERNANCE MODELS
+# ==============================================================================
+
+class SupplierSite(TimestampedModel):
+    tenant = models.ForeignKey("tenancy.Tenant", on_delete=models.CASCADE, null=True, blank=True, related_name="+")
+    supplier = models.ForeignKey(Supplier, on_delete=models.CASCADE, related_name="sites")
+    site_code = models.CharField(max_length=64)
+    site_name = models.CharField(max_length=255)
+    address = models.TextField(blank=True, default="")
+    is_primary = models.BooleanField(default=True)
+
+    objects = StrictTenantManager()
+    all_objects = models.Manager()
+
+
+class RequestForQuotation(TimestampedModel):
+    tenant = models.ForeignKey("tenancy.Tenant", on_delete=models.CASCADE, null=True, blank=True, related_name="+")
+    rfq_number = models.CharField(max_length=64, db_index=True)
+    title = models.CharField(max_length=255)
+    issue_date = models.DateField(auto_now_add=True)
+    closing_date = models.DateField()
+    status = models.CharField(max_length=32, default="OPEN")
+
+    objects = StrictTenantManager()
+    all_objects = models.Manager()
+
+
+class RFQLine(TimestampedModel):
+    tenant = models.ForeignKey("tenancy.Tenant", on_delete=models.CASCADE, null=True, blank=True, related_name="+")
+    rfq = models.ForeignKey(RequestForQuotation, on_delete=models.CASCADE, related_name="lines")
+    sku = models.ForeignKey(CommercialSKU, on_delete=models.PROTECT, related_name="+")
+    requested_quantity = models.PositiveIntegerField()
+
+    objects = StrictTenantManager()
+    all_objects = models.Manager()
+
+
+class SupplierQuotation(TimestampedModel):
+    tenant = models.ForeignKey("tenancy.Tenant", on_delete=models.CASCADE, null=True, blank=True, related_name="+")
+    rfq = models.ForeignKey(RequestForQuotation, on_delete=models.CASCADE, related_name="quotations")
+    supplier = models.ForeignKey(Supplier, on_delete=models.CASCADE, related_name="+")
+    quotation_reference = models.CharField(max_length=128)
+    total_quoted_cost = models.DecimalField(max_digits=15, decimal_places=2)
+    valid_until = models.DateField()
+    status = models.CharField(max_length=32, default="SUBMITTED")
+
+    objects = StrictTenantManager()
+    all_objects = models.Manager()
+
+
+class SupplierQuotationLine(TimestampedModel):
+    tenant = models.ForeignKey("tenancy.Tenant", on_delete=models.CASCADE, null=True, blank=True, related_name="+")
+    quotation = models.ForeignKey(SupplierQuotation, on_delete=models.CASCADE, related_name="lines")
+    sku = models.ForeignKey(CommercialSKU, on_delete=models.PROTECT, related_name="+")
+    quoted_quantity = models.PositiveIntegerField()
+    quoted_unit_cost = models.DecimalField(max_digits=15, decimal_places=2)
+
+    objects = StrictTenantManager()
+    all_objects = models.Manager()
+
+
+class QuotationAward(TimestampedModel):
+    tenant = models.ForeignKey("tenancy.Tenant", on_delete=models.CASCADE, null=True, blank=True, related_name="+")
+    rfq = models.OneToOneField(RequestForQuotation, on_delete=models.CASCADE, related_name="award")
+    winning_quotation = models.ForeignKey(SupplierQuotation, on_delete=models.CASCADE, related_name="+")
+    awarded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    awarded_at = models.DateTimeField(auto_now_add=True)
+
+    objects = StrictTenantManager()
+    all_objects = models.Manager()
+
+
+class ReceivingSession(TimestampedModel):
+    tenant = models.ForeignKey("tenancy.Tenant", on_delete=models.CASCADE, null=True, blank=True, related_name="+")
+    session_number = models.CharField(max_length=64, db_index=True)
+    purchase_order = models.ForeignKey(PurchaseOrder, on_delete=models.CASCADE, related_name="receiving_sessions")
+    supplier = models.ForeignKey(Supplier, on_delete=models.PROTECT, related_name="+")
+    branch = models.ForeignKey(Location, on_delete=models.CASCADE, related_name="+")
+    delivery_note_number = models.CharField(max_length=128)
+    status = models.CharField(max_length=32, default="ACTIVE")
+    received_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+
+    objects = StrictTenantManager()
+    all_objects = models.Manager()
+
+
+class ReceivingScan(TimestampedModel):
+    tenant = models.ForeignKey("tenancy.Tenant", on_delete=models.CASCADE, null=True, blank=True, related_name="+")
+    session = models.ForeignKey(ReceivingSession, on_delete=models.CASCADE, related_name="scans")
+    sku = models.ForeignKey(CommercialSKU, on_delete=models.PROTECT, related_name="+")
+    scanned_barcode = models.CharField(max_length=128)
+    batch_number = models.CharField(max_length=128)
+    expiry_date = models.DateField()
+    scanned_quantity = models.PositiveIntegerField()
+
+    objects = StrictTenantManager()
+    all_objects = models.Manager()
+
+
+class QualityDecision(TimestampedModel):
+    tenant = models.ForeignKey("tenancy.Tenant", on_delete=models.CASCADE, null=True, blank=True, related_name="+")
+    goods_receipt = models.ForeignKey(GoodsReceipt, on_delete=models.CASCADE, related_name="quality_decisions")
+    batch = models.ForeignKey(ReceivedBatch, on_delete=models.CASCADE, related_name="+")
+    decision = models.CharField(max_length=32, default="RELEASED")
+    decision_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    decision_notes = models.TextField(blank=True, default="")
+
+    objects = StrictTenantManager()
+    all_objects = models.Manager()
+

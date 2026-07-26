@@ -193,7 +193,9 @@ class ProcurementService:
 
     @staticmethod
     @transaction.atomic
-    def create_purchase_order(*, tenant, supplier, ordering_branch, lines_data, created_by, currency="KES") -> PurchaseOrder:
+    def create_purchase_order(*, tenant, supplier, ordering_branch, lines_data, created_by=None,
+                              currency="KES", requisition=None, po_number=None,
+                              order_date=None, expected_delivery_date=None) -> PurchaseOrder:
         if supplier.status not in [Supplier.Status.APPROVED, Supplier.Status.ACTIVE]:
             raise ValidationError(f"Supplier {supplier.legal_name} is not approved for purchasing.")
 
@@ -202,14 +204,21 @@ class ProcurementService:
         # the same instant would otherwise take the same number and the unique
         # constraint would fail one of them at random.
         year = timezone.now().year
-        po_number = f"TIBA/{ordering_branch.code}/PO/{year}/{uuid.uuid4().hex[:6].upper()}"
+        po_number = po_number or (
+            f"TIBA/{ordering_branch.code}/PO/{year}/{uuid.uuid4().hex[:6].upper()}"
+        )
 
         po = PurchaseOrder.all_objects.create(
             tenant=tenant,
             po_number=po_number,
             supplier=supplier,
             ordering_branch=ordering_branch,
-            created_by=created_by,
+            originating_requisition=requisition,
+            # Both are required by the model. Defaulting them to today keeps a
+            # PO raised without an explicit date valid rather than silently
+            # unsaveable.
+            order_date=order_date or timezone.now().date(),
+            expected_delivery_date=expected_delivery_date or timezone.now().date(),
             currency=currency,
             status=PurchaseOrder.Status.DRAFT,
         )
@@ -226,9 +235,10 @@ class ProcurementService:
                 purchase_order=po,
                 sku=item["sku"],
                 ordered_quantity=qty,
-                unit_cost=unit_cost,
-                tax_rate=item.get("tax_rate", decimal.Decimal("0.00")),
-                line_total=line_total,
+                unit_price=unit_cost,
+                total_price=line_total,
+                purchase_unit=item.get("purchase_unit", "pack"),
+                requires_cold_chain=item.get("requires_cold_chain", False),
             )
 
         po.total_gross = total_gross
@@ -279,17 +289,15 @@ class ProcurementService:
             lines_data=lines_data,
             created_by=creator,
             currency=currency,
+            requisition=requisition,
+            po_number=po_number,
+            order_date=order_date,
+            expected_delivery_date=expected_delivery_date,
         )
 
-        if po_number:
-            po.po_number = po_number
-        if order_date:
-            po.order_date = order_date
-        if expected_delivery_date:
-            po.expected_delivery_date = expected_delivery_date
-        po.save()
-
-        requisition.status = PurchaseRequisition.Status.CONVERTED
+        # The model's terminal ordered state. §8 calls this CONVERTED; the
+        # schema calls it FULLY_ORDERED, and the schema is what exists.
+        requisition.status = PurchaseRequisition.Status.FULLY_ORDERED
         requisition.save(update_fields=["status", "updated_at"])
         return po
 

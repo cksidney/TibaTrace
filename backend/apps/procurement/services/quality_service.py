@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.utils import timezone
 
 from apps.inventory.models import InventoryBatch
 from apps.procurement.models import QualityDecision, ReceivedBatch, ReceivingInspection
@@ -16,17 +15,27 @@ class QualityService:
 
     @staticmethod
     @transaction.atomic
-    def record_inspection(*, goods_receipt, inspector, decision, temperature_excursion=False, notes="") -> ReceivingInspection:
+    def record_inspection(*, goods_receipt, inspector, decision, temperature_excursion=False,
+                          notes="", reason="") -> ReceivingInspection:
+        """Record an inspection outcome.
+
+        `reason` is the operational word for what `notes` holds -- an inspector
+        typing why they quarantined a delivery. Accepted as either so the
+        caller's vocabulary does not have to match the column's.
+        """
+        notes = notes or reason
         inspection = ReceivingInspection.all_objects.create(
             tenant=goods_receipt.tenant,
             goods_receipt=goods_receipt,
             inspector=inspector,
             decision=decision,
-            inspected_at=timezone.now(),
-            notes=notes,
+            reason=notes,
         )
 
-        for batch in goods_receipt.received_batches.all():
+        # Batches hang off receipt lines, not off the receipt.
+        for batch in ReceivedBatch.all_objects.filter(
+            grn_line__goods_receipt=goods_receipt
+        ):
             if temperature_excursion:
                 batch.temperature_excursion = True
                 batch.quality_status = ReceivedBatch.QualityStatus.QUARANTINED
