@@ -67,6 +67,7 @@ INSTALLED_APPS = [
     "apps.tenancy",
     "apps.identity",
     "apps.pos_shift",
+    "apps.pricing",
     "apps.organizations",
     "apps.medicines",
     "apps.procurement",
