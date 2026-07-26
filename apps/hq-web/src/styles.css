@@ -3,7 +3,7 @@
   --navy-950: #070d19;
   --navy-900: #0b1528;
   --navy-800: #12213d;
-  --navy-700: #1b2e52;
+  --navy-700: #6f91d0;
   --navy-100: #1a2942;
   --teal-700: #10b981;
   --teal-600: #059669;
@@ -18,7 +18,7 @@
   --violet-100: rgba(139, 92, 246, 0.15);
   --ink: #f8fafc;
   --muted: #94a3b8;
-  --muted-2: #64748b;
+  --muted-2: #73839a;
   --line: #1e293b;
   --line-soft: #162032;
   --panel: #0f172a;
@@ -49,8 +49,8 @@
   --violet-700: #5e52bd;
   --violet-100: #eeeafd;
   --ink: #13213a;
-  --muted: #66748b;
-  --muted-2: #8c98aa;
+  --muted: #637087;
+  --muted-2: #68768c;
   --line: #dfe5ed;
   --line-soft: #ecf0f4;
   --panel: #ffffff;
@@ -68,16 +68,36 @@
      .workflow-link  -- its <strong> title sets none, so the title vanished
      .command-dialog -- .command-search input is explicitly var(--ink)
      .search-trigger -- var(--muted) on #f8fafc is about 2.3:1
+     .topbar         -- the whole app header: "All tenants" was 1.00:1
+     thead           -- every table header, in all 31 tables
+     tbody tr:hover  -- hovering a row made its text disappear
+     .compact-stats  -- the network stat numbers were 1.04:1
+     .attention-row  -- the count badges were 1.10:1
+   The hover states are included because each swaps a dark surface for a light
+   one while the text colour stays put.
    Redeclaring the palette here cascades to every descendant, so a child that
    correctly asks for var(--muted) gets the light muted rather than the dark one.
    Anything added inside these later inherits the right values by default. */
 .popover,
 .workflow-link,
 .command-dialog,
-.search-trigger {
+.search-trigger,
+.search-trigger:hover,
+.topbar,
+.attention-row > b,
+.compact-stats div,
+thead,
+tbody tr:hover,
+.icon-button:hover,
+.user-trigger:hover,
+.secondary-button:hover,
+.notification-list a:hover,
+.user-menu > a:hover,
+.command-results > a:hover,
+.command-dialog footer {
   --ink: #13213a;
-  --muted: #66748b;
-  --muted-2: #8c98aa;
+  --muted: #637087;
+  --muted-2: #68768c;
   --line: #dfe5ed;
   --line-soft: #ecf0f4;
   --panel: #ffffff;
@@ -150,7 +170,7 @@ svg {
   padding: 10px 14px;
   border-radius: 8px;
   color: #ffffff;
-  background: var(--teal-700);
+  background: #0b845c;
   font-size: 0.78rem;
   font-weight: 800;
   text-decoration: none;
@@ -467,7 +487,7 @@ svg {
   gap: 26px;
   padding: 0 34px;
   border-bottom: 1px solid rgba(215, 223, 233, 0.92);
-  background: rgba(255, 255, 255, 0.94);
+  background: #ffffff;
   backdrop-filter: blur(16px);
 }
 
@@ -537,7 +557,7 @@ kbd {
   border: 1px solid #d7dee8;
   border-bottom-width: 2px;
   border-radius: 6px;
-  color: #718096;
+  color: #67768b;
   background: #ffffff;
   font-family: inherit;
   font-size: 0.58rem;
@@ -614,7 +634,7 @@ kbd {
   border: 2px solid #ffffff;
   border-radius: 999px;
   color: #ffffff;
-  background: var(--red-700);
+  background: #e80d33;
   font-size: 0.52rem;
   font-weight: 850;
 }
@@ -969,9 +989,9 @@ kbd {
 }
 
 .primary-button {
-  border: 1px solid var(--teal-600);
+  border: 1px solid #047857;
   color: #ffffff;
-  background: var(--teal-600);
+  background: #047857;
 }
 
 .primary-button:hover {
@@ -1334,7 +1354,15 @@ kbd {
   text-align: center;
 }
 
+.network-ring div {
+  /* Sits on the white ::after disc, so it carries the light palette. */
+  --ink: #13213a;
+  --muted: #637087;
+  color: var(--ink);
+}
+
 .network-ring strong {
+  color: var(--ink);
   font-size: 1.47rem;
   letter-spacing: -0.05em;
 }
@@ -1455,7 +1483,7 @@ kbd {
 }
 
 .data-bar b {
-  color: #425169;
+  color: var(--muted);
 }
 
 .bar-track {
@@ -1829,7 +1857,7 @@ kbd {
 }
 
 .keml-mark.is-listed {
-  color: #08715e;
+  color: var(--teal-700);
   background: var(--teal-100);
 }
 
@@ -1854,9 +1882,9 @@ kbd {
 }
 
 .catalogue-add-button {
-  border: 1px solid var(--teal-600);
+  border: 1px solid #047857;
   color: #ffffff;
-  background: var(--teal-600);
+  background: #047857;
 }
 
 .catalogue-remove-button {
@@ -1915,7 +1943,7 @@ thead {
 
 th {
   padding: 11px 15px;
-  color: #748298;
+  color: var(--muted);
   font-size: 0.57rem;
   font-weight: 850;
   letter-spacing: 0.07em;
@@ -1927,7 +1955,7 @@ th {
 td {
   padding: 13px 15px;
   border-top: 1px solid var(--line-soft);
-  color: #34445a;
+  color: var(--ink);
   font-size: 0.68rem;
   white-space: nowrap;
 }
@@ -2113,7 +2141,7 @@ tbody tr:hover {
 
 .module-tab-active b {
   color: #ffffff;
-  background: var(--teal-600);
+  background: #047857;
 }
 
 .business-toolbar {
@@ -2324,7 +2352,7 @@ tbody tr:hover {
 .business-action-danger {
   border-color: var(--red-700);
   color: #ffffff;
-  background: var(--red-700);
+  background: #e80d33;
 }
 
 .business-dialog-backdrop {
@@ -3955,8 +3983,8 @@ tbody tr:hover {
      the heading and every field label in near-white on white: the sign-in form
      was legible only by selecting the text. */
   --ink: #13213a;
-  --muted: #66748b;
-  --muted-2: #8c98aa;
+  --muted: #637087;
+  --muted-2: #68768c;
   --line: #dfe5ed;
   --line-soft: #ecf0f4;
   --panel: #ffffff;
