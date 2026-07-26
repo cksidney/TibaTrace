@@ -386,3 +386,57 @@ export async function signOut(csrfToken: string): Promise<void> {
     headers: { Accept: 'application/json', 'X-CSRFToken': csrfToken },
   });
 }
+
+/* ── claims register ───────────────────────────────────────────────────────── */
+
+export interface ClaimFilters {
+  readonly submission_state?: string;
+  readonly adjudication_state?: string;
+  readonly payment_state?: string;
+  readonly insurer?: string;
+}
+
+/**
+ * The full claims register, filtered.
+ *
+ * Filters go to the server rather than being applied to a fetched page. A
+ * client-side filter over one page of results silently reports "3 rejected
+ * claims" when the register holds four hundred, and the number looks
+ * authoritative because it was counted rather than guessed.
+ */
+export function loadClaims(
+  filters: ClaimFilters = {},
+  signal?: AbortSignal,
+): Promise<readonly InsuranceClaim[]> {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value) query.set(key, value);
+  }
+  const suffix = query.toString();
+  return getCollection<InsuranceClaim>(
+    `/api/insurance/claims/${suffix ? `?${suffix}` : ''}`,
+    signal,
+  );
+}
+
+/** The states a claim can be filtered by, for building a filter control. */
+export const CLAIM_STATES = {
+  submission: [
+    'DRAFT',
+    'VALIDATING',
+    'VALIDATION_FAILED',
+    'READY_TO_SUBMIT',
+    'SUBMITTED',
+    'TRANSPORT_ACCEPTED',
+    'TRANSPORT_REJECTED',
+  ],
+  adjudication: [
+    'PENDING',
+    'MORE_INFO_REQUIRED',
+    'PARTIALLY_APPROVED',
+    'APPROVED',
+    'REJECTED',
+    'REVERSED',
+  ],
+  payment: ['UNPAID', 'PARTIALLY_PAID', 'PAID'],
+} as const;

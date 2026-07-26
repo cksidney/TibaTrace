@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
 
 import {
+  CLAIM_STATES,
   HQApiError,
   formatMoney,
   loadApprovedUnpaidClaims,
@@ -12,6 +13,7 @@ import {
   loadHQOverview,
   loadInsurers,
   loadOpenRegisterSessions,
+  loadClaims,
   loadPriceBooks,
   readSession,
   SignInError,
@@ -20,6 +22,7 @@ import {
   varianceNeedsExplanation,
 } from './api.js';
 import type {
+  ClaimFilters,
   DashboardMetric,
   HQOverview,
   InsuranceClaim,
@@ -925,6 +928,144 @@ function CashControlView() {
   );
 }
 
+function ClaimsRegister() {
+  const [filters, setFilters] = useState<ClaimFilters>({});
+  const [claims, setClaims] = useState<readonly InsuranceClaim[] | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setFailed(false);
+    // Filters go to the server. Filtering a fetched page in the browser reports
+    // "3 rejected" when the register holds four hundred, and the number looks
+    // authoritative because it was counted rather than guessed.
+    loadClaims(filters, controller.signal)
+      .then(setClaims)
+      .catch(() => {
+        if (!controller.signal.aborted) setFailed(true);
+      });
+    return () => controller.abort();
+  }, [filters]);
+
+  const setFilter = useCallback((key: keyof ClaimFilters, value: string) => {
+    setFilters((current) => {
+      const next = { ...current };
+      if (value) next[key] = value;
+      else delete next[key];
+      return next;
+    });
+  }, []);
+
+  const active = Object.keys(filters).length;
+
+  return (
+    <article className="panel">
+      {/* Spread conditionally: exactOptionalPropertyTypes distinguishes an
+          absent optional prop from one explicitly set to undefined, and
+          PanelHeader accepts the former. */}
+      <PanelHeader
+        eyebrow="Claims operations"
+        title="Claims register"
+        {...(active ? { actionLabel: 'Clear filters', onAction: () => setFilters({}) } : {})}
+      />
+
+      <div className="filter-row">
+        <label>
+          Submission
+          <select
+            value={filters.submission_state ?? ''}
+            onChange={(event) => setFilter('submission_state', event.target.value)}
+          >
+            <option value="">Any</option>
+            {CLAIM_STATES.submission.map((state) => (
+              <option key={state} value={state}>{titleCase(state)}</option>
+            ))}
+          </select>
+        </label>
+
+        <label>
+          Adjudication
+          <select
+            value={filters.adjudication_state ?? ''}
+            onChange={(event) => setFilter('adjudication_state', event.target.value)}
+          >
+            <option value="">Any</option>
+            {CLAIM_STATES.adjudication.map((state) => (
+              <option key={state} value={state}>{titleCase(state)}</option>
+            ))}
+          </select>
+        </label>
+
+        <label>
+          Payment
+          <select
+            value={filters.payment_state ?? ''}
+            onChange={(event) => setFilter('payment_state', event.target.value)}
+          >
+            <option value="">Any</option>
+            {CLAIM_STATES.payment.map((state) => (
+              <option key={state} value={state}>{titleCase(state)}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      {failed ? (
+        /* Distinct from an empty register. "No claims match" and "the query
+           failed" look identical if both render as an empty table, and the
+           first is believed. */
+        <p className="auth-error" role="alert">
+          <Icon name="alert" /> The claims register could not be loaded.
+        </p>
+      ) : !claims ? (
+        <p className="muted-cell">Loading claims…</p>
+      ) : claims.length === 0 ? (
+        <EmptyState
+          icon="insurance"
+          title={active ? 'No claims match these filters' : 'No claims yet'}
+          detail={active ? 'Clear the filters to see the whole register.' : 'Claims appear here once prescriptions are dispensed against insurance.'}
+        />
+      ) : (
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Claim</th>
+                <th>Insurer</th>
+                <th>Member</th>
+                <th>Claimed</th>
+                <th>Approved</th>
+                <th>Outstanding</th>
+                <th>Submission</th>
+                <th>Adjudication</th>
+                <th>Payment</th>
+              </tr>
+            </thead>
+            <tbody>
+              {claims.map((claim) => (
+                <tr key={claim.id}>
+                  <td><code>{claim.claim_number}</code></td>
+                  <td><small>{claim.insurer_code}</small></td>
+                  <td><span className="muted-cell">{claim.membership_number}</span></td>
+                  <td>{formatMoney(claim.claimed_gross_amount, claim.currency)}</td>
+                  {/* Claimed and approved side by side. The gap between them is
+                      the contractual adjustment somebody has to account for,
+                      and showing only one hides it. */}
+                  <td>{formatMoney(claim.approved_amount, claim.currency)}</td>
+                  <td><strong>{formatMoney(claim.outstanding_amount, claim.currency)}</strong></td>
+                  <td><small>{titleCase(claim.submission_state)}</small></td>
+                  <td><small>{titleCase(claim.adjudication_state)}</small></td>
+                  <td><small>{titleCase(claim.payment_state)}</small></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </article>
+  );
+}
+
 function InsuranceView() {
   const [insurers, setInsurers] = useState<readonly Insurer[] | null>(null);
   const [unpaid, setUnpaid] = useState<readonly InsuranceClaim[] | null>(null);
@@ -978,7 +1119,7 @@ function InsuranceView() {
 
       <section className="content-grid content-grid-primary">
         <article className="panel">
-          <PanelHeader eyebrow="Insurer integrations" title="Configured insurers" actionHref="/admin/insurance/insurer/" actionLabel="Manage insurers" />
+          <PanelHeader eyebrow="Insurer integrations" title="Configured insurers" actionHref="/admin/insurance/insurer/" actionLabel="Manage in admin" />
           {insurers.length === 0 ? (
             <EmptyState icon="insurance" title="No insurers configured" detail="Add an insurer integration before submitting claims." />
           ) : (
@@ -1006,7 +1147,7 @@ function InsuranceView() {
         </article>
 
         <article className="panel">
-          <PanelHeader eyebrow="Claims workflow" title="Approved and unpaid" actionHref="/admin/insurance/claim/?payment_state=UNPAID" actionLabel="View all" />
+          <PanelHeader eyebrow="Claims workflow" title="Approved and unpaid" />
           {unpaid.length === 0 ? (
             <EmptyState icon="check" title="No outstanding approved claims" detail="All approved claims have been paid or are not yet due." />
           ) : (
@@ -1033,7 +1174,7 @@ function InsuranceView() {
 
       <section className="content-grid content-grid-primary">
         <article className="panel">
-          <PanelHeader eyebrow="Pending adjudication" title="Claims awaiting insurer decision" actionHref="/admin/insurance/claim/?adjudication_state=PENDING" actionLabel="View all" />
+          <PanelHeader eyebrow="Pending adjudication" title="Claims awaiting insurer decision" />
           {awaiting.length === 0 ? (
             <EmptyState icon="insurance" title="No claims pending adjudication" detail="All submitted claims have been adjudicated." />
           ) : (
@@ -1058,7 +1199,7 @@ function InsuranceView() {
         </article>
 
         <article className="panel">
-          <PanelHeader eyebrow="Action required" title="Claims needing attention" actionHref="/admin/insurance/claim/?needs_attention=1" actionLabel="View all" />
+          <PanelHeader eyebrow="Action required" title="Claims needing attention" />
           {attention.length === 0 ? (
             <EmptyState icon="check" title="No claims need attention" detail="No claims are blocked or rejected on this end." />
           ) : (
@@ -1083,15 +1224,7 @@ function InsuranceView() {
         </article>
       </section>
 
-      <article className="panel workflow-panel">
-        <PanelHeader eyebrow="Claims operations" title="Adjudication workspaces" />
-        <div className="workflow-grid">
-          <WorkflowLink href="/admin/insurance/claim/" icon="insurance" step="01" title="All claims" detail="Search, filter and inspect the full claims register." />
-          <WorkflowLink href="/admin/insurance/claimsubmissionattempt/" icon="docs" step="02" title="Submission attempts" detail="Audit every submission cycle and gateway response." />
-          <WorkflowLink href="/admin/insurance/claimremittance/" icon="building" step="03" title="Remittance" detail="Record insurer remittance and reconcile payments." />
-          <WorkflowLink href="/admin/insurance/insurer/" icon="settings" step="04" title="Insurer config" detail="Manage adapters, environments and credentials." />
-        </div>
-      </article>
+      <ClaimsRegister />
     </>
   );
 }
