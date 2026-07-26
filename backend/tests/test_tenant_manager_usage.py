@@ -114,7 +114,6 @@ def strict_manager_uses(path: pathlib.Path, scoped: set[str] | None = None) -> l
 #: each cost a debugging session, and the fifth should cost a test run.
 KNOWN_USES = {
     "inventory": 5,
-    "medicines": 11,
 }
 
 
@@ -161,14 +160,16 @@ class TestApiCodeDoesNotUseTheStrictManager:
     def test_the_guarded_apps_stay_clean(self):
         """The apps already fixed must not regress.
 
-        procurement, insurance, pricing, pos_shift and identity were corrected
-        deliberately; a use reappearing in one of them is a straight regression
-        rather than pre-existing debt.
+        Each of these apps was corrected deliberately; a use reappearing in one
+        of them is a straight regression rather than pre-existing debt.
+
+        `medicines` was the largest: fifteen class-attribute querysets, frozen
+        empty at import, with no `get_queryset` anywhere in the file.
         """
         found = offenders_by_app()
         for app in (
             "procurement", "insurance", "pricing", "pos_shift", "identity",
-            "sales", "customers",
+            "sales", "customers", "medicines",
         ):
             assert app not in found, (
                 f"{app} has regained a tenant-strict manager use in API code:\n  "
