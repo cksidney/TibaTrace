@@ -1,22 +1,22 @@
+{% load static %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>TibaTrace POS — Enterprise Pharmacy Dispensing Terminal</title>
+  <link rel="icon" href="{% static 'brand/tibatrace-logo.jpeg' %}" type="image/jpeg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/pos/css/pos.css">
+  <link rel="stylesheet" href="{% static 'pos/css/pos.css' %}">
 </head>
 <body class="dark-theme">
   <!-- Top Application Bar -->
   <header class="app-header">
     <div class="brand-section">
       <div class="logo-icon">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
-        </svg>
+        <img src="{% static 'brand/tibatrace-logo.jpeg' %}" alt="TibaTrace logo">
       </div>
       <div class="brand-title">
         <h1>TibaTrace POS</h1>
@@ -51,8 +51,11 @@
     </div>
 
     <div class="header-actions">
+      <button class="btn btn-secondary btn-sm" id="btn-theme-toggle" onclick="toggleTheme()">
+        🌙 Dark Mode
+      </button>
       <button class="btn btn-secondary btn-sm" id="btn-shift-ops" onclick="openShiftModal()">
-        Shift Ops (F8)
+        ⚙️ Shift Ops (F8)
       </button>
       <button class="btn btn-primary btn-sm" onclick="seedDemoData()">
         ⚡ Seed Demo Data
@@ -90,6 +93,13 @@
         <span class="kpi-value" id="kpi-supplied-count">0</span>
       </div>
     </div>
+    <div class="kpi-card">
+      <div class="kpi-icon icon-controlled">🔒</div>
+      <div class="kpi-content">
+        <span class="kpi-label">Controlled Stock Count</span>
+        <span class="kpi-value" id="kpi-controlled-count">100</span>
+      </div>
+    </div>
   </section>
 
   <!-- Main Workstation Layout -->
@@ -114,7 +124,6 @@
       </div>
 
       <div class="queue-list" id="queue-list-container">
-        <!-- Dynamic Episode Cards -->
         <div class="queue-empty-state">Loading dispensing queue...</div>
       </div>
     </aside>
@@ -127,48 +136,51 @@
           <span class="status-badge" id="episode-status-badge">NO SELECTION</span>
         </div>
         <div class="episode-actions" id="episode-top-actions">
-          <button class="btn btn-outline" onclick="fetchQueue()">Refresh</button>
+          <button class="btn btn-secondary btn-sm" onclick="openPartialModal()">🧩 Partial Dispense</button>
+          <button class="btn btn-secondary btn-sm" onclick="toggleHoldEpisode()">⏸️ Hold / Resume</button>
+          <button class="btn btn-outline btn-sm" onclick="fetchQueue()">🔄 Refresh</button>
         </div>
       </div>
 
       <div class="workspace-body" id="workspace-body">
         <div class="empty-workspace" id="empty-workspace-view">
           <div class="empty-icon">💊</div>
-          <h3>No Episode Selected</h3>
-          <p>Select a prescription episode from the left queue to begin batch verification, payment processing, or dispensing supply.</p>
-          <button class="btn btn-primary" onclick="seedDemoData()">Seed Demo Episode &amp; Load</button>
+          <h3>No Dispensing Episode Selected</h3>
+          <p>Select an episode from the queue to manage batch verification, pharmacist checking, payment, labelling, and collection.</p>
+          <button class="btn btn-primary" style="margin-top: 12px;" onclick="seedDemoData()">⚡ Seed &amp; Load Demo Episode</button>
         </div>
 
         <div class="active-episode-view" id="active-episode-view" style="display: none;">
           <!-- Patient & Prescriber Cards -->
           <div class="info-grid">
             <div class="info-card">
-              <div class="card-label">PATIENT DETAILS</div>
+              <div class="card-label">PATIENT DEMOGRAPHICS</div>
               <div class="card-main-val" id="pat-name">-</div>
               <div class="card-sub-info">
-                <span>Number: <strong id="pat-num">-</strong></span> &bull;
+                <span>ID / No: <strong id="pat-num">-</strong></span> &bull;
                 <span>Gender: <strong id="pat-gender">-</strong></span> &bull;
                 <span>DOB: <strong id="pat-dob">-</strong></span>
               </div>
-              <div class="allergy-tag" id="pat-allergy-tag">Allergies: None Recorded</div>
+              <div class="allergy-tag" id="pat-allergy-tag">Allergies: Penicillin Conflict Reported</div>
             </div>
 
             <div class="info-card">
-              <div class="card-label">PRESCRIPTION &amp; CLINICAL REVIEW</div>
+              <div class="card-label">PRESCRIPTION &amp; CLINICAL METADATA</div>
               <div class="card-main-val" id="rx-num">-</div>
               <div class="card-sub-info">
-                <span>Prescriber: <strong id="prac-name">Dr. Jane Smith</strong></span> &bull;
-                <span>Repeats Allowed: <strong id="rx-repeats">3</strong></span>
+                <span>Prescriber: <strong id="prac-name">Dr. David Ochieng</strong></span> &bull;
+                <span>Refills Remaining: <strong id="rx-repeats">2 / 3</strong></span>
               </div>
               <div class="payment-tag" id="payment-status-tag">Payment: PENDING</div>
             </div>
           </div>
 
-          <!-- Clinical Decision Support (CDS) Screening Banner -->
-          <div class="cds-banner cds-pass" id="cds-screening-banner">
+          <!-- Clinical Decision Support (CDS) Safety Screening Banner -->
+          <div class="cds-banner cds-pass" id="cds-screening-banner" onclick="openCdsModal()">
             <div class="cds-header">
               <span class="cds-status-icon" id="cds-icon">🛡️</span>
               <strong id="cds-status-title">CDS Clinical Screening: PASSED</strong>
+              <span style="margin-left: auto; font-size: 0.75rem; text-decoration: underline; cursor: pointer;">View Details &amp; Overrides &rarr;</span>
             </div>
             <div class="cds-details" id="cds-details-text">
               Automated drug-drug interaction, duplicate therapy, and allergy checks completed with zero blocking findings.
@@ -186,12 +198,12 @@
                   <th>Authorized</th>
                   <th>Prepared</th>
                   <th>Supplied</th>
-                  <th>Status</th>
-                  <th>Scan Action</th>
+                  <th>Line Status</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody id="dispensing-lines-body">
-                <!-- Lines injected dynamically -->
+                <!-- Injected dynamically -->
               </tbody>
             </table>
           </div>
@@ -202,7 +214,7 @@
               <button class="btn btn-action btn-scan" onclick="triggerBarcodeScanModal()">
                 📷 Verify Batch (F2)
               </button>
-              <button class="btn btn-action btn-check" onclick="transitionState('CHECKING')">
+              <button class="btn btn-action btn-check" onclick="openPharmacistCheckModal()">
                 ⚖️ Pharmacist Check (F3)
               </button>
               <button class="btn btn-action btn-pay" onclick="openPaymentModal()">
@@ -235,86 +247,139 @@
         <button class="close-btn" onclick="closeModal('modal-barcode')">&times;</button>
       </div>
       <div class="modal-body">
-        <label for="barcode-input">Scan 2D DataMatrix or Input Batch Code:</label>
-        <input type="text" id="barcode-input" placeholder="e.g. B12345 or B12345|2028-12-31" class="form-control" autofocus>
-        <div class="scan-result" id="scan-result-box" style="display: none;"></div>
+        <label for="barcode-input">Scan 2D DataMatrix or Input Manufacturer Batch Code:</label>
+        <div style="display: flex; gap: 8px; margin-top: 6px;">
+          <input type="text" id="barcode-input" placeholder="e.g. DEMO-BATCH-01|2028-10-31" class="form-control" autofocus>
+          <button class="btn btn-primary" onclick="verifyScannedBarcode()">Verify</button>
+        </div>
+
+        <div class="scan-result" id="scan-result-box" style="display: none; margin-top: 14px;"></div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="closeModal('modal-barcode')">Cancel</button>
-        <button class="btn btn-primary" onclick="verifyScannedBarcode()">Verify Batch</button>
+        <button class="btn btn-secondary" onclick="closeModal('modal-barcode')">Close</button>
+        <button class="btn btn-success" onclick="applyVerifiedBatchToLine()">Apply Verified Batch to Episode</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: Pharmacist Check & Clinical Verification -->
+  <div class="modal-overlay" id="modal-check">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Pharmacist Clinical Check &amp; Verification (F3)</h3>
+        <button class="close-btn" onclick="closeModal('modal-check')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="counselling-checklist">
+          <label><input type="checkbox" id="chk-ph-dose" checked> Verified Correct Dose, Route &amp; Frequency</label>
+          <label><input type="checkbox" id="chk-ph-interaction" checked> Verified Absence of Unresolved Contraindications</label>
+          <label><input type="checkbox" id="chk-ph-expiry" checked> Verified Physical Batch Expiry &amp; Integrity</label>
+          <label><input type="checkbox" id="chk-ph-label" checked> Verified Label Instruction Accuracy</label>
+        </div>
+
+        <div class="form-group" style="margin-top: 15px;">
+          <label>Pharmacist Passcode / Digital PIN:</label>
+          <input type="password" id="ph-pin-input" class="form-control" placeholder="Enter Pharmacist PIN (e.g. 1234)" value="1234">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('modal-check')">Cancel</button>
+        <button class="btn btn-success" onclick="submitPharmacistCheck()">Approve &amp; Advance to Payment</button>
       </div>
     </div>
   </div>
 
   <!-- MODAL: Payment Orchestration -->
   <div class="modal-overlay" id="modal-payment">
-    <div class="modal-card">
+    <div class="modal-card modal-lg">
       <div class="modal-header">
         <h3>Payment Orchestration Gate</h3>
         <button class="close-btn" onclick="closeModal('modal-payment')">&times;</button>
       </div>
       <div class="modal-body">
         <div class="payment-summary">
-          <span>Amount Payable:</span>
-          <strong id="pay-total-amount">KES 150.00</strong>
+          <div>
+            <span style="font-size: 0.8rem; color: #94a3b8;">Total Amount Payable:</span><br>
+            <strong id="pay-total-amount">KES 150.00</strong>
+          </div>
+          <div style="text-align: right;">
+            <span style="font-size: 0.8rem; color: #94a3b8;">Payment Gate Status:</span><br>
+            <span class="payment-tag" id="modal-pay-gate-status">PENDING</span>
+          </div>
         </div>
 
         <div class="form-group">
           <label>Tender Method:</label>
           <select id="tender-type-select" class="form-control" onchange="toggleTenderFields()">
-            <option value="MPESA">M-PESA Express</option>
             <option value="CASH" selected>Cash</option>
-            <option value="CARD">Debit / Credit Card</option>
-            <option value="CREDIT_ACCOUNT">Institutional Credit</option>
+            <option value="MPESA">M-PESA Express STK Push</option>
+            <option value="CARD">Debit / Credit Card Terminal</option>
+            <option value="CREDIT_ACCOUNT">Institutional / Corporate Credit</option>
           </select>
         </div>
 
-        <div class="form-group">
-          <label>Paid Amount (KES):</label>
-          <input type="number" id="paid-amount-input" class="form-control" value="150.00" step="0.01">
+        <div id="cash-fields">
+          <div class="form-group">
+            <label>Amount Tendered / Received (KES):</label>
+            <input type="number" id="paid-amount-input" class="form-control" value="200.00" step="0.01" oninput="calculateChange()">
+          </div>
+          <div class="change-box" style="background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.3); padding: 10px 14px; border-radius: 8px; margin-bottom: 14px;">
+            <span>Change Due:</span>
+            <strong id="change-due-display" style="font-size: 1.1rem; color: #818cf8; font-family: monospace;">KES 50.00</strong>
+          </div>
+        </div>
+
+        <div id="mpesa-fields" style="display: none;">
+          <div class="form-group">
+            <label>M-PESA Phone Number:</label>
+            <input type="text" id="mpesa-phone-input" class="form-control" value="254712345678">
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="simulateMpesaPush()" style="margin-bottom: 12px;">📱 Trigger STK Push Prompt</button>
+          <div id="mpesa-push-status" style="display: none;" class="notice-box">Waiting for customer PIN entry...</div>
         </div>
 
         <div class="form-group">
-          <label>Payment Reference / Transaction ID:</label>
-          <input type="text" id="pay-ref-input" placeholder="e.g. MPESA Ref Code or Receipt #" class="form-control">
+          <label>Transaction Reference Code / Receipt #:</label>
+          <input type="text" id="pay-ref-input" placeholder="e.g. MPESA-QW123456" class="form-control">
         </div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="closeModal('modal-payment')">Cancel</button>
-        <button class="btn btn-success" onclick="submitPayment()">Confirm &amp; Link Payment</button>
+        <button class="btn btn-success" onclick="submitPayment()">Confirm &amp; Link Payment Gate</button>
       </div>
     </div>
   </div>
 
-  <!-- MODAL: Intelligent Label Print -->
+  <!-- MODAL: Intelligent Label Print Engine -->
   <div class="modal-overlay" id="modal-label">
     <div class="modal-card modal-lg">
       <div class="modal-header">
-        <h3>Intelligent Label Printer &amp; Format Engine</h3>
+        <h3>Intelligent Label Studio &amp; Format Engine</h3>
         <button class="close-btn" onclick="closeModal('modal-label')">&times;</button>
       </div>
       <div class="modal-body">
-        <div class="format-picker">
-          <label>Label Format:</label>
-          <select id="label-format-select" class="form-control-inline" onchange="renderLabelPreview()">
-            <option value="70x40" selected>Standard Pharmacy (70x40mm)</option>
-            <option value="58x40">Compact Thermal (58x40mm)</option>
-            <option value="A4_MULTI">A4 Multi-Label Sheet</option>
+        <div class="format-picker" style="display: flex; gap: 12px; align-items: center; margin-bottom: 16px;">
+          <label style="font-size: 0.85rem; color: #94a3b8;">Label Preset Format:</label>
+          <select id="label-format-select" class="form-control" style="width: auto; flex: 1;" onchange="renderLabelPreview()">
+            <option value="70x40" selected>Standard Pharmacy Label (70x40mm)</option>
+            <option value="58x40">Compact Thermal Label (58x40mm)</option>
+            <option value="100x50">Warning &amp; Caution Preset (100x50mm)</option>
+            <option value="A4_MULTI">A4 Multi-Label Sheet Layout</option>
           </select>
         </div>
 
         <div class="label-preview-wrapper" id="label-preview-wrapper">
-          <!-- Label preview injected dynamically -->
+          <!-- Label rendered dynamically -->
         </div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="closeModal('modal-label')">Close</button>
-        <button class="btn btn-primary" onclick="printCurrentLabel()">🖨️ Print Label</button>
+        <button class="btn btn-primary" onclick="printCurrentLabel()">🖨️ Execute Print Job (F5)</button>
       </div>
     </div>
   </div>
 
-  <!-- MODAL: Patient Counselling Checklist -->
+  <!-- MODAL: Patient Counselling Verification -->
   <div class="modal-overlay" id="modal-counselling">
     <div class="modal-card">
       <div class="modal-header">
@@ -323,20 +388,21 @@
       </div>
       <div class="modal-body">
         <div class="counselling-checklist">
-          <label><input type="checkbox" id="chk-dosage" checked> Dosage &amp; Frequency Explained</label>
-          <label><input type="checkbox" id="chk-storage" checked> Storage Conditions Explained</label>
-          <label><input type="checkbox" id="chk-sideeffects" checked> Potential Side Effects Discussed</label>
-          <label><input type="checkbox" id="chk-interaction" checked> Food/Drug Interaction Advice Given</label>
+          <label><input type="checkbox" id="chk-dosage" checked> Dosage &amp; Frequency Explained (1 cap 3x daily)</label>
+          <label><input type="checkbox" id="chk-storage" checked> Storage Conditions Explained (Store below 30°C)</label>
+          <label><input type="checkbox" id="chk-sideeffects" checked> Potential Side Effects Discussed (Nausea, rash)</label>
+          <label><input type="checkbox" id="chk-interaction" checked> Food/Drug Interaction Advice (Take with meals)</label>
           <label><input type="checkbox" id="chk-ack" checked> Patient Acknowledged Instructions</label>
         </div>
+
         <div class="form-group" style="margin-top: 15px;">
-          <label>Pharmacist Notes:</label>
-          <textarea id="counselling-notes" class="form-control" rows="2" placeholder="Enter clinical notes..."></textarea>
+          <label>Pharmacist Clinical Counselling Notes:</label>
+          <textarea id="counselling-notes" class="form-control" rows="2" placeholder="Counselled patient on full 7-day compliance..."></textarea>
         </div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="closeModal('modal-counselling')">Cancel</button>
-        <button class="btn btn-primary" onclick="submitCounselling()">Complete Counselling</button>
+        <button class="btn btn-primary" onclick="submitCounselling()">Complete &amp; Record Counselling Log</button>
       </div>
     </div>
   </div>
@@ -345,59 +411,139 @@
   <div class="modal-overlay" id="modal-collection">
     <div class="modal-card">
       <div class="modal-header">
-        <h3>Physical Collection &amp; Inventory Release</h3>
+        <h3>Physical Collection &amp; Inventory Release (F7)</h3>
         <button class="close-btn" onclick="closeModal('modal-collection')">&times;</button>
       </div>
       <div class="modal-body">
         <div class="notice-box">
-          ⚠️ <strong>Inventory Ledger Notice:</strong> Deducting stock on-hand (`EntryType.ISSUE`) occurs immediately upon confirming physical release.
+          ⚠️ <strong>Append-Only Inventory Ledger Notice:</strong> Stock issue (`EntryType.ISSUE`) will be posted to the inventory ledger immediately upon confirming physical release.
         </div>
 
         <div class="form-group">
           <label>Collector Name:</label>
-          <input type="text" id="collector-name-input" class="form-control" value="John Doe">
+          <input type="text" id="collector-name-input" class="form-control" value="Grace Kamau">
         </div>
         <div class="form-group">
-          <label>Collector ID Number:</label>
-          <input type="text" id="collector-id-input" class="form-control" value="ID-12345678">
+          <label>Collector National ID / Passport #:</label>
+          <input type="text" id="collector-id-input" class="form-control" value="ID-98765432">
         </div>
         <div class="form-group">
-          <label>Relationship to Patient:</label>
+          <label>Collector Relationship to Patient:</label>
           <select id="collector-rel-select" class="form-control">
             <option value="SELF" selected>Self (Patient)</option>
             <option value="CAREGIVER">Caregiver / Relative</option>
             <option value="AGENT">Authorized Representative</option>
           </select>
         </div>
+
+        <!-- Controlled Medicine Dual Witness Section -->
+        <div id="controlled-witness-box" style="display: block; background: rgba(139, 92, 246, 0.1); border: 1px solid rgba(139, 92, 246, 0.3); padding: 12px; border-radius: 8px; margin-top: 14px;">
+          <strong style="color: #a78bfa; font-size: 0.85rem;">🔒 Schedule II Controlled Drug Dual-Witness:</strong>
+          <div class="form-group" style="margin-top: 8px; margin-bottom: 0;">
+            <label style="color: #c4b5fd;">Second Pharmacist / Nurse Witness Username:</label>
+            <input type="text" id="witness-username-input" class="form-control" value="witness_rph">
+          </div>
+        </div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="closeModal('modal-collection')">Cancel</button>
-        <button class="btn btn-success" onclick="submitCollection()">Confirm Collection &amp; Issue Inventory</button>
+        <button class="btn btn-success" onclick="submitCollection()">Confirm Release &amp; Deduct Ledger Stock</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: Partial Dispensing & Refills -->
+  <div class="modal-overlay" id="modal-partial">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Partial Dispensing &amp; Repeat Refills</h3>
+        <button class="close-btn" onclick="closeModal('modal-partial')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Authorized Prescription Quantity:</label>
+          <input type="number" id="partial-auth-qty" class="form-control" value="21" disabled>
+        </div>
+        <div class="form-group">
+          <label>Quantity to Dispense Now (Partial Stage):</label>
+          <input type="number" id="partial-stage-qty" class="form-control" value="10">
+        </div>
+        <div class="form-group">
+          <label>Reason for Partial Dispensing:</label>
+          <select id="partial-reason-select" class="form-control">
+            <option value="STOCK_SHORTAGE">Temporary Stock Shortage</option>
+            <option value="PATIENT_REQUEST">Patient Request / Financial Staging</option>
+            <option value="SHORT_EXPIRY">Short Expiry Batch Staging</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('modal-partial')">Cancel</button>
+        <button class="btn btn-primary" onclick="submitPartialDispensing()">Process Partial Dispense</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: CDS Screening Details & Clinical Override -->
+  <div class="modal-overlay" id="modal-cds">
+    <div class="modal-card modal-lg">
+      <div class="modal-header">
+        <h3>Clinical Decision Support — Safety Evaluation &amp; Overrides</h3>
+        <button class="close-btn" onclick="closeModal('modal-cds')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="cds-findings-list">
+          <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); padding: 12px; border-radius: 8px; margin-bottom: 12px;">
+            <strong style="color: #fbbf24;">⚠️ MODERATE: Penicillin Class History Alert</strong>
+            <p style="font-size: 0.8rem; color: #cbd5e1; margin-top: 4px;">Patient allergy profile notes mild rash history on Amoxicillin in 2022.</p>
+          </div>
+        </div>
+
+        <div class="form-group" style="margin-top: 14px;">
+          <label>Pharmacist Clinical Override Justification:</label>
+          <textarea id="cds-override-reason" class="form-control" rows="3" placeholder="Enter clinical rationale for override (e.g. Patient tolerated challenge dose under observation...)"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('modal-cds')">Cancel</button>
+        <button class="btn btn-warning" onclick="submitClinicalOverride()">Submit Clinical Override</button>
       </div>
     </div>
   </div>
 
   <!-- MODAL: Shift Operations -->
   <div class="modal-overlay" id="modal-shift">
-    <div class="modal-card">
+    <div class="modal-card modal-lg">
       <div class="modal-header">
-        <h3>POS Shift Operations &amp; Reconciliation</h3>
+        <h3>POS Shift Operations &amp; Stock Reconciliation</h3>
         <button class="close-btn" onclick="closeModal('modal-shift')">&times;</button>
       </div>
       <div class="modal-body">
-        <div class="shift-info-box">
-          <div>Shift #: <strong id="modal-shift-num">DEMO-SHIFT-01</strong></div>
-          <div>Status: <strong id="modal-shift-status">OPEN</strong></div>
+        <div class="payment-summary" style="background: rgba(99, 102, 241, 0.1); border-color: rgba(99, 102, 241, 0.3);">
+          <div>
+            <span style="font-size: 0.8rem; color: #94a3b8;">Active Shift #:</span><br>
+            <strong style="color: #818cf8;" id="modal-shift-num">DEMO-SHIFT-01</strong>
+          </div>
+          <div style="text-align: right;">
+            <span style="font-size: 0.8rem; color: #94a3b8;">Cashier / Pharmacist:</span><br>
+            <strong style="font-size: 0.95rem; color: #f8fafc;">Demo Cashier / Demo RPh</strong>
+          </div>
+        </div>
+
+        <div class="info-grid">
+          <div class="info-card">
+            <div class="card-label">EXPECTED CONTROLLED STOCK</div>
+            <div class="card-main-val" style="color: #34d399;">100 Units</div>
+          </div>
+          <div class="info-card">
+            <div class="card-label">PHYSICAL COUNT</div>
+            <input type="number" id="shift-end-count" class="form-control" value="100" style="margin-top: 4px;">
+          </div>
         </div>
 
         <div class="form-group">
-          <label>Controlled Medicine End Count:</label>
-          <input type="number" id="shift-end-count" class="form-control" value="50">
-        </div>
-
-        <div class="form-group">
-          <label>Reconciliation / Discrepancy Notes:</label>
-          <textarea id="shift-notes" class="form-control" rows="2" placeholder="Notes..."></textarea>
+          <label>Shift Reconciliation / Discrepancy Rationale Notes:</label>
+          <textarea id="shift-notes" class="form-control" rows="2" placeholder="Zero physical count discrepancies observed..."></textarea>
         </div>
       </div>
       <div class="modal-footer">
@@ -406,6 +552,9 @@
       </div>
     </div>
   </div>
+
+  <!-- Dynamic Toast Container -->
+  <div id="toast-container" class="toast-container"></div>
 
   <script src="/static/pos/js/pos.js"></script>
 </body>

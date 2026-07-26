@@ -1,8 +1,15 @@
 /* ==========================================================================
-   TibaTrace Enterprise Pharmacy POS — Ultra-Premium CSS Theme & Design System
+   TibaTrace Enterprise Pharmacy POS — Ultra-Premium Dual Theme (Light/Dark)
    ========================================================================== */
 
 :root {
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+}
+
+/* Dark Theme Variables */
+body.dark-theme {
   --bg-dark: #0b0f19;
   --bg-card: #131b2e;
   --bg-card-hover: #1a243d;
@@ -23,19 +30,36 @@
   --accent-amber: #f59e0b;
   --accent-rose: #f43f5e;
   --accent-purple: #8b5cf6;
-  
-  --status-draft: #64748b;
-  --status-preparing: #06b6d4;
-  --status-checking: #f59e0b;
-  --status-payment: #8b5cf6;
-  --status-supplied: #10b981;
-  --status-cancelled: #ef4444;
 
   --shadow-card: 0 4px 20px -2px rgba(0, 0, 0, 0.5);
   --shadow-glow: 0 0 15px rgba(16, 185, 129, 0.3);
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
+}
+
+/* Light Theme Variables */
+body.light-theme {
+  --bg-dark: #f1f5f9;
+  --bg-card: #ffffff;
+  --bg-card-hover: #f8fafc;
+  --bg-input: #f8fafc;
+  --border-color: #cbd5e1;
+  --border-focus: #059669;
+  
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+  
+  --primary-emerald: #059669;
+  --primary-emerald-glow: rgba(5, 150, 105, 0.15);
+  --primary-hover: #047857;
+  
+  --accent-cyan: #0891b2;
+  --accent-indigo: #4f46e5;
+  --accent-amber: #d97706;
+  --accent-rose: #e11d48;
+  --accent-purple: #7c3aed;
+
+  --shadow-card: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-glow: 0 0 12px rgba(5, 150, 105, 0.2);
 }
 
 * {
@@ -45,13 +69,14 @@
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
 }
 
-body.dark-theme {
+body {
   background-color: var(--bg-dark);
   color: var(--text-primary);
   height: 100vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 /* Custom Scrollbar */
@@ -73,14 +98,14 @@ body.dark-theme {
 /* Application Header */
 .app-header {
   height: 62px;
-  background: rgba(19, 27, 46, 0.85);
-  backdrop-filter: blur(12px);
+  background: var(--bg-card);
   border-bottom: 1px solid var(--border-color);
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 20px;
   z-index: 100;
+  transition: background-color 0.3s ease, border-color 0.3s ease;
 }
 
 .brand-section {
@@ -105,9 +130,7 @@ body.dark-theme {
   font-size: 1.15rem;
   font-weight: 700;
   letter-spacing: -0.02em;
-  background: linear-gradient(to right, #ffffff, #94a3b8);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+  color: var(--text-primary);
 }
 
 .badge-version {
@@ -510,12 +533,19 @@ body.dark-theme {
   padding: 12px 16px;
   margin-bottom: 16px;
   border: 1px solid transparent;
+  transition: all 0.2s ease;
 }
 
 .cds-pass {
   background: rgba(16, 185, 129, 0.08);
   border-color: rgba(16, 185, 129, 0.3);
-  color: #34d399;
+  color: var(--primary-emerald);
+}
+
+.cds-warning {
+  background: rgba(245, 158, 11, 0.1);
+  border-color: rgba(245, 158, 11, 0.4);
+  color: var(--accent-amber);
 }
 
 .cds-header {
@@ -549,7 +579,7 @@ body.dark-theme {
 }
 
 .dispensing-table th {
-  background: rgba(0, 0, 0, 0.2);
+  background: rgba(0, 0, 0, 0.08);
   padding: 10px 14px;
   color: var(--text-muted);
   font-weight: 600;
@@ -558,7 +588,7 @@ body.dark-theme {
 
 .dispensing-table td {
   padding: 12px 14px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid var(--border-color);
 }
 
 /* Action Control Bar */
@@ -607,7 +637,7 @@ body.dark-theme {
 }
 
 .btn-secondary {
-  background: var(--bg-input);
+  background: var(--bg-card);
   color: var(--text-primary);
   border-color: var(--border-color);
 }
@@ -618,6 +648,11 @@ body.dark-theme {
 .btn-success {
   background: #059669;
   color: white;
+}
+.btn-warning {
+  background: var(--accent-amber);
+  color: #0f172a;
+  font-weight: 700;
 }
 .btn-danger {
   background: var(--accent-rose);
@@ -641,7 +676,7 @@ body.dark-theme {
   left: 0;
   width: 100vw;
   height: 100vh;
-  background: rgba(0, 0, 0, 0.75);
+  background: rgba(0, 0, 0, 0.65);
   backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
@@ -661,16 +696,22 @@ body.dark-theme {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
-  width: 480px;
+  width: 500px;
   max-width: 90vw;
   box-shadow: var(--shadow-card);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  transform: scale(0.95);
+  transition: transform 0.25s ease;
+}
+
+.modal-overlay.open .modal-card {
+  transform: scale(1);
 }
 
 .modal-lg {
-  width: 680px;
+  width: 720px;
 }
 
 .modal-header {
@@ -772,4 +813,61 @@ body.dark-theme {
   padding: 20px;
   background: #000;
   border-radius: var(--radius-md);
+}
+
+/* Toast Notifications Container */
+.toast-container {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 2000;
+}
+
+.toast {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-left: 4px solid var(--primary-emerald);
+  padding: 12px 18px;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  animation: toastSlide 0.3s ease forwards;
+}
+
+.toast-error {
+  border-left-color: var(--accent-rose);
+}
+
+@keyframes toastSlide {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #label-preview-wrapper, #label-preview-wrapper * {
+    visibility: visible;
+  }
+  #label-preview-wrapper {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    background: none;
+  }
 }
