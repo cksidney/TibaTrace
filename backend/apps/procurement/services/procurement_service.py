@@ -347,7 +347,7 @@ class ProcurementService:
         reason = reason or change_reason
         if not str(reason or "").strip():
             raise ValidationError("A purchase-order revision requires a reason.")
-        if purchase_order.status not in [PurchaseOrder.Status.APPROVED, PurchaseOrder.Status.RELEASED]:
+        if purchase_order.status not in [PurchaseOrder.Status.APPROVED, PurchaseOrder.Status.SENT]:
             raise ValidationError("Revisions can only be performed on Approved or Released Purchase Orders.")
 
         rev_num = purchase_order.revision_number + 1

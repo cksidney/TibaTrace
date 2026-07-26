@@ -95,24 +95,40 @@ class SupplierGovernanceService:
             )
 
         supplier.status = Supplier.Status.APPROVED
-        supplier.save(update_fields=["status", "updated_at"])
+        # Record who approved and when. The check ran against this person; a
+        # control that validates an approver and then discards them leaves no
+        # evidence it ran, which is indistinguishable from never having run.
+        supplier.approved_by = approver
+        supplier.approved_at = timezone.now()
+        supplier.save(update_fields=["status", "approved_by", "approved_at", "updated_at"])
         return supplier
 
     @staticmethod
     @transaction.atomic
-    def suspend_supplier(*, supplier: Supplier, approver, reason: str) -> Supplier:
+    def suspend_supplier(*, supplier: Supplier, reason: str, approver=None) -> Supplier:
         """Stop new orders without erasing history.
 
         Suspension does not touch existing orders or receipts. Goods already
         received were still received, and the invoices for them are still owed.
+
+        An approver is recorded when there is one but is not required. This is
+        the protective direction -- it stops purchasing -- and gating the safe
+        action behind a second signature means a supplier stays orderable while
+        somebody hunts for a manager. Approval, which permits purchasing, does
+        require one.
+
+        A reason is required either way: a suspension nobody can explain gets
+        reversed by the next person who needs stock.
         """
-        if approver is None:
-            raise PermissionDenied("Supplier suspension requires a named approver.")
         if not str(reason or "").strip():
             raise ValidationError("Supplier suspension requires a reason.")
 
         supplier.status = Supplier.Status.SUSPENDED
-        supplier.save(update_fields=["status", "updated_at"])
+        # Persisted, not merely validated. The reason is what a buyer sees when
+        # they find they cannot order, and what stops the suspension being
+        # quietly reversed by whoever needs stock next.
+        supplier.suspension_reason = reason
+        supplier.save(update_fields=["status", "suspension_reason", "updated_at"])
         return supplier
 
     # ------------------------------------------------------------ eligibility

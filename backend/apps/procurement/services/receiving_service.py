@@ -28,7 +28,7 @@ class ReceivingService:
     @staticmethod
     @transaction.atomic
     def open_receiving_session(*, tenant, purchase_order, branch, delivery_note_number, received_by) -> ReceivingSession:
-        if purchase_order.status not in [PurchaseOrder.Status.APPROVED, PurchaseOrder.Status.RELEASED, PurchaseOrder.Status.PARTIALLY_RECEIVED]:
+        if purchase_order.status not in [PurchaseOrder.Status.SENT, PurchaseOrder.Status.ACKNOWLEDGED, PurchaseOrder.Status.PARTIALLY_RECEIVED]:
             raise ValidationError(f"Cannot receive goods for PO in status {purchase_order.status}")
 
         session_num = f"RCV-{timezone.now().strftime('%Y%m%d')}-{ReceivingSession.all_objects.filter(tenant=tenant).count() + 1:04d}"
@@ -327,8 +327,8 @@ class GoodsReceivingService:
             )
         if expiry_date <= timezone.now().date():
             raise ValidationError(
-                f"Batch {manufacturer_batch_number} expires on {expiry_date} "
-                "and cannot be received."
+                f"Cannot receive expired batch: {manufacturer_batch_number} "
+                f"expires on {expiry_date}."
             )
         if received_quantity <= 0:
             raise ValidationError("A received quantity must be positive.")
