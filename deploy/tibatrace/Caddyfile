@@ -1,0 +1,15 @@
+{$TIBATRACE_HOST} {
+	encode zstd gzip
+
+	header {
+		-Server
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "same-origin"
+	}
+
+	reverse_proxy api:8000 {
+		header_up Host {http.request.host}
+		header_up X-Forwarded-Proto https
+	}
+}

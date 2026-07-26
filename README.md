@@ -61,6 +61,14 @@ docker compose up --build
 The Compose stack owns its PostgreSQL database, Redis namespace and object-store
 volume. It does not connect to a Mercato database.
 
+## TibaTrace Deployment Target
+
+The intended public address is `https://tibatrace.esenai.co.ke/`, not the
+path-based `https://esenai.co.ke/TibaTrace` form. A production Compose bundle,
+TLS reverse-proxy configuration, environment template, and runbook are in
+[`deploy/tibatrace/`](deploy/tibatrace/). The bundle uses separately managed
+PostgreSQL and Redis services and remains subject to the release gates below.
+
 ## Test and System Validation
 
 ```bash
@@ -72,4 +80,3 @@ volume. It does not connect to a Mercato database.
 ```
 
 Validation artifacts are output to `artifacts/generated/validation/repository-validation-manifest.json`. For detailed documentation, see [`docs/validation/VALIDATION_GUIDE.md`](file:///Users/sidneykibet/DawaTrace/docs/validation/VALIDATION_GUIDE.md).
-

@@ -1,0 +1,88 @@
+name: tibatrace
+
+x-backend: &backend
+  image: ${DAWATRACE_IMAGE:?Set DAWATRACE_IMAGE to an immutable release image.}
+  env_file:
+    - ${TIBATRACE_ENV_FILE:-.env.production}
+  init: true
+
+services:
+  migrate:
+    <<: *backend
+    profiles: ["maintenance"]
+    command: ["python", "manage.py", "migrate", "--noinput"]
+    restart: "no"
+
+  api:
+    <<: *backend
+    command:
+      [
+        "gunicorn",
+        "dawatrace.wsgi:application",
+        "--bind",
+        "0.0.0.0:8000",
+        "--workers",
+        "3",
+        "--timeout",
+        "60",
+        "--worker-tmp-dir",
+        "/dev/shm",
+        "--access-logfile",
+        "-",
+        "--error-logfile",
+        "-",
+      ]
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    volumes:
+      - clinical-objects:/data/clinical
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health/', timeout=3)",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  worker:
+    <<: *backend
+    command: ["celery", "-A", "dawatrace", "worker", "--loglevel=INFO", "--queues=dawatrace-clinical"]
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    volumes:
+      - clinical-objects:/data/clinical
+
+  beat:
+    <<: *backend
+    command: ["celery", "-A", "dawatrace", "beat", "--loglevel=INFO"]
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+
+  edge:
+    image: caddy:2.8.4-alpine@sha256:af32e97399febea808609119bb21544d0265c58a02836576e32a2d082c262c17
+    env_file:
+      - ${TIBATRACE_ENV_FILE:-.env.production}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  caddy-data:
+  caddy-config:
+  clinical-objects:

@@ -1,0 +1,7 @@
+services:
+  api:
+    ports:
+      - "127.0.0.1:${TIBATRACE_API_PORT:-28110}:8000"
+
+  edge:
+    profiles: ["standalone-edge"]
