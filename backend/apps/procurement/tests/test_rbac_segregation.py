@@ -5,6 +5,13 @@ from django.core.exceptions import ValidationError
 from django.test import TestCase
 
 from apps.core.tenant_context import set_current_tenant_id
+from apps.medicines.models import (
+    ClinicalMedicinalProduct,
+    CommercialSKU,
+    DoseForm,
+    ManufacturedMedicinalProduct,
+    PackageDefinition,
+)
 from apps.organizations.models import Location, Organization
 from apps.procurement.models import PurchaseRequisition, SupplierQualification
 from apps.procurement.services import (
@@ -38,6 +45,21 @@ class TestSegregationOfDuties(TestCase):
             tenant=self.tenant, supplier=self.supplier, qualification_type=SupplierQualification.QualificationType.BUSINESS_REGISTRATION,
             verification_status=SupplierQualification.QualificationVerificationStatus.VERIFIED, effective_date=datetime.date.today(), expiry_date=datetime.date.today() + datetime.timedelta(days=365)
         )
+        # A pharmaceutical supplier needs a dealer licence as well as a company
+        # registration before it may be sent an order.
+        SupplierQualification.objects.create(
+            tenant=self.tenant, supplier=self.supplier, qualification_type=SupplierQualification.QualificationType.WHOLESALE_DEALER_LICENCE,
+            licence_number="WDL-RBAC",
+            verification_status=SupplierQualification.QualificationVerificationStatus.VERIFIED, effective_date=datetime.date.today(), expiry_date=datetime.date.today() + datetime.timedelta(days=365)
+        )
+
+        # A requisition needs something to requisition, and a purchase order
+        # needs a requisition with lines.
+        dose_form = DoseForm.objects.create(code="TAB-RBAC", name="Tablet")
+        clinical_product = ClinicalMedicinalProduct.objects.create(tenant=self.tenant, code="CMP-RBAC", canonical_name="RBAC Product", dose_form=dose_form)
+        manufactured = ManufacturedMedicinalProduct.objects.create(tenant=self.tenant, code="MP-RBAC", brand_name="RBAC Brand", clinical_product=clinical_product)
+        package = PackageDefinition.objects.create(code="BOX-RBAC", description="Box 100", unit_of_measure="tab")
+        self.sku = CommercialSKU.objects.create(tenant=self.tenant, sku_code="SKU-RBAC-001", display_name="SKU RBAC", manufactured_product=manufactured, package_definition=package)
 
     def test_requester_cannot_approve_own_requisition(self):
         req = PurchaseRequisitionService.create_requisition(
@@ -47,7 +69,9 @@ class TestSegregationOfDuties(TestCase):
             requester=self.requester_user,
             requested_delivery_date=datetime.date.today()
         )
-        
+        PurchaseRequisitionService.add_line(requisition=req, sku=self.sku, requested_quantity=10)
+        PurchaseRequisitionService.submit_requisition(requisition=req)
+
         # Requester trying to approve their own requisition
         with self.assertRaisesMessage(ValidationError, "Requester cannot approve their own purchase requisition"):
             PurchaseRequisitionService.approve_requisition(requisition=req, approver=self.requester_user)
@@ -64,7 +88,10 @@ class TestSegregationOfDuties(TestCase):
             requester=self.requester_user,
             requested_delivery_date=datetime.date.today()
         )
-        
+        PurchaseRequisitionService.add_line(requisition=req, sku=self.sku, requested_quantity=10)
+        PurchaseRequisitionService.submit_requisition(requisition=req)
+        PurchaseRequisitionService.approve_requisition(requisition=req, approver=self.approver_user)
+
         po = PurchaseOrderService.create_po_from_requisition(
             tenant=self.tenant,
             po_number="PO-RBAC-001",

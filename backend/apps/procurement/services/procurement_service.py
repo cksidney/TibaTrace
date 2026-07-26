@@ -18,7 +18,10 @@ from apps.procurement.models import (
     RFQLine,
     Supplier,
 )
-from apps.procurement.services.supplier_governance_service import SupplierGovernanceService
+from apps.procurement.services.supplier_governance_service import (
+    PURCHASABLE_STATUSES,
+    SupplierGovernanceService,
+)
 
 
 class ProcurementService:
@@ -329,6 +332,21 @@ class ProcurementService:
     @staticmethod
     @transaction.atomic
     def approve_purchase_order(*, purchase_order, approver) -> PurchaseOrder:
+        """Approve an order for release to the supplier.
+
+        Re-checks the supplier. Eligibility was verified when the order was
+        raised, but a supplier can be suspended between drafting and approval --
+        for a compliance violation, a lapsed licence, a quality failure -- and
+        approving on the strength of a check made days earlier commits the
+        organisation to a counterparty it has since decided not to buy from.
+        """
+        supplier = purchase_order.supplier
+        if supplier.status not in PURCHASABLE_STATUSES:
+            raise ValidationError(
+                f"Cannot approve PO for a supplier that is not APPROVED or ACTIVE; "
+                f"{supplier.supplier_code} is {supplier.status}."
+            )
+
         if purchase_order.status != PurchaseOrder.Status.DRAFT:
             raise ValidationError(f"Cannot approve PO in status {purchase_order.status}")
 

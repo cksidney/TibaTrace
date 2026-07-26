@@ -224,25 +224,50 @@ class GoodsReceivingService:
             received_by=receiver,
             delivery_note_number=delivery_note_number,
             arrival_time=arrival_time or timezone.now(),
-            status=GoodsReceipt.Status.DRAFT,
+            # RECEIVING, not DRAFT. Starting a goods receipt means a delivery
+            # is on the bay and somebody is counting it; the receipt is already
+            # in progress, and DRAFT would suggest a document nobody has begun.
+            status=GoodsReceipt.Status.RECEIVING,
         )
 
     @staticmethod
     @transaction.atomic
     def receive_line(*, goods_receipt, po_line, delivered_quantity, accepted_quantity=0,
+                     quarantined_quantity=0, rejected_quantity=0, discrepancy_reason="",
                      sku=None, idempotency_key=""):
-        """Record what arrived against a purchase-order line.
+        """Record what arrived against a purchase-order line, and its disposition.
 
         Accepted defaults to zero. Goods are delivered first and accepted only
         after inspection, and a default that accepted everything on arrival
         would make the quality step decorative.
+
+        Every delivered unit must end up in exactly one of accepted, quarantined
+        or rejected, and the three together may not exceed what arrived.
+        Disposition adding to more than the delivery means stock has been
+        conjured somewhere between the bay and the ledger.
         """
         if delivered_quantity is None or delivered_quantity < 0:
             raise ValidationError("A delivered quantity cannot be negative.")
-        if accepted_quantity > delivered_quantity:
+
+        for label, value in (
+            ("accepted", accepted_quantity),
+            ("quarantined", quarantined_quantity),
+            ("rejected", rejected_quantity),
+        ):
+            if value < 0:
+                raise ValidationError(f"A {label} quantity cannot be negative.")
+
+        disposed = accepted_quantity + quarantined_quantity + rejected_quantity
+        if disposed > delivered_quantity:
             raise ValidationError(
-                f"Cannot accept {accepted_quantity} of a delivery of {delivered_quantity}."
+                f"Disposition exceeds the delivery: {accepted_quantity} accepted plus "
+                f"{quarantined_quantity} quarantined plus {rejected_quantity} rejected "
+                f"is {disposed}, against {delivered_quantity} delivered."
             )
+        if rejected_quantity and not str(discrepancy_reason or "").strip():
+            # Rejected stock is a claim against the supplier. Without a reason
+            # it cannot be argued, credited, or learned from.
+            raise ValidationError("A rejected quantity requires a discrepancy reason.")
 
         # Lock the purchase-order line for the duration of this receipt. Two
         # receivers working the same delivery would otherwise each read the
@@ -278,10 +303,15 @@ class GoodsReceivingService:
         )
         line.delivered_quantity = (line.delivered_quantity or 0) + delivered_quantity
         line.accepted_quantity = (line.accepted_quantity or 0) + accepted_quantity
+        line.quarantined_quantity = (line.quarantined_quantity or 0) + quarantined_quantity
+        line.rejected_quantity = (line.rejected_quantity or 0) + rejected_quantity
+        if discrepancy_reason:
+            line.discrepancy_reason = discrepancy_reason
         if idempotency_key and not line.idempotency_key:
             line.idempotency_key = idempotency_key
         line.save(update_fields=[
-            "delivered_quantity", "accepted_quantity", "idempotency_key", "updated_at",
+            "delivered_quantity", "accepted_quantity", "quarantined_quantity",
+            "rejected_quantity", "discrepancy_reason", "idempotency_key", "updated_at",
         ])
 
         # The purchase-order line carries the running total, so the next
@@ -369,6 +399,41 @@ class GoodsReceivingService:
         receipt.status = GoodsReceipt.Status.UNDER_INSPECTION
         receipt.save(update_fields=["status", "updated_at"])
         return batch
+
+    @staticmethod
+    @transaction.atomic
+    def close_goods_receipt(*, goods_receipt):
+        """Close the receipt and settle the purchase order's received state.
+
+        The purchase order is marked fully received only when every line has had
+        its ordered quantity delivered. Closing one shipment is not the same as
+        completing an order -- a supplier shipping in three deliveries would
+        otherwise have the order closed against the first, and the outstanding
+        two would stop being chased.
+        """
+        if goods_receipt.status in {
+            GoodsReceipt.Status.ACCEPTED,
+            GoodsReceipt.Status.CLOSED,
+            GoodsReceipt.Status.CANCELLED,
+        }:
+            raise ValidationError(
+                f"Goods receipt {goods_receipt.grn_number} is already {goods_receipt.status}."
+            )
+
+        goods_receipt.status = GoodsReceipt.Status.ACCEPTED
+        goods_receipt.save(update_fields=["status", "updated_at"])
+
+        purchase_order = goods_receipt.purchase_order
+        lines = list(purchase_order.lines.all())
+        if lines and all(
+            (line.received_quantity or 0) >= line.ordered_quantity for line in lines
+        ):
+            purchase_order.status = PurchaseOrder.Status.FULLY_RECEIVED
+        else:
+            purchase_order.status = PurchaseOrder.Status.PARTIALLY_RECEIVED
+        purchase_order.save(update_fields=["status", "updated_at"])
+
+        return goods_receipt
 
     @staticmethod
     @transaction.atomic

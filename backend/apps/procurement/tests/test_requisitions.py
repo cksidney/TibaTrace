@@ -42,6 +42,9 @@ def test_purchase_requisition_lifecycle_and_segregation_of_duties():
 
     # 2. Add line
     line = PurchaseRequisitionService.add_line(requisition=req, sku=sku, requested_quantity=100)
+    # A draft is the requester's working copy. Handing it to an approver is a
+    # deliberate act, so a draft cannot be approved straight from creation.
+    PurchaseRequisitionService.submit_requisition(requisition=req)
     assert line.requested_quantity == 100
 
     # 3. Segregation of duties check: Requester cannot approve their own requisition
