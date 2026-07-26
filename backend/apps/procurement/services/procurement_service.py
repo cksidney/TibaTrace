@@ -340,7 +340,13 @@ class ProcurementService:
 
     @staticmethod
     @transaction.atomic
-    def revise_purchase_order(*, purchase_order, actor, reason, updated_lines_data) -> PurchaseOrderRevision:
+    def revise_purchase_order(*, purchase_order, actor, reason=None, change_reason=None,
+                              updated_lines_data=None, **changed_fields) -> PurchaseOrderRevision:
+        # Callers name it reason or change_reason; both mean why the released
+        # order is being altered, which is the thing that must be recorded.
+        reason = reason or change_reason
+        if not str(reason or "").strip():
+            raise ValidationError("A purchase-order revision requires a reason.")
         if purchase_order.status not in [PurchaseOrder.Status.APPROVED, PurchaseOrder.Status.RELEASED]:
             raise ValidationError("Revisions can only be performed on Approved or Released Purchase Orders.")
 

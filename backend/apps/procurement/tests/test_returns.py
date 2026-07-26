@@ -28,12 +28,19 @@ User = get_user_model()
 def test_supplier_return_request():
     tenant = Tenant.objects.create(name="Ret Tenant", slug="ret-tenant")
     user = User.objects.create_user(username="retuser", email="ret@test.com", password="password123", tenant=tenant)  # nosec B106
+    approver = User.objects.create_user(username="retuser-app", email="retuser-app@test.com", password="password123", tenant=tenant)  # nosec B106
 
     supplier = SupplierGovernanceService.create_supplier(tenant=tenant, supplier_code="SUP-RET", legal_name="Ret Supplier")
-    SupplierGovernanceService.approve_supplier(supplier=supplier, approver=user)
+    SupplierGovernanceService.approve_supplier(supplier=supplier, approver=approver)
     SupplierQualification.objects.create(
         tenant=tenant, supplier=supplier, qualification_type=SupplierQualification.QualificationType.BUSINESS_REGISTRATION,
         verification_status=SupplierQualification.QualificationVerificationStatus.VERIFIED, effective_date=datetime.date.today(), expiry_date=datetime.date.today() + datetime.timedelta(days=365)
+    )
+    SupplierQualification.objects.create(
+        tenant=tenant, supplier=supplier, qualification_type=SupplierQualification.QualificationType.WHOLESALE_DEALER_LICENCE,
+        licence_number="WDL-TEST",
+        verification_status=SupplierQualification.QualificationVerificationStatus.VERIFIED,
+        effective_date=datetime.date.today(), expiry_date=datetime.date.today() + datetime.timedelta(days=365)
     )
 
     org = Organization.objects.create(tenant=tenant, code="ORG-RET", name="Ret Org")
@@ -47,6 +54,8 @@ def test_supplier_return_request():
 
     req = PurchaseRequisitionService.create_requisition(tenant=tenant, requisition_number="REQ-RET", requesting_branch=branch, requester=user, requested_delivery_date=datetime.date.today())
     PurchaseRequisitionService.add_line(requisition=req, sku=sku, requested_quantity=10)
+    PurchaseRequisitionService.submit_requisition(requisition=req)
+    PurchaseRequisitionService.approve_requisition(requisition=req, approver=approver)
     po = PurchaseOrderService.create_po_from_requisition(tenant=tenant, po_number="PO-RET", supplier=supplier, requisition=req, ordering_branch=branch, order_date=datetime.date.today(), expected_delivery_date=datetime.date.today(), creator=user)
     PurchaseOrderService.approve_po(purchase_order=po, approver=user)
     PurchaseOrderService.send_po(purchase_order=po)

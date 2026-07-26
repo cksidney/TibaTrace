@@ -30,12 +30,19 @@ def test_batch_capture_and_quality_release():
     tenant = Tenant.objects.create(name="Batch Tenant", slug="batch-tenant")
     set_current_tenant_id(str(tenant.pk))
     user = User.objects.create_user(username="batchuser", email="batch@test.com", password="password123", tenant=tenant, is_platform_admin=True)  # nosec B106
+    approver = User.objects.create_user(username="batchuser-app", email="batchuser-app@test.com", password="password123", tenant=tenant)  # nosec B106
 
     supplier = SupplierGovernanceService.create_supplier(tenant=tenant, supplier_code="SUP-BATCH", legal_name="Batch Supplier")
-    SupplierGovernanceService.approve_supplier(supplier=supplier, approver=user)
+    SupplierGovernanceService.approve_supplier(supplier=supplier, approver=approver)
     SupplierQualification.objects.create(
         tenant=tenant, supplier=supplier, qualification_type=SupplierQualification.QualificationType.BUSINESS_REGISTRATION,
         verification_status=SupplierQualification.QualificationVerificationStatus.VERIFIED, effective_date=datetime.date.today(), expiry_date=datetime.date.today() + datetime.timedelta(days=365)
+    )
+    SupplierQualification.objects.create(
+        tenant=tenant, supplier=supplier, qualification_type=SupplierQualification.QualificationType.WHOLESALE_DEALER_LICENCE,
+        licence_number="WDL-TEST",
+        verification_status=SupplierQualification.QualificationVerificationStatus.VERIFIED,
+        effective_date=datetime.date.today(), expiry_date=datetime.date.today() + datetime.timedelta(days=365)
     )
 
     org = Organization.objects.create(tenant=tenant, code="ORG-BAT", name="Bat Org")
@@ -49,6 +56,8 @@ def test_batch_capture_and_quality_release():
 
     req = PurchaseRequisitionService.create_requisition(tenant=tenant, requisition_number="REQ-BAT", requesting_branch=branch, requester=user, requested_delivery_date=datetime.date.today())
     PurchaseRequisitionService.add_line(requisition=req, sku=sku, requested_quantity=50)
+    PurchaseRequisitionService.submit_requisition(requisition=req)
+    PurchaseRequisitionService.approve_requisition(requisition=req, approver=approver)
 
     po = PurchaseOrderService.create_po_from_requisition(tenant=tenant, po_number="PO-BAT", supplier=supplier, requisition=req, ordering_branch=branch, order_date=datetime.date.today(), expected_delivery_date=datetime.date.today(), creator=user)
     PurchaseOrderService.approve_po(purchase_order=po, approver=user)

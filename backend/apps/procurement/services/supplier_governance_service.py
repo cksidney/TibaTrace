@@ -80,7 +80,7 @@ class SupplierGovernanceService:
 
     @staticmethod
     @transaction.atomic
-    def approve_supplier(*, supplier: Supplier, approver) -> Supplier:
+    def approve_supplier(*, supplier: Supplier, approver, reason: str = "") -> Supplier:
         """Approve a supplier for purchasing.
 
         Requires a named approver. Approval is what turns a lead into a

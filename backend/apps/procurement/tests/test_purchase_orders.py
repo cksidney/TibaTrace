@@ -24,12 +24,19 @@ def test_purchase_order_creation_and_approval():
     tenant = Tenant.objects.create(name="PO Tenant", slug="po-tenant")
     set_current_tenant_id(str(tenant.pk))
     user = User.objects.create_user(username="pouser", email="po@test.com", password="password123", tenant=tenant)  # nosec B106
+    approver = User.objects.create_user(username="pouser-app", email="pouser-app@test.com", password="password123", tenant=tenant)  # nosec B106
 
     supplier = SupplierGovernanceService.create_supplier(tenant=tenant, supplier_code="SUP-PO", legal_name="PO Supplier")
-    SupplierGovernanceService.approve_supplier(supplier=supplier, approver=user)
+    SupplierGovernanceService.approve_supplier(supplier=supplier, approver=approver)
     SupplierQualification.objects.create(
         tenant=tenant, supplier=supplier, qualification_type=SupplierQualification.QualificationType.BUSINESS_REGISTRATION,
         verification_status=SupplierQualification.QualificationVerificationStatus.VERIFIED, effective_date=datetime.date.today(), expiry_date=datetime.date.today() + datetime.timedelta(days=365)
+    )
+    SupplierQualification.objects.create(
+        tenant=tenant, supplier=supplier, qualification_type=SupplierQualification.QualificationType.WHOLESALE_DEALER_LICENCE,
+        licence_number="WDL-TEST",
+        verification_status=SupplierQualification.QualificationVerificationStatus.VERIFIED,
+        effective_date=datetime.date.today(), expiry_date=datetime.date.today() + datetime.timedelta(days=365)
     )
 
     org = Organization.objects.create(tenant=tenant, code="ORG-PO", name="PO Org")
@@ -49,6 +56,8 @@ def test_purchase_order_creation_and_approval():
         requested_delivery_date=datetime.date.today() + datetime.timedelta(days=7),
     )
     PurchaseRequisitionService.add_line(requisition=req, sku=sku, requested_quantity=50)
+    PurchaseRequisitionService.submit_requisition(requisition=req)
+    PurchaseRequisitionService.approve_requisition(requisition=req, approver=approver)
 
     # Create PO from requisition
     po = PurchaseOrderService.create_po_from_requisition(

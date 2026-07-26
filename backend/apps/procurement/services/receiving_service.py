@@ -53,6 +53,12 @@ class ReceivingService:
         if not po_lines.exists():
             raise ValidationError(f"Item {sku.sku_code} is not included in Purchase Order {session.purchase_order.po_number}.")
 
+        if manufacture_date and manufacture_date >= expiry_date:
+            raise ValidationError(
+                f"Manufacture date must precede expiry date; batch "
+                f"{manufacturer_batch_number} is dated {manufacture_date} "
+                f"expiring {expiry_date}."
+            )
         if expiry_date <= timezone.now().date():
             raise ValidationError(f"Scanned batch {batch_number} has already expired.")
 
@@ -214,6 +220,52 @@ class GoodsReceivingService:
 
     @staticmethod
     @transaction.atomic
+    def receive_line(*, goods_receipt, po_line, delivered_quantity, accepted_quantity=0,
+                     sku=None, idempotency_key=""):
+        """Record what arrived against a purchase-order line.
+
+        Accepted defaults to zero. Goods are delivered first and accepted only
+        after inspection, and a default that accepted everything on arrival
+        would make the quality step decorative.
+        """
+        if delivered_quantity is None or delivered_quantity < 0:
+            raise ValidationError("A delivered quantity cannot be negative.")
+        if accepted_quantity > delivered_quantity:
+            raise ValidationError(
+                f"Cannot accept {accepted_quantity} of a delivery of {delivered_quantity}."
+            )
+
+        if idempotency_key:
+            # A retry over poor connectivity must not receive the same goods
+            # twice. The key is unique per tenant, so the second call returns
+            # the first call's line rather than adding to it.
+            existing = GoodsReceiptLine.all_objects.filter(
+                tenant=goods_receipt.tenant, idempotency_key=idempotency_key
+            ).first()
+            if existing is not None:
+                return existing
+
+        line, _ = GoodsReceiptLine.all_objects.get_or_create(
+            tenant=goods_receipt.tenant,
+            goods_receipt=goods_receipt,
+            po_line=po_line,
+            sku=sku or po_line.sku,
+            defaults={"delivered_quantity": 0, "idempotency_key": idempotency_key},
+        )
+        line.delivered_quantity = (line.delivered_quantity or 0) + delivered_quantity
+        line.accepted_quantity = (line.accepted_quantity or 0) + accepted_quantity
+        if idempotency_key and not line.idempotency_key:
+            line.idempotency_key = idempotency_key
+        line.save(update_fields=[
+            "delivered_quantity", "accepted_quantity", "idempotency_key", "updated_at",
+        ])
+
+        goods_receipt.status = GoodsReceipt.Status.RECEIVING
+        goods_receipt.save(update_fields=["status", "updated_at"])
+        return line
+
+    @staticmethod
+    @transaction.atomic
     def capture_batch(*, manufacturer_batch_number, expiry_date, received_quantity,
                       grn_line=None, goods_receipt=None, po_line=None, sku=None,
                       manufacture_date=None):
@@ -229,6 +281,12 @@ class GoodsReceivingService:
         """
         if expiry_date is None:
             raise ValidationError("A batch requires an expiry date.")
+        if manufacture_date and manufacture_date >= expiry_date:
+            raise ValidationError(
+                f"Manufacture date must precede expiry date; batch "
+                f"{manufacturer_batch_number} is dated {manufacture_date} "
+                f"expiring {expiry_date}."
+            )
         if expiry_date <= timezone.now().date():
             raise ValidationError(
                 f"Batch {manufacturer_batch_number} expires on {expiry_date} "
@@ -270,7 +328,7 @@ class GoodsReceivingService:
         line.save(update_fields=["delivered_quantity", "quarantined_quantity", "updated_at"])
 
         receipt = line.goods_receipt
-        receipt.status = GoodsReceipt.Status.PENDING_INSPECTION
+        receipt.status = GoodsReceipt.Status.UNDER_INSPECTION
         receipt.save(update_fields=["status", "updated_at"])
         return batch
 
