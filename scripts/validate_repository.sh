@@ -32,9 +32,46 @@ echo "          Mode: ${MODE}                                                   
 echo "=========================================================================="
 
 mkdir -p "${ROOT}/artifacts/generated/tests" "${ROOT}/artifacts/generated/security" "${ROOT}/artifacts/generated/validation" "${ROOT}/artifacts/contracts" "${ROOT}/staticfiles"
-rm -f "${ROOT}/artifacts/generated/tests/repository_val.sqlite3"
+# The journal and WAL sidecars must go too. Removing only the database leaves a
+# hot journal behind when a run is interrupted, and SQLite then refuses the next
+# run with "attempt to write a readonly database" -- so one cancelled validation
+# poisons every subsequent one until the file is cleared by hand.
+rm -f "${ROOT}/artifacts/generated/tests/repository_val.sqlite3" \
+      "${ROOT}/artifacts/generated/tests/repository_val.sqlite3-journal" \
+      "${ROOT}/artifacts/generated/tests/repository_val.sqlite3-wal" \
+      "${ROOT}/artifacts/generated/tests/repository_val.sqlite3-shm"
 
 STEPS_JSON="[]"
+
+# Whether a usable Docker daemon is reachable, within a bounded wait.
+#
+# `docker info` blocks indefinitely when the CLI is installed but the daemon
+# socket is unresponsive -- Docker Desktop stopped part-way, for example. The
+# guard below used it unbounded, so instead of falling through to the SKIPPED
+# path the whole validation hung with no output. `timeout` is not present on
+# macOS, so the probe is bounded by hand.
+DOCKER_PROBE_TIMEOUT_SECONDS="${DOCKER_PROBE_TIMEOUT_SECONDS:-15}"
+
+docker_daemon_available() {
+  command -v docker >/dev/null 2>&1 || return 1
+
+  docker info >/dev/null 2>&1 &
+  local probe_pid=$!
+  local waited=0
+
+  while kill -0 "${probe_pid}" 2>/dev/null; do
+    if (( waited >= DOCKER_PROBE_TIMEOUT_SECONDS )); then
+      kill -9 "${probe_pid}" 2>/dev/null || true
+      wait "${probe_pid}" 2>/dev/null || true
+      echo "Docker daemon did not respond within ${DOCKER_PROBE_TIMEOUT_SECONDS}s; treating as unavailable." >&2
+      return 1
+    fi
+    sleep 1
+    waited=$((waited + 1))
+  done
+
+  wait "${probe_pid}"
+}
 
 record_step() {
   local name="$1"
@@ -196,7 +233,7 @@ fi
 echo "=== [12/13] Container Build & Runtime Smoke Tests ==="
 START_TIME=$(date +%s)
 if [[ "${MODE}" == "full" ]]; then
-  if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+  if docker_daemon_available; then
     echo "Validating Docker Compose configuration..."
     docker compose -f "${ROOT}/docker-compose.yml" config > /dev/null
     
