@@ -363,3 +363,142 @@ class CashMovement(TenantConsistencyMixin, TimestampedModel):
     @property
     def affects_expected_cash(self) -> bool:
         return self.kind in self.INFLOW_KINDS | self.OUTFLOW_KINDS
+
+
+class ShiftReport(TenantConsistencyMixin, TimestampedModel):
+    """An X or Z report.
+
+    The distinction is the whole point of this model and is enforced rather
+    than documented:
+
+    * **X** is an interim snapshot. It may be produced any number of times, it
+      never closes the session, and it never resets a counter. Each one gets its
+      own number and its own generation time, but they all share the session's
+      period start, so an X is always cumulative from opening -- not a delta
+      since the previous X.
+    * **Z** is the final closure record. Exactly one may exist per register
+      session, enforced by the partial unique index below rather than by a
+      service check, because two concurrent closure requests would each find no
+      existing Z and both proceed.
+
+    `snapshot` holds the computed figures as they stood at generation. HQ reads
+    that, never a recalculation: re-deriving a Z from today's transaction table
+    would silently change a report that somebody already signed, printed and
+    banked against.
+    """
+
+    tenant_relation_fields = ("register_session",)
+
+    TYPE_X = "X"
+    TYPE_Z = "Z"
+    REPORT_TYPES = [(TYPE_X, "X report (interim)"), (TYPE_Z, "Z report (final closure)")]
+
+    CLOSURE_NORMAL = "NORMAL"
+    CLOSURE_FORCED = "FORCED"
+    CLOSURE_TYPES = [(CLOSURE_NORMAL, "Normal"), (CLOSURE_FORCED, "Forced closure")]
+
+    tenant = models.ForeignKey("tenancy.Tenant", on_delete=models.CASCADE, related_name="shift_reports")
+    register_session = models.ForeignKey(
+        RegisterSession, on_delete=models.PROTECT, related_name="reports"
+    )
+    operator_shift = models.ForeignKey(
+        OperatorShift, on_delete=models.PROTECT, null=True, blank=True, related_name="reports"
+    )
+    business_day = models.ForeignKey(BusinessDay, on_delete=models.PROTECT, related_name="shift_reports")
+
+    report_type = models.CharField(max_length=1, choices=REPORT_TYPES)
+    #: Branch/Register/BusinessDate/Type/Sequence. Immutable, and retained
+    #: verbatim by every reprint.
+    report_number = models.CharField(max_length=120)
+    sequence = models.PositiveIntegerField()
+
+    #: Always the session opening. An X is cumulative, never a delta.
+    period_start = models.DateTimeField()
+    generated_at = models.DateTimeField(default=timezone.now)
+    generated_by = models.ForeignKey("identity.User", on_delete=models.PROTECT, related_name="+")
+
+    closure_type = models.CharField(max_length=10, choices=CLOSURE_TYPES, default=CLOSURE_NORMAL)
+    closure_reason = models.TextField(blank=True, default="")
+    approved_by = models.ForeignKey(
+        "identity.User", on_delete=models.PROTECT, null=True, blank=True, related_name="+"
+    )
+
+    #: The frozen figures. Never recomputed for display.
+    snapshot = models.JSONField(default=dict)
+    #: Unresolved items the closure proceeded despite, listed on the report.
+    exceptions = models.JSONField(default=list, blank=True)
+
+    objects = StrictTenantManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["tenant", "report_number"], name="uq_shift_report_tenant_number"
+            ),
+            # Exactly one Z per register session. The index is the guard: two
+            # concurrent closures would both see no Z and both proceed.
+            models.UniqueConstraint(
+                fields=["register_session"],
+                condition=models.Q(report_type="Z"),
+                name="uq_register_session_single_z",
+            ),
+        ]
+        ordering = ["-generated_at"]
+
+    def __str__(self) -> str:
+        return self.report_number
+
+    @property
+    def is_final(self) -> bool:
+        return self.report_type == self.TYPE_Z
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            existing = (
+                ShiftReport.all_objects.filter(pk=self.pk, tenant_id=self.tenant_id)
+                .values("report_type", "snapshot", "report_number")
+                .first()
+            )
+            if existing and existing["report_type"] == self.TYPE_Z:
+                # A Z is a signed, printed, banked-against record. Corrections
+                # go through an adjustment or a reversal, never through editing
+                # the report somebody already acted on.
+                if (
+                    self.snapshot != existing["snapshot"]
+                    or self.report_number != existing["report_number"]
+                ):
+                    raise ValidationError(
+                        "A finalised Z report cannot be altered. "
+                        "Record an adjustment or reversal instead."
+                    )
+        return super().save(*args, **kwargs)
+
+
+class ShiftReportReprint(TenantConsistencyMixin, TimestampedModel):
+    """A record that a report was printed again.
+
+    Reprints are numbered but never renumbered: the original report number is
+    retained so a reprint cannot be passed off as a separate closure.
+    """
+
+    tenant_relation_fields = ("report",)
+
+    tenant = models.ForeignKey("tenancy.Tenant", on_delete=models.CASCADE, related_name="report_reprints")
+    report = models.ForeignKey(ShiftReport, on_delete=models.PROTECT, related_name="reprints")
+    copy_number = models.PositiveIntegerField()
+    reason = models.TextField()
+    reprinted_by = models.ForeignKey("identity.User", on_delete=models.PROTECT, related_name="+")
+    reprinted_at = models.DateTimeField(default=timezone.now)
+    printer = models.CharField(max_length=120, blank=True, default="")
+
+    objects = StrictTenantManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["report", "copy_number"], name="uq_report_reprint_copy"
+            )
+        ]
+        ordering = ["report_id", "copy_number"]
