@@ -11,7 +11,7 @@ if SECRET_KEY in {"", "unsafe-development-key"}:
 if not DAWATRACE_OBJECT_SIGNING_KEY:
     raise ImproperlyConfigured("DAWATRACE_OBJECT_SIGNING_KEY is required in production.")
 
-if env("DAWATRACE_ENV") == "production":
+if DAWATRACE_ENV == "production":
     if not ALLOWED_HOSTS:
         raise ImproperlyConfigured("DAWATRACE_ALLOWED_HOSTS is required in production.")
     if not CSRF_TRUSTED_ORIGINS:

@@ -11,12 +11,15 @@ sys.path.insert(0, str(ROOT / "backend"))
 
 # Environment variables for production-like startup smoke test
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "dawatrace.settings.production")
-os.environ.setdefault("DAWATRACE_ENV", "development")
+os.environ.setdefault("DAWATRACE_ENV", "production")
 os.environ.setdefault("DAWATRACE_SECRET_KEY", "smoke-test-secret-key-must-be-sufficiently-long")
 os.environ.setdefault("DAWATRACE_OBJECT_SIGNING_KEY", "smoke-test-object-signing-key")
+os.environ.setdefault("DAWATRACE_ALLOWED_HOSTS", "tibatrace.example.test")
+os.environ.setdefault("DAWATRACE_CSRF_TRUSTED_ORIGINS", "https://tibatrace.example.test")
 os.environ.setdefault("DAWATRACE_DATABASE_URL", "sqlite:///:memory:")
 os.environ.setdefault("DAWATRACE_REDIS_URL", "locmem://")
 os.environ.setdefault("DAWATRACE_SECURE_SSL_REDIRECT", "false")
+os.environ.setdefault("DAWATRACE_FHIR_PUBLIC_BASE_URL", "https://tibatrace.example.test/api/fhir/r4/")
 os.environ.setdefault("DAWATRACE_OBJECT_STORAGE_BACKEND", "local")
 os.environ.setdefault("DAWATRACE_OBJECT_STORAGE_ROOT", str(ROOT / "artifacts" / "generated" / "smoke_storage"))
 

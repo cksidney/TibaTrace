@@ -50,10 +50,12 @@ class LocalClinicalObjectStorage:
         digest = hashlib.sha256(content).hexdigest()
         key = f"tenant/{tenant_id}/clinical/{patient.id}/{digest}/{Path(original_name).name}"
         path = cls._path(key)
+        scan_status = (scanner or MalwareScanner()).scan(content)
+        if settings.DAWATRACE_ENV == "production" and scan_status != "CLEAN":
+            raise ValidationError("Clinical document upload requires a clean malware scan in production.")
         path.parent.mkdir(parents=True, exist_ok=True)
         if not path.exists():
             path.write_bytes(content)
-        scan_status = (scanner or MalwareScanner()).scan(content)
         document = StoredClinicalDocument.all_objects.create(
             tenant_id=tenant_id,
             patient=patient,

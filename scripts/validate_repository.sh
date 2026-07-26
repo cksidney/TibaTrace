@@ -210,12 +210,15 @@ if [[ "${MODE}" == "full" ]]; then
     docker run --rm \
       --entrypoint python \
       -e DJANGO_SETTINGS_MODULE=dawatrace.settings.production \
-      -e DAWATRACE_ENV=development \
+      -e DAWATRACE_ENV=production \
       -e DAWATRACE_SECRET_KEY=container-runtime-validation-secret \
+      -e DAWATRACE_ALLOWED_HOSTS=tibatrace.example.test \
+      -e DAWATRACE_CSRF_TRUSTED_ORIGINS=https://tibatrace.example.test \
       -e DAWATRACE_DATABASE_URL=sqlite:////tmp/dawatrace-runtime.sqlite3 \
       -e DAWATRACE_REDIS_URL=locmem:// \
       -e DAWATRACE_OBJECT_SIGNING_KEY=container-runtime-validation-signing-key \
       -e DAWATRACE_SECURE_SSL_REDIRECT=false \
+      -e DAWATRACE_FHIR_PUBLIC_BASE_URL=https://tibatrace.example.test/api/fhir/r4/ \
       dawatrace/backend:validation \
       manage.py check
     END_TIME=$(date +%s)

@@ -47,6 +47,7 @@ def database_config(url: str) -> dict:
 
 SECRET_KEY = env("DAWATRACE_SECRET_KEY", "unsafe-development-key")
 DEBUG = env_bool("DAWATRACE_DEBUG", False)
+DAWATRACE_ENV = env("DAWATRACE_ENV", "development")
 ALLOWED_HOSTS = env_list("DAWATRACE_ALLOWED_HOSTS", "localhost,127.0.0.1")
 
 INSTALLED_APPS = [

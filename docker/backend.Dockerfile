@@ -36,6 +36,11 @@ COPY --from=builder /opt/venv /opt/venv
 WORKDIR /app
 COPY --chown=dawatrace:dawatrace backend /app
 
+RUN DAWATRACE_SECRET_KEY=build-only-staticfiles-not-a-secret \
+    DAWATRACE_OBJECT_SIGNING_KEY=build-only-staticfiles-not-a-secret \
+    DAWATRACE_ALLOWED_HOSTS=build.invalid \
+    python manage.py collectstatic --noinput
+
 USER dawatrace
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \

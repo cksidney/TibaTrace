@@ -91,6 +91,25 @@ def _store_document(settings, tmp_path, clinical_setup, clinical_user, content=b
     )
 
 
+def test_document_upload_fails_closed_without_malware_scanner_in_production(
+    settings, tmp_path, clinical_setup, clinical_user
+):
+    settings.DAWATRACE_ENV = "production"
+    settings.MEDIA_ROOT = tmp_path
+
+    with pytest.raises(ValidationError, match="clean malware scan"):
+        LocalClinicalObjectStorage.store(
+            tenant_id=clinical_setup["tenant"].id,
+            patient=clinical_setup["patient"],
+            original_name="clinical-note.pdf",
+            content_type="application/pdf",
+            content=b"%PDF-1.4\nDawaTrace",
+            actor=clinical_user,
+        )
+
+    assert not DocumentAccessEvent.all_objects.filter(tenant=clinical_setup["tenant"]).exists()
+
+
 def test_crosswalk_duplicate_is_prevented(crosswalk):
     with pytest.raises(IntegrityError), transaction.atomic():
         LegacyIdentifierCrosswalk.all_objects.create(
