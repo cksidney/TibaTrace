@@ -176,14 +176,18 @@
           </div>
 
           <!-- Clinical Decision Support (CDS) Safety Screening Banner -->
-          <div class="cds-banner cds-pass" id="cds-screening-banner" onclick="openCdsModal()">
+          <!-- Ships as "not screened". This markup is what an operator sees
+               before any script runs, and on any page where the script fails to
+               run at all, so it must not assert a screening that has not
+               happened. Only an authoritative server response may move it. -->
+          <div class="cds-banner cds-warning" id="cds-screening-banner" onclick="openCdsModal()">
             <div class="cds-header">
-              <span class="cds-status-icon" id="cds-icon">🛡️</span>
-              <strong id="cds-status-title">CDS Clinical Screening: PASSED</strong>
+              <span class="cds-status-icon" id="cds-icon">○</span>
+              <strong id="cds-status-title">CDS Clinical Screening: NOT SCREENED</strong>
               <span style="margin-left: auto; font-size: 0.75rem; text-decoration: underline; cursor: pointer;">View Details &amp; Overrides &rarr;</span>
             </div>
             <div class="cds-details" id="cds-details-text">
-              Automated drug-drug interaction, duplicate therapy, and allergy checks completed with zero blocking findings.
+              This prescription has not been screened for interactions, duplicate therapy or allergies.
             </div>
           </div>
 

@@ -187,21 +187,148 @@ function selectEpisode(ep) {
     payTag.style.borderColor = 'rgba(245, 158, 11, 0.3)';
   }
 
-  // Update CDS Screening Banner
-  const cdsBanner = document.getElementById('cds-screening-banner');
-  if (ep.cds_warning) {
-    cdsBanner.className = 'cds-banner cds-warning';
-    document.getElementById('cds-icon').innerText = '⚠️';
-    document.getElementById('cds-status-title').innerText = 'CDS Clinical Screening: WARNING DETECTED';
-    document.getElementById('cds-details-text').innerText = ep.cds_warning;
-  } else {
-    cdsBanner.className = 'cds-banner cds-pass';
-    document.getElementById('cds-icon').innerText = '🛡️';
-    document.getElementById('cds-status-title').innerText = 'CDS Clinical Screening: PASSED';
-    document.getElementById('cds-details-text').innerText = 'Automated drug-drug interaction, duplicate therapy, and allergy checks completed with zero blocking findings.';
-  }
+  // The banner starts as "not screened" for every episode and is only moved off
+  // that state by an authoritative server response. It previously rendered from
+  // `ep.cds_warning`, a field the backend never sends, so the else branch always
+  // ran and every episode displayed "PASSED" with a list of checks that had not
+  // been performed. Absence of a screening is not a screening that passed.
+  lastScreening = null;
+  renderCdsUnscreened();
+  refreshClinicalScreening(ep);
 
   renderDispensingLines(ep.lines || getFallbackLines());
+}
+
+// ── Clinical screening banner ─────────────────────────────────────────────────
+//
+// Three states, and only one of them may claim safety:
+//
+//   not screened  — the default, and where the banner stays unless the server
+//                   affirmatively says otherwise
+//   blocked       — the server returned blocking findings
+//   safe          — the server returned safe_to_proceed
+//
+// The client never derives "safe". It is copied from the server's
+// `safe_to_proceed`, which is the only authority for it. A screening we could
+// not fetch, a request that failed, and an episode nobody has screened all land
+// in "not screened", because to a dispenser those are the same fact: nothing
+// has checked this prescription.
+
+// The most recent authoritative screening response. Set only from the server.
+let lastScreening = null;
+
+function setCdsBanner({ variant, icon, title, detail }) {
+  const banner = document.getElementById('cds-screening-banner');
+  if (!banner) return;
+  banner.className = `cds-banner ${variant}`;
+  const iconEl = document.getElementById('cds-icon');
+  const titleEl = document.getElementById('cds-status-title');
+  const detailEl = document.getElementById('cds-details-text');
+  if (iconEl) iconEl.innerText = icon;
+  if (titleEl) titleEl.innerText = title;
+  if (detailEl) detailEl.innerText = detail;
+}
+
+function renderCdsUnscreened(detail) {
+  setCdsBanner({
+    variant: 'cds-warning',
+    icon: '○',
+    title: 'CDS Clinical Screening: NOT SCREENED',
+    detail:
+      detail ||
+      'This prescription has not been screened for interactions, duplicate therapy or allergies. Screening is required before supply.',
+  });
+}
+
+function renderCdsResult(result) {
+  const blocking = Number(result.blocking_findings || 0);
+
+  if (blocking > 0) {
+    const titles = (result.findings || [])
+      .filter((f) => f.blocking)
+      .map((f) => f.title)
+      .join('; ');
+    setCdsBanner({
+      variant: 'cds-warning',
+      icon: '⚠️',
+      title: `CDS Clinical Screening: ${blocking} BLOCKING FINDING${blocking === 1 ? '' : 'S'}`,
+      detail: titles || 'Blocking findings prevent supply. Pharmacist review is required.',
+    });
+    return;
+  }
+
+  // Only the server's own verdict may produce a pass. A screening that
+  // completed with no blocking findings but was not marked safe is still not a
+  // pass -- the server withheld it for a reason the till cannot see.
+  if (result.safe_to_proceed === true) {
+    const advisory = (result.findings || []).length;
+    setCdsBanner({
+      variant: 'cds-pass',
+      icon: '🛡️',
+      title: 'CDS Clinical Screening: PASSED',
+      detail: advisory
+        ? `Screened at ${result.evaluated_at || 'unknown time'}. ${advisory} advisory finding${advisory === 1 ? '' : 's'}, none blocking.`
+        : `Screened at ${result.evaluated_at || 'unknown time'}. No blocking findings.`,
+    });
+    return;
+  }
+
+  renderCdsUnscreened(
+    'Screening completed but the server did not confirm it as safe to proceed. Supply is not authorised.',
+  );
+}
+
+async function refreshClinicalScreening(ep) {
+  const lines = ep.lines || [];
+  if (!lines.length) {
+    renderCdsUnscreened('No dispensing lines are loaded, so nothing has been screened.');
+    return;
+  }
+
+  try {
+    const response = await fetch('/api/pos/clinical-screening/evaluate/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+      body: JSON.stringify({
+        // Stable per episode, so a repeated render reuses the screening rather
+        // than creating a new one on every click.
+        transaction_id: `POS-WEB-${ep.dispensing_number || ep.id}`,
+        device_id: 'POS-WEB',
+        patient_id: ep.patient_id || null,
+        prescription_id: ep.prescription_id || null,
+        dispensing_episode_id: ep.id || '',
+        basket_lines: lines.map((line) => ({
+          line_id: line.id,
+          sku_id: line.sku_id || null,
+          clinical_product_id: line.clinical_product_id || null,
+          quantity: line.quantity_to_supply || line.quantity || 0,
+        })),
+      }),
+    });
+
+    if (!response.ok) {
+      // Including 401. An unauthenticated or failed request tells us nothing
+      // about the prescription, so it must not move the banner off "not
+      // screened".
+      renderCdsUnscreened(
+        `Clinical screening could not be performed (server responded ${response.status}). Supply is not authorised.`,
+      );
+      return;
+    }
+
+    const result = await response.json();
+    lastScreening = result;
+    renderCdsResult(result);
+  } catch (error) {
+    renderCdsUnscreened(
+      'Clinical screening could not be reached. Supply is not authorised until screening completes.',
+    );
+  }
+}
+
+function getCsrfToken() {
+  const match = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+  return match ? decodeURIComponent(match[1]) : '';
 }
 
 function renderDispensingLines(lines) {
@@ -548,18 +675,70 @@ function openCdsModal() {
   openModal('modal-cds');
 }
 
-function submitClinicalOverride() {
+async function submitClinicalOverride() {
   const reason = document.getElementById('cds-override-reason').value;
   if (!reason) {
     showToast('Override justification rationale required.', 'error');
     return;
   }
-  if (selectedEpisode) {
-    delete selectedEpisode.cds_warning;
+
+  // This used to `delete selectedEpisode.cds_warning` and report success. That
+  // cleared a blocking clinical finding on the operator's screen with no server
+  // call, no capability check, no pharmacist, and no audit record -- the till
+  // said the override was recorded when nothing anywhere had recorded it.
+  //
+  // The override now goes to the server, which owns the capability check and
+  // the separation-of-duties rule. If it refuses, the finding stays blocking.
+  if (!lastScreening || !lastScreening.screening_id) {
+    showToast('No current screening to override. Re-screen the prescription first.', 'error');
+    return;
   }
-  closeModal('modal-cds');
-  selectEpisode(selectedEpisode);
-  showToast('Clinical override recorded successfully!');
+
+  const blocking = (lastScreening.findings || []).filter((f) => f.blocking);
+  if (!blocking.length) {
+    showToast('There is no blocking finding to override.', 'error');
+    return;
+  }
+
+  try {
+    const response = await fetch(
+      `/api/pos/clinical-screening/${lastScreening.screening_id}/override/`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+        body: JSON.stringify({
+          finding_id: blocking[0].id,
+          clinical_justification: reason,
+          // Stable per finding and screening, so a retry cannot record a
+          // second override.
+          idempotency_key: `override:${lastScreening.screening_id}:${blocking[0].id}`,
+          expected_context_hash: lastScreening.context_hash,
+        }),
+      },
+    );
+
+    if (response.status === 403) {
+      showToast('You do not hold the capability to override this finding.', 'error');
+      return;
+    }
+    if (response.status === 409) {
+      showToast('The prescription changed since screening. Re-screen before overriding.', 'error');
+      return;
+    }
+    if (!response.ok) {
+      showToast(`Override was not recorded (server responded ${response.status}).`, 'error');
+      return;
+    }
+
+    // Render the server's post-override screening, not an assumption about it.
+    const updated = await response.json();
+    lastScreening = updated;
+    renderCdsResult(updated);
+    closeModal('modal-cds');
+    showToast('Clinical override recorded.');
+  } catch (error) {
+    showToast('Override could not be submitted. The finding remains blocking.', 'error');
+  }
 }
 
 // Seed Demo Data Helper
@@ -586,7 +765,6 @@ function getFallbackDemoQueue() {
       status: 'PREPARING',
       payment_status: 'PENDING',
       paid_amount: '0.00',
-      cds_warning: 'Penicillin Class Allergy History: Patient reported rash on Amoxicillin in 2022.',
       lines: getFallbackLines()
     },
     {

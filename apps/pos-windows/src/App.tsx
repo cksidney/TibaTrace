@@ -1,8 +1,7 @@
 import { deriveStages, fontFamily, fontSize, nextAction, spacing, surface, text } from '@dawatrace/shared/design-system/index.js';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 
 import { ClinicalRail } from './components/tibatrace/ClinicalRail.js';
-import type { ClinicalSummary } from './components/tibatrace/ClinicalRail.js';
 import { CollectionPanel, CounsellingPanel } from './components/tibatrace/CounsellingAndCollection.js';
 import { PatientSafetyBanner } from './components/tibatrace/PatientSafetyBanner.js';
 import { PaymentPanel } from './components/tibatrace/PaymentPanel.js';
@@ -10,6 +9,7 @@ import { PrescriptionWorkspace } from './components/tibatrace/PrescriptionWorksp
 import type { PatientSummary } from './components/tibatrace/PatientSafetyBanner.js';
 import { BlockingReason } from './components/tibatrace/StatusBadge.js';
 import { WorkflowRibbon } from './components/tibatrace/WorkflowRibbon.js';
+import { useClinicalScreening } from './state/useClinicalScreening.js';
 import { usePosWorkflow } from './state/usePosWorkflow.js';
 
 /**
@@ -22,7 +22,10 @@ import { usePosWorkflow } from './state/usePosWorkflow.js';
 export function App() {
   const { state, refreshQueue, select, refresh, takePayment, confirmCollection, recordCounselling } =
     usePosWorkflow();
-  const [clinical] = useState<ClinicalSummary | null>(null);
+  // Was `useState<ClinicalSummary | null>(null)` with no setter, so the rail
+  // rendered "No clinical result" for every episode and the screening endpoint
+  // had no caller anywhere in the repository.
+  const { summary: clinical, error: clinicalError } = useClinicalScreening(state.selected);
 
   useEffect(() => {
     void refreshQueue();
@@ -126,7 +129,17 @@ export function App() {
           )}
         </main>
 
-        <ClinicalRail summary={clinical} />
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          {/* Why the screening is unavailable, stated rather than left as an
+              unexplained empty rail. An operator who cannot tell a failed
+              request from an unscreened basket will assume the latter. */}
+          {clinicalError ? (
+            <div style={{ padding: spacing.md }}>
+              <BlockingReason status="ACTION_REQUIRED" reason={clinicalError} />
+            </div>
+          ) : null}
+          <ClinicalRail summary={clinical} />
+        </div>
       </div>
 
       <ActionBar
