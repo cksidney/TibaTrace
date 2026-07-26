@@ -381,3 +381,70 @@ class AppliedPriceSnapshot(TenantConsistencyMixin, TimestampedModel):
                 "customer was charged."
             )
         return super().save(*args, **kwargs)
+
+
+class PriceLock(TenantConsistencyMixin, TimestampedModel):
+    """A price held for a basket while the customer pays.
+
+    Between a customer being quoted a price and their money arriving, a
+    scheduled price change can activate, a promotion can end, or a supervisor
+    can publish a new version. Without a lock the amount taken differs from the
+    amount agreed, and the customer is standing there holding the difference.
+
+    The lock is deliberately narrow: it holds a specific price, for a specific
+    line, for a short time, against a specific basket. It is not a promise that
+    the price will still exist tomorrow.
+    """
+
+    tenant_relation_fields = ("sku",)
+
+    class Status(models.TextChoices):
+        ACTIVE = "ACTIVE", "Active"
+        CONSUMED = "CONSUMED", "Consumed"
+        EXPIRED = "EXPIRED", "Expired"
+        INVALIDATED = "INVALIDATED", "Invalidated"
+
+    tenant = models.ForeignKey("tenancy.Tenant", on_delete=models.CASCADE, related_name="price_locks")
+    basket_reference = models.CharField(max_length=120)
+    line_reference = models.CharField(max_length=120)
+    sku = models.ForeignKey("medicines.CommercialSKU", on_delete=models.PROTECT, related_name="+")
+    branch = models.ForeignKey("organizations.Location", on_delete=models.PROTECT, related_name="+")
+
+    locked_unit_price = models.DecimalField(**MONEY)
+    quantity = models.DecimalField(**QUANTITY)
+    currency = models.CharField(max_length=3, default="KES")
+    source = models.CharField(max_length=40, blank=True, default="")
+    source_reference = models.CharField(max_length=120, blank=True, default="")
+
+    #: The context the price was resolved from. A lock is only valid while the
+    #: basket still matches it -- change the quantity or the customer and the
+    #: locked price answers a question nobody is asking any more.
+    context_hash = models.CharField(max_length=64)
+    locked_at = models.DateTimeField(default=timezone.now)
+    expires_at = models.DateTimeField()
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE)
+    invalidation_reason = models.CharField(max_length=255, blank=True, default="")
+
+    objects = StrictTenantManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["tenant", "basket_reference", "line_reference"],
+                condition=models.Q(status="ACTIVE"),
+                name="uq_active_price_lock_per_line",
+            )
+        ]
+        indexes = [models.Index(fields=["tenant", "basket_reference", "status"])]
+
+    def __str__(self) -> str:
+        return f"Lock {self.line_reference} at {self.locked_unit_price} [{self.status}]"
+
+    @property
+    def is_live(self) -> bool:
+        return self.status == self.Status.ACTIVE and self.expires_at > timezone.now()
+
+    def matches(self, context_hash: str) -> bool:
+        """Whether the basket still matches what was priced."""
+        return self.context_hash == context_hash
