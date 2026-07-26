@@ -158,6 +158,29 @@ class PaymentTender(TenantConsistencyMixin, TimestampedModel):
     tender_type = models.CharField(max_length=20, choices=TENDER_TYPES)
     provider = models.CharField(max_length=20, choices=PROVIDER_CODES, default="MANUAL")
 
+    #: Which till session and operator this tender belongs to.
+    #:
+    #: Cash reconciliation is impossible without it: a drawer can only be
+    #: counted against the cash taken at that drawer, during that session, by
+    #: that operator. Nullable because tenders recorded before register sessions
+    #: existed have no session to point at -- and a shift report must show those
+    #: as unassigned rather than silently absorbing them into whichever session
+    #: happens to be open.
+    register_session = models.ForeignKey(
+        "pos_shift.RegisterSession",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="payment_tenders",
+    )
+    operator_shift = models.ForeignKey(
+        "pos_shift.OperatorShift",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="payment_tenders",
+    )
+
     allocated_amount = models.DecimalField(**MONEY)
     settled_amount = models.DecimalField(default=Decimal("0"), **MONEY)
     reversed_amount = models.DecimalField(default=Decimal("0"), **MONEY)

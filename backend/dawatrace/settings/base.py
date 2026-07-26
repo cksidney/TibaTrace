@@ -66,6 +66,7 @@ INSTALLED_APPS = [
     "apps.platform",
     "apps.tenancy",
     "apps.identity",
+    "apps.pos_shift",
     "apps.organizations",
     "apps.medicines",
     "apps.procurement",
@@ -84,6 +85,7 @@ INSTALLED_APPS = [
     "apps.fhir",
     "apps.customers",
     "apps.sales",
+    "apps.insurance",
 ]
 
 MIDDLEWARE = [
