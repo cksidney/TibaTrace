@@ -15,6 +15,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { ClinicalSummaryCard, PatientBanner } from '../components/tibatrace/ClinicalSummaryCard.js';
 import type { AndroidClinicalSummary } from '../components/tibatrace/ClinicalSummaryCard.js';
+import { TibaTraceBrand } from '../components/tibatrace/TibaTraceBrand.js';
 
 /**
  * Android dispensing episode.
@@ -49,6 +50,7 @@ export function DispensingScreen({
   if (!episode) {
     return (
       <View style={styles.empty}>
+        <TibaTraceBrand />
         <Text style={styles.emptyTitle}>No prescription loaded</Text>
         <Text style={styles.emptyBody}>Scan or search for a prescription to begin dispensing.</Text>
       </View>
@@ -57,6 +59,7 @@ export function DispensingScreen({
 
   return (
     <View style={styles.root}>
+      <View style={styles.brand}><TibaTraceBrand /></View>
       <PatientBanner
         fullName={episode.patient}
         reference={episode.dispensing_number}
@@ -123,6 +126,7 @@ function StageRow({ stage }: { readonly stage: StageView }) {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: surface.page },
+  brand: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.xs },
   scroll: { paddingBottom: spacing.xxxl },
   sectionTitle: {
     marginHorizontal: spacing.lg,
@@ -170,7 +174,7 @@ const styles = StyleSheet.create({
   primaryDisabled: { backgroundColor: surface.sunken },
   primaryLabel: { color: text.inverse, fontSize: fontSize.bodyLarge, fontWeight: '600' },
   primaryLabelDisabled: { color: text.tertiary },
-  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl },
-  emptyTitle: { fontSize: fontSize.sectionTitle, fontWeight: '600', color: text.primary },
+  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl, gap: spacing.sm },
+  emptyTitle: { marginTop: spacing.md, fontSize: fontSize.sectionTitle, fontWeight: '600', color: text.primary },
   emptyBody: { marginTop: spacing.sm, fontSize: fontSize.body, color: text.secondary, textAlign: 'center' },
 });

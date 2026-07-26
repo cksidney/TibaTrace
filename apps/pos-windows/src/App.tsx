@@ -152,8 +152,28 @@ function Header({ busy }: { readonly busy: boolean }) {
         color: text.inverse,
       }}
     >
-      <strong style={{ fontSize: fontSize.bodyLarge, letterSpacing: 0.3 }}>TibaTrace</strong>
-      <span style={{ fontSize: fontSize.caption, opacity: 0.8 }}>Clinical operations console</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: spacing.sm }}>
+        <div
+          style={{
+            width: 40,
+            height: 40,
+            overflow: 'hidden',
+            borderRadius: 10,
+            background: '#fff',
+            flex: '0 0 auto',
+          }}
+        >
+          <img
+            src="/brand/tibatrace-logo.jpeg"
+            alt="TibaTrace logo"
+            style={{ display: 'block', width: 100, height: 100, maxWidth: 'none', transform: 'translate(-29px, -15px)' }}
+          />
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <strong style={{ fontSize: fontSize.bodyLarge, letterSpacing: 0.3 }}>TibaTrace</strong>
+          <span style={{ fontSize: fontSize.caption, opacity: 0.8 }}>Clinical operations console</span>
+        </div>
+      </div>
       <span style={{ marginLeft: 'auto', fontSize: fontSize.caption, opacity: 0.8 }}>
         {busy ? 'Working…' : 'Ready'}
       </span>

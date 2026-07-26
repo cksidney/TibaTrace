@@ -5,6 +5,14 @@ Phase 2 extracts the tenant-safe clinical, prescription, CDS, terminology and
 HL7 FHIR R4 foundations from Mercato-OS into an independently runnable modular
 monolith.
 
+## Product Identity
+
+`TibaTrace` is the customer-facing product name and logo used by the POS,
+administrative interfaces, desktop application, Android workflows, and public
+deployment. `DawaTrace` remains the stable internal repository, package,
+configuration, API, and FHIR namespace; changing those identifiers would break
+existing integrations without improving the user-facing brand.
+
 ## Current Scope
 
 Included:
@@ -21,7 +29,7 @@ Not included in Phase 2:
 
 - complete medicine inventory, procurement, finance or payment gateways
 - controlled-drug operations
-- Windows or Android POS implementation
+- packaged Windows or Android POS releases
 - production clinical knowledge content
 - production data migration or deployment
 

@@ -1,0 +1,16 @@
+{% extends "admin/base.html" %}
+{% load static %}
+
+{% block title %}{{ title }} | TibaTrace Administration{% endblock %}
+
+{% block extrastyle %}
+  {{ block.super }}
+  <link rel="stylesheet" href="{% static 'brand/admin.css' %}">
+{% endblock %}
+
+{% block branding %}
+  <div id="site-name" class="tibatrace-admin-brand">
+    <span class="tibatrace-admin-mark"><img src="{% static 'brand/tibatrace-logo.jpeg' %}" alt="TibaTrace logo"></span>
+    <a href="{% url 'admin:index' %}">TibaTrace Administration</a>
+  </div>
+{% endblock %}

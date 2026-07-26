@@ -11,6 +11,7 @@ import { TENDER_OPTIONS, paymentPermitsSupply } from '@dawatrace/shared/dispensi
 import { useState } from 'react';
 
 import { liveRegionFor } from '../components/tibatrace/liveRegion.js';
+import { TibaTraceBrand } from '../components/tibatrace/TibaTraceBrand.js';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 /**
@@ -52,6 +53,7 @@ export function PaymentScreen({
 
   return (
     <ScrollView contentContainerStyle={styles.root}>
+      <TibaTraceBrand />
       <Text style={styles.heading}>Payment</Text>
 
       <View style={styles.amounts}>

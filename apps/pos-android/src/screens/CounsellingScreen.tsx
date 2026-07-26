@@ -10,6 +10,8 @@ import type { CounsellingRecordRequest } from '@dawatrace/shared/dispensing/inde
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
+import { TibaTraceBrand } from '../components/tibatrace/TibaTraceBrand.js';
+
 /**
  * Android counselling.
  *
@@ -52,6 +54,7 @@ export function CounsellingScreen({
 
   return (
     <ScrollView contentContainerStyle={styles.root}>
+      <TibaTraceBrand />
       <View style={styles.header}>
         <Text style={styles.heading}>Counselling</Text>
         <View
@@ -144,6 +147,7 @@ export function CollectionScreen({
   if (collectedAt) {
     return (
       <View style={styles.root}>
+        <TibaTraceBrand />
         <Text style={styles.heading}>Collection</Text>
         <Text style={styles.body}>
           Collected by {collectorName || 'unrecorded collector'} at {collectedAt}.
@@ -154,6 +158,7 @@ export function CollectionScreen({
 
   return (
     <ScrollView contentContainerStyle={styles.root}>
+      <TibaTraceBrand />
       <Text style={styles.heading}>Collection</Text>
 
       {blockedReason ? (

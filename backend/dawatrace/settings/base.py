@@ -141,6 +141,7 @@ USE_TZ = True
 
 STATIC_URL = "/static/"
 STATIC_ROOT = ROOT_DIR / "staticfiles"
+STATICFILES_DIRS = [BASE_DIR / "static"]
 MEDIA_ROOT = Path(env("DAWATRACE_OBJECT_STORAGE_ROOT", str(ROOT_DIR / "media")))
 MEDIA_URL = "/media/"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"

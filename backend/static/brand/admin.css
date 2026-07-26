@@ -1,0 +1,27 @@
+.tibatrace-admin-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.tibatrace-admin-mark {
+  display: inline-block;
+  width: 36px;
+  height: 36px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #fff;
+  vertical-align: middle;
+}
+
+.tibatrace-admin-mark img {
+  display: block;
+  width: 90px;
+  max-width: none;
+  height: 90px;
+  transform: translate(-26px, -14px);
+}
+
+.tibatrace-admin-brand a {
+  font-weight: 700;
+}

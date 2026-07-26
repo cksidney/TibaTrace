@@ -1,12 +1,20 @@
+{% load static %}
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>DawaTrace Administrative Shell</title>
+  <title>TibaTrace Administrative Shell</title>
+  <link rel="icon" href="{% static 'brand/tibatrace-logo.jpeg' %}" type="image/jpeg">
   <style>
     body { font-family: system-ui, sans-serif; margin: 0; color: #17212b; background: #f5f7f9; }
-    header { background: #123f35; color: white; padding: 18px 28px; }
+    header { background: #061d49; color: white; padding: 14px 28px; }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .brand-mark { width: 42px; height: 42px; overflow: hidden; border-radius: 10px; background: white; flex: 0 0 auto; }
+    .brand-mark img { display: block; width: 105px; height: 105px; max-width: none; transform: translate(-30px, -16px); }
+    .brand-copy { display: flex; flex-direction: column; gap: 2px; }
+    .brand-copy strong { font-size: 20px; }
+    .brand-copy span { color: #cbd5e1; font-size: 13px; }
     main { max-width: 1100px; margin: 24px auto; padding: 0 20px; }
     nav { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
     a { color: #075f4c; }
@@ -16,7 +24,12 @@
   </style>
 </head>
 <body>
-  <header><strong>DawaTrace</strong> Administrative Shell</header>
+  <header>
+    <div class="brand">
+      <span class="brand-mark"><img src="{% static 'brand/tibatrace-logo.jpeg' %}" alt="TibaTrace logo"></span>
+      <span class="brand-copy"><strong>TibaTrace</strong><span>Administrative Shell</span></span>
+    </div>
+  </header>
   <main>
     <p>Active tenant: <code>{{ tenant_id|default:"none" }}</code></p>
     <nav>
