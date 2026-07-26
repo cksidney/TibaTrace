@@ -162,6 +162,20 @@ class ReceivingService:
         return goods_receipt
 
 
+#: Capability that authorises quality release. Platform administrators hold it
+#: implicitly; everybody else must be granted it.
+QUALITY_RELEASE_CAPABILITY = "quality.release"
+
+
+def _may_release_quality(actor) -> bool:
+    if getattr(actor, "is_platform_admin", False) or getattr(actor, "is_superuser", False):
+        return True
+    checker = getattr(actor, "has_capability", None)
+    if callable(checker):
+        return bool(checker(QUALITY_RELEASE_CAPABILITY))
+    return False
+
+
 class GoodsReceivingService:
     """Document-oriented receiving, for callers that hold a GRN rather than a scan session.
 
@@ -359,10 +373,16 @@ class GoodsReceivingService:
     @staticmethod
     @transaction.atomic
     def release_batch(*, batch, released_by=None, actor=None, reason="", quantity=None):
-        """Move quarantined stock to accepted.
+        """Move quarantined stock into accepted, released stock.
 
-        Refuses to release more than is quarantined -- releasing stock that was
-        never received is how a receipt starts disagreeing with the shelf.
+        Authority is checked before anything else. Quality release is the step
+        that turns goods nobody has vouched for into goods a pharmacist may
+        dispense, and §24 restricts it to authorised quality users -- a
+        receiver releasing their own delivery is exactly the separation the
+        control exists to enforce.
+
+        Refuses to release more than was received. Releasing stock that never
+        arrived is how a receipt starts disagreeing with the shelf.
         """
         # Callers name this actor or released_by depending on which workflow
         # they came from; either identifies the person, which is what matters.
@@ -370,18 +390,36 @@ class GoodsReceivingService:
         if releaser is None:
             raise ValidationError("Quality release requires a named releaser.")
 
-        quantity = batch.quarantined_quantity if quantity is None else quantity
-        if quantity <= 0:
-            raise ValidationError("A release quantity must be positive.")
-        if quantity > batch.quarantined_quantity:
+        if not _may_release_quality(releaser):
             raise ValidationError(
-                f"Cannot release {quantity}; only {batch.quarantined_quantity} "
-                "is quarantined on this batch."
+                "Actor lacks quality-release authority. Quality release is "
+                "restricted to authorised quality users."
             )
 
-        batch.quarantined_quantity -= quantity
-        batch.accepted_quantity = (batch.accepted_quantity or 0) + quantity
-        batch.save(update_fields=["quarantined_quantity", "accepted_quantity", "updated_at"])
+        already_released = batch.accepted_quantity or 0
+        outstanding = (batch.received_quantity or 0) - already_released
+        quantity = outstanding if quantity is None else quantity
+
+        if quantity <= 0:
+            raise ValidationError(
+                f"A release quantity must be positive; batch "
+                f"{batch.manufacturer_batch_number} has {outstanding} awaiting release."
+            )
+        if quantity > outstanding:
+            raise ValidationError(
+                f"Cannot release {quantity}; only {outstanding} of batch "
+                f"{batch.manufacturer_batch_number} is awaiting release."
+            )
+
+        batch.accepted_quantity = already_released + quantity
+        batch.quarantined_quantity = max(0, (batch.quarantined_quantity or 0) - quantity)
+        # Fully released only when nothing is left awaiting a decision; a
+        # part-release leaves the batch quarantined, because the rest still is.
+        if batch.accepted_quantity >= (batch.received_quantity or 0):
+            batch.quality_status = ReceivedBatch.QualityStatus.RELEASED
+        batch.save(update_fields=[
+            "accepted_quantity", "quarantined_quantity", "quality_status", "updated_at",
+        ])
 
         line = batch.grn_line
         line.quarantined_quantity = max(0, (line.quarantined_quantity or 0) - quantity)
