@@ -4,7 +4,12 @@ import { describe, expect, it } from 'vitest';
 
 import { TENDER_OPTIONS } from '@dawatrace/shared/dispensing/index.js';
 
-import { paymentActionState, paymentStatusMeta, remainingAmount } from './PaymentPanel.js';
+import {
+  defaultAmount,
+  paymentActionState,
+  paymentStatusMeta,
+  remainingAmount,
+} from './PaymentPanel.js';
 import { lineStatus } from './PrescriptionWorkspace.js';
 
 /**
@@ -208,5 +213,108 @@ describe('collect action gate', () => {
       expect(state.enabled).toBe(false);
       expect(state.reason.trim().length, JSON.stringify(input)).toBeGreaterThan(0);
     }
+  });
+});
+
+/**
+ * What the amount field starts at.
+ *
+ * It was seeded with `amountDue`, so a partially paid basket showed the full
+ * price in the field while the panel above it showed a smaller remaining
+ * balance. A cashier who did not cross-check the two collected the
+ * already-settled portion a second time.
+ */
+describe('default amount', () => {
+  it('offers the balance still owed, not the original price', () => {
+    // The regression: 1250 due, 500 already settled, 750 owed.
+    expect(defaultAmount('1250.00', '500.00')).toBe('750.00');
+  });
+
+  it('offers the full amount when nothing has been settled', () => {
+    expect(defaultAmount('1250.00', '0.00')).toBe('1250.00');
+  });
+
+  it('offers nothing once the balance is cleared', () => {
+    // Pre-filling a figure here invites collecting it again.
+    expect(defaultAmount('1250.00', '1250.00')).toBe('');
+  });
+
+  it('offers nothing when the basket is overpaid', () => {
+    expect(defaultAmount('1000.00', '1250.00')).toBe('');
+  });
+
+  it('offers nothing when the balance cannot be established', () => {
+    // Never hand the operator a figure the panel cannot justify.
+    expect(defaultAmount('1,250.00', '0.00')).toBe('');
+    expect(defaultAmount(null, '0.00')).toBe('');
+    expect(defaultAmount('1250.00', null)).toBe('');
+    expect(defaultAmount('abc', 'def')).toBe('');
+  });
+
+  it('always produces something the collect gate will accept', () => {
+    // Otherwise the panel opens pre-filled into a refusing state.
+    const pairs: Array<[string, string]> = [
+      ['1250.00', '500.00'],
+      ['1250.00', '0.00'],
+      ['1250.5', '0.25'],
+    ];
+    for (const [due, settled] of pairs) {
+      const keyed = defaultAmount(due, settled);
+      expect(
+        paymentActionState({
+          priced: true,
+          remaining: remainingAmount(due, settled),
+          keyedAmount: keyed,
+          canTakePayment: true,
+          tenderAvailable: true,
+          busy: false,
+          submitted: false,
+        }).enabled,
+        `${due}/${settled} produced ${keyed}`,
+      ).toBe(true);
+    }
+  });
+});
+
+describe('refusal reasons name the governing cause', () => {
+  const ready = {
+    priced: true,
+    remaining: 1250,
+    keyedAmount: '1250.00',
+    canTakePayment: true,
+    tenderAvailable: true,
+    busy: false,
+    submitted: false,
+  };
+
+  it('does not blame the empty amount field on a settled basket', () => {
+    // The field is empty because nothing is owed. Saying "enter an amount"
+    // implies entering one would let the operator proceed; it would not, and a
+    // reason pointing at the wrong fix sends them looking for a way around it.
+    const state = paymentActionState({
+      ...ready,
+      remaining: 0,
+      keyedAmount: '',
+      canTakePayment: false,
+    });
+    expect(state.enabled).toBe(false);
+    expect(state.reason).not.toContain('Enter an amount');
+    expect(state.reason).toContain('not permitted');
+  });
+
+  it('reports an in-flight payment rather than the amount field', () => {
+    const state = paymentActionState({ ...ready, busy: true, keyedAmount: '' });
+    expect(state.reason).toContain('in flight');
+  });
+
+  it('reports an unreadable intent amount rather than the keyed one', () => {
+    const state = paymentActionState({ ...ready, remaining: null, keyedAmount: '' });
+    expect(state.reason).toContain('could not be read');
+  });
+
+  it('still reports a bad keyed amount when nothing else is wrong', () => {
+    const state = paymentActionState({ ...ready, keyedAmount: '1,250.00' });
+    expect(state.enabled).toBe(false);
+    expect(state.reason).toContain('Enter an amount');
   });
 });

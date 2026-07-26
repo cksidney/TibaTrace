@@ -51,7 +51,11 @@ function Frame({ id }: { id: string }) {
   return (
     <div
       data-scenario={scenario.id}
-      style={{ width: scenario.width, padding: 16, boxSizing: 'border-box' }}
+      // `width` is an upper bound, not a fixed size. Pinning the frame to the
+      // scenario's declared pixel width forced a 1280px layout into the 1024px
+      // viewport, which is the exact condition the narrow project exists to
+      // test. The component must be allowed to reflow.
+      style={{ maxWidth: scenario.width, width: '100%', padding: 16, boxSizing: 'border-box' }}
     >
       {scenario.render()}
     </div>

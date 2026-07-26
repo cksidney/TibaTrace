@@ -75,3 +75,34 @@ jobs:
       - run: npm audit --audit-level=high
       - run: npm run typecheck
       - run: npm run build
+      - run: npm test --workspaces --if-present
+
+  visual:
+    # Visual baselines are platform-specific: font rasterisation and subpixel
+    # rendering differ enough between macOS, Windows and Linux that a baseline
+    # captured on one fails on another for reasons unrelated to the code.
+    # This job is the only authority for them. Baselines captured anywhere else
+    # must not be committed.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run build --workspace @dawatrace/shared
+      - run: npm run typecheck:visual --workspace @dawatrace/pos-windows
+      - run: npx playwright install --with-deps chromium
+        working-directory: apps/pos-windows
+      - run: npm run visual --workspace @dawatrace/pos-windows
+      - uses: actions/upload-artifact@v4
+        # The diff images are the evidence. Without them a failure here is just
+        # a red cross, and a red cross with no picture gets waved through.
+        if: failure()
+        with:
+          name: visual-regression-diffs
+          path: |
+            apps/pos-windows/test-results
+            apps/pos-windows/playwright-report
+          retention-days: 14

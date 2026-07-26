@@ -328,8 +328,26 @@ export const SCENARIOS: readonly Scenario[] = [
         summary={summary({
           blockingCount: 1,
           findings: [
-            finding({ id: 'f-3', severity: 'INFORMATION', title: 'Take with food', blocking: false, requiresPharmacist: false, category: 'Counselling' }),
-            finding({ id: 'f-2', severity: 'ACTION_REQUIRED', title: 'Renal dose adjustment may be needed', blocking: false, requiresPharmacist: false, category: 'Dosing' }),
+            finding({
+              id: 'f-3',
+              severity: 'INFORMATION',
+              category: 'Counselling',
+              title: 'Take with food',
+              explanation: 'Gastric irritation is common when this is taken on an empty stomach.',
+              recommendation: 'Advise the patient to take each dose with a meal.',
+              blocking: false,
+              requiresPharmacist: false,
+            }),
+            finding({
+              id: 'f-2',
+              severity: 'ACTION_REQUIRED',
+              category: 'Dosing',
+              title: 'Renal dose adjustment may be needed',
+              explanation: 'The last recorded creatinine clearance was below the standard-dose threshold.',
+              recommendation: 'Confirm current renal function before supplying.',
+              blocking: false,
+              requiresPharmacist: false,
+            }),
             finding({ id: 'f-1' }),
           ],
         })}

@@ -6,7 +6,41 @@ import {
   surface,
   text,
 } from '@dawatrace/shared/design-system/index.js';
-import type { StageView } from '@dawatrace/shared/design-system/index.js';
+import type { StageView, WorkflowStageState } from '@dawatrace/shared/design-system/index.js';
+
+import { glyphFor } from './StatusBadge.js';
+
+/**
+ * The marker inside a stage's circle.
+ *
+ * The step number is the neutral case: nothing is wrong, and the number is the
+ * operator's position sense. A glyph appears only where the stage deviates, so
+ * a glyph anywhere in the ribbon means something needs attention.
+ *
+ * Only COMPLETE carried a glyph before, which left BLOCKED, STALE and
+ * ACTION_REQUIRED distinguished from each other by hue alone -- and from an
+ * ordinary pending stage too. Assistive technology was fine, since the
+ * aria-label already carries the state and the reason; the failure was purely
+ * visual, and it was the colour-blind operator, the monochrome remote session
+ * and the sun-washed till screen that lost the signal.
+ *
+ * NOT_APPLICABLE and NOT_STARTED deliberately keep their number: a lock on six
+ * future stages is noise, and noise is what makes a real marker invisible.
+ */
+export function stageMarker(state: WorkflowStageState, step: number): string {
+  switch (state) {
+    case 'COMPLETE':
+      return glyphFor('COMPLETED');
+    case 'BLOCKED':
+      return glyphFor('BLOCKING');
+    case 'STALE':
+      return glyphFor('STALE');
+    case 'ACTION_REQUIRED':
+      return glyphFor('ACTION_REQUIRED');
+    default:
+      return String(step);
+  }
+}
 
 /**
  * The nine-stage workflow ribbon.
@@ -89,7 +123,7 @@ export function WorkflowRibbon({
                 fontVariantNumeric: 'tabular-nums',
               }}
             >
-              {stage.state === 'COMPLETE' ? '✓' : stage.step}
+              {stageMarker(stage.state, stage.step)}
             </span>
             {stage.label}
           </button>

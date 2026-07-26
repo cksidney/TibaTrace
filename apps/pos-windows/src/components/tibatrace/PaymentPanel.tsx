@@ -77,6 +77,23 @@ export function remainingAmount(due: string | null, settled: string | null): num
   return dueValue - settledValue;
 }
 
+/**
+ * What the amount field starts at.
+ *
+ * The balance still owed, not the original amount due. It was seeded with
+ * `amountDue`, so on a partially paid basket the field read the full price
+ * while the panel above it showed a smaller remaining balance -- a cashier who
+ * did not cross-check the two collected the already-settled portion twice.
+ *
+ * Empty when the balance is unknown or nothing is owed, so the operator is
+ * never handed a figure the panel cannot justify.
+ */
+export function defaultAmount(due: string | null, settled: string | null): string {
+  const remaining = remainingAmount(due, settled);
+  if (remaining === null || remaining <= 0) return '';
+  return remaining.toFixed(2);
+}
+
 export interface PaymentActionState {
   readonly enabled: boolean;
   /** Empty when enabled. Why the operator cannot collect, in their words. */
@@ -117,14 +134,19 @@ export function paymentActionState(input: {
       // it could not read.
       reason: 'The amount on this payment intent could not be read, so payment cannot be collected.',
     };
-  if (parseMoney(input.keyedAmount) === null)
-    return { enabled: false, reason: 'Enter an amount as a plain number, for example 1250.00.' };
-  if (!input.tenderAvailable)
-    return { enabled: false, reason: 'The selected tender has no settlement path.' };
+  // State-level refusals are reported before input-level ones. On a settled
+  // basket the empty amount field would otherwise surface "enter an amount",
+  // which implies that entering one would let the operator proceed. It would
+  // not, and a reason that points at the wrong fix sends them looking for a way
+  // around it.
   if (!input.canTakePayment)
     return { enabled: false, reason: 'Payment is not permitted in the current state.' };
+  if (!input.tenderAvailable)
+    return { enabled: false, reason: 'The selected tender has no settlement path.' };
   if (input.busy || input.submitted)
     return { enabled: false, reason: 'A payment is already in flight.' };
+  if (parseMoney(input.keyedAmount) === null)
+    return { enabled: false, reason: 'Enter an amount as a plain number, for example 1250.00.' };
   return { enabled: true, reason: '' };
 }
 
@@ -147,7 +169,7 @@ export function PaymentPanel({
   readonly onTakePayment: (tender: PaymentTenderType, amount: string, reference: string) => void;
 }) {
   const [tender, setTender] = useState<PaymentMode>('CASH');
-  const [amount, setAmount] = useState(amountDue ?? '');
+  const [amount, setAmount] = useState(() => defaultAmount(amountDue, amountSettled));
   const [reference, setReference] = useState('');
   const [submitted, setSubmitted] = useState(false);
 

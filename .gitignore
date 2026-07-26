@@ -26,3 +26,12 @@ staticfiles/
 *.pem
 *.key
 apps/*/dist/
+
+# Visual-regression working files. Baselines under visual/__screenshots__/linux/
+# are committed and are captured only by the CI `visual` job; baselines for any
+# other platform are local scratch and must not be committed, because font
+# rasterisation differences would make them fail for everyone else.
+apps/pos-windows/visual/__screenshots__/darwin/
+apps/pos-windows/visual/__screenshots__/win32/
+apps/pos-windows/test-results/
+apps/pos-windows/playwright-report/
