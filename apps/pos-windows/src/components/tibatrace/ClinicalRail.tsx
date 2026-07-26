@@ -80,7 +80,11 @@ export function ClinicalRail({
       }}
     >
       <section
-        aria-live="polite"
+        // Politeness follows the status rather than being fixed. This was
+        // hardcoded 'polite', so a blocking finding, a stale screening or a
+        // pharmacist referral was queued until the operator went idle -- which
+        // at a working till is after they have already acted.
+        aria-live={CLINICAL_STATUS[headline.status].announce}
         style={{
           padding: spacing.lg,
           borderRadius: 12,

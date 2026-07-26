@@ -8,6 +8,8 @@ import {
   surface,
   text,
 } from '@dawatrace/shared/design-system/index.js';
+
+import { liveRegionFor } from './liveRegion.js';
 import type {
   AllergyStatus,
   ClinicalStatus,
@@ -52,7 +54,7 @@ export function ClinicalSummaryCard({
   return (
     <View
       accessibilityRole="summary"
-      accessibilityLiveRegion={meta.announce === 'assertive' ? 'assertive' : 'polite'}
+      accessibilityLiveRegion={liveRegionFor(summary.headlineStatus)}
       style={[
         styles.card,
         { backgroundColor: palette.surface, borderColor: palette.border, borderTopColor: palette.accent },

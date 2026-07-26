@@ -9,6 +9,8 @@ import {
 import type { PaymentState, PaymentTenderType } from '@dawatrace/shared/dispensing/index.js';
 import { TENDER_OPTIONS, paymentPermitsSupply } from '@dawatrace/shared/dispensing/index.js';
 import { useState } from 'react';
+
+import { liveRegionFor } from '../components/tibatrace/liveRegion.js';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 /**
@@ -176,7 +178,7 @@ function Notice({
   const palette = statusPalette[status];
   return (
     <View
-      accessibilityLiveRegion={status === 'BLOCKING' ? 'assertive' : 'polite'}
+      accessibilityLiveRegion={liveRegionFor(status)}
       style={[styles.notice, { backgroundColor: palette.surface, borderLeftColor: palette.accent }]}
     >
       <Text style={[styles.noticeText, { color: palette.foreground }]}>{message}</Text>

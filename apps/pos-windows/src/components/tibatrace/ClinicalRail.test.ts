@@ -85,3 +85,72 @@ describe('status semantics used by the rail', () => {
     expect(CLINICAL_STATUS.SAFE.blocksProgression).toBe(false);
   });
 });
+
+/**
+ * How the rail headline is announced.
+ *
+ * The live region was hardcoded aria-live="polite", so a blocking finding, a
+ * stale screening or a pharmacist referral was queued behind whatever the
+ * screen reader was already saying and delivered when the operator next went
+ * idle. At a working till that is after they have already acted.
+ *
+ * Politeness now follows the status. These tests pin the states that must
+ * interrupt; do not relax them to quieten the interface.
+ */
+describe('headline announcement', () => {
+  const announcementFor = (summary: Parameters<typeof deriveHeadline>[0]) =>
+    CLINICAL_STATUS[deriveHeadline(summary).status].announce;
+
+  const base = {
+    safeToProceed: true,
+    screened: true,
+    stale: false,
+    blockingCount: 0,
+    findings: [],
+    connectivity: 'ONLINE' as const,
+  };
+
+  it('interrupts when dispensing is blocked offline', () => {
+    expect(announcementFor({ ...base, connectivity: 'OFFLINE_DISPENSING_BLOCKED' })).toBe(
+      'assertive',
+    );
+  });
+
+  it('interrupts when the screening is stale', () => {
+    expect(announcementFor({ ...base, stale: true })).toBe('assertive');
+  });
+
+  it('interrupts when a blocking finding is present', () => {
+    expect(announcementFor({ ...base, blockingCount: 1 })).toBe('assertive');
+  });
+
+  it('interrupts when screening has not been done', () => {
+    expect(announcementFor({ ...base, screened: false })).toBe('assertive');
+  });
+
+  it('interrupts when the server withheld approval', () => {
+    expect(announcementFor({ ...base, safeToProceed: false })).toBe('assertive');
+  });
+
+  it('does not interrupt for a safe result', () => {
+    // Nothing is being asked of the operator, so nothing should cut in.
+    expect(announcementFor(base)).not.toBe('assertive');
+  });
+
+  it('announces every headline a blocked state can produce assertively', () => {
+    // Catches a future headline branch that returns a blocking status without
+    // its announcement being reconsidered.
+    const blockedInputs = [
+      { ...base, connectivity: 'OFFLINE_DISPENSING_BLOCKED' as const },
+      { ...base, stale: true },
+      { ...base, blockingCount: 3 },
+      { ...base, screened: false },
+      { ...base, safeToProceed: false },
+    ];
+    for (const input of blockedInputs) {
+      const status = deriveHeadline(input).status;
+      expect(CLINICAL_STATUS[status].demandsAction, `${status} should demand action`).toBe(true);
+      expect(CLINICAL_STATUS[status].announce).toBe('assertive');
+    }
+  });
+});
