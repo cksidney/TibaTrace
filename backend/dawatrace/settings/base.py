@@ -158,6 +158,11 @@ REST_FRAMEWORK = {
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "DEFAULT_FILTER_BACKENDS": ["django_filters.rest_framework.DjangoFilterBackend"],
     "EXCEPTION_HANDLER": "apps.core.api.exception_handler.dawatrace_exception_handler",
+    "DEFAULT_THROTTLE_RATES": {
+        # Bounds password guessing on the sign-in form. A password field with
+        # no throttle is an offline attack conducted online.
+        "signin": "10/min",
+    },
 }
 
 SPECTACULAR_SETTINGS = {

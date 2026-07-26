@@ -4,8 +4,34 @@
     {
       "name": "visual-harness",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "visual:serve", "--workspace", "@dawatrace/pos-windows"],
+      "runtimeArgs": [
+        "run",
+        "visual:serve",
+        "--workspace",
+        "@dawatrace/pos-windows"
+      ],
       "port": 4173
+    },
+    {
+      "name": "hq-web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--workspace",
+        "@dawatrace/hq-web"
+      ],
+      "port": 5173
+    },
+    {
+      "name": "backend",
+      "runtimeExecutable": ".venv/bin/python",
+      "runtimeArgs": [
+        "backend/manage.py",
+        "runserver",
+        "127.0.0.1:8000"
+      ],
+      "port": 8000
     }
   ]
 }
