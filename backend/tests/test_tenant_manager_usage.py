@@ -55,12 +55,31 @@ def api_modules() -> list[pathlib.Path]:
     return found
 
 
-def strict_manager_uses(path: pathlib.Path) -> list[tuple[int, str]]:
-    """Occurrences of `.objects.` inside a module, with their line numbers.
+def tenant_scoped_model_names() -> set[str]:
+    """Models that actually have a tenant-strict default manager.
+
+    Derived from the app registry rather than hardcoded: a model is tenant
+    scoped exactly when it declares `all_objects` alongside `objects`. User and
+    Tenant do not, so `User.objects` is a plain manager and flagging it would be
+    a false positive -- and a guard that cries wolf is one people learn to
+    ignore, which is worse than no guard.
+    """
+    from django.apps import apps as django_apps
+
+    return {
+        model.__name__
+        for model in django_apps.get_models()
+        if hasattr(model, "all_objects")
+    }
+
+
+def strict_manager_uses(path: pathlib.Path, scoped: set[str] | None = None) -> list[tuple[int, str]]:
+    """Uses of the strict default manager on a tenant-scoped model.
 
     An AST walk rather than a grep, so a mention inside a string or a comment --
     including this module's own docstring -- is not reported as a use.
     """
+    scoped = scoped if scoped is not None else tenant_scoped_model_names()
     try:
         tree = ast.parse(path.read_text())
     except SyntaxError:
@@ -68,15 +87,25 @@ def strict_manager_uses(path: pathlib.Path) -> list[tuple[int, str]]:
 
     uses: list[tuple[int, str]] = []
     for node in ast.walk(tree):
-        if isinstance(node, ast.Attribute) and node.attr == "objects":
-            # `Model.objects` where Model is a plain name, which is the shape
-            # that bites. `self.model.objects` is caught too.
-            uses.append((node.lineno, ast.unparse(node)))
+        if not (isinstance(node, ast.Attribute) and node.attr == "objects"):
+            continue
+        expression = ast.unparse(node)
+        receiver = expression.rsplit(".objects", 1)[0]
+
+        # `self.model.objects` cannot be resolved statically to a model, and it
+        # is exactly the shape that emptied the procurement API, so it counts.
+        if receiver.endswith("self.model") or receiver == "self.model":
+            uses.append((node.lineno, expression))
+            continue
+
+        # Otherwise only flag a name that is a tenant-scoped model.
+        if receiver.split(".")[-1] in scoped:
+            uses.append((node.lineno, expression))
     return uses
 
 
 #: How many uses exist today, per app. A ratchet rather than a clean assertion:
-#: thirty-five were present when this guard was written, spread across code that
+#: twenty-two were present when this guard was written, spread across code that
 #: is actively being changed by other work, and blocking the suite on all of
 #: them would have meant either a red suite or no guard at all.
 #:
@@ -84,24 +113,22 @@ def strict_manager_uses(path: pathlib.Path) -> list[tuple[int, str]]:
 #: Adding one fails immediately, which is the point -- the four found by hand
 #: each cost a debugging session, and the fifth should cost a test run.
 KNOWN_USES = {
-    "cds": 1,
-    "customers": 4,
+    "customers": 3,
     "inventory": 5,
-    "medicines": 19,
-    "patients": 1,
-    "prescription": 2,
+    "medicines": 11,
     "sales": 3,
 }
 
 
 def offenders_by_app() -> dict[str, list[str]]:
     found: dict[str, list[str]] = {}
+    scoped = tenant_scoped_model_names()
     for path in api_modules():
         relative = str(path.relative_to(APPS.parent))
         if relative in REVIEWED:
             continue
         app = path.relative_to(APPS).parts[0]
-        for line, expression in strict_manager_uses(path):
+        for line, expression in strict_manager_uses(path, scoped):
             found.setdefault(app, []).append(f"{relative}:{line}  {expression}")
     return found
 
@@ -174,19 +201,26 @@ class TestTheGuardItselfWorks:
     def test_it_finds_a_planted_use(self, tmp_path):
         planted = tmp_path / "views.py"
         planted.write_text("from x import Claim\n\ndef f():\n    return Claim.objects.all()\n")
-        assert strict_manager_uses(planted) == [(4, "Claim.objects")]
+        assert strict_manager_uses(planted, {"Claim"}) == [(4, "Claim.objects")]
+
+    def test_it_ignores_a_model_that_is_not_tenant_scoped(self, tmp_path):
+        # User and Tenant have plain managers. Flagging them would send somebody
+        # looking for an all_objects that does not exist.
+        planted = tmp_path / "views.py"
+        planted.write_text("from x import User\n\ndef f():\n    return User.objects.all()\n")
+        assert strict_manager_uses(planted, {"Claim"}) == []
 
     def test_it_ignores_all_objects(self, tmp_path):
         planted = tmp_path / "views.py"
         planted.write_text("from x import Claim\n\ndef f():\n    return Claim.all_objects.all()\n")
-        assert strict_manager_uses(planted) == []
+        assert strict_manager_uses(planted, {"Claim"}) == []
 
     def test_it_ignores_the_word_in_a_string(self, tmp_path):
         # A grep would report this; the point of the AST walk is that it does
         # not.
         planted = tmp_path / "views.py"
         planted.write_text('MESSAGE = "use Model.objects carefully"\n')
-        assert strict_manager_uses(planted) == []
+        assert strict_manager_uses(planted, {"Model"}) == []
 
     def test_it_scans_a_non_empty_set_of_modules(self):
         # If the discovery glob broke, every assertion above would still pass.
