@@ -11,9 +11,21 @@ import type { CSSProperties, ReactNode } from 'react';
  * assistive technology.
  */
 
+/**
+ * Icon name to glyph.
+ *
+ * One rule governs this map, and StatusBadge.test.ts enforces it: no glyph may
+ * be shared between a status that blocks progression and one that does not.
+ *
+ * `user-check` previously rendered '✓', the same glyph as `shield-check`
+ * (SAFE) and `check-circle` (COMPLETED). That made PHARMACIST_REVIEW -- a
+ * blocking state -- read as approval wherever colour was unavailable, which is
+ * precisely the situation the glyph exists to cover.
+ */
 const GLYPH: Record<string, string> = {
   'octagon-x': '✕',
-  'user-check': '✓',
+  // A flag, not a tick: someone must still look at this.
+  'user-check': '⚑',
   history: '↺',
   'cloud-off': '⌁',
   'alert-triangle': '!',
@@ -23,6 +35,14 @@ const GLYPH: Record<string, string> = {
   'shield-check': '✓',
   lock: '🔒',
 };
+
+/**
+ * The glyph a status renders. Exported so the non-colour guarantee can be
+ * asserted directly rather than inferred from rendered output.
+ */
+export function glyphFor(status: ClinicalStatus): string {
+  return GLYPH[CLINICAL_STATUS[status].icon] ?? '•';
+}
 
 export interface StatusBadgeProps {
   readonly status: ClinicalStatus;
@@ -54,7 +74,7 @@ export function StatusBadge({ status, label, size = 'md', children }: StatusBadg
   return (
     <span style={style} title={meta.description} data-status={status}>
       <span aria-hidden="true" style={{ fontWeight: 700 }}>
-        {GLYPH[meta.icon] ?? '•'}
+        {glyphFor(status)}
       </span>
       <span>{label ?? meta.label}</span>
       {children}
@@ -91,7 +111,7 @@ export function BlockingReason({ status, reason }: { status: ClinicalStatus; rea
       }}
     >
       <span aria-hidden="true" style={{ fontWeight: 700 }}>
-        {GLYPH[meta.icon] ?? '•'}
+        {glyphFor(status)}
       </span>
       <span>{reason}</span>
     </div>

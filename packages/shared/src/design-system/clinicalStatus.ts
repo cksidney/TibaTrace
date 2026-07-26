@@ -34,6 +34,19 @@ export interface ClinicalStatusMeta {
   readonly icon: string;
   /** Whether workflow progression is prohibited in this state. */
   readonly blocksProgression: boolean;
+  /**
+   * Whether the operator must do something to move on.
+   *
+   * Distinct from `blocksProgression`, and the difference decides how the state
+   * is announced. PROCESSING and DISABLED both block, but neither asks anything
+   * of the operator: one resolves itself, the other is a passive absence.
+   * Interrupting a screen reader for those would train operators to ignore the
+   * interruptions that matter.
+   *
+   * Every state where this is true must announce assertively -- a demand the
+   * operator only discovers by exploring is a demand discovered too late.
+   */
+  readonly demandsAction: boolean;
   /** Severity ordering, for sorting findings and picking the summary state. */
   readonly weight: number;
   /** Accessible announcement politeness for live regions. */
@@ -46,6 +59,7 @@ export const CLINICAL_STATUS: Readonly<Record<ClinicalStatus, ClinicalStatusMeta
     label: 'Blocking',
     icon: 'octagon-x',
     blocksProgression: true,
+    demandsAction: true,
     weight: 100,
     announce: 'assertive',
     description: 'Progression is prohibited until this is resolved.',
@@ -54,6 +68,7 @@ export const CLINICAL_STATUS: Readonly<Record<ClinicalStatus, ClinicalStatusMeta
     label: 'Pharmacist review',
     icon: 'user-check',
     blocksProgression: true,
+    demandsAction: true,
     weight: 90,
     announce: 'assertive',
     description: 'A pharmacist or elevated clinical authority must decide.',
@@ -62,6 +77,7 @@ export const CLINICAL_STATUS: Readonly<Record<ClinicalStatus, ClinicalStatusMeta
     label: 'No longer valid',
     icon: 'history',
     blocksProgression: true,
+    demandsAction: true,
     weight: 80,
     announce: 'assertive',
     description: 'The prescription or basket changed after approval. Re-screening is required.',
@@ -70,6 +86,7 @@ export const CLINICAL_STATUS: Readonly<Record<ClinicalStatus, ClinicalStatusMeta
     label: 'Offline',
     icon: 'cloud-off',
     blocksProgression: false,
+    demandsAction: false,
     weight: 70,
     announce: 'polite',
     description: 'Operating under constrained offline policy.',
@@ -78,14 +95,16 @@ export const CLINICAL_STATUS: Readonly<Record<ClinicalStatus, ClinicalStatusMeta
     label: 'Action required',
     icon: 'alert-triangle',
     blocksProgression: true,
+    demandsAction: true,
     weight: 60,
-    announce: 'polite',
+    announce: 'assertive',
     description: 'Operator action is required before progression.',
   },
   PROCESSING: {
     label: 'Processing',
     icon: 'loader',
     blocksProgression: true,
+    demandsAction: false,
     weight: 50,
     announce: 'polite',
     description: 'Awaiting an authoritative response.',
@@ -94,6 +113,7 @@ export const CLINICAL_STATUS: Readonly<Record<ClinicalStatus, ClinicalStatusMeta
     label: 'Information',
     icon: 'info',
     blocksProgression: false,
+    demandsAction: false,
     weight: 40,
     announce: 'off',
     description: 'Informational only; does not block progression.',
@@ -102,6 +122,7 @@ export const CLINICAL_STATUS: Readonly<Record<ClinicalStatus, ClinicalStatusMeta
     label: 'Complete',
     icon: 'check-circle',
     blocksProgression: false,
+    demandsAction: false,
     weight: 30,
     announce: 'polite',
     description: 'This stage is complete.',
@@ -110,6 +131,7 @@ export const CLINICAL_STATUS: Readonly<Record<ClinicalStatus, ClinicalStatusMeta
     label: 'Safe to proceed',
     icon: 'shield-check',
     blocksProgression: false,
+    demandsAction: false,
     weight: 20,
     announce: 'polite',
     description: 'Clinical screening is current with no unresolved blocking findings.',
@@ -118,6 +140,7 @@ export const CLINICAL_STATUS: Readonly<Record<ClinicalStatus, ClinicalStatusMeta
     label: 'Unavailable',
     icon: 'lock',
     blocksProgression: true,
+    demandsAction: false,
     weight: 10,
     announce: 'off',
     description: 'Not available in the current state.',

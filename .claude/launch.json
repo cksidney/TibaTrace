@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "visual-harness",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "visual:serve", "--workspace", "@dawatrace/pos-windows"],
+      "port": 4173
+    }
+  ]
+}

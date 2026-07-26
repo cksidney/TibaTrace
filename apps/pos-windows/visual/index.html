@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>TibaTrace visual harness</title>
+    <style>
+      /* A fixed, opaque background. On a transparent one, a component that
+         renders white-on-white would still screenshot as readable. */
+      html, body { margin: 0; background: #ffffff; }
+
+      /* Determinism: no motion, no blinking caret, no smooth scrolling. */
+      *, *::before, *::after {
+        animation-duration: 0s !important;
+        animation-delay: 0s !important;
+        transition-duration: 0s !important;
+        transition-delay: 0s !important;
+        caret-color: transparent !important;
+        scroll-behavior: auto !important;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./harness.tsx"></script>
+  </body>
+</html>

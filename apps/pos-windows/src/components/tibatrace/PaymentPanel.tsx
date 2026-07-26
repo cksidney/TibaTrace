@@ -43,6 +43,91 @@ export function paymentStatusMeta(state: PaymentState) {
   }
 }
 
+/**
+ * Parse a server-supplied money string.
+ *
+ * The server sends unformatted decimal strings ("1250.00"). Anything else --
+ * a grouped or localised value, an empty string, a null that slipped through
+ * -- is treated as unknown rather than coerced.
+ *
+ * `parseFloat` is deliberately not used. It reads "1,250,000.00" as 1250,
+ * which would under-report a balance by three orders of magnitude while
+ * looking entirely plausible on screen. A refusal to parse is recoverable; a
+ * confidently wrong figure at a till is not.
+ */
+function parseMoney(raw: string | null): number | null {
+  if (raw === null) return null;
+  const trimmed = raw.trim();
+  if (!/^-?\d+(\.\d+)?$/.test(trimmed)) return null;
+  const value = Number(trimmed);
+  return Number.isFinite(value) ? value : null;
+}
+
+/**
+ * The balance still owed, or null when it cannot be established.
+ *
+ * Never falls back to zero for an unparseable amount. Zero is a specific
+ * claim -- "nothing is owed" -- and asserting it from a parse failure is how a
+ * basket gets released without payment.
+ */
+export function remainingAmount(due: string | null, settled: string | null): number | null {
+  const dueValue = parseMoney(due);
+  const settledValue = parseMoney(settled);
+  if (dueValue === null || settledValue === null) return null;
+  return dueValue - settledValue;
+}
+
+export interface PaymentActionState {
+  readonly enabled: boolean;
+  /** Empty when enabled. Why the operator cannot collect, in their words. */
+  readonly reason: string;
+}
+
+/**
+ * Whether the collect action may be offered, and why not.
+ *
+ * One derived value drives `disabled`, the fill and the cursor. They were
+ * three separate expressions, and they disagreed: the fill ignored `priced`
+ * and the selected tender, so the button could render green and inviting while
+ * being inert. An operator who clicks a live-looking button that does nothing
+ * concludes the terminal is broken, and looks for another way to release the
+ * medicine.
+ *
+ * This decides only whether to *offer* the action. The server remains the sole
+ * authority on whether a payment succeeds.
+ */
+export function paymentActionState(input: {
+  readonly priced: boolean;
+  readonly remaining: number | null;
+  readonly keyedAmount: string;
+  readonly canTakePayment: boolean;
+  readonly tenderAvailable: boolean;
+  readonly busy: boolean;
+  readonly submitted: boolean;
+}): PaymentActionState {
+  if (!input.priced)
+    return {
+      enabled: false,
+      reason: 'No payment intent is open for this episode, so there is no amount to collect.',
+    };
+  if (input.remaining === null)
+    return {
+      enabled: false,
+      // The panel must not invite a hand-keyed amount to paper over an amount
+      // it could not read.
+      reason: 'The amount on this payment intent could not be read, so payment cannot be collected.',
+    };
+  if (parseMoney(input.keyedAmount) === null)
+    return { enabled: false, reason: 'Enter an amount as a plain number, for example 1250.00.' };
+  if (!input.tenderAvailable)
+    return { enabled: false, reason: 'The selected tender has no settlement path.' };
+  if (!input.canTakePayment)
+    return { enabled: false, reason: 'Payment is not permitted in the current state.' };
+  if (input.busy || input.submitted)
+    return { enabled: false, reason: 'A payment is already in flight.' };
+  return { enabled: true, reason: '' };
+}
+
 export function PaymentPanel({
   paymentState,
   amountDue,
@@ -69,7 +154,16 @@ export function PaymentPanel({
   const meta = paymentStatusMeta(paymentState);
   const selected = TENDER_OPTIONS.find((option) => option.type === tender);
   const priced = amountDue !== null && amountSettled !== null;
-  const remaining = priced ? Number(amountDue) - Number(amountSettled) : null;
+  const remaining = remainingAmount(amountDue, amountSettled);
+  const action = paymentActionState({
+    priced,
+    remaining,
+    keyedAmount: amount,
+    canTakePayment,
+    tenderAvailable: selected?.available ?? false,
+    busy,
+    submitted,
+  });
 
   return (
     <section style={{ display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
@@ -94,6 +188,16 @@ export function PaymentPanel({
         <BlockingReason
           status="DISABLED"
           reason="No payment intent is open for this episode, so there is no authoritative amount to collect."
+        />
+      ) : null}
+
+      {/* An intent exists but its amounts did not parse. Distinct from "not
+          priced", and stated as such: telling the operator there is no intent
+          when there is one sends them to create a second one. */}
+      {priced && remaining === null ? (
+        <BlockingReason
+          status="ACTION_REQUIRED"
+          reason="The amount on this payment intent could not be read. Refresh the episode before collecting; do not key an amount by hand."
         />
       ) : null}
 
@@ -157,9 +261,10 @@ export function PaymentPanel({
 
       <button
         type="button"
-        // Without an open intent there is no authoritative amount to collect,
-        // so payment is not offered at all.
-        disabled={!priced || !canTakePayment || busy || submitted || !(selected?.available ?? false)}
+        // A single derived gate gives `disabled`, the fill and the cursor the
+        // same answer, so the control can never look available while inert.
+        disabled={!action.enabled}
+        title={action.reason}
         onClick={() => {
           // Guards a double-submit: a second click must not become a second
           // charge while the first is still in flight.
@@ -174,15 +279,21 @@ export function PaymentPanel({
           borderRadius: 8,
           border: 'none',
           minHeight: 48,
-          background: canTakePayment && !busy && !submitted ? '#12854A' : surface.sunken,
-          color: canTakePayment && !busy && !submitted ? '#fff' : text.tertiary,
+          background: action.enabled ? '#12854A' : surface.sunken,
+          color: action.enabled ? '#fff' : text.tertiary,
           fontSize: fontSize.bodyLarge,
           fontWeight: 600,
-          cursor: priced && canTakePayment && !busy && !submitted ? 'pointer' : 'not-allowed',
+          cursor: action.enabled ? 'pointer' : 'not-allowed',
         }}
       >
         {busy ? 'Confirming payment…' : 'Take payment'}
       </button>
+
+      {/* A disabled control with no stated reason reads as a broken screen, and
+          operators route around broken screens. */}
+      {!action.enabled && action.reason ? (
+        <p style={{ margin: 0, fontSize: fontSize.caption, color: text.tertiary }}>{action.reason}</p>
+      ) : null}
 
       {paymentPermitsSupply(paymentState) ? (
         <p style={{ margin: 0, fontSize: fontSize.caption, color: text.secondary }}>

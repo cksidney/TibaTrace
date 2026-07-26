@@ -1,0 +1,7 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"]
+  },
+  "include": ["visual/**/*.ts", "visual/**/*.tsx", "playwright.config.ts", "vite.visual.config.ts"]
+}

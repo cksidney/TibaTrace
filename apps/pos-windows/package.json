@@ -13,12 +13,18 @@
     "build:main": "tsc --project tsconfig.main.json",
     "build": "npm run build:main && npm run build:renderer",
     "dev": "vite",
-    "start": "electron ."
+    "start": "electron .",
+    "typecheck:visual": "tsc --project tsconfig.visual.json --noEmit",
+    "visual:build": "vite build --config vite.visual.config.ts",
+    "visual:serve": "npm run visual:build && vite preview --config vite.visual.config.ts",
+    "visual": "playwright test",
+    "visual:update": "playwright test --update-snapshots"
   },
   "dependencies": {
     "@dawatrace/shared": "*"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.0",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.4",
