@@ -1,8 +1,22 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
 
-import { HQApiError, loadHQOverview } from './api.js';
-import type { DashboardMetric, HQOverview, NetworkItem } from './api.js';
+import {
+  HQApiError,
+  formatMoney,
+  loadApprovedUnpaidClaims,
+  loadClaimsAwaitingDecision,
+  loadClaimsNeedingAttention,
+  loadHQOverview,
+  loadInsurers,
+} from './api.js';
+import type {
+  DashboardMetric,
+  HQOverview,
+  InsuranceClaim,
+  Insurer,
+  NetworkItem,
+} from './api.js';
 import { Icon } from './icons.js';
 import type { IconName } from './icons.js';
 
@@ -536,63 +550,154 @@ function OperationsView({ overview }: { readonly overview: HQOverview }) {
 }
 
 function InsuranceView() {
-  const adapters = [
-    { name: 'SHA (Social Health Authority)', type: 'PUBLIC_HEALTH', status: 'ACTIVE', latency: '18 ms', auth: 'OAUTH2 / FHIR', claimsProcessed: 842, rate: '96.2%' },
-    { name: 'Jubilee Health Insurance', type: 'PRIVATE_MEDICAL', status: 'ACTIVE', latency: '24 ms', auth: 'REST / JSON', claimsProcessed: 320, rate: '94.5%' },
-    { name: 'AAR Insurance Kenya', type: 'PRIVATE_MEDICAL', status: 'ACTIVE', latency: '31 ms', auth: 'REST / XML', claimsProcessed: 185, rate: '93.8%' },
-    { name: 'APA Insurance', type: 'PRIVATE_MEDICAL', status: 'ACTIVE', latency: '29 ms', auth: 'SOAP / WS', claimsProcessed: 114, rate: '92.1%' },
-    { name: 'Employer Scheme Adapter', type: 'EMPLOYER_SCHEME', status: 'ACTIVE', latency: '12 ms', auth: 'INTERNAL_API', claimsProcessed: 68, rate: '98.5%' },
-  ];
+  const [insurers, setInsurers] = useState<readonly Insurer[] | null>(null);
+  const [unpaid, setUnpaid] = useState<readonly InsuranceClaim[] | null>(null);
+  const [awaiting, setAwaiting] = useState<readonly InsuranceClaim[] | null>(null);
+  const [attention, setAttention] = useState<readonly InsuranceClaim[] | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    Promise.all([
+      loadInsurers(controller.signal),
+      loadApprovedUnpaidClaims(controller.signal),
+      loadClaimsAwaitingDecision(controller.signal),
+      loadClaimsNeedingAttention(controller.signal),
+    ])
+      .then(([a, b, c, d]) => {
+        setInsurers(a);
+        setUnpaid(b);
+        setAwaiting(c);
+        setAttention(d);
+      })
+      .catch(() => {
+        // Surfaced, not swallowed into zeroes. A dashboard showing "0 claims"
+        // because the request failed is believed; one saying it could not load
+        // is questioned.
+        if (!controller.signal.aborted) setFailed(true);
+      });
+    return () => controller.abort();
+  }, []);
+
+  if (failed) return <Unavailable />;
+  if (!insurers || !unpaid || !awaiting || !attention) {
+    return <p className="muted-cell">Loading insurance data…</p>;
+  }
+
+  // Summed from the rows themselves rather than from a separate total, so the
+  // headline and the table below it cannot disagree.
+  const receivable = unpaid.reduce(
+    (total, claim) => total + Number.parseFloat(claim.outstanding_amount || '0'),
+    0,
+  );
 
   return (
     <>
-      <section className="metric-grid network-metrics" aria-label="Insurance adjudication totals">
-        <SummaryCard icon="insurance" label="Submitted Claims" value={1529} detail="All insurer channels" />
-        <SummaryCard icon="check" label="Approved Claims" value={1461} detail="95.5% adjudication pass rate" tone="teal" />
-        <SummaryCard icon="alert" label="Rejections / Exceptions" value={68} detail="Review & resubmit required" tone="rose" />
-        <SummaryCard icon="building" label="Receivables Balance" value={4820500} detail="Pending remittance reconciliation" tone="amber" />
+      <section className="metric-grid network-metrics" aria-label="Insurance claim positions">
+        <SummaryCard
+          icon="insurance"
+          label="Awaiting insurer decision"
+          value={awaiting.length}
+          detail="Sent and acknowledged, not yet adjudicated"
+        />
+        <SummaryCard
+          icon="check"
+          label="Approved, unpaid"
+          value={unpaid.length}
+          detail="Insurer agreed to pay and has not paid"
+          tone="teal"
+        />
+        <SummaryCard
+          icon="alert"
+          label="Needs attention here"
+          value={attention.length}
+          detail="Rejected, or blocked on this end"
+          tone="rose"
+        />
+        <SummaryCard
+          icon="building"
+          label="Receivable"
+          value={Math.round(receivable)}
+          detail="Approved less received, this tenant"
+          tone="amber"
+        />
       </section>
 
       <section className="content-grid content-grid-primary">
         <article className="panel">
-          <PanelHeader eyebrow="Insurer Integrations" title="Active Gateway Adapters" />
-          <div className="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>Adapter / Provider</th>
-                  <th>Type</th>
-                  <th>Status</th>
-                  <th>Protocol</th>
-                  <th>Latency</th>
-                  <th>Claims</th>
-                  <th>Approval Rate</th>
-                </tr>
-              </thead>
-              <tbody>
-                {adapters.map((adapter) => (
-                  <tr key={adapter.name}>
-                    <td><strong>{adapter.name}</strong></td>
-                    <td><small>{adapter.type}</small></td>
-                    <td><span className="status-badge status-active"><i /> {adapter.status}</span></td>
-                    <td><span className="muted-cell">{adapter.auth}</span></td>
-                    <td><code>{adapter.latency}</code></td>
-                    <td>{formatNumber(adapter.claimsProcessed)}</td>
-                    <td><strong style={{ color: 'var(--teal-700)' }}>{adapter.rate}</strong></td>
+          <PanelHeader eyebrow="Insurer integrations" title="Configured insurers" />
+          {insurers.length === 0 ? (
+            <p className="muted-cell">No insurers are configured for this tenant.</p>
+          ) : (
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Insurer</th>
+                    <th>Adapter</th>
+                    <th>Environment</th>
+                    <th>Status</th>
+                    <th>Can transact</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {insurers.map((insurer) => (
+                    <tr key={insurer.id}>
+                      <td><strong>{insurer.name}</strong></td>
+                      <td><small>{insurer.integration_adapter}</small></td>
+                      <td><span className="muted-cell">{insurer.environment}</span></td>
+                      <td><small>{insurer.status}</small></td>
+                      <td>
+                        {insurer.adapter_registered ? (
+                          <span className="status-badge status-active"><i /> Adapter ready</span>
+                        ) : (
+                          /* Configured is not the same as implemented. An
+                             insurer with no registered adapter cannot send a
+                             claim, and showing it as ready leaves somebody
+                             wondering why nothing arrives. */
+                          <span className="muted-cell">No adapter implemented</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </article>
 
         <article className="panel">
-          <PanelHeader eyebrow="Claims Workflow" title="Adjudication Controls" />
-          <div className="command-links">
-            <CommandLink href="/admin/insurance/prescriptionclaim/" title="Prescription claims" detail="View, filter and audit submitted claims" icon="insurance" />
-            <CommandLink href="/admin/insurance/insuranceremittance/" title="Remittances & Reconciliation" detail="Match payment advices against claims" icon="database" />
-            <CommandLink href="/admin/insurance/prescriptionpreauthorisation/" title="Preauthorisations" detail="Member eligibility and benefit limits" icon="shield" />
-          </div>
+          <PanelHeader eyebrow="Claims workflow" title="Approved and unpaid" />
+          {unpaid.length === 0 ? (
+            <p className="muted-cell">No approved claims are outstanding.</p>
+          ) : (
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Claim</th>
+                    <th>Insurer</th>
+                    <th>Member</th>
+                    <th>Approved</th>
+                    <th>Received</th>
+                    <th>Outstanding</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {unpaid.map((claim) => (
+                    <tr key={claim.id}>
+                      <td><code>{claim.claim_number}</code></td>
+                      <td><small>{claim.insurer_code}</small></td>
+                      <td><span className="muted-cell">{claim.membership_number}</span></td>
+                      <td>{formatMoney(claim.approved_amount, claim.currency)}</td>
+                      <td>{formatMoney(claim.paid_amount, claim.currency)}</td>
+                      <td><strong>{formatMoney(claim.outstanding_amount, claim.currency)}</strong></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </article>
       </section>
     </>
