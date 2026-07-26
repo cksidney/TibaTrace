@@ -53,12 +53,6 @@ class ReceivingService:
         if not po_lines.exists():
             raise ValidationError(f"Item {sku.sku_code} is not included in Purchase Order {session.purchase_order.po_number}.")
 
-        if manufacture_date and manufacture_date >= expiry_date:
-            raise ValidationError(
-                f"Manufacture date must precede expiry date; batch "
-                f"{manufacturer_batch_number} is dated {manufacture_date} "
-                f"expiring {expiry_date}."
-            )
         if expiry_date <= timezone.now().date():
             raise ValidationError(f"Scanned batch {batch_number} has already expired.")
 
@@ -281,6 +275,14 @@ class GoodsReceivingService:
         """
         if expiry_date is None:
             raise ValidationError("A batch requires an expiry date.")
+        if manufacture_date and manufacture_date >= expiry_date:
+            # A typo, not stock to refuse -- the two need different corrections,
+            # so they get different messages.
+            raise ValidationError(
+                f"Manufacture date must precede expiry date; batch "
+                f"{manufacturer_batch_number} is dated {manufacture_date} "
+                f"expiring {expiry_date}."
+            )
         if manufacture_date and manufacture_date >= expiry_date:
             raise ValidationError(
                 f"Manufacture date must precede expiry date; batch "

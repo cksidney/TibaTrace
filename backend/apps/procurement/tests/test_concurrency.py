@@ -57,8 +57,8 @@ class TestGoodsReceiptConcurrency(TransactionTestCase):
             tenant=self.tenant, requisition_number="REQ-CONC", requesting_branch=self.branch, requester=self.user, requested_delivery_date=datetime.date.today()
         )
         PurchaseRequisitionService.add_line(requisition=self.req, sku=self.sku, requested_quantity=100)
-        PurchaseRequisitionService.submit_requisition(requisition=self)
-        PurchaseRequisitionService.approve_requisition(requisition=self, approver=approver)
+        PurchaseRequisitionService.submit_requisition(requisition=self.req)
+        PurchaseRequisitionService.approve_requisition(requisition=self.req, approver=self.approver)
 
         self.po = PurchaseOrderService.create_po_from_requisition(
             tenant=self.tenant,
