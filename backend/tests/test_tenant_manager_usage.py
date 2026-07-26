@@ -113,10 +113,8 @@ def strict_manager_uses(path: pathlib.Path, scoped: set[str] | None = None) -> l
 #: Adding one fails immediately, which is the point -- the four found by hand
 #: each cost a debugging session, and the fifth should cost a test run.
 KNOWN_USES = {
-    "customers": 3,
     "inventory": 5,
     "medicines": 11,
-    "sales": 3,
 }
 
 
@@ -168,7 +166,10 @@ class TestApiCodeDoesNotUseTheStrictManager:
         rather than pre-existing debt.
         """
         found = offenders_by_app()
-        for app in ("procurement", "insurance", "pricing", "pos_shift", "identity"):
+        for app in (
+            "procurement", "insurance", "pricing", "pos_shift", "identity",
+            "sales", "customers",
+        ):
             assert app not in found, (
                 f"{app} has regained a tenant-strict manager use in API code:\n  "
                 + "\n  ".join(sorted(found[app]))

@@ -17,13 +17,21 @@ from apps.tenancy.models import Tenant
 class BaseCustomerViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
+    #: Set by each subclass to the model it serves, so the queryset is built
+    #: per request rather than captured once at class-definition time.
+    model = None
+
     def get_queryset(self):
         tenant_id = (
             get_current_tenant_id()
             or getattr(self.request, "tenant_id", None)
             or getattr(self.request.user, "tenant_id", None)
         )
-        return self.queryset.filter(tenant_id=tenant_id)
+        if tenant_id is None:
+            # No tenant, no rows. An unscoped read is how one customer list
+            # shows another organisation's customers.
+            return self.model.all_objects.none()
+        return self.model.all_objects.filter(tenant_id=tenant_id)
 
     def perform_create(self, serializer):
         tenant_id = get_current_tenant_id()
@@ -31,7 +39,7 @@ class BaseCustomerViewSet(viewsets.ModelViewSet):
 
 
 class CustomerViewSet(BaseCustomerViewSet):
-    queryset = Customer.objects.all()
+    model = Customer
     serializer_class = CustomerSerializer
 
     def perform_create(self, serializer):
@@ -76,10 +84,10 @@ class CustomerViewSet(BaseCustomerViewSet):
 
 
 class CustomerDeliveryAddressViewSet(BaseCustomerViewSet):
-    queryset = CustomerDeliveryAddress.objects.all()
+    model = CustomerDeliveryAddress
     serializer_class = CustomerDeliveryAddressSerializer
 
 
 class CustomerCommercialProfileViewSet(BaseCustomerViewSet):
-    queryset = CustomerCommercialProfile.objects.all()
+    model = CustomerCommercialProfile
     serializer_class = CustomerCommercialProfileSerializer

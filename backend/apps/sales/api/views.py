@@ -60,8 +60,13 @@ class BaseSalesViewSet(viewsets.ModelViewSet):
         if not tenant_id and hasattr(self.request.user, "tenant_id"):
             tenant_id = self.request.user.tenant_id
         if tenant_id:
-            return self.model.objects.filter(tenant_id=tenant_id)
-        return self.model.objects.none()
+            # all_objects with an explicit tenant filter. The default manager is
+            # tenant-strict and returns nothing unless tenant context has been
+            # set on the thread, which does not happen for an ordinary API
+            # request -- so every sales collection came back empty and every
+            # detail route 404'd for data that exists.
+            return self.model.all_objects.filter(tenant_id=tenant_id)
+        return self.model.all_objects.none()
 
     def perform_create(self, serializer):
         tenant_id = (
@@ -170,7 +175,11 @@ class SalesOrderViewSet(BaseSalesViewSet):
     def release_hold(self, request, pk=None):
         obj = self.get_object()
         hold_id = request.data.get("hold_id")
-        hold = SalesOrderHold.objects.get(id=hold_id, sales_order=obj, tenant=obj.tenant)
+        # Already filtered by sales_order and tenant, so the strict manager adds
+        # nothing but a DoesNotExist for a hold that plainly exists.
+        hold = SalesOrderHold.all_objects.get(
+            id=hold_id, sales_order=obj, tenant=obj.tenant
+        )
         SalesApprovalService.release_hold(
             hold=hold, released_by=request.user, release_reason=request.data.get("release_reason", "")
         )
