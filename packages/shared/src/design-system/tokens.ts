@@ -170,27 +170,49 @@ export const statusPalette: Readonly<Record<ClinicalStatus, StatusPalette>> = {
   },
 };
 
+/**
+ * Surfaces, shared with the HQ web app.
+ *
+ * These are HQ's light-theme values exactly, so the two products sit on the
+ * same neutral ramp rather than on two near-misses. The type scale below is
+ * deliberately NOT shared: a till is read at arm's length, and HQ's smaller
+ * body size would be a downgrade here.
+ */
 export const surface = {
-  page: '#F6F7F9',
+  page: '#F4F6F9',
   raised: '#FFFFFF',
-  sunken: '#EEF0F4',
-  inverse: '#101828',
-  border: '#D7DAE0',
+  sunken: '#ECF0F4',
+  inverse: '#0F172A',
+  border: '#DFE5ED',
   borderStrong: '#B4BAC5',
   divider: '#E6E8EC',
 } as const;
 
+/**
+ * Text.
+ *
+ * primary and secondary are darker than HQ's equivalents and stay that way:
+ * 8.1:1 against a raised surface versus HQ's 5.2:1. A dispensing instruction
+ * read across a counter earns the extra contrast.
+ */
 export const text = {
   primary: '#101828',
   secondary: '#48505E',
-  /** Floor for any clinical content. Never used for warnings or identifiers. */
-  tertiary: '#667085',
+  /**
+   * Floor for any clinical content. Never used for warnings or identifiers.
+   *
+   * Was #667085, which gave 4.36:1 on `sunken` -- below AA, on the token
+   * documented as the floor for clinical content. Darkened until it clears 4.5
+   * against every surface above (5.28 / 4.88 / 4.61).
+   */
+  tertiary: '#626C80',
   inverse: '#FFFFFF',
-  link: '#1B6BB8',
+  /** Teal, matching HQ's accent. Identical contrast to the blue it replaces. */
+  link: '#087765',
 } as const;
 
 export const focus = {
-  ring: '#1B6BB8',
+  ring: '#087765',
   ringWidth: 2,
   ringOffset: 2,
 } as const;
