@@ -89,13 +89,17 @@ class BaseSalesViewSet(viewsets.ReadOnlyModelViewSet):
 
 class WritablePricingViewSet(mixins.CreateModelMixin, mixins.UpdateModelMixin,
                              mixins.DestroyModelMixin, BaseSalesViewSet):
-    """Still writable, deliberately, and only these.
+    """Writable, deliberately, and only these.
 
-    docs/PRICING_AUTHORITY_DECISION.md is open: it is not yet decided whether
-    sales.PriceListEntry is legacy or the live price table. Locking it down is
-    correct under one answer and breaks price maintenance under the other, so it
-    keeps its writes until that is settled rather than being closed by default
-    along with the order and fulfilment surfaces.
+    PriceListEntry is the live business-to-business price table: `price_line` in
+    apps/sales/services.py prices every quotation and sales-order line from it,
+    honouring customer agreements, quantity breaks and effective dates. Making it
+    read-only would stop price maintenance, so it keeps its writes while the
+    order and fulfilment surfaces do not.
+
+    That is a decision about reachability, not about governance. Price changes
+    here still have no approval step and no audit of who changed a price or why,
+    which docs/PRICING_AUTHORITY_DECISION.md records as the outstanding work.
     """
 
 

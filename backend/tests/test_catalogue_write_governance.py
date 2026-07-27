@@ -151,15 +151,15 @@ class TestCustomersAreNotWritable:
 
 
 class TestPricingIsStillWritableOnPurpose:
-    """The one surface left open, and the reason is recorded.
+    """The one surface left open, and the reason is now established.
 
-    docs/PRICING_AUTHORITY_DECISION.md has not been answered: it is not settled
-    whether sales.PriceListEntry is legacy or the live price table. Closing it
-    is right under one answer and breaks price maintenance under the other.
+    PriceListEntry is the live business-to-business price table -- price_line in
+    apps/sales/services.py bills every quotation and sales-order line from it,
+    so closing it would stop price maintenance.
 
-    This test exists so the exception is visible rather than looking like an
-    oversight, and so that closing it later is a deliberate edit to a test that
-    states why -- not a silent change.
+    The test exists so the exception reads as deliberate rather than as an
+    oversight, and so that closing it later has to be an edit to a test that
+    says why.
     """
 
     def test_the_price_list_route_still_accepts_writes(self, world):
@@ -167,6 +167,6 @@ class TestPricingIsStillWritableOnPurpose:
             "/api/sales/price-lists/", {"name": "Probe"}, format="json"
         )
         assert response.status_code != 405, (
-            "Pricing has been made read-only. If that was deliberate, answer "
-            "docs/PRICING_AUTHORITY_DECISION.md and delete this test."
+            "Pricing has been made read-only, which stops B2B price "
+            "maintenance. See docs/PRICING_AUTHORITY_DECISION.md."
         )

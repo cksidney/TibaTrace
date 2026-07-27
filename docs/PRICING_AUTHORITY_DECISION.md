@@ -1,78 +1,82 @@
 # Which price table is authoritative?
 
-**Status: open. Needs a decision before either table is relied on in production.**
+**Status: answered by evidence, 2026-07-27. Both tables are real, they serve
+different channels, and a third path — the till — consults neither.**
 
-There are two price tables in this repository. One is guarded; the other is not.
-Nothing distinguishes them by name, and a reader coming to the code fresh would
-reasonably assume either is the real one.
+The question was which of `pricing.PriceBookEntry` and `sales.PriceListEntry` is
+the live price table, because the first is versioned and guarded and the second
+was writable with no controls. Tracing what actually charges money settles it.
 
-## What exists
+An earlier draft of this document said `PriceListEntry` is "read by nothing
+outside `apps/sales`" and treated that as evidence it was legacy. The statement
+was true and the inference was wrong: it is read *inside* `apps/sales`, by the
+code that prices every quotation and sales order.
 
-### `pricing.PriceBookEntry`
+## What each one does
 
-- Versioned. A published version is immutable; changing a price creates a new
-  version rather than editing a live one.
-- Effective-dated, with the service date driving resolution so a backdated sale
-  prices at the date of service.
-- Resolved through `PriceResolutionService`, which applies a total precedence
-  order and **fails closed on ambiguity** rather than picking between two
-  equally-ranked sources.
-- Every charged line writes an `AppliedPriceSnapshot` carrying the price, the
-  source and the full resolution trace.
-- Exposed read-only at `/api/pricing/`.
+### `sales.PriceListEntry` — live, business-to-business
 
-This is what `PriceCatalogue.price()` reads. It is the path the POS and the
-resolution endpoint use.
+`apps/sales/services.py` prices quotation and sales-order lines from it, in this
+order: a `CustomerPriceAgreement` if one exists, else the customer's assigned
+price list, else the tenant's default active list, else `sku.base_price`. It
+honours quantity breaks (`minimum_quantity__lte`), effective dating, and layers
+`PromotionRule` on top.
 
-### `sales.PriceListEntry`
+This is not legacy. It is the only server-side pricing logic in the codebase
+that produces a figure anyone is billed for.
 
-- No versioning and no immutability.
-- Writable through `/api/sales/` by `POST`, `PUT`, `PATCH` and `DELETE`.
-- No approval step, no audit of who changed a price or why.
-- Read by nothing outside `apps/sales`. Verified by search: no module in
-  `apps/` other than `apps/sales` references it.
+### `pricing.PriceBookEntry` — built, guarded, and wired to nothing
 
-So a `PATCH` on a sales price-list entry changes a price with none of the
-controls above — and changes a price that nothing currently charges from. It is
-an unguarded money surface that happens to be inert.
+Versioned, immutable once published, effective-dated, resolved through a total
+precedence order that fails closed on ambiguity, with an `AppliedPriceSnapshot`
+carrying the resolution trace for every charged line.
 
-## Why this needs deciding rather than fixing
+Its only consumer is `apps/pricing/api/views.py`, which exposes a resolution
+endpoint that answers questions about it. Nothing calls `PriceCatalogue.price()`
+outside that endpoint. No dispensing, sale or payment path reads it.
 
-The three plausible answers imply materially different work, and picking wrong
-is worse than waiting.
+So the guarded engine is the one that is not connected, and the unguarded table
+is the one doing the work — the reverse of what the original framing assumed.
 
-1. **`PriceList` is legacy.** Then the sales price viewsets should become
-   read-only and a migration path to price books is needed. Roughly a
-   five-minute change plus a migration plan.
+### The till — neither
 
-2. **`PriceList` is the real one and `pricing` is the newcomer.** Then the
-   pricing engine is the thing that is not wired in, the resolution endpoint is
-   answering from the wrong table, and the immutability work needs moving.
+`amount_due` on a dispensing payment arrives **in the request body**.
+`PaymentIntentService.create` validates only that it is not negative, then
+records it. No price table is consulted, and no server-side figure is compared
+against what the client sent.
 
-3. **Both are intended, for different purposes.** Then the boundary needs
-   stating in code and in this document, because at present nothing marks which
-   is which and the next person to add a price will guess.
+So the amount a patient pays is whatever the POS says it is. A bug in the
+client, a stale cached price, or a modified request produces a payment the
+server accepts and reconciles against. This is the substantive finding, and it
+is larger than the question this document was opened to answer.
 
-Making the sales viewsets read-only is correct under (1) and actively wrong
-under (2), which is why it has not been done.
+## What follows
 
-## Related, and now closed
+1. **`sales` pricing stays writable.** It maintains live B2B prices; making it
+   read-only would stop price maintenance. `WritablePricingViewSet` in
+   `apps/sales/api/views.py` holds that exception deliberately. What it needs is
+   governance — approval and audit on price changes — not removal.
 
-`apps/medicines` exposed twelve fully writable viewsets covering the product
-master. Those are now read-only. Nothing in the repository wrote through them —
-the government-catalogue selection endpoint is a separate view and the HQ
-catalogue screens only read — and governed creation already exists in
-`MedicineCatalogueService`, which is where a write should go when a UI needs
-one. `customers` and `sales` were the procurement shape (service actions with a
-generic PATCH beside them) and are read-only too.
+2. **The dispensing payment path should derive its own figure.** The till should
+   propose an amount and the server should price the episode independently and
+   refuse a mismatch, rather than accepting the client's number. This is a
+   behavioural change: switched on before price books cover the dispensed
+   catalogue, tills stop taking payment. It needs a decision on sequencing and a
+   migration path for products with no price book entry.
 
-`sales.PriceList` and `sales.PriceListEntry` are the exception and remain
-writable, because closing them *is* the decision below. `WritablePricingViewSet`
-in `apps/sales/api/views.py` exists solely to hold that exception, and
-`tests/test_catalogue_write_governance.py::TestPricingIsStillWritableOnPurpose`
-fails if someone closes it without answering this document.
+3. **`pricing` is either the destination or dead weight.** If (2) is done by
+   wiring `PriceCatalogue` into the payment path, the engine becomes load
+   bearing and its guarantees start paying for themselves. If not, it is an
+   elaborate unused subsystem and should say so in its own docstring rather than
+   be read as the system of record.
 
-## What has already been closed
+## What was closed alongside this
+
+`apps/medicines` exposed twelve fully writable viewsets over the product master;
+they are now read-only, with governed creation available through
+`MedicineCatalogueService`. `customers` and `sales` had service actions with a
+generic `PATCH` beside them — the shape `procurement` had before it was
+corrected — and both are now read-only apart from the pricing exception above.
 
 For contrast, and so the remaining gaps are not read as the general state:
 
