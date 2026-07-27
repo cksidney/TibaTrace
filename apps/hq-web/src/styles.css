@@ -1005,8 +1005,8 @@ kbd {
 }
 
 .primary-button:hover {
-  border-color: var(--teal-700);
-  background: var(--teal-700);
+  border-color: #03694e;
+  background: #03694e;
 }
 
 .spin {
@@ -2359,9 +2359,9 @@ tbody tr:hover {
 }
 
 .business-action-warning {
-  border-color: var(--amber-700);
-  color: #ffffff;
-  background: var(--amber-700);
+  border-color: #d99a12;
+  color: #2c1d05;
+  background: #fbbf24;
 }
 
 .business-action-danger {
@@ -3823,7 +3823,7 @@ tbody tr:hover {
 
 .command-results > small {
   padding: 8px 9px 7px;
-  color: #8b97a8;
+  color: var(--muted);
   font-size: 0.55rem;
   font-weight: 850;
   letter-spacing: 0.08em;
@@ -3874,7 +3874,7 @@ tbody tr:hover {
 }
 
 .command-results b {
-  color: #8b97a8;
+  color: var(--muted);
   font-size: 0.55rem;
   font-weight: 750;
 }
@@ -3882,7 +3882,7 @@ tbody tr:hover {
 .result-arrow {
   width: 15px;
   height: 15px;
-  color: #8b97a8;
+  color: var(--muted);
 }
 
 .command-dialog footer {
