@@ -62,58 +62,6 @@
   --glow-emerald: 0 0 16px rgba(16, 169, 141, 0.15);
 }
 
-/* Surfaces that are light in BOTH themes.
-   Each of these hardcodes a white or near-white background but took its text
-   colour from the theme, so under the default dark theme --ink (#f8fafc) landed
-   on white. The sign-in card had exactly this fault and was unreadable; these
-   are the same shape:
-     .popover        -- nothing inside it sets a colour at all
-     .workflow-link  -- its <strong> title sets none, so the title vanished
-     .command-dialog -- .command-search input is explicitly var(--ink)
-     .search-trigger -- var(--muted) on #f8fafc is about 2.3:1
-     .topbar         -- the whole app header: "All tenants" was 1.00:1
-     thead           -- every table header, in all 31 tables
-     tbody tr:hover  -- hovering a row made its text disappear
-     .compact-stats  -- the network stat numbers were 1.04:1
-     .attention-row  -- the count badges were 1.10:1
-   The hover states are included because each swaps a dark surface for a light
-   one while the text colour stays put.
-   Redeclaring the palette here cascades to every descendant, so a child that
-   correctly asks for var(--muted) gets the light muted rather than the dark one.
-   Anything added inside these later inherits the right values by default. */
-.popover,
-.workflow-link,
-.command-dialog,
-.search-trigger,
-.search-trigger:hover,
-.topbar,
-.attention-row > b,
-.compact-stats div,
-thead,
-tbody tr:hover,
-.icon-button:hover,
-.user-trigger:hover,
-.secondary-button:hover,
-.notification-list a:hover,
-.user-menu > a:hover,
-.command-results > a:hover,
-.command-dialog footer {
-  --ink: #13213a;
-  --muted: #606d83;
-  --muted-2: #68768c;
-  --line: #dfe5ed;
-  --line-soft: #ecf0f4;
-  --panel: #ffffff;
-  /* The accents too, not only the greys. */
-  --teal-700: #087765;
-  --teal-600: #0a8f78;
-  --teal-500: #10a98d;
-  --red-700: #b52d3c;
-  --amber-700: #94600f;
-  --violet-700: #5e52bd;
-  color: var(--ink);
-}
-
 * {
   box-sizing: border-box;
 }
@@ -504,7 +452,7 @@ svg {
   gap: 26px;
   padding: 0 34px;
   border-bottom: 1px solid rgba(215, 223, 233, 0.92);
-  background: #ffffff;
+  background: var(--panel);
   backdrop-filter: blur(16px);
 }
 
@@ -539,14 +487,14 @@ svg {
   border: 1px solid var(--line);
   border-radius: 9px;
   color: var(--muted);
-  background: #f8fafc;
+  background: var(--line-soft);
   cursor: pointer;
   transition: border-color 150ms ease, background 150ms ease;
 }
 
 .search-trigger:hover {
-  border-color: #c5d1de;
-  background: #ffffff;
+  border-color: var(--line);
+  background: var(--panel);
 }
 
 .search-trigger svg {
@@ -574,8 +522,8 @@ kbd {
   border: 1px solid #d7dee8;
   border-bottom-width: 2px;
   border-radius: 6px;
-  color: #67768b;
-  background: #ffffff;
+  color: var(--muted);
+  background: var(--panel);
   font-family: inherit;
   font-size: 0.8125rem;
   font-weight: 750;
@@ -618,7 +566,7 @@ kbd {
   place-items: center;
   border: 1px solid transparent;
   border-radius: 9px;
-  color: #53637a;
+  color: var(--muted);
   background: transparent;
   cursor: pointer;
   transition: border-color 150ms ease, background 150ms ease;
@@ -626,7 +574,7 @@ kbd {
 
 .icon-button:hover {
   border-color: var(--line);
-  background: #f6f8fb;
+  background: var(--line-soft);
 }
 
 .icon-button svg {
@@ -676,7 +624,7 @@ kbd {
 
 .user-trigger:hover {
   border-color: var(--line);
-  background: #f7f9fb;
+  background: var(--line-soft);
 }
 
 .user-trigger > span {
@@ -685,7 +633,7 @@ kbd {
   height: 34px;
   place-items: center;
   border-radius: 9px;
-  color: #075f51;
+  color: var(--teal-700);
   background: var(--teal-100);
   font-size: 0.875rem;
   font-weight: 850;
@@ -733,7 +681,7 @@ kbd {
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 12px;
-  background: #ffffff;
+  background: var(--panel);
   box-shadow: 0 20px 55px rgba(12, 30, 58, 0.18);
 }
 
@@ -787,7 +735,7 @@ kbd {
 }
 
 .notification-list a:hover {
-  background: #f6f8fa;
+  background: var(--line-soft);
 }
 
 .notification-icon {
@@ -880,14 +828,14 @@ kbd {
   gap: 10px;
   padding: 10px;
   border-radius: 7px;
-  color: #425169;
+  color: var(--ink);
   font-size: 0.875rem;
   font-weight: 700;
   text-decoration: none;
 }
 
 .user-menu > a:hover {
-  background: #f5f7fa;
+  background: var(--line-soft);
 }
 
 .user-menu > a svg {
@@ -988,13 +936,13 @@ kbd {
 
 .secondary-button {
   border: 1px solid var(--line);
-  color: #34435a;
-  background: #ffffff;
+  color: var(--ink);
+  background: var(--panel);
 }
 
 .secondary-button:hover {
   border-color: #c4d0de;
-  background: #fafbfc;
+  background: var(--line-soft);
 }
 
 .secondary-button:disabled {
@@ -1338,7 +1286,7 @@ kbd {
   place-items: center;
   padding: 0 8px;
   border-radius: 8px;
-  background: #f1f4f7;
+  background: var(--line-soft);
   font-size: 0.875rem;
 }
 
@@ -1366,7 +1314,7 @@ kbd {
   width: 90px;
   height: 90px;
   border-radius: 50%;
-  background: #ffffff;
+  background: var(--panel);
   content: "";
 }
 
@@ -1377,13 +1325,6 @@ kbd {
   width: 76px;
   gap: 3px;
   text-align: center;
-}
-
-.network-ring div {
-  /* Sits on the white ::after disc, so it carries the light palette. */
-  --ink: #13213a;
-  --muted: #606d83;
-  color: var(--ink);
 }
 
 .network-ring strong {
@@ -1445,7 +1386,7 @@ kbd {
 
 .compact-stats div {
   padding: 12px;
-  background: #f9fafc;
+  background: var(--line-soft);
 }
 
 .compact-stats small,
@@ -1515,7 +1456,7 @@ kbd {
   height: 6px;
   overflow: hidden;
   border-radius: 999px;
-  background: #edf1f5;
+  background: var(--line);
 }
 
 .bar-track i {
@@ -1689,8 +1630,8 @@ kbd {
   height: 38px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  color: #394960;
-  background: #ffffff;
+  color: var(--ink);
+  background: var(--panel);
   font-size: 0.875rem;
 }
 
@@ -1803,8 +1744,8 @@ kbd {
   padding: 0 31px 0 11px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  color: #394960;
-  background: #ffffff;
+  color: var(--ink);
+  background: var(--panel);
   font-size: 0.875rem;
 }
 
@@ -1842,8 +1783,8 @@ kbd {
   padding: 0 32px 0 12px;
   border: 1px solid var(--line);
   border-radius: 9px;
-  color: #394960;
-  background: #ffffff;
+  color: var(--ink);
+  background: var(--panel);
   font-size: 0.875rem;
 }
 
@@ -1887,8 +1828,8 @@ kbd {
 }
 
 .reference-badge {
-  color: #4c5e75;
-  background: #edf1f5;
+  color: var(--muted);
+  background: var(--line);
 }
 
 .reference-badge.is-selected {
@@ -1963,7 +1904,7 @@ table {
 }
 
 thead {
-  background: #f7f9fb;
+  background: var(--line-soft);
 }
 
 th {
@@ -1986,7 +1927,7 @@ td {
 }
 
 tbody tr:hover {
-  background: #fafbfc;
+  background: var(--line-soft);
 }
 
 .workspace-cell {
@@ -3376,7 +3317,7 @@ tbody tr:hover {
   margin: 17px 0 15px;
   overflow: hidden;
   border-radius: 999px;
-  background: #e9edf2;
+  background: var(--line);
 }
 
 .progress-track span {
@@ -3429,8 +3370,8 @@ tbody tr:hover {
   margin-top: 20px;
   padding: 12px;
   border-left: 3px solid var(--navy-700);
-  color: #536178;
-  background: #f5f7fa;
+  color: var(--muted);
+  background: var(--line-soft);
 }
 
 .panel-note svg {
@@ -3513,8 +3454,8 @@ tbody tr:hover {
   place-items: center;
   padding: 0 7px;
   border-radius: 8px;
-  color: #4c5a6f;
-  background: #f0f3f7;
+  color: var(--muted);
+  background: var(--line-soft);
   font-size: 0.84rem;
 }
 
@@ -3541,7 +3482,7 @@ tbody tr:hover {
 .workflow-link {
   min-height: 184px;
   padding: 17px;
-  background: #ffffff;
+  background: var(--panel);
   text-decoration: none;
   transition: background 150ms ease;
 }
@@ -3797,7 +3738,7 @@ tbody tr:hover {
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.46);
   border-radius: 14px;
-  background: #ffffff;
+  background: var(--panel);
   box-shadow: 0 30px 90px rgba(1, 11, 27, 0.34);
 }
 
@@ -3851,7 +3792,7 @@ tbody tr:hover {
 }
 
 .command-results > a:hover {
-  background: #f3f7f6;
+  background: var(--teal-50);
 }
 
 .command-results > a > span {
@@ -3902,7 +3843,7 @@ tbody tr:hover {
   padding: 10px 17px;
   border-top: 1px solid var(--line);
   color: var(--muted);
-  background: #f8fafb;
+  background: var(--line-soft);
   font-size: 0.78rem;
 }
 
@@ -4175,7 +4116,7 @@ tbody tr:hover {
   margin-bottom: 22px;
   border: 1px solid rgba(255, 255, 255, 0.45);
   border-radius: 17px;
-  background: #ffffff;
+  background: var(--panel);
 }
 
 .loading-mark img {
