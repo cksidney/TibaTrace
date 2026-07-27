@@ -56,16 +56,21 @@ is worse than waiting.
 Making the sales viewsets read-only is correct under (1) and actively wrong
 under (2), which is why it has not been done.
 
-## Related, and separate
+## Related, and now closed
 
-`apps/medicines` exposes twelve fully writable viewsets covering the product
-master — `CommercialSKU`, `ClinicalMedicinalProduct`, `ActiveSubstance`,
-`IngredientComposition` and others. No service guards them, so this is not a
-bypass in the sense that procurement had one; it is simply an ungoverned write
-surface on the table every dispensing decision resolves against.
+`apps/medicines` exposed twelve fully writable viewsets covering the product
+master. Those are now read-only. Nothing in the repository wrote through them —
+the government-catalogue selection endpoint is a separate view and the HQ
+catalogue screens only read — and governed creation already exists in
+`MedicineCatalogueService`, which is where a write should go when a UI needs
+one. `customers` and `sales` were the procurement shape (service actions with a
+generic PATCH beside them) and are read-only too.
 
-Whether that needs an approval workflow is a separate question from the pricing
-one, and is recorded here so it is not lost.
+`sales.PriceList` and `sales.PriceListEntry` are the exception and remain
+writable, because closing them *is* the decision below. `WritablePricingViewSet`
+in `apps/sales/api/views.py` exists solely to hold that exception, and
+`tests/test_catalogue_write_governance.py::TestPricingIsStillWritableOnPurpose`
+fails if someone closes it without answering this document.
 
 ## What has already been closed
 

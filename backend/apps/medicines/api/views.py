@@ -49,6 +49,20 @@ from apps.medicines.models import (
 from apps.medicines.services import MedicineCatalogueService, TenantCatalogueService
 from apps.tenancy.models import Tenant
 
+# Every viewset here is read-only.
+#
+# They were ModelViewSets, so the product master -- the table every dispensing
+# decision resolves against -- took POST, PATCH and DELETE from any
+# authenticated caller, with no service, no approval and no audit. Nothing in
+# the repository wrote through them: the government-catalogue selection endpoint
+# is a separate view, and the HQ catalogue screens only read.
+#
+# Governed creation already exists in MedicineCatalogueService
+# (create_clinical_product, register_manufactured_product, register_sku,
+# activate_clinical_product) and is the path a write should take when a UI needs
+# one -- exposed as a service action, the way procurement does it, rather than
+# by re-opening a generic write that bypasses the service entirely.
+
 
 class TenantScopedQuerysetMixin:
     """Build the queryset per request, from the model, with an explicit filter.
@@ -115,7 +129,7 @@ class AdministrationRouteViewSet(viewsets.ReadOnlyModelViewSet):
     search_fields = ["code", "name"]
 
 
-class ManufacturerViewSet(TenantScopedQuerysetMixin, viewsets.ModelViewSet):
+class ManufacturerViewSet(TenantScopedQuerysetMixin, viewsets.ReadOnlyModelViewSet):
     model = Manufacturer
     serializer_class = ManufacturerSerializer
     filter_backends = [filters.SearchFilter]
@@ -129,14 +143,14 @@ class TherapeuticClassificationViewSet(viewsets.ReadOnlyModelViewSet):
     search_fields = ["system", "code", "display"]
 
 
-class ActiveSubstanceViewSet(TenantScopedQuerysetMixin, viewsets.ModelViewSet):
+class ActiveSubstanceViewSet(TenantScopedQuerysetMixin, viewsets.ReadOnlyModelViewSet):
     model = ActiveSubstance
     serializer_class = ActiveSubstanceSerializer
     filter_backends = [filters.SearchFilter]
     search_fields = ["code", "canonical_name", "display_name", "search_name"]
 
 
-class ClinicalMedicinalProductViewSet(TenantScopedQuerysetMixin, viewsets.ModelViewSet):
+class ClinicalMedicinalProductViewSet(TenantScopedQuerysetMixin, viewsets.ReadOnlyModelViewSet):
     model = ClinicalMedicinalProduct
     # Every relation the serializer touches. `dose_form_name` reads through the
     # FK, and each ingredient reads its active substance, so omitting either
@@ -161,12 +175,12 @@ class ClinicalMedicinalProductViewSet(TenantScopedQuerysetMixin, viewsets.ModelV
         return Response(ClinicalMedicinalProductSerializer(activated).data, status=status.HTTP_200_OK)
 
 
-class IngredientCompositionViewSet(viewsets.ModelViewSet):
+class IngredientCompositionViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = IngredientComposition.objects.all().select_related("active_substance")
     serializer_class = IngredientCompositionSerializer
 
 
-class ManufacturedMedicinalProductViewSet(TenantScopedQuerysetMixin, viewsets.ModelViewSet):
+class ManufacturedMedicinalProductViewSet(TenantScopedQuerysetMixin, viewsets.ReadOnlyModelViewSet):
     model = ManufacturedMedicinalProduct
     select_related = ["clinical_product", "manufacturer"]
     serializer_class = ManufacturedMedicinalProductSerializer
@@ -174,14 +188,14 @@ class ManufacturedMedicinalProductViewSet(TenantScopedQuerysetMixin, viewsets.Mo
     search_fields = ["code", "brand_name", "clinical_product__canonical_name"]
 
 
-class PackageDefinitionViewSet(viewsets.ModelViewSet):
+class PackageDefinitionViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = PackageDefinition.objects.all()
     serializer_class = PackageDefinitionSerializer
     filter_backends = [filters.SearchFilter]
     search_fields = ["code", "description"]
 
 
-class CommercialSKUViewSet(TenantScopedQuerysetMixin, viewsets.ModelViewSet):
+class CommercialSKUViewSet(TenantScopedQuerysetMixin, viewsets.ReadOnlyModelViewSet):
     model = CommercialSKU
     # `canonical_medicine_name` reads two FKs deep, through the manufactured
     # product to its clinical product.
@@ -236,33 +250,33 @@ class CommercialSKUViewSet(TenantScopedQuerysetMixin, viewsets.ModelViewSet):
         return Response(CommercialSKUSerializer(sku).data, status=status.HTTP_200_OK)
 
 
-class ProductIdentifierViewSet(viewsets.ModelViewSet):
+class ProductIdentifierViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = ProductIdentifier.objects.all()
     serializer_class = ProductIdentifierSerializer
     filter_backends = [filters.SearchFilter]
     search_fields = ["system", "value", "entity_type"]
 
 
-class SubstitutionGroupViewSet(viewsets.ModelViewSet):
+class SubstitutionGroupViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = SubstitutionGroup.objects.all()
     serializer_class = SubstitutionGroupSerializer
     filter_backends = [filters.SearchFilter]
     search_fields = ["code", "name"]
 
 
-class SubstitutionPolicyViewSet(TenantScopedQuerysetMixin, viewsets.ModelViewSet):
+class SubstitutionPolicyViewSet(TenantScopedQuerysetMixin, viewsets.ReadOnlyModelViewSet):
     model = SubstitutionPolicy
     serializer_class = SubstitutionPolicySerializer
 
 
-class BranchAssortmentViewSet(TenantScopedQuerysetMixin, viewsets.ModelViewSet):
+class BranchAssortmentViewSet(TenantScopedQuerysetMixin, viewsets.ReadOnlyModelViewSet):
     model = BranchAssortment
     select_related = ["sku", "location"]
     serializer_class = BranchAssortmentSerializer
 
 
 # Legacy Compatibility ViewSet
-class MedicineViewSet(TenantScopedQuerysetMixin, viewsets.ModelViewSet):
+class MedicineViewSet(TenantScopedQuerysetMixin, viewsets.ReadOnlyModelViewSet):
     model = Medicine
     prefetch_related = ["identifiers"]
     serializer_class = MedicineSerializer

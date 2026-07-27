@@ -1,4 +1,4 @@
-from rest_framework import permissions, status, viewsets
+from rest_framework import mixins, permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -52,7 +52,17 @@ from apps.sales.services import (
 )
 
 
-class BaseSalesViewSet(viewsets.ModelViewSet):
+class BaseSalesViewSet(viewsets.ReadOnlyModelViewSet):
+    """Read-only, with state changes routed through the service actions.
+
+    These were ModelViewSets: a generic PATCH could set a sales order's status,
+    release a hold or mark a delivery without the service that enforces
+    allocation, credit and proof-of-delivery rules. The HQ client only calls the
+    actions, so the generic path was an unused second route to every control.
+
+    Pricing is deliberately excluded -- see WritablePricingViewSet below.
+    """
+
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
@@ -77,12 +87,24 @@ class BaseSalesViewSet(viewsets.ModelViewSet):
         serializer.save(tenant_id=tenant_id)
 
 
-class PriceListViewSet(BaseSalesViewSet):
+class WritablePricingViewSet(mixins.CreateModelMixin, mixins.UpdateModelMixin,
+                             mixins.DestroyModelMixin, BaseSalesViewSet):
+    """Still writable, deliberately, and only these.
+
+    docs/PRICING_AUTHORITY_DECISION.md is open: it is not yet decided whether
+    sales.PriceListEntry is legacy or the live price table. Locking it down is
+    correct under one answer and breaks price maintenance under the other, so it
+    keeps its writes until that is settled rather than being closed by default
+    along with the order and fulfilment surfaces.
+    """
+
+
+class PriceListViewSet(WritablePricingViewSet):
     model = PriceList
     serializer_class = PriceListSerializer
 
 
-class PriceListEntryViewSet(BaseSalesViewSet):
+class PriceListEntryViewSet(WritablePricingViewSet):
     model = PriceListEntry
     serializer_class = PriceListEntrySerializer
 

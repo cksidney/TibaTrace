@@ -14,7 +14,15 @@ from apps.customers.services import CustomerGovernanceService
 from apps.tenancy.models import Tenant
 
 
-class BaseCustomerViewSet(viewsets.ModelViewSet):
+class BaseCustomerViewSet(viewsets.ReadOnlyModelViewSet):
+    """Read-only, with state changes routed through the service actions below.
+
+    This was a ModelViewSet, so a generic PATCH sat alongside approve/suspend and
+    wrote the same columns without their checks. The HQ client only ever calls
+    the actions -- /approve/ is the one write it makes -- so nothing legitimate
+    depended on the generic path.
+    """
+
     permission_classes = [permissions.IsAuthenticated]
 
     #: Set by each subclass to the model it serves, so the queryset is built
