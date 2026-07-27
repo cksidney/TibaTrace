@@ -104,17 +104,19 @@ def strict_manager_uses(path: pathlib.Path, scoped: set[str] | None = None) -> l
     return uses
 
 
-#: How many uses exist today, per app. A ratchet rather than a clean assertion:
-#: twenty-two were present when this guard was written, spread across code that
-#: is actively being changed by other work, and blocking the suite on all of
-#: them would have meant either a red suite or no guard at all.
+#: Empty, and it should stay that way.
 #:
-#: The number may go down and must never go up. Fix some, lower the number.
-#: Adding one fails immediately, which is the point -- the four found by hand
-#: each cost a debugging session, and the fifth should cost a test run.
-KNOWN_USES = {
-    "inventory": 5,
-}
+#: This began as a ratchet because twenty-two uses were present when the guard
+#: was written, spread across code other work was actively changing, and failing
+#: the suite on all of them would have meant either a red suite or no guard. They
+#: have since been fixed app by app -- procurement, insurance, pricing,
+#: pos_shift, identity, sales, customers, medicines and finally inventory -- so
+#: the allowance is now nil and any use at all fails.
+#:
+#: Leave it empty. If a use has to be added deliberately, put the module in
+#: REVIEWED with a note explaining why tenant context is guaranteed there,
+#: rather than re-opening a numeric allowance nobody will ever lower again.
+KNOWN_USES: dict[str, int] = {}
 
 
 def offenders_by_app() -> dict[str, list[str]]:
@@ -165,11 +167,14 @@ class TestApiCodeDoesNotUseTheStrictManager:
 
         `medicines` was the largest: fifteen class-attribute querysets, frozen
         empty at import, with no `get_queryset` anywhere in the file.
+        `inventory` was the last, and had the same shape across all five of its
+        viewsets -- stock levels, batches and the ledger returned nothing to
+        every caller.
         """
         found = offenders_by_app()
         for app in (
             "procurement", "insurance", "pricing", "pos_shift", "identity",
-            "sales", "customers", "medicines",
+            "sales", "customers", "medicines", "inventory",
         ):
             assert app not in found, (
                 f"{app} has regained a tenant-strict manager use in API code:\n  "
