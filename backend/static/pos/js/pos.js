@@ -3,6 +3,7 @@
    ========================================================================== */
 
 let activeQueue = [];
+let queueError = null;
 let selectedEpisode = null;
 let currentFilter = 'ALL';
 
@@ -55,18 +56,25 @@ function showToast(message, type = 'success') {
 }
 
 // Fetch Dispensing Queue from API
+// The queue is whatever the server says it is, including nothing.
+//
+// This previously fell back to a demo queue in three cases: a non-ok response,
+// a thrown request, and -- the worst of them -- an empty queue. So a till with
+// no patients waiting manufactured a list of fictional dispensing episodes,
+// with dispensing numbers, that an operator could select and act on. A failed
+// request did the same, meaning the screen looked busiest exactly when it had
+// lost contact with the server.
+//
+// An empty queue now renders as empty and a failure renders as a failure.
 async function fetchQueue() {
   try {
     const response = await fetch('/api/pos/dispensing/episodes/queue/');
     if (!response.ok) {
-      activeQueue = getFallbackDemoQueue();
-    } else {
-      activeQueue = await response.json();
+      throw new Error(`Queue request failed with ${response.status}.`);
     }
-
-    if (!activeQueue || activeQueue.length === 0) {
-      activeQueue = getFallbackDemoQueue();
-    }
+    const payload = await response.json();
+    activeQueue = Array.isArray(payload) ? payload : (payload.results || []);
+    setQueueError(null);
 
     updateKPIs();
     renderQueueList();
@@ -79,11 +87,19 @@ async function fetchQueue() {
     }
   } catch (err) {
     console.error('Error fetching queue:', err);
-    activeQueue = getFallbackDemoQueue();
+    // Not an empty queue -- an unknown one. Those are different, and showing
+    // "0 waiting" for a till that cannot reach the server is a lie.
+    activeQueue = [];
+    setQueueError(err && err.message ? err.message : 'The dispensing queue could not be loaded.');
     updateKPIs();
     renderQueueList();
-    if (activeQueue.length > 0) selectEpisode(activeQueue[0]);
   }
+}
+
+// Surface a queue failure in the list itself, so it cannot be mistaken for a
+// quiet counter.
+function setQueueError(message) {
+  queueError = message;
 }
 
 // Update KPI Dashboard Cards
@@ -125,8 +141,17 @@ function renderQueueList() {
     );
   }
 
+  if (queueError) {
+    container.innerHTML = '<div class="queue-message queue-message-error">'
+      + 'The dispensing queue could not be loaded.<br><small>' + escapeHtml(queueError)
+      + '</small><br><small>This is not an empty queue. Do not dispense from this screen until it reloads.</small></div>';
+    return;
+  }
+
   if (filtered.length === 0) {
-    container.innerHTML = '<div style="padding: 20px; text-align: center; color: #64748b;">No matching dispensing episodes.</div>';
+    container.innerHTML = '<div class="queue-message">'
+      + (activeQueue.length === 0 ? 'No patients are waiting.' : 'No matching dispensing episodes.')
+      + '</div>';
     return;
   }
 
@@ -154,6 +179,53 @@ function selectEpisodeById(id) {
   if (ep) selectEpisode(ep);
 }
 
+// Server-supplied text goes through this before reaching innerHTML.
+function escapeHtml(value) {
+  return String(value === null || value === undefined ? '' : value)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// Render a value, or say plainly that there is none. Never substitute.
+function setField(id, value, emptyLabel) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const text = (value === null || value === undefined || value === '') ? null : String(value);
+  el.innerText = text || (emptyLabel || 'Not recorded');
+  el.classList.toggle('field-absent', !text);
+}
+
+// The allergy tag.
+//
+// This was hardcoded in pos.html as "Allergies: Penicillin Conflict Reported"
+// and nothing ever assigned it, so every patient at the counter appeared to
+// have a penicillin conflict. Staff who see the same warning on everyone stop
+// reading it, which is exactly when a real conflict gets dispensed through.
+//
+// Three states, kept distinct on purpose. "None recorded" is not "no
+// allergies": the first says the record is silent, the second is a clinical
+// claim this screen is not entitled to make.
+function renderAllergies(allergies) {
+  const el = document.getElementById('pat-allergy-tag');
+  if (!el) return;
+
+  if (!Array.isArray(allergies)) {
+    el.innerText = 'Allergies: unavailable';
+    el.className = 'allergy-tag allergy-unknown';
+    return;
+  }
+  if (allergies.length === 0) {
+    el.innerText = 'No allergies recorded';
+    el.className = 'allergy-tag allergy-none';
+    return;
+  }
+  const names = allergies
+    .map(a => (a && a.allergen_name ? String(a.allergen_name) : null))
+    .filter(Boolean);
+  el.innerText = 'Allergies: ' + (names.length ? names.join(', ') : 'recorded, unnamed');
+  el.className = 'allergy-tag allergy-present';
+}
+
 // Select Active Episode into Workspace
 function selectEpisode(ep) {
   selectedEpisode = ep;
@@ -167,17 +239,25 @@ function selectEpisode(ep) {
   badge.innerText = ep.status;
   badge.className = `status-badge ${getStatusClass(ep.status)}`;
 
-  document.getElementById('pat-name').innerText = ep.patient_name || 'Grace Kamau';
-  document.getElementById('pat-num').innerText = ep.patient_number || 'DEMO-PAT-1';
-  document.getElementById('pat-gender').innerText = ep.patient_gender || 'FEMALE';
-  document.getElementById('pat-dob').innerText = ep.patient_dob || '1985-05-12';
+  // No demo fallbacks. Every one of these previously fell back to a fixed
+  // fictional patient -- Grace Kamau, DEMO-PAT-1, FEMALE, 1985-05-12, SHA /
+  // Jubilee Health, MEM-889012, Dr. David Ochieng -- and the server sent none of
+  // these fields, so the till displayed that same person for every episode.
+  // Dispensing against a name and date of birth that are not the patient's is
+  // the error this screen exists to prevent. Missing data now reads as missing.
+  setField('pat-name', ep.patient_name);
+  setField('pat-num', ep.patient_number);
+  setField('pat-gender', ep.patient_sex);
+  setField('pat-dob', ep.patient_date_of_birth);
 
-  document.getElementById('ins-name').innerText = ep.insurer_name || 'SHA / Jubilee Health';
-  document.getElementById('ins-scheme').innerText = ep.scheme_name || 'Standard Comprehensive';
-  document.getElementById('ins-member-num').innerText = ep.membership_number || 'MEM-889012';
+  setField('ins-name', ep.insurer_name, 'No cover on file');
+  setField('ins-scheme', ep.scheme_name);
+  setField('ins-member-num', ep.membership_number);
 
-  document.getElementById('rx-num').innerText = ep.prescription_number || 'DEMO-RX-8001';
-  document.getElementById('prac-name').innerText = ep.prescriber_name || 'Dr. David Ochieng';
+  setField('rx-num', ep.prescription_number);
+  setField('prac-name', ep.prescriber_name);
+
+  renderAllergies(ep.allergies);
 
   const payTag = document.getElementById('payment-status-tag');
   payTag.innerText = `Payment: ${ep.payment_status || 'PENDING'}`;

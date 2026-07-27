@@ -42,7 +42,12 @@ PAYMENT_STATES_ALLOWING_SUPPLY = MedicineSupplyService.ALLOWED_PAYMENT_STATES
 class PosDispensingQueueService:
     @staticmethod
     def get_queue(*, tenant, branch=None, status=None):
-        qs = DispensingEpisode.all_objects.filter(tenant=tenant)
+        # Accepts a Tenant or a tenant id. Filtering on `tenant=None` silently
+        # matches nothing, so a missing tenant is refused rather than answered
+        # with an empty queue that reads as "no patients waiting".
+        if tenant is None:
+            raise ValueError("get_queue requires a tenant; refusing to return an unscoped queue.")
+        qs = DispensingEpisode.all_objects.filter(tenant_id=getattr(tenant, "pk", tenant))
         if branch:
             qs = qs.filter(branch=branch)
         if status:

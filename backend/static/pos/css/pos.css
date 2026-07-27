@@ -901,3 +901,31 @@ body {
     background: none;
   }
 }
+
+/* Allergy tag states. Kept visually distinct because the difference between
+   "none recorded" and a named allergy is a clinical one, and colour is the
+   first thing read at a counter. `allergy-unknown` is the resting state in the
+   markup: the tag says nothing until the server has answered. */
+.allergy-tag.allergy-present {
+  color: #7f1d2b;
+  background: #fde8eb;
+  border: 1px solid #e8b4bd;
+}
+
+.allergy-tag.allergy-none {
+  color: #14532d;
+  background: #dcfce7;
+  border: 1px solid #a7d8b8;
+}
+
+.allergy-tag.allergy-unknown {
+  color: #4a3a12;
+  background: #fdf3d7;
+  border: 1px solid #e3cf94;
+}
+
+/* A field with no value reads as absent rather than as data. */
+.field-absent {
+  color: #94a3b8;
+  font-style: italic;
+}

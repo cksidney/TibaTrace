@@ -17,8 +17,19 @@ from apps.platform.admin_shell import (
 
 
 def pos_terminal_view(request):
-    """Serve the POS terminal shell."""
-    return render(request, "pos/pos.html")
+    """Serve the POS terminal shell.
+
+    `demo_tools_enabled` gates the seed-demo buttons. Seeding puts fictional
+    patients, with dispensing numbers, into the working queue -- which is not
+    something a production till should be able to do from its own header.
+    """
+    from django.conf import settings
+
+    return render(
+        request,
+        "pos/pos.html",
+        {"demo_tools_enabled": bool(settings.DEBUG)},
+    )
 
 
 def health(request):

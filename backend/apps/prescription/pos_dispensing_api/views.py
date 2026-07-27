@@ -58,11 +58,25 @@ class PosDispensingViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=False, methods=["get"])
     def queue(self, request):
-        tenant = getattr(self.request, "tenant", None)
+        # `request.tenant_id`, not `request.tenant`. TenantContextMiddleware only
+        # ever sets the id, so the old `getattr(request, "tenant", None)` was
+        # always None and the queue filtered on a null tenant -- it returned
+        # zero episodes for every caller, always. The POS read that empty list
+        # as "no patients waiting" and substituted a demo queue, which is why
+        # the till never showed a real patient.
+        tenant_id = get_current_tenant_id() or getattr(request, "tenant_id", None)
         branch_id = request.query_params.get("branch")
         status_filter = request.query_params.get("status")
 
-        qs = PosDispensingQueueService.get_queue(tenant=tenant, branch=branch_id, status=status_filter)
+        if tenant_id is None:
+            return Response(
+                {"detail": "No workspace is associated with this request."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        qs = PosDispensingQueueService.get_queue(
+            tenant=tenant_id, branch=branch_id, status=status_filter
+        )
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)
 

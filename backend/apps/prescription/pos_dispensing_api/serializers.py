@@ -79,6 +79,130 @@ class PosDispensingEpisodeSerializer(serializers.ModelSerializer):
         intent = self._intent(episode)
         return intent.currency if intent else None
 
+    # ── who is actually at the counter ───────────────────────────────────────
+    #
+    # This surface previously sent `patient` and `prescription` as bare ids and
+    # nothing else, so the till had no name, number, date of birth, prescriber
+    # or cover to display. The POS filled every one of those from a hardcoded
+    # demo patient, which meant it showed the same fictional person for every
+    # episode. An operator dispensing against a displayed identity that is never
+    # the patient's is the failure this exists to prevent, so the real values
+    # are sent here and the client renders absence as absence.
+    #
+    # Every one of these is None when the underlying record is missing. None is
+    # a truthful answer; a placeholder is not.
+    patient_name = serializers.SerializerMethodField()
+    patient_number = serializers.SerializerMethodField()
+    patient_sex = serializers.SerializerMethodField()
+    patient_date_of_birth = serializers.SerializerMethodField()
+    prescription_number = serializers.SerializerMethodField()
+    prescriber_name = serializers.SerializerMethodField()
+    insurer_name = serializers.SerializerMethodField()
+    scheme_name = serializers.SerializerMethodField()
+    membership_number = serializers.SerializerMethodField()
+    allergies = serializers.SerializerMethodField()
+
+    def get_patient_name(self, episode):
+        patient = episode.patient
+        if not patient:
+            return None
+        parts = [patient.first_name, patient.last_name]
+        return " ".join(p for p in parts if p).strip() or None
+
+    def get_patient_number(self, episode):
+        return getattr(episode.patient, "patient_number", None) or None
+
+    def get_patient_sex(self, episode):
+        return getattr(episode.patient, "sex", None) or None
+
+    def get_patient_date_of_birth(self, episode):
+        dob = getattr(episode.patient, "date_of_birth", None)
+        return dob.isoformat() if dob else None
+
+    def get_prescription_number(self, episode):
+        return getattr(episode.prescription, "prescription_number", None) or None
+
+    def get_prescriber_name(self, episode):
+        practitioner = getattr(episode.prescription, "practitioner", None)
+        if not practitioner:
+            return None
+        professional = (practitioner.professional_name or "").strip()
+        if professional:
+            return professional
+        parts = [practitioner.first_name, practitioner.last_name]
+        return " ".join(p for p in parts if p).strip() or None
+
+    def _coverage(self, episode):
+        """The patient's active cover, or None.
+
+        Only ACTIVE cover that is current on today's date counts. Expired cover
+        shown as though it were live tells a cashier to bill an insurer that
+        will refuse the claim.
+        """
+        from django.db.models import Q
+        from django.utils import timezone
+
+        from apps.insurance.models import InsuranceCoverage
+
+        cached = getattr(episode, "_coverage_cache", None)
+        if cached is None:
+            today = timezone.localdate()
+            cached = (
+                InsuranceCoverage.all_objects.filter(
+                    tenant_id=episode.tenant_id,
+                    patient_id=episode.patient_id,
+                    status=InsuranceCoverage.Status.ACTIVE,
+                )
+                .filter(Q(valid_from__isnull=True) | Q(valid_from__lte=today))
+                .filter(Q(valid_to__isnull=True) | Q(valid_to__gte=today))
+                .select_related("member", "scheme", "scheme__insurer")
+                .order_by("-valid_from")
+                .first()
+            )
+            episode._coverage_cache = cached or False
+        return cached or None
+
+    def get_insurer_name(self, episode):
+        coverage = self._coverage(episode)
+        insurer = getattr(getattr(coverage, "scheme", None), "insurer", None)
+        return getattr(insurer, "name", None) or None
+
+    def get_scheme_name(self, episode):
+        coverage = self._coverage(episode)
+        return getattr(getattr(coverage, "scheme", None), "name", None) or None
+
+    def get_membership_number(self, episode):
+        coverage = self._coverage(episode)
+        return getattr(getattr(coverage, "member", None), "membership_number", None) or None
+
+    def get_allergies(self, episode):
+        """Recorded allergies, or an empty list.
+
+        An empty list means "none recorded", which is not the same as "none" --
+        the client must say which. What it must never do is state a specific
+        allergy that was never recorded, which is what the hardcoded
+        "Penicillin Conflict Reported" tag did on every episode.
+        """
+        from apps.patients.models import PatientAllergy
+
+        if not episode.patient_id:
+            return []
+        # REFUTED is a `status` value; `verification_status` carries
+        # UNVERIFIED / PATIENT_REPORTED / CLINICIAN_VERIFIED. Excluding the
+        # wrong field would keep showing an allergy a clinician has ruled out.
+        rows = PatientAllergy.all_objects.filter(
+            tenant_id=episode.tenant_id, patient_id=episode.patient_id, is_active=True
+        ).exclude(status="REFUTED")
+        return [
+            {
+                "allergen_name": row.allergen_name,
+                "severity": row.severity or None,
+                "reaction": row.reaction or None,
+                "verification_status": row.verification_status or None,
+            }
+            for row in rows
+        ]
+
     class Meta:
         model = DispensingEpisode
         fields = [
@@ -100,6 +224,16 @@ class PosDispensingEpisodeSerializer(serializers.ModelSerializer):
             "amount_settled",
             "amount_remaining",
             "currency",
+            "patient_name",
+            "patient_number",
+            "patient_sex",
+            "patient_date_of_birth",
+            "prescription_number",
+            "prescriber_name",
+            "insurer_name",
+            "scheme_name",
+            "membership_number",
+            "allergies",
             "collector_name",
             "collector_id_number",
             "collector_phone",

@@ -57,9 +57,11 @@
       <button class="btn btn-secondary btn-sm" id="btn-shift-ops" onclick="openShiftModal()">
         ⚙️ Shift Ops (F8)
       </button>
+      {% if demo_tools_enabled %}
       <button class="btn btn-primary btn-sm" onclick="seedDemoData()">
         ⚡ Seed Demo Data
       </button>
+      {% endif %}
     </div>
   </header>
 
@@ -147,7 +149,7 @@
           <div class="empty-icon">💊</div>
           <h3>No Dispensing Episode Selected</h3>
           <p>Select an episode from the queue to manage batch verification, pharmacist checking, payment, labelling, and collection.</p>
-          <button class="btn btn-primary" style="margin-top: 12px;" onclick="seedDemoData()">⚡ Seed &amp; Load Demo Episode</button>
+          {% if demo_tools_enabled %}<button class="btn btn-primary" style="margin-top: 12px;" onclick="seedDemoData()">⚡ Seed &amp; Load Demo Episode</button>{% endif %}
         </div>
 
         <div class="active-episode-view" id="active-episode-view" style="display: none;">
@@ -161,7 +163,7 @@
                 <span>Gender: <strong id="pat-gender">-</strong></span> &bull;
                 <span>DOB: <strong id="pat-dob">-</strong></span>
               </div>
-              <div class="allergy-tag" id="pat-allergy-tag">Allergies: Penicillin Conflict Reported</div>
+              <div class="allergy-tag allergy-unknown" id="pat-allergy-tag">Allergies: unavailable</div>
             </div>
 
             <div class="info-card">
