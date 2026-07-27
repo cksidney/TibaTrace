@@ -12,6 +12,8 @@
   --teal-50: rgba(16, 185, 129, 0.08);
   --red-700: #f43f5e;
   --red-100: rgba(244, 63, 94, 0.15);
+  /* Danger text on the --red-100 tint, which composites darker in this theme. */
+  --danger-ink: #f54d69;
   --amber-700: #f59e0b;
   --amber-100: rgba(245, 158, 11, 0.15);
   --violet-700: #8b5cf6;
@@ -44,12 +46,13 @@
   --teal-50: #f0fbf8;
   --red-700: #b52d3c;
   --red-100: #fde8eb;
+  --danger-ink: #b52d3c;
   --amber-700: #94600f;
   --amber-100: #fff0d5;
   --violet-700: #5e52bd;
   --violet-100: #eeeafd;
   --ink: #13213a;
-  --muted: #637087;
+  --muted: #606d83;
   --muted-2: #68768c;
   --line: #dfe5ed;
   --line-soft: #ecf0f4;
@@ -96,11 +99,18 @@ tbody tr:hover,
 .command-results > a:hover,
 .command-dialog footer {
   --ink: #13213a;
-  --muted: #637087;
+  --muted: #606d83;
   --muted-2: #68768c;
   --line: #dfe5ed;
   --line-soft: #ecf0f4;
   --panel: #ffffff;
+  /* The accents too, not only the greys. */
+  --teal-700: #087765;
+  --teal-600: #0a8f78;
+  --teal-500: #10a98d;
+  --red-700: #b52d3c;
+  --amber-700: #94600f;
+  --violet-700: #5e52bd;
   color: var(--ink);
 }
 
@@ -379,7 +389,7 @@ svg {
 
 .nav-link small {
   overflow: hidden;
-  color: #7891ae;
+  color: #7d95b1;
   font-size: 0.61rem;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1199,6 +1209,11 @@ kbd {
 }
 
 .panel {
+  /* Grid and flex items default to min-width: auto, so a panel could not shrink
+     below the min-content width of the table inside it. The .table-scroll's
+     overflow-x never engaged; the panel just pushed the page wider instead --
+     573px on a 390px viewport. */
+  min-width: 0;
   padding: 22px;
   border: 1px solid var(--line);
   border-radius: 13px;
@@ -1357,7 +1372,7 @@ kbd {
 .network-ring div {
   /* Sits on the white ::after disc, so it carries the light palette. */
   --ink: #13213a;
-  --muted: #637087;
+  --muted: #606d83;
   color: var(--ink);
 }
 
@@ -2325,10 +2340,10 @@ tbody tr:hover {
   align-items: center;
   gap: 6px;
   padding: 0 10px;
-  border: 1px solid var(--teal-600);
+  border: 1px solid #047857;
   border-radius: 8px;
   color: #ffffff;
-  background: var(--teal-600);
+  background: #047857;
   font-size: 0.56rem;
   font-weight: 850;
   cursor: pointer;
@@ -2582,7 +2597,7 @@ tbody tr:hover {
   border: 0;
   border-radius: 9px;
   color: #ffffff;
-  background: var(--teal-600);
+  background: #047857;
   font-size: 0.59rem;
   font-weight: 850;
   cursor: pointer;
@@ -2813,13 +2828,15 @@ tbody tr:hover {
   place-items: center;
   border-radius: 999px;
   color: var(--muted);
-  background: var(--line);
+  /* --line-soft, not --line: --muted is tuned against the softer surface and
+     lands at 4.13:1 on --line in the light theme. */
+  background: var(--line-soft);
   font-size: 0.51rem;
 }
 
 .procurement-tabs button.active b {
   color: #ffffff;
-  background: var(--teal-600);
+  background: #047857;
 }
 
 .procurement-section {
@@ -3038,7 +3055,7 @@ tbody tr:hover {
 }
 
 .supplier-readiness.blocked {
-  color: var(--red-700);
+  color: var(--danger-ink);
   background: var(--red-100);
 }
 
@@ -3062,7 +3079,7 @@ tbody tr:hover {
 }
 
 .procurement-flow b {
-  color: var(--teal-600);
+  color: var(--teal-700);
   font-size: 0.55rem;
 }
 
@@ -3546,7 +3563,7 @@ tbody tr:hover {
 }
 
 .workflow-top small {
-  color: #9aa5b4;
+  color: var(--muted);
   font-size: 0.58rem;
   font-weight: 850;
 }
@@ -3983,7 +4000,7 @@ tbody tr:hover {
      the heading and every field label in near-white on white: the sign-in form
      was legible only by selecting the text. */
   --ink: #13213a;
-  --muted: #637087;
+  --muted: #606d83;
   --muted-2: #68768c;
   --line: #dfe5ed;
   --line-soft: #ecf0f4;
