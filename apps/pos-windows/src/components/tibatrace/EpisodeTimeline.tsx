@@ -6,6 +6,7 @@ import {
   surface,
   text,
 } from '@dawatrace/shared/design-system/index.js';
+import { formatInstant } from '@dawatrace/shared/clinical/index.js';
 import type { TimelineEntry } from '@dawatrace/shared/dispensing/index.js';
 import { TIMELINE_EVENTS, orderTimeline } from '@dawatrace/shared/dispensing/index.js';
 import { useState } from 'react';
@@ -149,8 +150,14 @@ export function EpisodeTimeline({ entries }: { readonly entries: readonly Timeli
 }
 
 /** Renders an unparseable timestamp as-is rather than hiding the entry. */
+/**
+ * Replaced by the shared formatter.
+ *
+ * The previous implementation called `toISOString()` and swapped the T for a
+ * space, so it looked formatted while still being UTC -- a 09:00 screening in
+ * Nairobi read as 06:00, and an evening entry carried the previous day's date.
+ * The `dateTime` attribute above stays ISO on purpose: that one is for machines.
+ */
 function formatTimestamp(value: string): string {
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toISOString().replace('T', ' ').slice(0, 19);
+  return formatInstant(value);
 }

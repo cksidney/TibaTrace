@@ -1,5 +1,6 @@
 import { fontFamily, fontSize, spacing, surface, text } from '@dawatrace/shared/design-system/index.js';
 import type { CounsellingRecordRequest } from '@dawatrace/shared/dispensing/index.js';
+import { formatInstant } from '@dawatrace/shared/clinical/index.js';
 import { useState } from 'react';
 
 import { BlockingReason, StatusBadge } from './StatusBadge.js';
@@ -157,7 +158,7 @@ export function CollectionPanel({
         </header>
         <p style={{ margin: 0, fontSize: fontSize.body, color: text.secondary }}>
           Collected by {collectorName || 'unrecorded collector'} at{' '}
-          <span style={{ fontVariantNumeric: 'tabular-nums' }}>{collectedAt}</span>.
+          <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatInstant(collectedAt)}</span>.
         </p>
       </section>
     );

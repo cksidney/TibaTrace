@@ -150,11 +150,21 @@ export const statusPalette: Readonly<Record<ClinicalStatus, StatusPalette>> = {
     border: '#C6CEE0',
     accent: '#44557F',
   },
+  /**
+   * Teal, matching HQ's brand accent -- the only status entry that carries it.
+   *
+   * PROCESSING means work in flight: the stage you are standing on, a payment
+   * initiated, a response awaited. None of those is a clinical finding, so this
+   * is the one place the palette can take the brand colour without diluting
+   * what a colour means on a finding. INFORMATION stays blue, and it and this
+   * were byte-identical before, which made "you are here" and "here is a fact
+   * about the patient" indistinguishable.
+   */
   PROCESSING: {
-    foreground: '#0F4C81',
-    surface: '#EFF6FF',
-    border: '#B3D4F5',
-    accent: '#1B6BB8',
+    foreground: '#08554A',
+    surface: '#F0FBF8',
+    border: '#DDF5EF',
+    accent: '#087765',
   },
   COMPLETED: {
     foreground: '#37524A',

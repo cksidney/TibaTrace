@@ -8,6 +8,18 @@
          renders white-on-white would still screenshot as readable. */
       html, body { margin: 0; background: #ffffff; }
 
+      /* The production typeface.
+         The app sets fontFamily.sans on its root container and every component
+         inherits it. The harness mounts components without that container, so
+         without this it rendered everything in the browser's default serif --
+         a harness that shows a different typeface than production cannot be
+         trusted to answer "does this look right?". Kept in step with
+         fontFamily.sans in packages/shared/src/design-system/tokens.ts. */
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+      }
+
       /* Determinism: no motion, no blinking caret, no smooth scrolling. */
       *, *::before, *::after {
         animation-duration: 0s !important;

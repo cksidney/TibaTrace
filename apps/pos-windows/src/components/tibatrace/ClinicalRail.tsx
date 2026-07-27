@@ -11,6 +11,7 @@ import type {
   ClinicalStatus,
   ConnectivityState,
 } from '@dawatrace/shared/design-system/index.js';
+import { formatInstant } from '@dawatrace/shared/clinical/index.js';
 
 import { BlockingReason, StatusBadge } from './StatusBadge.js';
 
@@ -115,7 +116,10 @@ export function ClinicalRail({
               fontVariantNumeric: 'tabular-nums',
             }}
           >
-            Screened {summary.evaluatedAt}
+            {/* Was the raw ISO string, in UTC. How old a screening is decides
+                whether it can be relied on, and that is not a judgement to make
+                from `2026-01-01T09:00:00.000Z` on a clock three hours out. */}
+            Screened {formatInstant(summary.evaluatedAt)}
           </div>
         ) : null}
       </section>

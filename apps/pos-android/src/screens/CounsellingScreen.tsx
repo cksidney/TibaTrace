@@ -6,6 +6,7 @@ import {
   surface,
   text,
 } from '@dawatrace/shared/design-system/index.js';
+import { formatInstant } from '@dawatrace/shared/clinical/index.js';
 import type { CounsellingRecordRequest } from '@dawatrace/shared/dispensing/index.js';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
@@ -150,7 +151,7 @@ export function CollectionScreen({
         <TibaTraceBrand />
         <Text style={styles.heading}>Collection</Text>
         <Text style={styles.body}>
-          Collected by {collectorName || 'unrecorded collector'} at {collectedAt}.
+          Collected by {collectorName || 'unrecorded collector'} at {formatInstant(collectedAt)}.
         </Text>
       </View>
     );
