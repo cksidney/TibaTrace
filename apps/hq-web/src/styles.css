@@ -946,7 +946,10 @@ kbd {
 }
 
 .secondary-button:disabled {
-  cursor: wait;
+  /* not-allowed, not wait. A disabled button usually means the action is
+     unavailable, and `wait` tells an operator to stand by for something that
+     will never happen. A genuinely busy button says so in its label. */
+  cursor: not-allowed;
   opacity: 0.65;
 }
 
@@ -4641,4 +4644,19 @@ tbody tr:hover {
   .auth-card {
     padding: 27px 22px;
   }
+}
+
+/* A full SHA-256 in a table cell. Wraps rather than truncating: half a digest
+   verifies nothing, and an operator comparing against sha256sum output needs
+   all of it. */
+td .digest {
+  display: inline-block;
+  max-width: 20ch;
+  /* `td` is white-space: nowrap, which suits dates and codes but makes a
+     64-character digest run straight over the columns beside it. Truncating is
+     not an option -- half a digest verifies nothing -- so this cell wraps. */
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font-size: 0.75rem;
+  line-height: 1.4;
 }

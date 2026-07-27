@@ -17,3 +17,6 @@ pydantic==1.10.26
 requests==2.33.0
 defusedxml==0.7.1
 python-dateutil==2.9.0.post0
+# POS installer distribution: S3-compatible object storage (AWS S3 or MinIO).
+boto3==1.43.56
+django-storages[s3]==1.14.6

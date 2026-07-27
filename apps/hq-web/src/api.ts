@@ -1109,6 +1109,72 @@ export async function updateGovernmentCatalogueSelection(
   return (await response.json()) as { readonly selected: boolean };
 }
 
+/* ── POS installers ───────────────────────────────────────────────────────── */
+
+export interface PosRelease {
+  readonly id: string;
+  readonly platform: 'ANDROID' | 'WINDOWS';
+  readonly version: string;
+  readonly build_number: number;
+  readonly size_bytes: number;
+  /** Published so an operator can verify the download before installing. */
+  readonly sha256: string;
+  readonly release_notes: string;
+  readonly minimum_os: string;
+  readonly published_at: string | null;
+  readonly download_filename: string;
+}
+
+export interface PosReleaseCatalogue {
+  /** False when object storage is not configured; links are disabled, not broken. */
+  readonly downloads_available: boolean;
+  readonly url_ttl_seconds: number;
+  readonly releases: readonly PosRelease[];
+}
+
+export async function loadPosReleases(signal?: AbortSignal): Promise<PosReleaseCatalogue> {
+  const request: RequestInit = { credentials: 'include', headers: { Accept: 'application/json' } };
+  if (signal) request.signal = signal;
+  const response = await fetch('/api/hq/pos-releases/', request);
+  if (!response.ok) {
+    throw new HQApiError(response.status, `POS release list failed with ${response.status}.`);
+  }
+  return (await response.json()) as PosReleaseCatalogue;
+}
+
+export interface PosDownloadGrant {
+  readonly url: string;
+  readonly filename: string;
+  readonly expires_in_seconds: number;
+  readonly sha256: string;
+  readonly size_bytes: number;
+}
+
+/**
+ * Ask for a short-lived signed URL for one installer.
+ *
+ * The server returns the URL rather than redirecting, so the checksum can be
+ * shown beside the link and the operator can verify what they downloaded.
+ */
+export async function requestPosDownload(
+  releaseId: string,
+  csrfToken: string,
+): Promise<PosDownloadGrant> {
+  const response = await fetch(`/api/hq/pos-releases/${encodeURIComponent(releaseId)}/download/`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { Accept: 'application/json', 'X-CSRFToken': csrfToken },
+  });
+  if (!response.ok) {
+    const detail = await response.json().catch(() => ({}));
+    throw new HQApiError(
+      response.status,
+      (detail as { detail?: string }).detail ?? `Download request failed with ${response.status}.`,
+    );
+  }
+  return (await response.json()) as PosDownloadGrant;
+}
+
 /* ── shift and cash control ────────────────────────────────────────────────── */
 
 export interface RegisterSessionSummary {

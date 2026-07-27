@@ -17,6 +17,18 @@ EXPLICIT_GLOBAL_MODELS = frozenset(
         "ClinicalKnowledgeRelease",
         "FHIRTerminologyVersion",
         "Tenant",
+        # POS installers. Reviewed on 2026-07-27:
+        #
+        # Persistence -- the model has no tenant column by design. An installer
+        # is one binary for every pharmacy, and scoping it per tenant would mean
+        # storing the same 35 MB artefact once per customer.
+        #
+        # Authorization -- both endpoints require an authenticated HQ session,
+        # only rows with is_published are exposed (an unpublished build answers
+        # 404, not 403, so the endpoint does not report what exists), and the
+        # artefact is handed out as a signed URL that expires in five minutes
+        # rather than served from a stable path. Every download is audited.
+        "PosRelease",
     }
 )
 

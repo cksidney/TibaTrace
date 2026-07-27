@@ -139,6 +139,22 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = "en-us"
 TIME_ZONE = env("DAWATRACE_TIME_ZONE", "Africa/Nairobi")
+
+# Where POS installers are stored.
+#
+# S3-compatible, so this is the same configuration for AWS S3 and for a
+# self-hosted MinIO -- only the endpoint differs. Unset by default: with no
+# credentials the download endpoint answers 503 rather than pretending, and the
+# release list still renders with downloads marked unavailable.
+POS_RELEASE_STORAGE = {
+    "bucket": env("TIBATRACE_RELEASE_BUCKET", ""),
+    "endpoint_url": env("TIBATRACE_RELEASE_ENDPOINT_URL", ""),
+    "access_key": env("TIBATRACE_RELEASE_ACCESS_KEY", ""),
+    "secret_key": env("TIBATRACE_RELEASE_SECRET_KEY", ""),
+    "region": env("TIBATRACE_RELEASE_REGION", "us-east-1"),
+}
+
+
 USE_I18N = True
 USE_TZ = True
 

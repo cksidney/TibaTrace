@@ -3,6 +3,7 @@ from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 from apps.platform.admin_shell import admin_shell
+from apps.platform.release_views import PosReleaseDownloadView, PosReleaseListView
 from apps.platform.views import (
     HQOverviewView,
     HQWorkspaceView,
@@ -20,6 +21,12 @@ urlpatterns = [
     path("api/platform/", PlatformInfoView.as_view(), name="platform-info"),
     path("api/hq/overview/", HQOverviewView.as_view(), name="hq-overview"),
     path("api/hq/workspace/", HQWorkspaceView.as_view(), name="hq-workspace"),
+    path("api/hq/pos-releases/", PosReleaseListView.as_view(), name="pos-release-list"),
+    path(
+        "api/hq/pos-releases/<uuid:pk>/download/",
+        PosReleaseDownloadView.as_view(),
+        name="pos-release-download",
+    ),
     path("api/tenancy/", include("apps.tenancy.api.urls")),
     path("api/identity/", include("apps.identity.api.urls")),
     path("api/organizations/", include("apps.organizations.api.urls")),

@@ -22,6 +22,8 @@ import {
   loadManufacturedProducts,
   loadManufacturers,
   loadPriceBooks,
+  requestPosDownload,
+  loadPosReleases,
   readSession,
   SignInError,
   signIn,
@@ -31,6 +33,8 @@ import {
 } from './api.js';
 import type {
   ActiveSubstanceSummary,
+  PosRelease,
+  PosReleaseCatalogue,
   ClaimFilters,
   ClinicalProductSummary,
   DashboardMetric,
@@ -420,7 +424,7 @@ function Dashboard({
           {activeView === 'operations' ? <OperationsView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} overview={overview} /> : null}
           {activeView === 'commerce' ? <CommerceView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} /> : null}
           {activeView === 'pricing' ? <PricingView /> : null}
-          {activeView === 'cash' ? <CashControlView /> : null}
+          {activeView === 'cash' ? <CashControlView csrfToken={csrfToken} /> : null}
           {activeView === 'insurance' ? <InsuranceView /> : null}
           {activeView === 'clinical' ? <ClinicalView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} overview={overview} /> : null}
           {activeView === 'governance' ? <GovernanceView data={workspaceData} failed={workspaceFailed} /> : null}
@@ -671,7 +675,118 @@ function PricingView() {
   );
 }
 
-function CashControlView() {
+/**
+ * POS installers.
+ *
+ * Lives with cash control because the person standing up a new till is the one
+ * who needs the installer, and tills are what this section is about.
+ *
+ * The checksum is shown beside every download, not hidden behind a detail view:
+ * verifying a 35 MB binary before installing it on a device that takes money is
+ * the whole reason to publish one.
+ */
+function PosDownloads({ csrfToken }: { readonly csrfToken: string }) {
+  const [catalogue, setCatalogue] = useState<PosReleaseCatalogue | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [pending, setPending] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    loadPosReleases(controller.signal)
+      .then(setCatalogue)
+      .catch(() => {
+        if (!controller.signal.aborted) setFailed(true);
+      });
+    return () => controller.abort();
+  }, []);
+
+  const download = useCallback(
+    async (release: PosRelease) => {
+      setPending(release.id);
+      setError(null);
+      try {
+        const grant = await requestPosDownload(release.id, csrfToken);
+        // The signed URL is short lived, so it is followed immediately rather
+        // than rendered as a link somebody might open an hour later.
+        window.location.assign(grant.url);
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : 'The download could not be started.');
+      } finally {
+        setPending(null);
+      }
+    },
+    [csrfToken],
+  );
+
+  if (failed) return <Unavailable />;
+  if (!catalogue) return <p className="muted-cell">Loading installers…</p>;
+
+  return (
+    <article className="panel table-panel">
+      <div className="table-toolbar">
+        <PanelHeader eyebrow="Point of sale" title="Till installers" />
+      </div>
+
+      {error ? (
+        <p className="auth-error" role="alert" aria-live="assertive">
+          <Icon name="alert" /> {error}
+        </p>
+      ) : null}
+
+      {!catalogue.downloads_available ? (
+        <p className="panel-note">
+          Installer storage is not configured for this deployment, so downloads are
+          unavailable. The catalogue below is what would be served.
+        </p>
+      ) : null}
+
+      {catalogue.releases.length ? (
+        <div className="table-scroll">
+          <table>
+            <thead><tr><th>Platform</th><th>Version</th><th>Size</th><th>Requires</th><th>SHA-256</th><th>Published</th><th /></tr></thead>
+            <tbody>
+              {catalogue.releases.map((release) => (
+                <tr key={release.id}>
+                  <td><StatusBadge value={release.platform} /></td>
+                  <td>
+                    <strong>{release.version}</strong>
+                    {release.release_notes ? <><br /><small>{release.release_notes}</small></> : null}
+                  </td>
+                  <td><small>{formatBytes(release.size_bytes)}</small></td>
+                  <td><small>{release.minimum_os || '—'}</small></td>
+                  {/* Full digest, not truncated: an operator compares this
+                      against sha256sum output, and half a digest verifies
+                      nothing. */}
+                  <td><code className="digest">{release.sha256}</code></td>
+                  <td><small>{formatDate(release.published_at)}</small></td>
+                  <td>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      disabled={!catalogue.downloads_available || pending === release.id}
+                      onClick={() => void download(release)}
+                    >
+                      {pending === release.id ? 'Preparing…' : 'Download'}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <EmptyState
+          icon="store"
+          title="No installers published"
+          detail="Published POS builds appear here for download."
+        />
+      )}
+    </article>
+  );
+}
+
+function CashControlView({ csrfToken }: { readonly csrfToken: string }) {
   const [open, setOpen] = useState<readonly RegisterSessionSummary[] | null>(null);
   const [variances, setVariances] = useState<readonly ShiftReportSummary[] | null>(null);
   const [forced, setForced] = useState<readonly ShiftReportSummary[] | null>(null);
@@ -805,6 +920,7 @@ function CashControlView() {
           )}
         </article>
       </section>
+      <PosDownloads csrfToken={csrfToken} />
     </>
   );
 }
