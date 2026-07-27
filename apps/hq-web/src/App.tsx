@@ -1964,6 +1964,123 @@ function GovernanceView({ data, failed }: { readonly data: HQWorkspaceData | nul
   );
 }
 
+
+/**
+ * Decision support, terminology and encounters.
+ *
+ * These three replaced a row of cards that linked to `#clinical` -- the view
+ * they were already on. They read as navigation to a management screen that did
+ * not exist: `cds`, `terminology` and `clinical` had models, endpoints and rows,
+ * and no surface anywhere in the app.
+ *
+ * Read-only. Knowledge releases are published artefacts with a checksum, and
+ * terminology is governed reference data; editing either from here would need a
+ * service and an approval step that do not exist yet.
+ */
+type ClinicalTable = 'releases' | 'terminology' | 'encounters';
+
+const CLINICAL_TABLES: readonly { readonly key: ClinicalTable; readonly label: string }[] = [
+  { key: 'releases', label: 'Knowledge releases' },
+  { key: 'terminology', label: 'Terminology' },
+  { key: 'encounters', label: 'Encounters' },
+];
+
+function ClinicalGovernanceTables({ data }: { readonly data: HQWorkspaceData | null }) {
+  const [table, setTable] = useState<ClinicalTable>('releases');
+  if (!data) return null;
+  const clinical = data.clinical;
+
+  return (
+    <article className="panel table-panel">
+      <div className="table-toolbar">
+        <PanelHeader eyebrow="Clinical governance" title="Decision support and terminology" />
+        <nav className="segmented" aria-label="Clinical governance table">
+          {CLINICAL_TABLES.map((option) => (
+            <button
+              key={option.key}
+              type="button"
+              className={option.key === table ? 'segmented-option is-active' : 'segmented-option'}
+              aria-pressed={option.key === table}
+              onClick={() => setTable(option.key)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </nav>
+      </div>
+
+      <div className="table-scroll">
+        {table === 'releases' && (clinical.knowledge_releases.length ? (
+          <table>
+            <thead><tr><th>Release</th><th>Version</th><th>Source</th><th>Effective</th><th>Licence</th><th>Checksum</th><th>State</th></tr></thead>
+            <tbody>
+              {clinical.knowledge_releases.map((release) => (
+                <tr key={release.id}>
+                  <td><code>{release.code}</code></td>
+                  <td><strong>{release.version}</strong></td>
+                  <td><small>{release.source}{release.source_version ? ` · ${release.source_version}` : ''}</small></td>
+                  <td><small>{formatDate(release.effective_date)}</small></td>
+                  <td><small>{release.licence || '—'}</small></td>
+                  {/* The digest is what ties a screening decision to the rules
+                      that produced it, so it is shown rather than hidden. */}
+                  <td><code>{release.checksum || '—'}</code></td>
+                  <td><StatusBadge value={release.is_active ? 'ACTIVE' : 'INACTIVE'} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : <EmptyState icon="shield" title="No knowledge releases" detail="Decision support screens against published releases; none are loaded." />)}
+
+        {table === 'terminology' && (clinical.code_systems.length || clinical.value_sets.length ? (
+          <table>
+            <thead><tr><th>Kind</th><th>Name</th><th>Title</th><th>Version</th><th>Concepts</th><th>Scope</th></tr></thead>
+            <tbody>
+              {clinical.code_systems.map((system) => (
+                <tr key={system.id}>
+                  <td><small>Code system</small></td>
+                  <td><strong>{system.name}</strong></td>
+                  <td><small>{system.title || system.url}</small></td>
+                  <td><small>{system.version || '—'}</small></td>
+                  <td><small>{formatNumber(system.concept_count)}</small></td>
+                  <td><small>{system.is_global ? 'Global' : 'Tenant'}</small></td>
+                </tr>
+              ))}
+              {clinical.value_sets.map((valueSet) => (
+                <tr key={valueSet.id}>
+                  <td><small>Value set</small></td>
+                  <td><strong>{valueSet.name}</strong></td>
+                  <td><small>{valueSet.title || valueSet.url}</small></td>
+                  <td><small>{valueSet.version || '—'}</small></td>
+                  <td><span className="muted-cell">—</span></td>
+                  <td><small>{valueSet.is_global ? 'Global' : 'Tenant'}</small></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : <EmptyState icon="database" title="No terminology registered" detail="Code systems and value sets appear here once registered." />)}
+
+        {table === 'encounters' && (clinical.encounters.length ? (
+          <table>
+            <thead><tr><th>Patient</th><th>Class</th><th>Practitioner</th><th>Started</th><th>Reason</th><th>Status</th></tr></thead>
+            <tbody>
+              {clinical.encounters.map((encounter) => (
+                <tr key={encounter.id}>
+                  <td><strong>{encounter.patient_name ?? 'Not recorded'}</strong></td>
+                  <td><small>{encounter.encounter_class || '—'}</small></td>
+                  <td><span className="muted-cell">{encounter.practitioner_name ?? 'Not recorded'}</span></td>
+                  <td><small>{formatDateTime(encounter.start_time)}</small></td>
+                  <td><small>{encounter.reason_code || '—'}</small></td>
+                  <td><StatusBadge value={encounter.status} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : <EmptyState icon="clinical" title="No encounters recorded" detail="Clinical encounters appear here as they are captured." />)}
+      </div>
+    </article>
+  );
+}
+
 function ClinicalView({
   csrfToken,
   data,
@@ -2032,15 +2149,7 @@ function ClinicalView({
         </article>
       </section>
 
-      <article className="panel workflow-panel">
-        <PanelHeader eyebrow="Governance workspaces" title="Clinical administration" />
-        <div className="workflow-grid">
-          <WorkflowLink href="#clinical" icon="clinical" step="01" title="Encounters" detail="Review clinical encounters in scope." />
-          <WorkflowLink href="#clinical" icon="shield" step="02" title="Decision support" detail="Manage active clinical knowledge releases." />
-          <WorkflowLink href="#clinical" icon="database" step="03" title="Terminology" detail="Govern code systems and value sets." />
-          <WorkflowLink href="/api/fhir/r4/metadata" icon="external" step="04" title="FHIR gateway" detail="Inspect the R4 capability statement." />
-        </div>
-      </article>
+      <ClinicalGovernanceTables data={data} />
 
       <section className="content-grid">
         <article className="panel">

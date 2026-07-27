@@ -213,6 +213,52 @@ export interface HQBusinessModule {
   readonly title: string;
 }
 
+export interface HQKnowledgeRelease {
+  readonly id: string;
+  readonly code: string;
+  readonly version: string;
+  readonly source: string;
+  readonly source_version: string;
+  readonly licence: string;
+  readonly effective_date: string | null;
+  readonly expires_at: string | null;
+  readonly is_active: boolean;
+  readonly classification: string;
+  /** First twelve characters of the SHA-256, enough to compare by eye. */
+  readonly checksum: string;
+}
+
+export interface HQCodeSystem {
+  readonly id: string;
+  readonly name: string;
+  readonly title: string;
+  readonly url: string;
+  readonly version: string;
+  readonly content_mode: string;
+  readonly is_global: boolean;
+  readonly concept_count: number;
+}
+
+export interface HQValueSet {
+  readonly id: string;
+  readonly name: string;
+  readonly title: string;
+  readonly url: string;
+  readonly version: string;
+  readonly is_global: boolean;
+}
+
+export interface HQEncounter {
+  readonly id: string;
+  readonly patient_name: string | null;
+  readonly status: string;
+  readonly encounter_class: string;
+  readonly practitioner_name: string | null;
+  readonly start_time: string | null;
+  readonly end_time: string | null;
+  readonly reason_code: string;
+}
+
 export interface HQWorkspaceData {
   readonly business_modules: readonly HQBusinessModule[];
   readonly generated_at: string;
@@ -249,6 +295,27 @@ export interface HQWorkspaceData {
     };
     readonly dispatches: readonly HQDispatch[];
     readonly orders: readonly HQSalesOrder[];
+  };
+  /**
+   * Clinical decision support, terminology and encounters.
+   *
+   * These come through the workspace aggregate rather than /api/cds/,
+   * /api/terminology/ and /api/clinical/, because those are capability-gated
+   * and filter on the request's tenant -- so a platform administrator, who has
+   * no tenant, gets a 403 from them and an empty list past it.
+   */
+  readonly clinical: {
+    readonly counts: {
+      readonly encounters: number;
+      readonly knowledge_releases: number;
+      readonly active_knowledge_releases: number;
+      readonly code_systems: number;
+      readonly value_sets: number;
+    };
+    readonly knowledge_releases: readonly HQKnowledgeRelease[];
+    readonly code_systems: readonly HQCodeSystem[];
+    readonly value_sets: readonly HQValueSet[];
+    readonly encounters: readonly HQEncounter[];
   };
   readonly governance: {
     readonly counts: {

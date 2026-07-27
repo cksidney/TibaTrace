@@ -246,6 +246,10 @@ def build_hq_workspace_context(tenant_id):
     domain_events = _scope(DomainEvent.all_objects, tenant_id)
     notifications = _scope(NotificationOutbox.all_objects, tenant_id)
     crosswalks = _scope(LegacyIdentifierCrosswalk.all_objects, tenant_id)
+    encounters = _scope(ClinicalEncounter.all_objects, tenant_id)
+    clinical_releases = _catalog_scope(ClinicalKnowledgeRelease.all_objects, tenant_id)
+    code_systems = _catalog_scope(FHIRCodeSystemRegistration.all_objects, tenant_id)
+    value_sets = _catalog_scope(FHIRValueSetRegistration.all_objects, tenant_id)
 
     open_order_statuses = {
         "DRAFT",
@@ -379,6 +383,93 @@ def build_hq_workspace_context(tenant_id):
                 for dispatch in dispatches.select_related("customer").order_by(
                     "-created_at"
                 )[:20]
+            ],
+        },
+        # Clinical decision support, terminology and encounters had no surface at
+        # all: the workspace carried counts for code systems and value sets, and
+        # the UI offered cards that linked back to the page they were on. These
+        # are the rows behind those counts.
+        #
+        # They come through the aggregate rather than the per-app collections
+        # because those are capability-gated and tenant-filtered, so a platform
+        # administrator -- who has no tenant -- gets a 403 from them and an empty
+        # list past it. _scope returns every tenant's rows when no tenant is
+        # selected, which is what "All tenants" means in the scope picker.
+        "clinical": {
+            "counts": {
+                "encounters": encounters.count(),
+                "knowledge_releases": clinical_releases.count(),
+                "active_knowledge_releases": clinical_releases.filter(is_active=True).count(),
+                "code_systems": code_systems.count(),
+                "value_sets": value_sets.count(),
+            },
+            "knowledge_releases": [
+                {
+                    "id": str(release.id),
+                    "code": release.code,
+                    "version": release.version,
+                    "source": release.source,
+                    "source_version": release.source_version,
+                    "licence": release.licence,
+                    "effective_date": release.effective_date,
+                    "expires_at": release.expires_at,
+                    "is_active": release.is_active,
+                    "classification": release.content_classification,
+                    # Truncated: enough to compare against a published digest
+                    # without turning the row into a wall of hex.
+                    "checksum": (release.checksum_sha256 or "")[:12],
+                }
+                for release in clinical_releases.order_by("-effective_date")[:20]
+            ],
+            "code_systems": [
+                {
+                    "id": str(system.id),
+                    "name": system.name,
+                    "title": system.title,
+                    "url": system.url,
+                    "version": system.version,
+                    "content_mode": system.content_mode,
+                    "is_global": system.is_global,
+                    "concept_count": len(system.concepts_json or []),
+                }
+                for system in code_systems.order_by("name")[:20]
+            ],
+            "value_sets": [
+                {
+                    "id": str(value_set.id),
+                    "name": value_set.name,
+                    "title": value_set.title,
+                    "url": value_set.url,
+                    "version": value_set.version,
+                    "is_global": value_set.is_global,
+                }
+                for value_set in value_sets.order_by("name")[:20]
+            ],
+            "encounters": [
+                {
+                    "id": str(encounter.id),
+                    "patient_name": " ".join(
+                        p for p in (encounter.patient.first_name, encounter.patient.last_name) if p
+                    ).strip() or encounter.patient.patient_number
+                    if encounter.patient else None,
+                    "status": encounter.status,
+                    "encounter_class": encounter.encounter_class,
+                    "practitioner_name": (
+                        (encounter.practitioner.professional_name or "").strip()
+                        or " ".join(
+                            p for p in (
+                                encounter.practitioner.first_name,
+                                encounter.practitioner.last_name,
+                            ) if p
+                        ).strip()
+                    ) if encounter.practitioner else None,
+                    "start_time": encounter.start_time,
+                    "end_time": encounter.end_time,
+                    "reason_code": encounter.reason_code,
+                }
+                for encounter in encounters.select_related(
+                    "patient", "practitioner"
+                ).order_by("-start_time")[:20]
             ],
         },
         "governance": {
