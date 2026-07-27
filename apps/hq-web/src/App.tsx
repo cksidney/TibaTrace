@@ -1133,7 +1133,7 @@ function PeopleView({
 
       <section className="content-grid content-grid-primary">
         <article className="panel">
-          <PanelHeader eyebrow="Care records" title="Recently updated patients" actionHref="/admin/patients/patient/" actionLabel="Manage patients" />
+          <PanelHeader eyebrow="Care records" title="Recently updated patients" actionHref="#people" actionLabel="Manage patients" />
           {patients.length ? (
             <div className="table-scroll">
               <table>
@@ -1155,7 +1155,7 @@ function PeopleView({
         </article>
 
         <article className="panel">
-          <PanelHeader eyebrow="Clinical workforce" title="Practitioner verification" actionHref="/admin/practitioners/practitioner/" actionLabel="Manage practitioners" />
+          <PanelHeader eyebrow="Clinical workforce" title="Practitioner verification" actionHref="#people" actionLabel="Manage practitioners" />
           {practitioners.length ? (
             <div className="table-scroll">
               <table>
@@ -1178,7 +1178,7 @@ function PeopleView({
       </section>
 
       <article className="panel">
-        <PanelHeader eyebrow="Commercial records" title="Customer directory" actionHref="/admin/customers/customer/" actionLabel="Manage customers" />
+        <PanelHeader eyebrow="Commercial records" title="Customer directory" actionHref="#people" actionLabel="Manage customers" />
         {customers.length ? (
           <div className="table-scroll">
             <table>
@@ -1772,7 +1772,7 @@ function CommerceView({
 
       <section className="content-grid content-grid-primary">
         <article className="panel">
-          <PanelHeader eyebrow="Order book" title="Recent sales orders" actionHref="/admin/sales/salesorder/" actionLabel="Manage orders" />
+          <PanelHeader eyebrow="Order book" title="Recent sales orders" actionHref="#commerce" actionLabel="Manage orders" />
           {orders.length ? (
             <div className="table-scroll">
               <table>
@@ -1795,7 +1795,7 @@ function CommerceView({
         </article>
 
         <article className="panel">
-          <PanelHeader eyebrow="Outbound logistics" title="Recent dispatches" actionHref="/admin/sales/dispatchorder/" actionLabel="Manage dispatches" />
+          <PanelHeader eyebrow="Outbound logistics" title="Recent dispatches" actionHref="#commerce" actionLabel="Manage dispatches" />
           {dispatches.length ? (
             <div className="table-scroll">
               <table>
@@ -1821,10 +1821,10 @@ function CommerceView({
       <article className="panel workflow-panel">
         <PanelHeader eyebrow="Order-to-delivery" title="Fulfilment workspaces" />
         <div className="workflow-grid">
-          <WorkflowLink href="/admin/sales/quotation/" icon="docs" step="01" title="Quotations" detail="Price and approve customer demand." />
-          <WorkflowLink href="/admin/sales/salesorder/" icon="store" step="02" title="Sales orders" detail="Control holds, allocation and approval." />
-          <WorkflowLink href="/admin/sales/pickingwave/" icon="inventory" step="03" title="Pick & pack" detail="Coordinate warehouse fulfilment." />
-          <WorkflowLink href="/admin/sales/deliveryrecord/" icon="check" step="04" title="Delivery & returns" detail="Capture proof, exceptions and returns." />
+          <WorkflowLink href="#commerce" icon="docs" step="01" title="Quotations" detail="Price and approve customer demand." />
+          <WorkflowLink href="#commerce" icon="store" step="02" title="Sales orders" detail="Control holds, allocation and approval." />
+          <WorkflowLink href="#commerce" icon="inventory" step="03" title="Pick & pack" detail="Coordinate warehouse fulfilment." />
+          <WorkflowLink href="#commerce" icon="check" step="04" title="Delivery & returns" detail="Capture proof, exceptions and returns." />
         </div>
       </article>
     </>
@@ -2035,9 +2035,9 @@ function ClinicalView({
       <article className="panel workflow-panel">
         <PanelHeader eyebrow="Governance workspaces" title="Clinical administration" />
         <div className="workflow-grid">
-          <WorkflowLink href="/admin/clinical/clinicalencounter/" icon="clinical" step="01" title="Encounters" detail="Review clinical encounters in scope." />
-          <WorkflowLink href="/admin/cds/clinicalknowledgerelease/" icon="shield" step="02" title="Decision support" detail="Manage active clinical knowledge releases." />
-          <WorkflowLink href="/admin/terminology/fhircodesystemregistration/" icon="database" step="03" title="Terminology" detail="Govern code systems and value sets." />
+          <WorkflowLink href="#clinical" icon="clinical" step="01" title="Encounters" detail="Review clinical encounters in scope." />
+          <WorkflowLink href="#clinical" icon="shield" step="02" title="Decision support" detail="Manage active clinical knowledge releases." />
+          <WorkflowLink href="#clinical" icon="database" step="03" title="Terminology" detail="Govern code systems and value sets." />
           <WorkflowLink href="/api/fhir/r4/metadata" icon="external" step="04" title="FHIR gateway" detail="Inspect the R4 capability statement." />
         </div>
       </article>
@@ -2046,17 +2046,17 @@ function ClinicalView({
         <article className="panel">
           <PanelHeader eyebrow="Prescription governance" title="Active dispensing" />
           <div className="priority-list">
-            <PriorityItem action="Open prescriptions" detail="Active prescribing and dispensing workflow" href="/admin/prescription/prescription/" icon="clinical" value={metricValue(overview, 'Open prescriptions')} tone={metricValue(overview, 'Open prescriptions') ? 'amber' : 'teal'} />
-            <PriorityItem action="Clinical substitutions" detail="Pharmacist-initiated therapeutic substitutions" href="/admin/prescription/clinicalsubstitution/" icon="activity" value={0} valueLabel="View" />
-            <PriorityItem action="Dispensing labels" detail="Audit label generation and reprints" href="/admin/prescription/dispensinglabel/" icon="docs" value={0} valueLabel="Audit" />
+            <PriorityItem action="Open prescriptions" detail="Active prescribing and dispensing workflow" href="#clinical" icon="clinical" value={metricValue(overview, 'Open prescriptions')} tone={metricValue(overview, 'Open prescriptions') ? 'amber' : 'teal'} />
+            <PriorityItem action="Clinical substitutions" detail="Pharmacist-initiated therapeutic substitutions" href="#clinical" icon="activity" value={0} valueLabel="View" />
+            <PriorityItem action="Dispensing labels" detail="Audit label generation and reprints" href="#clinical" icon="docs" value={0} valueLabel="Audit" />
           </div>
         </article>
         <article className="panel">
           <PanelHeader eyebrow="Formulary" title="Medicines & pricing" />
           <div className="command-links">
-            <CommandLink href="/admin/medicines/commercialsku/" title="Commercial SKUs" detail="Packaged medicines and identifiers" icon="inventory" />
-            <CommandLink href="/admin/medicines/activesubstance/" title="Active substances" detail="Governed substance register" icon="clinical" />
-            <CommandLink href="/admin/pricing/pricebook/" title="Price books" detail="Formulary pricing and live versions" icon="building" />
+            <CommandLink href="#catalogue" title="Commercial SKUs" detail="Packaged medicines and identifiers" icon="inventory" />
+            <CommandLink href="#catalogue" title="Active substances" detail="Governed substance register" icon="clinical" />
+            <CommandLink href="#pricing" title="Price books" detail="Formulary pricing and live versions" icon="building" />
           </div>
         </article>
       </section>
@@ -2133,10 +2133,10 @@ function AccessView({
       <article className="panel workflow-panel">
         <PanelHeader eyebrow="Identity administration" title="Access management workspaces" />
         <div className="workflow-grid">
-          <WorkflowLink href="/admin/identity/user/" icon="users" step="01" title="Users" detail="Accounts, status and workspace assignment." />
-          <WorkflowLink href="/admin/identity/role/" icon="shield" step="02" title="Roles" detail="Capability bundles and system roles." />
-          <WorkflowLink href="/admin/identity/userrole/" icon="security" step="03" title="Assignments" detail="Audited user-to-role grants." />
-          <WorkflowLink href="/admin/identity/serviceaccount/" icon="database" step="04" title="Service accounts" detail="Machine identities and capabilities." />
+          <WorkflowLink href="#access" icon="users" step="01" title="Users" detail="Accounts, status and workspace assignment." />
+          <WorkflowLink href="#access" icon="shield" step="02" title="Roles" detail="Capability bundles and system roles." />
+          <WorkflowLink href="#access" icon="security" step="03" title="Assignments" detail="Audited user-to-role grants." />
+          <WorkflowLink href="#access" icon="database" step="04" title="Service accounts" detail="Machine identities and capabilities." />
         </div>
       </article>
 
@@ -2149,7 +2149,7 @@ function AccessView({
         <>
           <section className="content-grid content-grid-primary">
             <article className="panel">
-              <PanelHeader eyebrow="Cash control" title="Open register sessions" actionHref="/admin/pos_shift/shiftrecord/" actionLabel="View all" />
+              <PanelHeader eyebrow="Cash control" title="Open register sessions" actionHref="#cash" actionLabel="View all" />
               {sessions === null ? (
                 <p className="muted-cell">Loading register sessions…</p>
               ) : sessions.length === 0 ? (
@@ -2178,7 +2178,7 @@ function AccessView({
             </article>
 
             <article className="panel">
-              <PanelHeader eyebrow="Financial audit" title="Cash variance watchlist" actionHref="/admin/pos_shift/shiftreport/?has_variance=1" actionLabel="View all" />
+              <PanelHeader eyebrow="Financial audit" title="Cash variance watchlist" actionHref="#cash" actionLabel="View all" />
               {variances === null ? (
                 <p className="muted-cell">Loading variance reports…</p>
               ) : variances.length === 0 ? (
@@ -2207,7 +2207,7 @@ function AccessView({
           </section>
 
           <article className="panel">
-            <PanelHeader eyebrow="Custody audit" title="Forced register closures" actionHref="/admin/pos_shift/shiftreport/?forced_closure=1" actionLabel="View all" />
+            <PanelHeader eyebrow="Custody audit" title="Forced register closures" actionHref="#cash" actionLabel="View all" />
             {forcedClosures === null ? (
               <p className="muted-cell">Loading forced closures…</p>
             ) : forcedClosures.length === 0 ? (
@@ -2272,7 +2272,7 @@ function PanelHeader({
   readonly onAction?: () => void;
   readonly title: string;
 }) {
-  const destination = actionHref ? hqDestinationFor(actionHref) : '';
+  const destination = actionHref ?? '';
   return (
     <header className="panel-header">
       <div><p className="eyebrow">{eyebrow}</p><h2>{title}</h2></div>
@@ -2300,7 +2300,7 @@ function Readiness({ detail, icon, label, status }: { readonly detail: string; r
 }
 
 function CommandLink({ detail, href, icon, title }: { readonly detail: string; readonly href: string; readonly icon: IconName; readonly title: string }) {
-  const destination = hqDestinationFor(href);
+  const destination = href;
   const content = <><span><Icon name={icon} /></span><div><strong>{title}</strong><small>{detail}</small></div>{!isCurrentHqDestination(destination) ? <Icon className="command-arrow" name="arrow" /> : null}</>;
   return isCurrentHqDestination(destination)
     ? <div className="command-link-static">{content}</div>
@@ -2308,7 +2308,7 @@ function CommandLink({ detail, href, icon, title }: { readonly detail: string; r
 }
 
 function WorkflowLink({ detail, href, icon, step, title }: { readonly detail: string; readonly href: string; readonly icon: IconName; readonly step: string; readonly title: string }) {
-  const destination = hqDestinationFor(href);
+  const destination = href;
   const content = (
     <>
       <div className="workflow-top"><span><Icon name={icon} /></span><small>{step}</small></div>
@@ -2326,7 +2326,7 @@ function WorkflowLink({ detail, href, icon, step, title }: { readonly detail: st
 }
 
 function PriorityItem({ action, detail, href, icon, tone = 'amber', value, valueLabel }: { readonly action: string; readonly detail: string; readonly href: string; readonly icon: IconName; readonly tone?: string; readonly value: number; readonly valueLabel?: string }) {
-  const destination = hqDestinationFor(href);
+  const destination = href;
   const content = (
     <>
       <span className={`priority-icon priority-${tone}`}><Icon name={icon} /></span>
@@ -2954,36 +2954,6 @@ function navigateTo(view: WorkspaceView, onNavigate: (view: WorkspaceView) => vo
   window.location.hash = view;
   onNavigate(view);
   window.scrollTo({ top: 0, behavior: 'smooth' });
-}
-
-function hqDestinationFor(href: string) {
-  if (!href.startsWith('/admin/')) return href;
-  const routes: readonly [string, WorkspaceView][] = [
-    ['/admin/tenancy/', 'network'],
-    ['/admin/organizations/', 'network'],
-    ['/admin/patients/', 'people'],
-    ['/admin/practitioners/', 'people'],
-    ['/admin/customers/', 'people'],
-    ['/admin/medicines/', 'catalogue'],
-    ['/admin/procurement/', 'operations'],
-    ['/admin/inventory/', 'operations'],
-    ['/admin/sales/', 'commerce'],
-    ['/admin/pricing/', 'pricing'],
-    ['/admin/pos_shift/', 'cash'],
-    ['/admin/insurance/', 'insurance'],
-    ['/admin/prescription/', 'clinical'],
-    ['/admin/clinical/', 'clinical'],
-    ['/admin/cds/', 'clinical'],
-    ['/admin/terminology/', 'clinical'],
-    ['/admin/audit/', 'governance'],
-    ['/admin/documents/', 'governance'],
-    ['/admin/workflows/', 'governance'],
-    ['/admin/notifications/', 'governance'],
-    ['/admin/crosswalks/', 'governance'],
-    ['/admin/identity/', 'access'],
-  ];
-  const route = routes.find(([prefix]) => href.startsWith(prefix));
-  return `#${route?.[1] ?? 'access'}`;
 }
 
 function isCurrentHqDestination(destination: string) {
