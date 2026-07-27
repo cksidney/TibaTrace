@@ -109,13 +109,25 @@ function OperationsConsole({
   const next = nextAction(stages);
   const patient: PatientSummary | null = state.selected
     ? {
-        fullName: state.selected.patient,
-        reference: state.selected.dispensing_number,
-        // Allergy status is unknown until the clinical screening supplies it,
-        // and must render as unknown rather than as "none known".
-        allergyStatus: 'UNKNOWN',
+        // The resolved name, not `patient`, which is the row's UUID. This
+        // banner is what an operator reads to confirm who they are dispensing
+        // for, and it previously showed them a foreign key.
+        fullName: state.selected.patient_name ?? 'Name not recorded',
+        reference: state.selected.patient_number ?? state.selected.dispensing_number,
+        ...(state.selected.patient_date_of_birth
+          ? { dateOfBirth: state.selected.patient_date_of_birth }
+          : {}),
+        ...(state.selected.patient_sex ? { sex: state.selected.patient_sex } : {}),
+        // An empty list means the record is silent, which is not the clinical
+        // claim "no known allergies" -- so it maps to UNKNOWN, the amber
+        // action-required state, rather than to the green NONE_KNOWN. Only a
+        // positive assertion of no allergies would justify the latter, and the
+        // server has no field that makes one.
+        allergyStatus: state.selected.allergies.length > 0 ? 'KNOWN_ALLERGY' : 'UNKNOWN',
         badges: [],
-        prescriptionRef: state.selected.prescription,
+        ...(state.selected.prescription_number
+          ? { prescriptionRef: state.selected.prescription_number }
+          : {}),
       }
     : null;
 

@@ -78,9 +78,22 @@ export interface DispensingLineDTO {
   status: string;
 }
 
+export interface DispensingAllergyDTO {
+  allergen_name: string;
+  severity: string | null;
+  reaction: string | null;
+  verification_status: string | null;
+}
+
 export interface DispensingEpisodeDTO {
   id: string;
   dispensing_number: string;
+  /**
+   * Foreign keys. These are UUIDs, not anything a person can read, and must
+   * never reach a screen: both POS clients rendered `patient` as the patient's
+   * name, so an operator verifying identity against the box saw
+   * `3f2a8c14-...`. Use the resolved fields below.
+   */
   prescription: string;
   patient: string;
   branch: string;
@@ -113,6 +126,28 @@ export interface DispensingEpisodeDTO {
   counselling_status: string;
   notes: string;
   idempotency_key: string;
+
+  /**
+   * Who is actually at the counter.
+   *
+   * Every one of these is null when the underlying record has no value. Render
+   * absence as absence: a client that substitutes a placeholder for a name or a
+   * date of birth is showing a different person than the one being dispensed to.
+   */
+  patient_name: string | null;
+  patient_number: string | null;
+  patient_sex: string | null;
+  patient_date_of_birth: string | null;
+  prescription_number: string | null;
+  prescriber_name: string | null;
+  insurer_name: string | null;
+  scheme_name: string | null;
+  membership_number: string | null;
+  /**
+   * Recorded allergies. An empty array means "none recorded", which is not the
+   * same clinical claim as "no allergies" -- the UI must distinguish them.
+   */
+  allergies: DispensingAllergyDTO[];
   lines: DispensingLineDTO[];
 }
 

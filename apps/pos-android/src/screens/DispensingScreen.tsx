@@ -60,10 +60,16 @@ export function DispensingScreen({
   return (
     <View style={styles.root}>
       <View style={styles.brand}><TibaTraceBrand /></View>
+      {/* The resolved name, not `patient`, which is the row's UUID. This banner
+          is what an operator reads to confirm who they are dispensing for.
+
+          An empty allergy list means the record is silent, which is not the
+          clinical claim "no known allergies", so it stays UNKNOWN rather than
+          becoming a reassuring NONE_KNOWN. */}
       <PatientBanner
-        fullName={episode.patient}
-        reference={episode.dispensing_number}
-        allergyStatus="UNKNOWN"
+        fullName={episode.patient_name ?? 'Name not recorded'}
+        reference={episode.patient_number ?? episode.dispensing_number}
+        allergyStatus={episode.allergies.length > 0 ? 'KNOWN_ALLERGY' : 'UNKNOWN'}
       />
 
       <ScrollView contentContainerStyle={styles.scroll}>

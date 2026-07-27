@@ -416,7 +416,12 @@ function QueueScreen({
         >
           <View>
             <Text style={styles.queueNumber}>{item.dispensing_number}</Text>
-            <Text style={styles.muted}>{item.patient}</Text>
+            {/* The resolved name, not `patient`, which is the row's UUID.
+                This list is how an operator picks the right episode. */}
+            <Text style={styles.muted}>
+              {item.patient_name ?? 'Name not recorded'}
+              {item.patient_number ? ` · ${item.patient_number}` : ''}
+            </Text>
           </View>
           <Text style={styles.queueStatus}>{item.status.replace(/_/g, ' ')}</Text>
         </Pressable>
