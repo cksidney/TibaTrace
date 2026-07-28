@@ -192,3 +192,54 @@ This is operational visibility, not cash-control enforcement. Payment and
 supply endpoints do not yet bind a dispensing episode to `RegisterSession`.
 The new UI therefore does **not** claim to authorise a sale, and full POS
 certification remains blocked by the risks in Sections 6–9.
+
+## 11. Clinical Decision Support and Drug Interaction Banner
+
+### Current component disposition
+
+| Required responsibility | Current component | Disposition | Scope |
+|---|---|---|---|
+| Persistent patient safety context | `PatientSafetyBanner` | Retained | Windows prescription workspace |
+| Clinical safety rail and blocker detail | `ClinicalRail` | Retained | Windows prescription workspace |
+| Drug-interaction and finding cards | `ClinicalRail` finding cards | Reused | Windows prescription workspace |
+| Compact clinical finding summary | `ClinicalSummaryCard` | Reused and refactored | Android dispensing and payment |
+| Clinical status badge | `StatusBadge` | Retained | Windows clinical components |
+| Pharmacist review surface | `PharmacistReview` | Retained, incomplete | Windows only; native decision completion is not certified |
+| Clinical review drawer | None | Absent | Android has no expanded review workspace |
+
+The native clients do not calculate interaction authority. They submit the
+episode's actual patient, prescription, supplied/prescribed SKU, quantity and
+dose instructions to the CDS API. `PosClinicalBasketLineSerializer` preserves
+the native `sku_id` contract and accepts the legacy `commercial_sku_id` alias,
+so `PosTransactionContextBuilder` can resolve the clinical medicine and its
+ingredients. The system no longer relies on an invented medicine label.
+
+`PosClinicalScreening`, `PosClinicalFinding`, `PosClinicalDecision`,
+`PosClinicalOverride`, `PosOfflineClinicalPackage` and
+`PosClinicalAuditEvent` remain the backend authority. The clients render their
+returned screening state; no Windows, Android or shared-client code is an
+authoritative interaction engine.
+
+### Screen placement and current safety boundary
+
+- Windows retains the patient banner and clinical rail in the prescription
+  workspace. Unresolved findings remain in the transaction context while the
+  operator works through the workflow.
+- Android retains `ClinicalSummaryCard` in dispensing and now in payment. The
+  card exposes the current screening state, finding count, severity and
+  required action rather than hiding clinical state when payment is focused.
+- Server clinical/payment/supply gates remain the authority for prohibited
+  transitions. A client cannot clear a blocker locally.
+- The signed offline clinical package service remains the only supported offline
+  clinical authority. It must not be represented as equivalent to a current
+  online screen when the package is expired or invalid.
+
+### Not yet certified
+
+The banner work is **not** a completion of clinical workflow certification.
+Native pharmacist decision/override actions, an Android expanded findings
+workspace, immutable end-to-end restore of decision and override state after
+every restart/resume path, and automated tests for all clinical invalidation
+triggers remain outstanding. Retail medicine screening, insurance-adjusted
+quantity re-screening and inventory-substitution re-screening also require
+explicit integration before they can be certified.

@@ -17,6 +17,7 @@ from apps.cds.pos_screening_services import (
     PosOfflinePackageService,
     PosPharmacistReviewService,
 )
+from apps.cds.pos_api.serializers import PosClinicalScreeningRequestSerializer
 from apps.medicines.models import (
     ActiveSubstance,
     ClinicalMedicinalProduct,
@@ -189,6 +190,26 @@ def test_context_builder_resolves_sku_to_ingredients(tenant, basket_lines, activ
     from apps.cds.pos_screening_services import PosTransactionContextBuilder
     ctx = PosTransactionContextBuilder.build_context(tenant=tenant, basket_lines=basket_lines)
     assert active_ingredient.code in ctx["ingredient_codes"]
+
+
+@pytest.mark.parametrize(
+    ("basket_line", "expected_sku_id"),
+    [
+        ({"sku_id": "native-pos-sku", "quantity": 1}, "native-pos-sku"),
+        ({"commercial_sku_id": "legacy-sku", "quantity": 1}, "legacy-sku"),
+    ],
+)
+def test_screening_request_preserves_the_pos_sku_contract(basket_line, expected_sku_id):
+    serializer = PosClinicalScreeningRequestSerializer(
+        data={
+            "transaction_id": "clinical-contract-test",
+            "device_id": "device-1",
+            "basket_lines": [basket_line],
+        }
+    )
+
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["basket_lines"][0]["sku_id"] == expected_sku_id
 
 def test_context_builder_includes_patient_allergies(tenant, basket_lines, patient):
     from apps.cds.pos_screening_services import PosTransactionContextBuilder

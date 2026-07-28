@@ -10,12 +10,14 @@ from apps.cds.pos_screening_models import (
 
 class PosClinicalBasketLineSerializer(serializers.Serializer):
     line_id = serializers.CharField(required=False, allow_blank=True)
+    sku_id = serializers.CharField(required=False, allow_blank=True)
+    clinical_product_id = serializers.CharField(required=False, allow_blank=True)
     commercial_sku_id = serializers.CharField(required=False, allow_blank=True)
     clinical_medicinal_product_id = serializers.CharField(required=False, allow_blank=True)
     manufactured_medicinal_product_id = serializers.CharField(required=False, allow_blank=True)
     active_ingredient_ids = serializers.ListField(child=serializers.CharField(), required=False)
     prescription_item_id = serializers.CharField(required=False, allow_blank=True)
-    medicine_name = serializers.CharField(required=True)
+    medicine_name = serializers.CharField(required=False, allow_blank=True, default="")
     strength = serializers.CharField(required=False, allow_blank=True)
     dosage_form = serializers.CharField(required=False, allow_blank=True)
     route = serializers.CharField(required=False, allow_blank=True)
@@ -31,6 +33,13 @@ class PosClinicalBasketLineSerializer(serializers.Serializer):
     batch_number = serializers.CharField(required=False, allow_blank=True)
     batch_expiry_date = serializers.DateField(required=False, allow_null=True)
     batch_recalled = serializers.BooleanField(required=False, allow_null=True)
+
+    def validate(self, attrs):
+        attrs["sku_id"] = attrs.get("sku_id") or attrs.get("commercial_sku_id", "")
+        attrs["clinical_product_id"] = (
+            attrs.get("clinical_product_id") or attrs.get("clinical_medicinal_product_id", "")
+        )
+        return attrs
 
 class PosClinicalScreeningRequestSerializer(serializers.Serializer):
     transaction_id = serializers.CharField(required=True)

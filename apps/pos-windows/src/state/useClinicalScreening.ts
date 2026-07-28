@@ -34,13 +34,14 @@ export interface ClinicalScreeningState {
 interface EpisodeLike {
   readonly id: string;
   readonly dispensing_number: string;
-  readonly patient_id?: string;
-  readonly prescription_id?: string;
+  readonly patient?: string;
+  readonly prescription?: string;
   readonly lines?: readonly {
     readonly id: string;
-    readonly sku_id?: string;
-    readonly clinical_product_id?: string;
-    readonly quantity_to_supply?: number;
+    readonly prescribed_sku?: string;
+    readonly supplied_sku?: string;
+    readonly quantity_authorized?: string;
+    readonly dosage_label_instructions?: string;
   }[];
 }
 
@@ -136,14 +137,14 @@ export function useClinicalScreening(
           // creating a new one on every keystroke.
           transaction_id: `POS-WINDOWS-${episode.dispensing_number || episode.id}`,
           device_id: deviceId,
-          patient_id: episode.patient_id ?? null,
-          prescription_id: episode.prescription_id ?? null,
+          patient_id: episode.patient ?? null,
+          prescription_id: episode.prescription ?? null,
           dispensing_episode_id: episode.id,
           basket_lines: lines.map((line) => ({
             line_id: line.id,
-            sku_id: line.sku_id ?? null,
-            clinical_product_id: line.clinical_product_id ?? null,
-            quantity: line.quantity_to_supply ?? 0,
+            sku_id: line.supplied_sku || line.prescribed_sku || null,
+            quantity: Number(line.quantity_authorized ?? 0),
+            dose_instructions: line.dosage_label_instructions ?? '',
           })),
         }),
       });

@@ -303,6 +303,7 @@ function PosWorkspace({ onLogout }: { readonly onLogout: () => Promise<void> }) 
           canTakePayment={effectiveGate.canTakePayment}
           blockedReason={effectiveGate.canTakePayment ? '' : effectiveGate.blockedReason}
           busy={busy}
+          clinical={clinical}
           onTakePayment={(tender: PaymentTenderType, amount: string, reference: string) => {
             const idempotencyKey = actionIdempotencyKey(
               episode.id,
@@ -553,6 +554,7 @@ async function screenClinically(
         line_id: line.id,
         sku_id: line.supplied_sku || line.prescribed_sku,
         quantity: Number(line.quantity_authorized),
+        dose_instructions: line.dosage_label_instructions,
       })),
     }),
   });

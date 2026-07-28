@@ -11,6 +11,8 @@ import { TENDER_OPTIONS, paymentPermitsSupply } from '@dawatrace/shared/dispensi
 import { useState } from 'react';
 
 import { liveRegionFor } from '../components/tibatrace/liveRegion';
+import { ClinicalSummaryCard } from '../components/tibatrace/ClinicalSummaryCard';
+import type { AndroidClinicalSummary } from '../components/tibatrace/ClinicalSummaryCard';
 import { TibaTraceBrand } from '../components/tibatrace/TibaTraceBrand';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
@@ -32,6 +34,7 @@ export function PaymentScreen({
   canTakePayment,
   blockedReason,
   busy,
+  clinical,
   onTakePayment,
 }: {
   readonly paymentState: PaymentState;
@@ -40,6 +43,7 @@ export function PaymentScreen({
   readonly canTakePayment: boolean;
   readonly blockedReason: string;
   readonly busy: boolean;
+  readonly clinical: AndroidClinicalSummary;
   readonly onTakePayment: (tender: PaymentTenderType, amount: string, reference: string) => void;
 }) {
   const [tender, setTender] = useState<PaymentTenderType | 'SPLIT'>('CASH');
@@ -55,6 +59,7 @@ export function PaymentScreen({
     <ScrollView style={styles.scroll} contentContainerStyle={styles.root}>
       <TibaTraceBrand />
       <Text style={styles.heading}>Payment</Text>
+      <ClinicalSummaryCard summary={clinical} />
 
       <View style={styles.amounts}>
         <Amount label="Due" value={amountDue ?? 'Not priced'} />

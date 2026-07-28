@@ -25,6 +25,8 @@ certification.
   — passed.
 - `.venv/bin/pytest -c backend/pytest.ini backend/tests/test_pos_retail_transactions.py backend/tests/test_pos_shift_api.py backend/tests/test_pos_dispensing_controls.py -q`
   — passed.
+- `.venv/bin/pytest -c backend/pytest.ini backend/tests/test_pos_clinical_screening.py backend/tests/test_pos_clinical_authority.py backend/tests/test_pos_offline_package_signing.py backend/tests/test_pos_offline_dispensing.py -q`
+  — passed.
 - `npm run build --workspace=@dawatrace/pos-windows` — passed.
 - `npm run build --workspace=@dawatrace/pos-android` — passed.
 
@@ -71,9 +73,9 @@ repository requires the Django 5.1 API. The repository `.venv` runs Django
 | 32 | Patient identity banner | Implemented | Resolved patient identity is displayed without invented data. |
 | 33 | Allergy status | Implemented | Empty allergy data is rendered as unknown, not “none”. |
 | 34 | Prescription workflow ribbon | Partial | Windows ribbon exists; Android uses staged navigation. |
-| 35 | Clinical screening | Implemented | Native actions use authoritative screening output. |
-| 36 | Critical clinical blockers | Implemented | Clinical and payment/supply gates surface blocking states. |
-| 37 | Pharmacist review panel | Partial | Windows review components exist; end-to-end decision flow is incomplete. |
+| 35 | Clinical screening | Implemented for prescription dispensing | Native actions submit actual episode identifiers under the server-recognised `sku_id` contract; the backend resolves clinical ingredients and returns authoritative output. Retail screening remains incomplete. |
+| 36 | Critical clinical blockers | Implemented for existing guarded transitions | Backend gates remain authoritative, Windows retains its safety rail and Android retains a compact clinical summary during payment. Full preparation/final-check/collection persistence is not yet certified. |
+| 37 | Pharmacist review panel | Partial | Windows review components exist; native decision and override completion is incomplete. |
 | 38 | Controlled-medicine verification | Partial | Backend/client capability exists; not a complete native workspace. |
 | 39 | Insurance context | Partial | Episode data exposes cover identity; claim and preauthorisation UI is absent. |
 | 40 | Per-line insurance state | Absent | Native apps do not show coverage per dispensing line. |
@@ -81,7 +83,7 @@ repository requires the Django 5.1 API. The repository `.venv` runs Django
 | 42 | Batch and expiry verification | Partial | Backend/client capability exists; no complete scanner-led UI. |
 | 43 | Preparation workflow | Partial | Dispensing workspace shows lines; preparation scan/label actions are incomplete. |
 | 44 | Independent final check | Partial | Windows components exist; separation-of-duties flow is incomplete. |
-| 45 | Payment amount and status | Implemented | Server-authoritative due and settled amounts are displayed. |
+| 45 | Payment amount and status | Implemented | Server-authoritative due and settled amounts are displayed; Android payment retains the current clinical summary. |
 | 46 | Cash payment | Implemented | Existing dispensing payment path is guarded and idempotent. |
 | 47 | Card payment | Partial | Manual approval tender only; terminal integration is absent. |
 | 48 | M-PESA payment | Blocked | Tender is disabled; no settlement integration exists. |
@@ -118,6 +120,26 @@ Full production certification requires all of the following:
    physical printer, drawer and scanner behaviour.
 6. Run end-to-end workflow, accessibility and visual validation on the mandated
    Windows and Android device profiles.
+7. Complete and test native pharmacist review and scoped override actions,
+   Android expanded finding review, retail-medicine screening, clinical
+   invalidation after patient/medicine/quantity/substitution changes, and
+   restart/resume restoration of clinical decision and override state.
 
 Until those conditions are met, this code should be released only as a
 controlled clinical-dispensing pilot, not as a complete pharmacy POS system.
+
+## Clinical Decision Support and Drug Interaction Banner
+
+Windows retains `PatientSafetyBanner` and `ClinicalRail`; Android retains
+`ClinicalSummaryCard` in both dispensing and payment. The clients render the
+authoritative screening result returned by the CDS API, not a locally calculated
+interaction result. The request contract preserves `sku_id` (and accepts the
+legacy `commercial_sku_id` alias) so the server can resolve the supplied
+medicine before evaluating rules.
+
+This resolves a critical data-integrity defect in the client/server boundary and
+keeps clinical state visible when the Android operator enters payment. It does
+**not** certify the whole clinical workflow: native review and override actions,
+Android expanded findings, all invalidation triggers and full restoration across
+every lifecycle transition still require implementation and evidence. Therefore
+the decision at the top of this record remains exactly `POS_UI_UX_BLOCKED`.
