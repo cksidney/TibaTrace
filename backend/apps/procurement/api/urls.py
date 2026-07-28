@@ -8,6 +8,7 @@ from apps.procurement.api.views import (
     PurchaseRequisitionViewSet,
     ReceivedBatchViewSet,
     ReceivingInspectionViewSet,
+    ReceivingSessionViewSet,
     RequestForQuotationViewSet,
     SupplierProductAgreementViewSet,
     SupplierQualificationViewSet,
@@ -24,6 +25,7 @@ router.register(r"rfqs", RequestForQuotationViewSet, basename="rfq")
 router.register(r"requisitions", PurchaseRequisitionViewSet, basename="purchase-requisition")
 router.register(r"purchase-orders", PurchaseOrderViewSet, basename="purchase-order")
 router.register(r"goods-receipts", GoodsReceiptViewSet, basename="goods-receipt")
+router.register(r"receiving-sessions", ReceivingSessionViewSet, basename="receiving-session")
 router.register(r"received-batches", ReceivedBatchViewSet, basename="received-batch")
 router.register(r"inspections", ReceivingInspectionViewSet, basename="receiving-inspection")
 router.register(r"supplier-returns", SupplierReturnViewSet, basename="supplier-return")

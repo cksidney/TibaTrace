@@ -19,16 +19,23 @@ from apps.procurement.api.serializers import (
     BatchReleaseSerializer,
     GoodsReceiptCreateSerializer,
     GoodsReceiptSerializer,
+    PostGoodsReceiptSerializer,
     PurchaseOrderCreateSerializer,
     PurchaseOrderSerializer,
     PurchaseRequisitionCreateSerializer,
     PurchaseRequisitionSerializer,
+    QualityDecisionSerializer,
+    QuarantineReleaseSerializer,
     QuotationAwardSerializer,
     QuotationSubmitSerializer,
     ReceiveBatchSerializer,
     ReceivedBatchSerializer,
     ReceivingInspectionCreateSerializer,
     ReceivingInspectionSerializer,
+    ReceivingScanCreateSerializer,
+    ReceivingScanSerializer,
+    ReceivingSessionOpenSerializer,
+    ReceivingSessionSerializer,
     RequestForQuotationSerializer,
     RFQCreateSerializer,
     SupplierProductAgreementSerializer,
@@ -47,6 +54,7 @@ from apps.procurement.models import (
     PurchaseRequisition,
     ReceivedBatch,
     ReceivingInspection,
+    ReceivingSession,
     RequestForQuotation,
     Supplier,
     SupplierProductAgreement,
@@ -61,6 +69,7 @@ from apps.procurement.services import (
     PurchaseOrderService,
     PurchaseRequisitionService,
     QualityService,
+    ReceivingService,
     SourcingService,
     SupplierGovernanceService,
     SupplierQualificationService,
@@ -792,3 +801,110 @@ class RequestForQuotationViewSet(BaseProcurementViewSet):
             return _service_error(exc)
         rfq.refresh_from_db()
         return Response(self.get_serializer(rfq).data, status=status.HTTP_200_OK)
+
+
+class ReceivingSessionViewSet(BaseProcurementViewSet):
+    """Scan-based receiving.
+
+    The service existed with no route, so a delivery could only be received by
+    keying quantities against order lines. Scanning is what catches the case the
+    keyed path cannot: goods that were never on this order, and batches that
+    arrive already expired.
+    """
+
+    model = ReceivingSession
+    serializer_class = ReceivingSessionSerializer
+
+    def create(self, request, *args, **kwargs):
+        serializer = ReceivingSessionOpenSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        purchase_order = self.tenant_object(
+            PurchaseOrder, serializer.validated_data["purchase_order"], "purchase_order"
+        )
+        branch = self.tenant_object(Location, serializer.validated_data["branch"], "branch")
+        try:
+            session = ReceivingService.open_receiving_session(
+                tenant=self.current_tenant(),
+                purchase_order=purchase_order,
+                branch=branch,
+                delivery_note_number=serializer.validated_data["delivery_note_number"],
+                received_by=request.user,
+            )
+        except (DjangoValidationError, DjangoPermissionDenied) as exc:
+            return _service_error(exc)
+        return Response(self.get_serializer(session).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["post"], url_path="scan")
+    def scan(self, request, pk=None):
+        serializer = ReceivingScanCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        session = self.get_object()
+        sku = self.tenant_object(CommercialSKU, serializer.validated_data["sku_id"], "sku_id")
+        try:
+            scan = ReceivingService.record_scan(
+                session=session,
+                sku=sku,
+                scanned_barcode=serializer.validated_data["scanned_barcode"],
+                batch_number=serializer.validated_data["batch_number"],
+                expiry_date=serializer.validated_data["expiry_date"],
+                scanned_quantity=serializer.validated_data["scanned_quantity"],
+            )
+        except (DjangoValidationError, DjangoPermissionDenied) as exc:
+            return _service_error(exc)
+        return Response(ReceivingScanSerializer(scan).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["post"], url_path="post-grn")
+    def post_grn(self, request, pk=None):
+        """Turn the scanned session into a goods receipt.
+
+        Separate from scanning: the scans are what arrived, and posting is the
+        act of accepting them into stock.
+        """
+        serializer = PostGoodsReceiptSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        session = self.get_object()
+        destination = self.tenant_object(
+            Location, serializer.validated_data["destination_location"], "destination_location"
+        )
+        try:
+            receipt = ReceivingService.post_goods_receipt_note(
+                session=session, destination_location=destination, actor=request.user
+            )
+        except (DjangoValidationError, DjangoPermissionDenied) as exc:
+            return _service_error(exc)
+        return Response(GoodsReceiptSerializer(receipt).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["post"], url_path="release-quarantine")
+    def release_quarantine(self, request, pk=None):
+        """Record a quality decision releasing a quarantined batch.
+
+        QualityService.release_quarantined_batch had no route, so QualityDecision
+        was a table nothing could write. Quarantined stock could therefore only
+        be released through the routine batch release, which records no decision
+        and names nobody -- and quarantine exists precisely because somebody has
+        to decide.
+        """
+        serializer = QuarantineReleaseSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        session = self.get_object()
+        receipt = GoodsReceipt.all_objects.filter(
+            tenant_id=session.tenant_id, purchase_order=session.purchase_order
+        ).first()
+        if receipt is None:
+            return Response(
+                {"detail": "This session has no posted goods receipt yet."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        batch = self.tenant_object(
+            ReceivedBatch, serializer.validated_data["batch_id"], "batch_id"
+        )
+        try:
+            decision = QualityService.release_quarantined_batch(
+                goods_receipt=receipt,
+                batch=batch,
+                decision_by=request.user,
+                decision_notes=serializer.validated_data["decision_notes"],
+            )
+        except (DjangoValidationError, DjangoPermissionDenied) as exc:
+            return _service_error(exc)
+        return Response(QualityDecisionSerializer(decision).data, status=status.HTTP_201_CREATED)

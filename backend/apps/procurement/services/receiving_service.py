@@ -31,7 +31,19 @@ class ReceivingService:
         if purchase_order.status not in [PurchaseOrder.Status.SENT, PurchaseOrder.Status.ACKNOWLEDGED, PurchaseOrder.Status.PARTIALLY_RECEIVED]:
             raise ValidationError(f"Cannot receive goods for PO in status {purchase_order.status}")
 
-        session_num = f"RCV-{timezone.now().strftime('%Y%m%d')}-{ReceivingSession.all_objects.filter(tenant=tenant).count() + 1:04d}"
+        # Continued from the highest existing sequence, not a row count. A count
+        # reuses a number as soon as any session is removed, and the reused one
+        # is already in the audit trail against different goods.
+        prefix = f"RCV-{timezone.now().strftime('%Y%m%d')}-"
+        last = (
+            ReceivingSession.all_objects.filter(
+                tenant=tenant, session_number__startswith=prefix
+            )
+            .order_by("-session_number")
+            .values_list("session_number", flat=True)
+            .first()
+        )
+        session_num = f"{prefix}{(int(last.rsplit('-', 1)[1]) + 1 if last else 1):04d}"
         session = ReceivingSession.all_objects.create(
             tenant=tenant,
             session_number=session_num,

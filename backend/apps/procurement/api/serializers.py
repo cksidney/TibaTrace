@@ -7,8 +7,11 @@ from apps.procurement.models import (
     PurchaseOrderLine,
     PurchaseRequisition,
     PurchaseRequisitionLine,
+    QualityDecision,
     ReceivedBatch,
     ReceivingInspection,
+    ReceivingScan,
+    ReceivingSession,
     RequestForQuotation,
     RFQLine,
     Supplier,
@@ -519,3 +522,62 @@ class QuotationAwardSerializer(serializers.Serializer):
     quotation_id = serializers.UUIDField()
     #: Required by the service when the award is above the lowest quotation.
     justification = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+# ── scan-based receiving and quality decisions ───────────────────────────────
+
+
+class ReceivingScanSerializer(serializers.ModelSerializer):
+    sku_code = serializers.CharField(source="sku.sku_code", read_only=True)
+
+    class Meta:
+        model = ReceivingScan
+        fields = (
+            "id", "sku", "sku_code", "scanned_barcode", "batch_number",
+            "expiry_date", "scanned_quantity",
+        )
+
+
+class ReceivingSessionSerializer(serializers.ModelSerializer):
+    scans = ReceivingScanSerializer(many=True, read_only=True)
+    supplier_code = serializers.CharField(source="supplier.supplier_code", read_only=True)
+    po_number = serializers.CharField(source="purchase_order.po_number", read_only=True)
+
+    class Meta:
+        model = ReceivingSession
+        fields = (
+            "id", "session_number", "purchase_order", "po_number", "supplier",
+            "supplier_code", "branch", "delivery_note_number", "status", "scans",
+        )
+        read_only_fields = fields
+
+
+class ReceivingSessionOpenSerializer(serializers.Serializer):
+    purchase_order = serializers.UUIDField()
+    branch = serializers.UUIDField()
+    delivery_note_number = serializers.CharField(max_length=120)
+
+
+class ReceivingScanCreateSerializer(serializers.Serializer):
+    sku_id = serializers.UUIDField()
+    scanned_barcode = serializers.CharField(max_length=120, allow_blank=True, default="")
+    batch_number = serializers.CharField(max_length=120)
+    #: Required. The service refuses a batch that has already expired.
+    expiry_date = serializers.DateField()
+    scanned_quantity = serializers.DecimalField(max_digits=14, decimal_places=2)
+
+
+class PostGoodsReceiptSerializer(serializers.Serializer):
+    destination_location = serializers.UUIDField()
+
+
+class QualityDecisionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = QualityDecision
+        fields = "__all__"
+
+
+class QuarantineReleaseSerializer(serializers.Serializer):
+    batch_id = serializers.UUIDField()
+    #: Releasing quarantined stock is a decision somebody owns, so it is stated.
+    decision_notes = serializers.CharField()
