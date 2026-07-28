@@ -36,6 +36,7 @@ import {
 } from 'react-native';
 
 import type { AndroidClinicalSummary } from './components/tibatrace/ClinicalSummaryCard';
+import { OperationalStatusStrip } from './components/tibatrace/OperationalStatusStrip';
 import { TibaTraceBrand } from './components/tibatrace/TibaTraceBrand';
 import { createAndroidPosRuntime } from './native/runtime';
 import { SecureOfflineStore } from './offline/secureStore';
@@ -264,6 +265,12 @@ function PosWorkspace({ onLogout }: { readonly onLogout: () => Promise<void> }) 
           <Text style={styles.secondaryLabel}>Sign out</Text>
         </Pressable>
       </View>
+      <OperationalStatusStrip
+        apiBaseUrl={runtime.apiBaseUrl}
+        apiFetch={runtime.session.fetch.bind(runtime.session) as typeof fetch}
+        deviceId={deviceId}
+        operatorId={runtime.session.current?.userId ?? ''}
+      />
       {notice ? (
         <View accessibilityLiveRegion="assertive" style={styles.notice}>
           <Text style={styles.noticeText}>{notice}</Text>

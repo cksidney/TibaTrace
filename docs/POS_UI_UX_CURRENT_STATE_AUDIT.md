@@ -172,3 +172,23 @@ classes — is a multi-month team effort.
 It cannot be completed in a single session, and reporting it as complete would
 be the precise failure this codebase has been repeatedly corrected for: a
 confident claim with nothing behind it.
+
+## 10. 2026-07-28 operational-context update
+
+Windows and Android now consume the tenant-scoped, read-only register API and
+keep a compact operational strip visible below the product header. It resolves
+the current device only through an explicit `device_id` assignment and shows
+the matched branch, register, business day, accountable operator shift, device
+and printer health, and latest recorded synchronisation timestamp.
+
+The resolver is intentionally fail-closed in presentation: it reports
+`UNASSIGNED` when a device has no assignment and `ATTENTION` when an open
+register session, business day, operator shift or current health report cannot
+be proven. It never guesses from the first register in a tenant. Operator-shift
+matching now uses the stable operator UUID exposed by the tenant-scoped API,
+not a mutable username.
+
+This is operational visibility, not cash-control enforcement. Payment and
+supply endpoints do not yet bind a dispensing episode to `RegisterSession`.
+The new UI therefore does **not** claim to authorise a sale, and full POS
+certification remains blocked by the risks in Sections 6–9.

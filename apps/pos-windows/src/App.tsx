@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ClinicalRail } from './components/tibatrace/ClinicalRail.js';
 import { CollectionPanel, CounsellingPanel } from './components/tibatrace/CounsellingAndCollection.js';
 import { PatientSafetyBanner } from './components/tibatrace/PatientSafetyBanner.js';
+import { OperationalStatusBar } from './components/tibatrace/OperationalStatusBar.js';
 import { PaymentPanel } from './components/tibatrace/PaymentPanel.js';
 import { PrescriptionWorkspace } from './components/tibatrace/PrescriptionWorkspace.js';
 import type { PatientSummary } from './components/tibatrace/PatientSafetyBanner.js';
@@ -135,7 +136,7 @@ function OperationsConsole({
     <div
       style={{
         display: 'grid',
-        gridTemplateRows: 'auto auto auto 1fr auto',
+        gridTemplateRows: 'auto auto auto auto 1fr auto',
         height: '100vh',
         fontFamily: fontFamily.sans,
         background: surface.page,
@@ -143,6 +144,11 @@ function OperationsConsole({
       }}
     >
       <Header busy={state.busy} operator={session.username ?? session.userId} onLogout={onLogout} />
+      <OperationalStatusBar
+        apiFetch={apiFetch}
+        deviceId={session.deviceId}
+        operatorId={session.userId}
+      />
       <PatientSafetyBanner patient={patient} />
       <WorkflowRibbon stages={stages} />
 

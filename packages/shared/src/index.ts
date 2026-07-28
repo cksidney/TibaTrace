@@ -988,3 +988,4 @@ export * from "./clinical/index.js";
 export * from "./dispensing/index.js";
 export * from "./design-system/index.js";
 export * from "./auth/index.js";
+export * from "./operational/index.js";

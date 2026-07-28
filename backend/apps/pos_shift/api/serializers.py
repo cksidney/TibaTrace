@@ -62,13 +62,14 @@ class BusinessDaySerializer(serializers.ModelSerializer):
 
 
 class OperatorShiftSerializer(serializers.ModelSerializer):
+    operator_id = serializers.UUIDField(read_only=True)
     operator_username = serializers.CharField(source="operator.username", read_only=True)
     handed_over_to_username = serializers.SerializerMethodField()
 
     class Meta:
         model = OperatorShift
         fields = [
-            "id", "operator_username", "state", "started_at", "ended_at",
+            "id", "operator_id", "operator_username", "state", "started_at", "ended_at",
             "handed_over_to_username", "close_reason",
         ]
 

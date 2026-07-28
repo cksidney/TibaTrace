@@ -169,6 +169,15 @@ class TestWorkbenchLists:
         assert len(body) == 1
         assert body[0]["state"] == "OPEN"
 
+    def test_open_session_exposes_stable_operator_identity(self, world):
+        """Native tills match the accountable shift to the authenticated user.
+
+        This must use the immutable user id, not a username that an
+        administrator can rename while the register session is still open.
+        """
+        body = rows(world["client"].get("/api/pos/shift/sessions/open/"))
+        assert body[0]["operator_shifts"][0]["operator_id"] == str(world["operator"].pk)
+
     def test_a_closed_session_leaves_the_open_list(self, world):
         declare(world, "CLOSING", "5000.00")
         ShiftReportService.finalise_z(
