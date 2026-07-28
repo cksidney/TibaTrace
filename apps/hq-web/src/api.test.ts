@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  loadSystemHealth,
   HQApiError,
   executeHQBusinessAction,
   formatMoney,
@@ -17,6 +18,50 @@ import type { HQBusinessAction, HQWorkItem } from './api.js';
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+describe('loadSystemHealth', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /**
+   * The indicator this feeds used to be the fixed words "System live" beside a
+   * fixed green dot, checking nothing. These pin the four answers it can now
+   * give, because the failure that matters is the one where a degraded backend
+   * still reads as healthy.
+   */
+  it('reports live when the backend says ok', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ status: 'ok' }), { status: 200 }),
+    ));
+    await expect(loadSystemHealth()).resolves.toBe('live');
+  });
+
+  it('reports degraded when the backend answers without an ok status', async () => {
+    // Absence of a reported problem is not a reported healthy state.
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ product: 'DawaTrace' }), { status: 200 }),
+    ));
+    await expect(loadSystemHealth()).resolves.toBe('degraded');
+  });
+
+  it('reports degraded on a non-ok response', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('', { status: 503 })));
+    await expect(loadSystemHealth()).resolves.toBe('degraded');
+  });
+
+  it('reports unreachable when the request throws', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('network')));
+    await expect(loadSystemHealth()).resolves.toBe('unreachable');
+  });
+
+  it('calls an unreadable body degraded, not unreachable', async () => {
+    // It answered; the answer was gibberish. Reporting "unreachable" would send
+    // somebody to check the network instead of the server.
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('not json', { status: 200 })));
+    await expect(loadSystemHealth()).resolves.toBe('degraded');
+  });
 });
 
 describe('loadHQOverview', () => {

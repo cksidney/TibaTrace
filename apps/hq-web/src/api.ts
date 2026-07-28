@@ -1109,6 +1109,45 @@ export async function updateGovernmentCatalogueSelection(
   return (await response.json()) as { readonly selected: boolean };
 }
 
+/* ── system health ─────────────────────────────────────────────────────────── */
+
+export type SystemHealth = 'checking' | 'live' | 'degraded' | 'unreachable';
+
+/**
+ * Ask the backend whether it is well.
+ *
+ * The topbar indicator used to be the literal text "System live" beside a green
+ * dot, linking to the raw health JSON. Nothing checked anything, so it read
+ * "System live" whatever the state of the system -- the same shape of claim as
+ * a screening banner that says PASSED without a screening.
+ */
+export async function loadSystemHealth(signal?: AbortSignal): Promise<SystemHealth> {
+  const request: RequestInit = { credentials: 'include', headers: { Accept: 'application/json' } };
+  if (signal) request.signal = signal;
+  let response: Response;
+  try {
+    response = await fetch('/api/health/', request);
+  } catch {
+    // Nothing answered. Aborted requests land here too; the caller discards
+    // those because it only applies a result while still mounted.
+    return 'unreachable';
+  }
+
+  if (!response.ok) return 'degraded';
+
+  try {
+    const body = (await response.json()) as { status?: string };
+    // Anything other than an explicit ok is degraded. Absence of a reported
+    // problem is not the same as a reported healthy state.
+    return body.status === 'ok' ? 'live' : 'degraded';
+  } catch {
+    // It answered, and the answer was not readable. That is a sick backend, not
+    // an absent one -- reporting "unreachable" would send somebody to check the
+    // network instead of the server.
+    return 'degraded';
+  }
+}
+
 /* ── POS installers ───────────────────────────────────────────────────────── */
 
 export interface PosRelease {

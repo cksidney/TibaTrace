@@ -24,6 +24,7 @@ import {
   loadPriceBooks,
   requestPosDownload,
   loadPosReleases,
+  loadSystemHealth,
   readSession,
   SignInError,
   signIn,
@@ -33,6 +34,7 @@ import {
 } from './api.js';
 import type {
   ActiveSubstanceSummary,
+  SystemHealth,
   PosRelease,
   PosReleaseCatalogue,
   ClaimFilters,
@@ -340,10 +342,7 @@ function Dashboard({
             <kbd>⌘ K</kbd>
           </button>
           <div className="topbar-actions">
-            <a className="health-link" href="/api/health/">
-              <span className="status-dot" />
-              System live
-            </a>
+            <SystemHealthIndicator />
             <button
               className="icon-button theme-toggle-btn"
               aria-label="Toggle Theme"
@@ -437,6 +436,54 @@ function Dashboard({
   );
 }
 
+/**
+ * The topbar health indicator.
+ *
+ * Was the fixed text "System live" beside a green dot, linked to the raw health
+ * JSON. Nothing was checked, so it claimed the system was live whatever the
+ * system was doing, and clicking it dropped an operator onto a JSON document.
+ *
+ * It now reports what the backend says, and re-checks periodically so a
+ * long-open workspace does not keep showing a stale answer.
+ */
+const HEALTH_POLL_MS = 60_000;
+
+const HEALTH_PRESENTATION: Readonly<Record<SystemHealth, { label: string; tone: string }>> = {
+  checking: { label: 'Checking…', tone: 'checking' },
+  live: { label: 'System live', tone: 'live' },
+  degraded: { label: 'System degraded', tone: 'degraded' },
+  unreachable: { label: 'System unreachable', tone: 'unreachable' },
+};
+
+function SystemHealthIndicator() {
+  const [health, setHealth] = useState<SystemHealth>('checking');
+
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+    const check = () => {
+      loadSystemHealth(controller.signal).then((result) => {
+        if (!cancelled && !controller.signal.aborted) setHealth(result);
+      });
+    };
+    check();
+    const timer = window.setInterval(check, HEALTH_POLL_MS);
+    return () => {
+      cancelled = true;
+      controller.abort();
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  const { label, tone } = HEALTH_PRESENTATION[health];
+  return (
+    <span className={`health-status health-${tone}`} role="status" aria-live="polite">
+      <span className="status-dot" />
+      {label}
+    </span>
+  );
+}
+
 function Sidebar({
   activeView,
   mobileOpen,
@@ -482,7 +529,7 @@ function Sidebar({
         <div className="support-icon"><Icon name="docs" /></div>
         <strong>Operations support</strong>
         <p>Inspect API contracts and integration guidance for connected applications.</p>
-        <a href="/api/docs/">Open API workspace <Icon name="arrow" /></a>
+        <a href="/api/docs/" target="_blank" rel="noreferrer">Open API workspace <Icon name="external" /></a>
       </div>
       <div className="secure-session"><Icon name="shield" /> Secure authenticated session</div>
     </aside>
@@ -690,6 +737,7 @@ function PosDownloads({ csrfToken }: { readonly csrfToken: string }) {
   const [failed, setFailed] = useState(false);
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selectedRelease, setSelectedRelease] = useState<PosRelease | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -765,7 +813,7 @@ function PosDownloads({ csrfToken }: { readonly csrfToken: string }) {
                       type="button"
                       className="secondary-button"
                       disabled={!catalogue.downloads_available || pending === release.id}
-                      onClick={() => void download(release)}
+                      onClick={() => setSelectedRelease(release)}
                     >
                       {pending === release.id ? 'Preparing…' : 'Download'}
                     </button>
@@ -782,6 +830,24 @@ function PosDownloads({ csrfToken }: { readonly csrfToken: string }) {
           detail="Published POS builds appear here for download."
         />
       )}
+
+      {selectedRelease ? (
+        <div className="business-dialog-backdrop" role="presentation">
+          <section aria-labelledby="pos-download-title" aria-modal="true" className="business-dialog" role="dialog">
+            <header>
+              <div><p className="eyebrow">Point of sale release</p><h2 id="pos-download-title">Download installer</h2></div>
+              <button aria-label="Close dialog" disabled={pending === selectedRelease.id} onClick={() => setSelectedRelease(null)} type="button"><Icon name="close" /></button>
+            </header>
+            <div className="business-dialog-record"><div><code>{selectedRelease.platform}</code><strong>Version {selectedRelease.version}</strong></div></div>
+            <p className="business-dialog-confirm"><Icon name="shield" /> Verify this SHA-256 checksum after download before installing on a device that processes transactions.</p>
+            <label className="business-field"><span>SHA-256</span><code className="digest">{selectedRelease.sha256}</code></label>
+            <footer>
+              <button className="secondary-button" disabled={pending === selectedRelease.id} onClick={() => setSelectedRelease(null)} type="button">Cancel</button>
+              <button className="primary-button" disabled={pending === selectedRelease.id} onClick={() => void download(selectedRelease)} type="button">{pending === selectedRelease.id ? 'Preparing…' : 'Start secure download'}</button>
+            </footer>
+          </section>
+        </div>
+      ) : null}
     </article>
   );
 }
@@ -1557,6 +1623,11 @@ function GovernmentCatalogue({
   const [loading, setLoading] = useState(true);
   const [mutationId, setMutationId] = useState('');
   const [mutationError, setMutationError] = useState('');
+  const [pendingSelection, setPendingSelection] = useState<{
+    readonly medicineId: string;
+    readonly productName: string;
+    readonly selected: boolean;
+  } | null>(null);
   const [reloadVersion, setReloadVersion] = useState(0);
 
   useEffect(() => {
@@ -1607,8 +1678,8 @@ function GovernmentCatalogue({
     setLevelOfUse('');
     setPage(1);
   };
-  const changeSelection = async (medicineId: string, selected: boolean) => {
-    if (!tenantId) return;
+  const changeSelection = async (medicineId: string, selected: boolean): Promise<boolean> => {
+    if (!tenantId) return false;
     setMutationId(medicineId);
     setMutationError('');
     try {
@@ -1619,6 +1690,7 @@ function GovernmentCatalogue({
         csrfToken,
       );
       setReloadVersion((version) => version + 1);
+      return true;
     } catch (reason) {
       setMutationError(
         reason instanceof Error ? reason.message : 'The tenant catalogue could not be updated.',
@@ -1626,6 +1698,12 @@ function GovernmentCatalogue({
     } finally {
       setMutationId('');
     }
+    return false;
+  };
+  const confirmSelection = async () => {
+    if (!pendingSelection) return;
+    const changed = await changeSelection(pendingSelection.medicineId, pendingSelection.selected);
+    if (changed) setPendingSelection(null);
   };
   const filterActive = Boolean(appliedQuery || kemlStatus || levelOfUse);
   const sourceDate = catalogue?.source_version.match(/updated:([^;]+)/)?.[1] ?? '';
@@ -1812,17 +1890,25 @@ function GovernmentCatalogue({
                           <button
                             className="catalogue-remove-button"
                             disabled={mutationId === medicine.id}
-                            onClick={() => void changeSelection(medicine.id, false)}
+                            onClick={() => setPendingSelection({
+                              medicineId: medicine.id,
+                              productName: medicine.generic_name || medicine.brand_name || medicine.code,
+                              selected: false,
+                            })}
                             type="button"
                           >
                             {mutationId === medicine.id ? 'Removing…' : 'Remove'}
                           </button>
                         ) : <span className="reference-badge is-selected">Selected</span>
                       ) : catalogue.can_manage ? (
-                        <button
-                          className="catalogue-add-button"
-                          disabled={mutationId === medicine.id}
-                          onClick={() => void changeSelection(medicine.id, true)}
+                          <button
+                            className="catalogue-add-button"
+                            disabled={mutationId === medicine.id}
+                            onClick={() => setPendingSelection({
+                              medicineId: medicine.id,
+                              productName: medicine.generic_name || medicine.brand_name || medicine.code,
+                              selected: true,
+                            })}
                           type="button"
                         >
                           {mutationId === medicine.id ? 'Adding…' : 'Add to tenant'}
@@ -1861,6 +1947,27 @@ function GovernmentCatalogue({
           </footer>
         </>
       )}
+
+      {pendingSelection ? (
+        <div className="business-dialog-backdrop" role="presentation">
+          <section aria-labelledby="catalogue-selection-title" aria-modal="true" className="business-dialog" role="dialog">
+            <header>
+              <div><p className="eyebrow">Tenant catalogue</p><h2 id="catalogue-selection-title">{pendingSelection.selected ? 'Add product to tenant' : 'Remove product from tenant'}</h2></div>
+              <button aria-label="Close dialog" disabled={Boolean(mutationId)} onClick={() => setPendingSelection(null)} type="button"><Icon name="close" /></button>
+            </header>
+            <div className="business-dialog-record"><div><code>Universal master</code><strong>{pendingSelection.productName}</strong></div></div>
+            <p className="business-dialog-confirm"><Icon name={pendingSelection.selected ? 'shield' : 'alert'} /> {pendingSelection.selected
+              ? 'Adding makes this government master product available for this tenant’s package, price and assortment governance.'
+              : 'Removing takes the product out of this tenant catalogue. Existing governed history is retained.'}</p>
+            <footer>
+              <button className="secondary-button" disabled={Boolean(mutationId)} onClick={() => setPendingSelection(null)} type="button">Cancel</button>
+              <button className={pendingSelection.selected ? 'primary-button' : 'danger-link'} disabled={Boolean(mutationId)} onClick={() => void confirmSelection()} type="button">
+                {mutationId ? 'Saving…' : pendingSelection.selected ? 'Add to tenant catalogue' : 'Remove from tenant catalogue'}
+              </button>
+            </footer>
+          </section>
+        </div>
+      ) : null}
     </article>
   );
 }
@@ -1962,7 +2069,7 @@ function GovernanceView({ data, failed }: { readonly data: HQWorkspaceData | nul
       </section>
 
       <article className="panel">
-        <PanelHeader eyebrow="Immutable record" title="Recent audit activity" actionHref="/api/audit/events/" actionLabel="Open audit API" />
+        <PanelHeader eyebrow="Immutable record" title="Recent audit activity" />
         {auditEvents.length ? (
           <div className="table-scroll">
             <table>
@@ -2033,7 +2140,7 @@ function GovernanceView({ data, failed }: { readonly data: HQWorkspaceData | nul
 
       <section className="content-grid">
         <article className="panel">
-          <PanelHeader eyebrow="Clinical storage" title="Recent documents" actionHref="/api/documents/" actionLabel="Open documents API" />
+          <PanelHeader eyebrow="Clinical storage" title="Recent documents" />
           {documents.length ? (
             <div className="table-scroll">
               <table>
@@ -2501,7 +2608,11 @@ function PanelHeader({
   return (
     <header className="panel-header">
       <div><p className="eyebrow">{eyebrow}</p><h2>{title}</h2></div>
-      {destination && actionLabel && !isCurrentHqDestination(destination) ? <a href={destination}>{actionLabel} <Icon name="arrow" /></a> : null}
+      {destination && actionLabel && !isCurrentHqDestination(destination) ? (
+        <a href={destination} {...externalLinkProps(destination)}>
+          {actionLabel} <Icon name={isExternalDestination(destination) ? 'external' : 'arrow'} />
+        </a>
+      ) : null}
       {onAction && actionLabel ? <button onClick={onAction} type="button">{actionLabel} <Icon name="arrow" /></button> : null}
     </header>
   );
@@ -2526,10 +2637,10 @@ function Readiness({ detail, icon, label, status }: { readonly detail: string; r
 
 function CommandLink({ detail, href, icon, title }: { readonly detail: string; readonly href: string; readonly icon: IconName; readonly title: string }) {
   const destination = href;
-  const content = <><span><Icon name={icon} /></span><div><strong>{title}</strong><small>{detail}</small></div>{!isCurrentHqDestination(destination) ? <Icon className="command-arrow" name="arrow" /> : null}</>;
+  const content = <><span><Icon name={icon} /></span><div><strong>{title}</strong><small>{detail}</small></div>{!isCurrentHqDestination(destination) ? <Icon className="command-arrow" name={isExternalDestination(destination) ? 'external' : 'arrow'} /> : null}</>;
   return isCurrentHqDestination(destination)
     ? <div className="command-link-static">{content}</div>
-    : <a href={destination}>{content}</a>;
+    : <a href={destination} {...externalLinkProps(destination)}>{content}</a>;
 }
 
 function WorkflowLink({ detail, href, icon, step, title }: { readonly detail: string; readonly href: string; readonly icon: IconName; readonly step: string; readonly title: string }) {
@@ -2978,7 +3089,7 @@ function UserMenu({ overview, onSignOut }: {
       <div className="user-menu-head"><span>{initials(overview.user_name)}</span><div><strong>{displayName(overview.user_name)}</strong><small>{overview.tenant_name}</small></div></div>
       <a href="#access"><Icon name="security" /> Access overview</a>
       <a href="#access"><Icon name="settings" /> System controls</a>
-      <a href="/api/docs/"><Icon name="docs" /> API workspace</a>
+      <a href="/api/docs/" target="_blank" rel="noreferrer"><Icon name="docs" /> API workspace <Icon name="external" /></a>
       <button className="signout-link" type="button" onClick={onSignOut}>
         <Icon name="external" /> Sign out
       </button>
@@ -3179,6 +3290,26 @@ function navigateTo(view: WorkspaceView, onNavigate: (view: WorkspaceView) => vo
   window.location.hash = view;
   onNavigate(view);
   window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+/**
+ * Whether a destination leaves the workspace.
+ *
+ * Only the API surfaces do: the OpenAPI page and the FHIR capability
+ * statement, both of which are developer tools rather than operator screens.
+ * They open in a new tab so somebody who clicks one does not lose the workspace
+ * they were in, and they carry a marker so it is clear before clicking that the
+ * link goes somewhere else.
+ */
+function isExternalDestination(destination: string) {
+  return destination.startsWith('/api/');
+}
+
+/** Props that send a link out of the app, or nothing for an in-app hash. */
+function externalLinkProps(destination: string) {
+  return isExternalDestination(destination)
+    ? { target: '_blank', rel: 'noreferrer' as const }
+    : {};
 }
 
 function isCurrentHqDestination(destination: string) {

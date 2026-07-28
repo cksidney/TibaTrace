@@ -536,18 +536,55 @@ kbd {
   gap: 7px;
 }
 
-.health-link {
+.health-status {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   margin-right: 7px;
   padding-right: 14px;
   border-right: 1px solid var(--line);
-  color: var(--teal-700);
   font-size: 0.875rem;
   font-weight: 800;
-  text-decoration: none;
   white-space: nowrap;
+}
+
+/* One tone per state. The indicator was a fixed green dot beside the fixed
+   words "System live", so a degraded backend looked identical to a healthy
+   one -- which is the whole reason it is now checked rather than asserted. */
+.health-live {
+  color: var(--teal-700);
+}
+
+.health-checking {
+  color: var(--muted);
+}
+
+.health-degraded {
+  color: var(--amber-700);
+}
+
+.health-unreachable {
+  color: var(--red-700);
+}
+
+.health-live .status-dot {
+  background: #14b894;
+  box-shadow: 0 0 0 4px rgba(20, 184, 148, 0.16);
+}
+
+.health-checking .status-dot {
+  background: var(--muted);
+  box-shadow: none;
+}
+
+.health-degraded .status-dot {
+  background: var(--amber-700);
+  box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.16);
+}
+
+.health-unreachable .status-dot {
+  background: var(--red-700);
+  box-shadow: 0 0 0 4px rgba(244, 63, 94, 0.16);
 }
 
 .status-dot {
@@ -4183,7 +4220,7 @@ tbody tr:hover {
     min-width: 158px;
   }
 
-  .health-link {
+  .health-status {
     display: none;
   }
 
