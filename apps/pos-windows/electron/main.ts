@@ -125,6 +125,7 @@ app.on('window-all-closed', () => {
 function registerIpc(): void {
   ipcMain.handle('auth:restore', async () => sessionInfo(await sessionStore.load()));
   ipcMain.handle('auth:login', async (_event, payload: LoginPayload) => login(payload));
+  ipcMain.handle('auth:verify', async (_event, payload: LoginPayload) => verifyOperator(payload));
   ipcMain.handle('auth:logout', async () => {
     await sessionStore.clear();
     return sessionInfo(null);
@@ -150,6 +151,18 @@ async function requireSession(): Promise<StoredPosSession> {
 }
 
 async function login(payload: LoginPayload) {
+  const stored = await authenticate(payload);
+  await sessionStore.save(stored);
+  return sessionInfo(stored);
+}
+
+async function verifyOperator(payload: LoginPayload): Promise<boolean> {
+  const current = await requireSession();
+  const verified = await authenticate(payload);
+  return verified.userId === current.userId && verified.tenantId === current.tenantId;
+}
+
+async function authenticate(payload: LoginPayload): Promise<StoredPosSession> {
   const username = String(payload?.username ?? '').trim();
   const password = String(payload?.password ?? '');
   if (!username || !password || username.length > 150 || password.length > 256) {
@@ -166,8 +179,7 @@ async function login(payload: LoginPayload) {
   if (!response.ok) throw new Error(apiError(payloadBody, 'Sign in was not accepted.'));
 
   const stored = readTokens(payloadBody);
-  await sessionStore.save(stored);
-  return sessionInfo(stored);
+  return stored;
 }
 
 async function authorizedRequest(request: ApiRequest): Promise<ApiResponse> {

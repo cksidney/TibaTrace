@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.db.models import Prefetch
 
 from apps.prescription.models import PosDeviceHealthRecord
 
@@ -96,7 +97,20 @@ class RegisterAuthorityService:
         register = registers[0]
         session = (
             RegisterSession.all_objects.select_related("register", "business_day")
-            .prefetch_related("operator_shifts__operator", "operator_shifts__handed_over_to")
+            # Explicit, not the bare related name. `operator_shifts` resolves
+            # through OperatorShift's tenant-strict manager, which returns
+            # nothing when no tenant id is on the thread -- and this feeds the
+            # readiness a till checks before it will sell. An empty result reads
+            # as "no accountable operator shift", so the till would be told it
+            # is not ready for a reason that has nothing to do with the till.
+            .prefetch_related(
+                Prefetch(
+                    "operator_shifts",
+                    queryset=OperatorShift.all_objects.filter(
+                        tenant=tenant
+                    ).select_related("operator", "handed_over_to"),
+                )
+            )
             .filter(tenant=tenant, register=register, state="OPEN")
             .order_by("-opened_at")
             .first()
@@ -108,13 +122,15 @@ class RegisterAuthorityService:
         )
         operator_shift = None
         if session and actor:
-            operator_shift = next(
-                (
-                    shift
-                    for shift in session.operator_shifts.all()
-                    if shift.operator_id == actor.pk and shift.state in {"OPEN", "HANDOVER_REQUESTED"}
-                ),
-                None,
+            operator_shift = (
+                OperatorShift.all_objects.filter(
+                    tenant=tenant,
+                    register_session=session,
+                    operator=actor,
+                    state__in=["OPEN", "HANDOVER_REQUESTED"],
+                )
+                .order_by("-started_at")
+                .first()
             )
         device_health = PosDeviceHealthRecord.all_objects.filter(
             tenant=tenant, device_id=device_id
@@ -140,11 +156,57 @@ class RegisterAuthorityService:
 
         readiness = "READY" if not notices else "ATTENTION"
         allowed_actions: list[str] = []
-        if readiness == "READY" and actor and actor.has_capability("pos.transaction.create", tenant_id=tenant.pk):
+        actor_has_shift = operator_shift is not None
+        pending_handover = (
+            OperatorShift.all_objects.filter(
+                tenant=tenant,
+                register_session=session,
+                state="HANDOVER_REQUESTED",
+            )
+            .exclude(operator_id=getattr(actor, "pk", None))
+            .order_by("-started_at")
+            .first()
+            if session
+            else None
+        )
+        if (
+            session is None
+            and register.accepts_opening
+            and business_day is not None
+            and business_day.accepts_transactions
+            and actor
+            and (
+                actor.has_capability("pos.register.open", tenant_id=tenant.pk)
+                or actor.has_capability("pos.shift.manage", tenant_id=tenant.pk)
+            )
+        ):
+            allowed_actions.append("OPEN_REGISTER")
+        if readiness == "READY" and actor_has_shift and actor and actor.has_capability("pos.transaction.create", tenant_id=tenant.pk):
             allowed_actions.append("START_SALE")
-        if session and actor and actor.has_capability("pos.report.x.generate", tenant_id=tenant.pk):
+        if actor_has_shift and actor and (
+            actor.has_capability("pos.shift.handover", tenant_id=tenant.pk)
+            or actor.has_capability("pos.shift.manage", tenant_id=tenant.pk)
+        ):
+            allowed_actions.append(
+                "CANCEL_HANDOVER"
+                if operator_shift and operator_shift.state == "HANDOVER_REQUESTED"
+                else "REQUEST_HANDOVER"
+            )
+        if pending_handover and actor and (
+            actor.has_capability("pos.shift.handover", tenant_id=tenant.pk)
+            or actor.has_capability("pos.shift.manage", tenant_id=tenant.pk)
+        ):
+            allowed_actions.append("ACCEPT_HANDOVER")
+        if actor_has_shift and actor and (
+            actor.has_capability("pos.cash.movement.create", tenant_id=tenant.pk)
+            or actor.has_capability("pos.shift.manage", tenant_id=tenant.pk)
+        ):
+            allowed_actions.append("RECORD_CASH_MOVEMENT")
+        if session and actor and actor.has_capability("pos.cash.movement.approve", tenant_id=tenant.pk):
+            allowed_actions.append("APPROVE_CASH_MOVEMENT")
+        if actor_has_shift and actor and actor.has_capability("pos.report.x.generate", tenant_id=tenant.pk):
             allowed_actions.append("GENERATE_X_REPORT")
-        if session and actor and actor.has_capability("pos.report.z.generate", tenant_id=tenant.pk):
+        if actor_has_shift and actor and actor.has_capability("pos.report.z.generate", tenant_id=tenant.pk):
             allowed_actions.append("CLOSE_REGISTER")
 
         return {

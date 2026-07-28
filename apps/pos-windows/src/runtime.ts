@@ -11,6 +11,7 @@ import type {
 export interface PosRuntime {
   restore(): Promise<TibaTraceSessionInfo>;
   login(username: string, password: string): Promise<TibaTraceSessionInfo>;
+  verify(username: string, password: string): Promise<boolean>;
   logout(): Promise<void>;
   readonly fetch: typeof fetch;
   readonly offline: OfflineStore;
@@ -59,6 +60,7 @@ export function createPosRuntime(): PosRuntime {
     return {
       restore: () => window.tibatrace!.auth.restore(),
       login: (username, password) => window.tibatrace!.auth.login(username, password),
+      verify: (username, password) => window.tibatrace!.auth.verify(username, password),
       logout: async () => {
         await window.tibatrace!.auth.logout();
       },
@@ -95,6 +97,18 @@ export function createPosRuntime(): PosRuntime {
     login: async (username, password) => {
       await session.login(username, password);
       return unauthenticatedInfo();
+    },
+    verify: async (username, password) => {
+      const current = session.current;
+      if (!current) return false;
+      const response = await fetch('/api/identity/token/', {
+        method: 'POST',
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+      if (!response.ok) return false;
+      const payload = (await response.json()) as { user_id?: unknown; tenant_id?: unknown };
+      return payload.user_id === current.userId && payload.tenant_id === current.tenantId;
     },
     logout: () => session.logout(),
     fetch: session.fetch.bind(session) as typeof fetch,

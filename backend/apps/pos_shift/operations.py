@@ -229,6 +229,136 @@ class CashMovementService:
         return movement
 
 
+class OperatorShiftService:
+    @staticmethod
+    @transaction.atomic
+    def request_handover(
+        *,
+        tenant,
+        actor,
+        device_id: str,
+        operator_shift_id,
+        reason: str = "",
+    ) -> OperatorShift:
+        _require(actor, tenant.pk, "pos.shift.handover", ("pos.shift.manage",))
+        register = (
+            PosRegister.all_objects.select_related("location")
+            .filter(tenant=tenant, device_id=device_id)
+            .first()
+        )
+        if register is None:
+            raise ValidationError("This device is not assigned to a register.")
+        authority = RegisterAuthorityService.resolve_for_transaction(
+            tenant=tenant,
+            branch=register.location,
+            actor=actor,
+            device_id=device_id,
+        )
+        if str(authority.operator_shift.pk) != str(operator_shift_id):
+            raise ValidationError("The selected operator shift is not active on this device.")
+        operator_shift = OperatorShift.all_objects.select_for_update().get(
+            tenant=tenant,
+            pk=authority.operator_shift.pk,
+        )
+        if operator_shift.state == "HANDOVER_REQUESTED":
+            return operator_shift
+        if operator_shift.state != "OPEN":
+            raise ValidationError("Only an open operator shift can request handover.")
+        operator_shift.state = "HANDOVER_REQUESTED"
+        operator_shift.close_reason = reason.strip()
+        operator_shift.save(update_fields=["state", "close_reason", "updated_at"])
+        return operator_shift
+
+    @staticmethod
+    @transaction.atomic
+    def cancel_handover(
+        *,
+        tenant,
+        actor,
+        device_id: str,
+        operator_shift_id,
+    ) -> OperatorShift:
+        _require(actor, tenant.pk, "pos.shift.handover", ("pos.shift.manage",))
+        operator_shift = (
+            OperatorShift.all_objects.select_for_update()
+            .select_related("register_session__register")
+            .filter(tenant=tenant, pk=operator_shift_id, operator=actor)
+            .first()
+        )
+        if operator_shift is None:
+            raise ValidationError("The handover request is unavailable to this operator.")
+        if operator_shift.register_session.register.device_id != device_id:
+            raise ValidationError("The handover belongs to a different device.")
+        if operator_shift.state == "OPEN":
+            return operator_shift
+        if operator_shift.state != "HANDOVER_REQUESTED":
+            raise ValidationError("Only a pending handover can be cancelled.")
+        operator_shift.state = "OPEN"
+        operator_shift.close_reason = ""
+        operator_shift.save(update_fields=["state", "close_reason", "updated_at"])
+        return operator_shift
+
+    @staticmethod
+    @transaction.atomic
+    def accept_handover(
+        *,
+        tenant,
+        actor,
+        device_id: str,
+        operator_shift_id,
+    ) -> tuple[OperatorShift, OperatorShift]:
+        _require(actor, tenant.pk, "pos.shift.handover", ("pos.shift.manage",))
+        outgoing = (
+            OperatorShift.all_objects.select_for_update()
+            .select_related("register_session__register", "register_session__business_day")
+            .filter(tenant=tenant, pk=operator_shift_id)
+            .first()
+        )
+        if outgoing is None:
+            raise ValidationError("The requested handover was not found.")
+        session = outgoing.register_session
+        register = session.register
+        if register.device_id != device_id:
+            raise ValidationError("The handover belongs to a different device.")
+        if register.state != "OPEN" or session.state != "OPEN":
+            raise ValidationError("The register session is not open for handover.")
+        if not session.business_day.accepts_transactions:
+            raise ValidationError("The business day does not accept a handover.")
+        if outgoing.state != "HANDOVER_REQUESTED":
+            raise ValidationError("The operator shift is not awaiting handover.")
+        if outgoing.operator_id == actor.pk:
+            raise ValidationError("A handover must be accepted by a different operator.")
+        if OperatorShift.all_objects.filter(
+            tenant=tenant,
+            register_session=session,
+            operator=actor,
+            state__in=["OPEN", "HANDOVER_REQUESTED"],
+        ).exists():
+            raise ValidationError("The accepting operator already has an active shift.")
+
+        now = timezone.now()
+        outgoing.state = "CLOSED"
+        outgoing.ended_at = now
+        outgoing.handed_over_to = actor
+        outgoing.closed_by = actor
+        outgoing.save(
+            update_fields=[
+                "state",
+                "ended_at",
+                "handed_over_to",
+                "closed_by",
+                "updated_at",
+            ]
+        )
+        incoming = OperatorShift.all_objects.create(
+            tenant=tenant,
+            register_session=session,
+            operator=actor,
+            state="OPEN",
+        )
+        return outgoing, incoming
+
+
 class RegisterReportService:
     @staticmethod
     @transaction.atomic
@@ -255,6 +385,30 @@ class RegisterReportService:
         reason: str = "",
     ):
         _require(actor, tenant.pk, "pos.report.z.generate", ("pos.shift.manage",))
+        registers = list(
+            PosRegister.all_objects.select_related("location")
+            .filter(tenant=tenant, device_id=device_id)
+        )
+        if not registers:
+            raise ValidationError("This device is not assigned to a register.")
+        if len(registers) != 1:
+            raise ValidationError("This device has conflicting register assignments.")
+        register = registers[0]
+        latest_session = (
+            RegisterSession.all_objects.filter(
+                tenant=tenant,
+                register=register,
+            )
+            .order_by("-opened_at")
+            .first()
+        )
+        existing = (
+            ShiftReportService.final_report(session=latest_session)
+            if latest_session is not None
+            else None
+        )
+        if existing is not None:
+            return existing
         authority = RegisterAuthorityService.resolve_for_transaction(
             tenant=tenant,
             branch=branch,

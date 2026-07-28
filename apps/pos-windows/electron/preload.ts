@@ -7,6 +7,8 @@ contextBridge.exposeInMainWorld('tibatrace', {
     restore: () => ipcRenderer.invoke('auth:restore'),
     login: (username: string, password: string) =>
       ipcRenderer.invoke('auth:login', { username, password }),
+    verify: (username: string, password: string) =>
+      ipcRenderer.invoke('auth:verify', { username, password }),
     logout: () => ipcRenderer.invoke('auth:logout'),
   },
   api: {

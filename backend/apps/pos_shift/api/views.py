@@ -11,11 +11,13 @@ current data would restate history while the operator holds the printed copy.
 from __future__ import annotations
 
 from django.core.exceptions import ValidationError
+from django.db.models import Prefetch
 from rest_framework import permissions, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.response import Response
 
+from apps.pos_shift.authority import RegisterAuthorityService
 from apps.pos_shift.models import (
     BusinessDay,
     CashDeclaration,
@@ -26,9 +28,9 @@ from apps.pos_shift.models import (
     ShiftReport,
     ShiftReportReprint,
 )
-from apps.pos_shift.authority import RegisterAuthorityService
 from apps.pos_shift.operations import (
     CashMovementService,
+    OperatorShiftService,
     RegisterOpeningService,
     RegisterReportService,
 )
@@ -37,14 +39,15 @@ from apps.prescription.pos_dispensing_api.serializers import PosDeviceHealthReco
 from .serializers import (
     BusinessDaySerializer,
     CashDeclarationSerializer,
-    CashMovementSerializer,
     CashMovementRequestSerializer,
+    CashMovementSerializer,
+    OperatorShiftActionRequestSerializer,
     OperatorShiftSerializer,
     PosRegisterSerializer,
     RegisterCloseRequestSerializer,
     RegisterOpeningRequestSerializer,
-    ReportRequestSerializer,
     RegisterSessionSerializer,
+    ReportRequestSerializer,
     ShiftReportReprintSerializer,
     ShiftReportSerializer,
 )
@@ -76,13 +79,21 @@ class TenantScopedViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
     model = None
 
-    def get_queryset(self):
+    def _tenant_id(self):
+        """The caller's tenant, from the request or the authenticated user.
+
+        Shared with nested prefetches, which must filter explicitly rather than
+        leaning on the tenant-strict manager and the thread-local behind it.
+        """
         request = self.request
-        tenant_id = (
+        return (
             getattr(request, "tenant_id", None)
             or getattr(getattr(request, "tenant", None), "pk", None)
             or getattr(request.user, "tenant_id", None)
         )
+
+    def get_queryset(self):
+        tenant_id = self._tenant_id()
         if tenant_id is None:
             return self.model.all_objects.none()
         return self.model.all_objects.filter(tenant_id=tenant_id)
@@ -185,6 +196,17 @@ class PosRegisterViewSet(TenantScopedViewSet):
         data = serializer.validated_data
         if register.device_id != data["device_id"]:
             raise DRFValidationError("The selected register is not assigned to this device.")
+        existing = (
+            ShiftReport.all_objects.filter(
+                tenant_id=register.tenant_id,
+                register_session__register=register,
+                report_type=ShiftReport.TYPE_Z,
+            )
+            .order_by("-generated_at")
+            .first()
+        )
+        if existing is not None:
+            return Response(ShiftReportSerializer(existing).data)
         report = _run(
             lambda: RegisterReportService.finalise_z(
                 tenant=_tenant(request),
@@ -215,7 +237,23 @@ class RegisterSessionViewSet(TenantScopedViewSet):
         queryset = (
             super().get_queryset()
             .select_related("register", "business_day", "opened_by", "closed_by")
-            .prefetch_related("operator_shifts")
+            # An explicit prefetch, not the bare related name.
+            #
+            # `operator_shifts` resolves through OperatorShift's default manager,
+            # which is tenant-strict: with no tenant id on the thread it returns
+            # nothing, and the session then serialises with no accountable
+            # operator at all. The session's own queryset already filters by
+            # tenant explicitly, so the outer list looked right while the nested
+            # one silently emptied -- a till showing an open session that nobody
+            # is answerable for.
+            .prefetch_related(
+                Prefetch(
+                    "operator_shifts",
+                    queryset=OperatorShift.all_objects.filter(
+                        tenant_id=self._tenant_id()
+                    ).select_related("operator"),
+                )
+            )
         )
         params = self.request.query_params
         if params.get("state"):
@@ -261,6 +299,58 @@ class OperatorShiftViewSet(TenantScopedViewSet):
 
     def get_queryset(self):
         return super().get_queryset().select_related("operator", "handed_over_to")
+
+    @action(detail=True, methods=["post"], url_path="request-handover")
+    def request_handover(self, request, pk=None):
+        serializer = OperatorShiftActionRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        operator_shift = _run(
+            lambda: OperatorShiftService.request_handover(
+                tenant=_tenant(request),
+                actor=request.user,
+                device_id=data["device_id"],
+                operator_shift_id=pk,
+                reason=data["reason"],
+            )
+        )
+        return Response(OperatorShiftSerializer(operator_shift).data)
+
+    @action(detail=True, methods=["post"], url_path="cancel-handover")
+    def cancel_handover(self, request, pk=None):
+        serializer = OperatorShiftActionRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        operator_shift = _run(
+            lambda: OperatorShiftService.cancel_handover(
+                tenant=_tenant(request),
+                actor=request.user,
+                device_id=data["device_id"],
+                operator_shift_id=pk,
+            )
+        )
+        return Response(OperatorShiftSerializer(operator_shift).data)
+
+    @action(detail=True, methods=["post"], url_path="accept-handover")
+    def accept_handover(self, request, pk=None):
+        serializer = OperatorShiftActionRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        outgoing, incoming = _run(
+            lambda: OperatorShiftService.accept_handover(
+                tenant=_tenant(request),
+                actor=request.user,
+                device_id=data["device_id"],
+                operator_shift_id=pk,
+            )
+        )
+        return Response(
+            {
+                "outgoing_shift": OperatorShiftSerializer(outgoing).data,
+                "operator_shift": OperatorShiftSerializer(incoming).data,
+            },
+            status=201,
+        )
 
 
 class CashDeclarationViewSet(TenantScopedViewSet):
@@ -311,6 +401,17 @@ class CashMovementViewSet(TenantScopedViewSet):
             )
         )
         return Response(CashMovementSerializer(movement).data, status=201)
+
+    @action(detail=True, methods=["post"], url_path="approve")
+    def approve(self, request, pk=None):
+        movement = self.get_object()
+        approved = _run(
+            lambda: CashMovementService.approve(
+                movement=movement,
+                actor=request.user,
+            )
+        )
+        return Response(CashMovementSerializer(approved).data)
 
 
 class ShiftReportViewSet(TenantScopedViewSet):

@@ -8,17 +8,17 @@ operations and the retail transaction foundation.
 
 This is a release decision, not a visual review. The current native products
 provide a clinically guarded dispensing workflow, a first native server-backed
-retail basket, and a durable simulator-scoped receipt queue. They do not yet
-provide the complete pharmacy POS workflow requested for financial register
-control, physical printing, Sync Centre and offline operations. This record
-must not be interpreted as a production certification.
+retail basket, governed native register operations, a durable simulator-scoped
+receipt queue and a native Sync Centre. They do not yet provide certified
+physical printing, complete retail/clinical workflows or safe offline
+operations. This record must not be interpreted as a production certification.
 
 ## Validation evidence
 
 - `npm run typecheck --workspace=@dawatrace/shared` — passed.
 - `npm run typecheck --workspace=@dawatrace/pos-windows` — passed.
 - `npm run typecheck --workspace=@dawatrace/pos-android` — passed.
-- `npm test --workspace=@dawatrace/shared` — 165 tests passed.
+- `npm test --workspace=@dawatrace/shared` — 168 tests passed.
 - `npm test --workspace=@dawatrace/pos-windows` — 92 tests passed.
 - `npm test --workspace=@dawatrace/pos-android` — 38 tests passed.
 - `.venv/bin/pytest -c backend/pytest.ini backend/tests/test_pos_shift_api.py -q`
@@ -30,8 +30,18 @@ must not be interpreted as a production certification.
 - `npm run build --workspace=@dawatrace/pos-windows` — passed.
 - `npm run build --workspace=@dawatrace/pos-android` — passed.
 - `npm run visual --workspace=@dawatrace/pos-windows` — local structural and
-  no-clipping checks pass for all 33 scenarios at `1280×900` and `1024×768`;
+  no-clipping checks pass for all 34 scenarios at `1280×900` and `1024×768`;
   CI-only pixel baselines are skipped locally and remain awaiting review.
+- `.venv/bin/pytest -c backend/pytest.ini --no-migrations`
+  `backend/tests/test_pos_shift_api.py`
+  `backend/tests/test_pos_cash_control.py`
+  `backend/tests/test_pos_xz_reports.py`
+  `backend/tests/test_pos_retail_transactions.py -q` — **116 passed**
+  (2026-07-28).
+- `npm run build --workspace=@dawatrace/shared`,
+  `npm run build --workspace=@dawatrace/pos-windows` and
+  `npm run build --workspace=@dawatrace/pos-android` — passed
+  (2026-07-28).
 - `./.venv/bin/pytest -c backend/pytest.ini --no-migrations`
   `backend/tests/test_pos_enterprise_dispensing.py::test_payment_orchestration_refuses_mpesa_reference_without_provider_confirmation`
   `backend/tests/test_pos_dispensing_controls.py::test_replayed_payment_does_not_charge_twice`
@@ -66,7 +76,7 @@ repository requires the Django 5.1 API. The repository `.venv` runs Django
 
 | # | Control | Status | Evidence / release implication |
 |---:|---|---|---|
-| 1 | Native POS product scope defined | Partial | Clinical dispensing, an initial native retail basket, simulator-scoped receipt queue and native Sync Centre are implemented; register controls and physical print remain. |
+| 1 | Native POS product scope defined | Partial | Clinical dispensing, an initial native retail basket, governed register controls, simulator-scoped receipt queue and native Sync Centre are implemented; complete retail/clinical scope and physical print remain. |
 | 2 | Shared design tokens | Implemented | Shared tokens are used by Windows and Android. |
 | 3 | Windows authenticated session | Implemented | Secure Electron session and sign-out flow exist. |
 | 4 | Android authenticated session | Implemented | Keystore-backed session is required. |
@@ -80,14 +90,14 @@ repository requires the Django 5.1 API. The repository `.venv` runs Django
 | 12 | Sync indicator | Partial | Native Sync Centre groups operational, clinical, durable-action and print status with server refresh; retail remains online-only. |
 | 13 | Printer indicator | Partial | Native Print Centre shows a durable per-device/branch queue; device health and physical transport adapters remain absent. |
 | 14 | Operational notifications | Partial | Unresolved operational context is visible; no notification centre exists. |
-| 15 | Lock POS action | Absent | No workstation lock UI is implemented. |
-| 16 | Register opening workflow | Blocked | No native authoritative register-open action exists. |
-| 17 | Opening-float denomination count | Blocked | No native cash-declaration workflow exists. |
+| 15 | Lock POS action | Implemented | Windows and Android obscure the full workspace and require the same operator credentials to re-verify without replacing the active token set or changing register accountability. |
+| 16 | Register opening workflow | Implemented | Windows and Android open only the device-assigned register through the authoritative service, with capability, business-day and previous-Z enforcement. |
+| 17 | Opening-float denomination count | Implemented | Both native clients use a blind KES denomination count and the backend refuses a mismatch between the breakdown and declared total. |
 | 18 | Pre-sale register enforcement | Partial | New retail and clinical payment service actions resolve device, register, session, shift and business day server-side; legacy operational paths remain to be migrated. |
 | 19 | Branch assignment enforcement | Implemented | Retail and clinical payment actions reject tenant, branch, device and session mismatches on the server. |
-| 20 | Previous Z verification | Blocked | Native app does not consume or enforce Z closure. |
-| 21 | Windows 1366×768 validation | Partial | Deterministic component scenarios have structural/no-clipping coverage at the smaller `1024×768` till profile; no full workflow capture exists. |
-| 22 | Windows 1920×1080 validation | Partial | Deterministic component scenarios have structural/no-clipping coverage at `1280×900`; no full workflow capture exists. |
+| 20 | Previous Z verification | Implemented | Register opening fails closed when the preceding register session has no final Z; native open actions use that service. |
+| 21 | Windows 1366×768 validation | Partial | Thirty-four deterministic scenarios, including register control, pass structural/no-clipping coverage at the smaller `1024×768` till profile; no full workflow capture exists. |
+| 22 | Windows 1920×1080 validation | Partial | Thirty-four deterministic scenarios pass structural/no-clipping coverage at `1280×900`; no full workflow capture exists. |
 | 23 | Android tablet layout validation | Not validated | No device or emulator validation was performed. |
 | 24 | Desktop keyboard workflow | Partial | Existing keyboard helpers are tested; no full POS key map exists. |
 | 25 | Barcode scanner workflow | Partial | Windows and Android accept scan input and resolve active tenant barcode mappings; physical scanner validation remains outstanding. |
@@ -119,10 +129,10 @@ repository requires the Django 5.1 API. The repository `.venv` runs Django
 | 51 | Supply and collection separation | Implemented | Collection remains a separate idempotent server action. |
 | 52 | Receipt printing | Partial | Settlement creates one immutable receipt snapshot and branch/device queue job. Windows and Android provide retry, cancellation and permissioned reprint in deterministic simulator mode; no physical adapter is certified. |
 | 53 | Label printing | Absent | No label printer adapter or reprint workflow exists. |
-| 54 | X report access | Absent | Native POS does not expose interim reports. |
-| 55 | Z close and reconciliation | Blocked | Authoritative service exists, but no native controlled close flow exists. |
-| 56 | Cash movement workflow | Absent | Native POS does not expose cash in/out controls. |
-| 57 | Shift handover | Absent | Native POS does not expose handover controls. |
+| 54 | X report access | Implemented | Windows and Android generate and display the stored immutable X snapshot without closing or resetting the register. |
+| 55 | Z close and reconciliation | Implemented for authoritative register closure | Both native clients perform a blind denomination count and create the one immutable Z; physical report printing and field validation remain uncertified. |
+| 56 | Cash movement workflow | Implemented | Native cash in/out, float top-up, safe drop, petty cash, banking and governed adjustment actions require a reason; a different capable operator approves each movement. |
+| 57 | Shift handover | Implemented | The outgoing operator requests handover, a different authenticated operator accepts it, and the backend atomically closes the old accountable shift and opens the new one without closing the register. |
 | 58 | Audit timeline | Partial | Backend events exist; no complete native audit timeline exists. |
 | 59 | Offline action durability | Implemented | Secure durable action journal restores interrupted consequential actions as reconciliation-required and is exposed in both native Sync Centres. |
 | 60 | Safe offline dispensing | Blocked | Offline mode cannot authoritatively resolve clinical/cash-control state. |
@@ -139,15 +149,13 @@ Full production certification requires all of the following:
    duplicate web implementation.
 2. Bind every financial/dispensing transaction to an authoritative open
    `RegisterSession` and accountable `OperatorShift` on the server.
-3. Implement, test and permission-protect native register opening, cash
-   declarations, movements, X reports, Z closure and handover flows.
-4. Build retail catalogue, assortment, pricing, barcode and stock
+3. Complete the retail catalogue, assortment, pricing, barcode and stock
    workflows backed by the current tenant’s authoritative APIs.
-5. Implement physical device adapters, then validate printer, drawer and
+4. Implement physical device adapters, then validate printer, drawer and
    scanner behaviour.
-6. Run end-to-end workflow, accessibility and visual validation on the mandated
+5. Run end-to-end workflow, accessibility and visual validation on the mandated
    Windows and Android device profiles.
-7. Complete retail-medicine screening, remaining clinical invalidation
+6. Complete retail-medicine screening, remaining clinical invalidation
    scenarios, and restart/resume restoration of clinical decision and override
    state.
 
@@ -318,3 +326,32 @@ physical printing, complete offline clinical/retail reconciliation, responsive
 device validation, an end-to-end visual suite for the required screens,
 screen-reader validation and physical hardware evidence remain outstanding.
 The release decision remains exactly `POS_UI_UX_BLOCKED`.
+
+## Register Control and Retail Runtime Increment (2026-07-28)
+
+Windows and Android now expose a native Register Centre backed only by the
+authoritative `pos_shift` services. An operator can open the device-assigned
+register with a blind denomination count, record a governed cash movement,
+generate and inspect the immutable X snapshot, perform a blind closing count
+and finalise the one Z, or transfer accountability through a two-operator
+handover. Cash movement creators cannot approve their own movement. The
+runtime advertises only actions the authenticated operator may lawfully take.
+
+Both native clients also provide a workstation/device lock. Unlocking calls a
+credential-verification path that compares the supplied identity with the
+already authenticated operator without replacing the active access/refresh
+tokens. Locking does not close the register, end the shift or transfer
+accountability.
+
+The broader gate exposed and closed two retail runtime defects: every
+`PosRetailService` class command was missing its class receiver, and retail
+totals/line checks used tenant-strict reverse managers without an explicit
+tenant scope. Retail draft, barcode increment, authoritative total and
+register-context tests now pass together with the register-control suite.
+
+Deterministic visual coverage now includes the Register Centre with an open
+shift, an unapproved safe drop and blocked Z closure. Structural/no-clipping
+checks pass at both till profiles. This remains software evidence only:
+physical cash drawer behaviour, report printing, scanner operation, complete
+retail medicine screening, device restart and screen-reader evidence remain
+outstanding. The decision remains exactly `POS_UI_UX_BLOCKED`.

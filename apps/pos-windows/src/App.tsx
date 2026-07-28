@@ -8,6 +8,7 @@ import { PatientSafetyBanner } from './components/tibatrace/PatientSafetyBanner.
 import { OperationalStatusBar } from './components/tibatrace/OperationalStatusBar.js';
 import { PaymentPanel } from './components/tibatrace/PaymentPanel.js';
 import { PrintCentre } from './components/tibatrace/PrintCentre.js';
+import { RegisterCentre } from './components/tibatrace/RegisterCentre.js';
 import { PrescriptionWorkspace } from './components/tibatrace/PrescriptionWorkspace.js';
 import { RetailWorkspace } from './components/tibatrace/RetailWorkspace.js';
 import { SyncCentre } from './components/tibatrace/SyncCentre.js';
@@ -86,7 +87,7 @@ function OperationsConsole({
   readonly apiFetch: typeof fetch;
   readonly onLogout: () => Promise<void>;
 }) {
-  const [workspace, setWorkspace] = useState<'clinical' | 'retail' | 'print' | 'sync'>('clinical');
+  const [workspace, setWorkspace] = useState<'clinical' | 'retail' | 'register' | 'print' | 'sync'>('clinical');
   const { state, refreshQueue, select, refresh, takePayment, confirmCollection, recordCounselling, journal } =
     usePosWorkflow('/api/pos/dispensing', apiFetch, runtime.offline, session.deviceId);
   // Was `useState<ClinicalSummary | null>(null)` with no setter, so the rail
@@ -99,6 +100,7 @@ function OperationsConsole({
   const [reviewFindingId, setReviewFindingId] = useState('');
   const [clinicalReviewBusy, setClinicalReviewBusy] = useState(false);
   const [clinicalReviewError, setClinicalReviewError] = useState('');
+  const [locked, setLocked] = useState(false);
 
   useEffect(() => {
     void refreshQueue();
@@ -255,6 +257,7 @@ function OperationsConsole({
         operator={session.username ?? session.userId}
         workspace={workspace}
         onWorkspaceChange={setWorkspace}
+        onLock={() => setLocked(true)}
         onLogout={onLogout}
       />
       <OperationalStatusBar
@@ -263,6 +266,8 @@ function OperationsConsole({
       />
       {workspace === 'retail' ? (
         <RetailWorkspace apiFetch={apiFetch} deviceId={session.deviceId} />
+      ) : workspace === 'register' ? (
+        <RegisterCentre apiFetch={apiFetch} deviceId={session.deviceId} />
       ) : workspace === 'print' ? (
         <PrintCentre apiFetch={apiFetch} deviceId={session.deviceId} />
       ) : workspace === 'sync' ? (
@@ -372,6 +377,18 @@ function OperationsConsole({
         onOpenCollection={() => document.getElementById('collection-workspace')?.scrollIntoView({ block: 'start' })}
       />
       </>}
+      {locked ? (
+        <WorkstationLock
+          initialUsername={session.username ?? ''}
+          onUnlock={async (username, password) => {
+            if (!(await runtime.verify(username, password))) {
+              throw new Error('Those credentials do not match the operator who locked this workstation.');
+            }
+            setLocked(false);
+          }}
+          onSignOut={onLogout}
+        />
+      ) : null}
     </div>
   );
 }
@@ -381,12 +398,14 @@ function Header({
   operator,
   workspace,
   onWorkspaceChange,
+  onLock,
   onLogout,
 }: {
   readonly busy: boolean;
   readonly operator: string;
-  readonly workspace: 'clinical' | 'retail' | 'print' | 'sync';
-  readonly onWorkspaceChange: (workspace: 'clinical' | 'retail' | 'print' | 'sync') => void;
+  readonly workspace: 'clinical' | 'retail' | 'register' | 'print' | 'sync';
+  readonly onWorkspaceChange: (workspace: 'clinical' | 'retail' | 'register' | 'print' | 'sync') => void;
+  readonly onLock: () => void;
   readonly onLogout: () => Promise<void>;
 }) {
   return (
@@ -423,7 +442,7 @@ function Header({
         </div>
       </div>
       <div style={{ display: 'flex', gap: 4 }}>
-        {(['clinical', 'retail', 'print', 'sync'] as const).map((option) => (
+        {(['clinical', 'retail', 'register', 'print', 'sync'] as const).map((option) => (
           <button
             key={option}
             type="button"
@@ -452,6 +471,22 @@ function Header({
         </span>
         <button
           type="button"
+          onClick={onLock}
+          style={{
+            minHeight: 36,
+            padding: '6px 12px',
+            border: '1px solid rgba(255,255,255,0.35)',
+            borderRadius: 8,
+            background: '#fff',
+            color: surface.inverse,
+            cursor: 'pointer',
+            fontWeight: 700,
+          }}
+        >
+          Lock
+        </button>
+        <button
+          type="button"
           onClick={() => void onLogout()}
           style={{
             minHeight: 36,
@@ -467,6 +502,80 @@ function Header({
         </button>
       </div>
     </header>
+  );
+}
+
+function WorkstationLock({
+  initialUsername,
+  onUnlock,
+  onSignOut,
+}: {
+  readonly initialUsername: string;
+  readonly onUnlock: (username: string, password: string) => Promise<void>;
+  readonly onSignOut: () => Promise<void>;
+}) {
+  const [username, setUsername] = useState(initialUsername);
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="workstation-lock-title"
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 100,
+        display: 'grid',
+        placeItems: 'center',
+        padding: spacing.xl,
+        background: surface.inverse,
+        color: text.inverse,
+      }}
+    >
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          setBusy(true);
+          setError('');
+          void onUnlock(username.trim(), password)
+            .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)))
+            .finally(() => {
+              setBusy(false);
+              setPassword('');
+            });
+        }}
+        style={{
+          width: 'min(420px, 100%)',
+          display: 'grid',
+          gap: spacing.md,
+          padding: spacing.xxl,
+          borderRadius: 16,
+          background: surface.raised,
+          color: text.primary,
+          boxShadow: '0 24px 72px rgba(0,0,0,0.48)',
+        }}
+      >
+        <img src="./brand/tibatrace-logo.jpeg" alt="TibaTrace" style={{ width: 150, maxWidth: '100%', margin: '0 auto' }} />
+        <div>
+          <h1 id="workstation-lock-title" style={{ margin: 0, fontSize: fontSize.screenTitle }}>Workstation locked</h1>
+          <p style={{ marginBottom: 0, color: text.secondary }}>The current operator must re-verify their credentials. Register and shift accountability do not change.</p>
+        </div>
+        {error ? <BlockingReason status="BLOCKING" reason={error} /> : null}
+        <label style={{ display: 'grid', gap: spacing.xs, fontSize: fontSize.caption }}>Username
+          <input autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} required maxLength={150} style={lockInput} />
+        </label>
+        <label style={{ display: 'grid', gap: spacing.xs, fontSize: fontSize.caption }}>Password
+          <input autoFocus type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required maxLength={256} style={lockInput} />
+        </label>
+        <button type="submit" disabled={busy || !username.trim() || !password} style={lockPrimary(busy || !username.trim() || !password)}>
+          {busy ? 'Verifying…' : 'Unlock workstation'}
+        </button>
+        <button type="button" disabled={busy} onClick={() => void onSignOut()} style={lockSecondary}>Sign out instead</button>
+      </form>
+    </div>
   );
 }
 
@@ -486,6 +595,34 @@ function CenteredMessage({ message }: { readonly message: string }) {
     </main>
   );
 }
+
+const lockInput = {
+  minHeight: 44,
+  border: `1px solid ${surface.borderStrong}`,
+  borderRadius: 8,
+  padding: '0 12px',
+  fontSize: fontSize.body,
+};
+const lockPrimary = (disabled: boolean) => ({
+  minHeight: 44,
+  border: 'none',
+  borderRadius: 8,
+  background: disabled ? surface.sunken : '#12854A',
+  color: disabled ? text.tertiary : '#fff',
+  fontSize: fontSize.body,
+  fontWeight: 700,
+  cursor: disabled ? 'not-allowed' : 'pointer',
+});
+const lockSecondary = {
+  minHeight: 40,
+  border: `1px solid ${surface.borderStrong}`,
+  borderRadius: 8,
+  background: surface.raised,
+  color: text.primary,
+  fontSize: fontSize.caption,
+  fontWeight: 700,
+  cursor: 'pointer',
+};
 
 function SignInScreen({
   initialError,

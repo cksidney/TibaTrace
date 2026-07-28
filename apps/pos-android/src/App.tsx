@@ -26,6 +26,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Modal,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -46,10 +47,11 @@ import { ClinicalReviewScreen } from './screens/ClinicalReviewScreen';
 import { DispensingScreen } from './screens/DispensingScreen';
 import { PaymentScreen } from './screens/PaymentScreen';
 import { PrintCentreScreen } from './screens/PrintCentreScreen';
+import { RegisterCentreScreen } from './screens/RegisterCentreScreen';
 import { RetailScreen } from './screens/RetailScreen';
 import { SyncCentreScreen } from './screens/SyncCentreScreen';
 
-type WorkspaceScreen = 'queue' | 'episode' | 'clinical-review' | 'payment' | 'counselling' | 'collection' | 'retail' | 'print' | 'sync';
+type WorkspaceScreen = 'queue' | 'episode' | 'clinical-review' | 'payment' | 'counselling' | 'collection' | 'retail' | 'register' | 'print' | 'sync';
 
 interface ClinicalScreeningOutcome {
   readonly summary: AndroidClinicalSummary;
@@ -152,6 +154,7 @@ function PosWorkspace({ onLogout }: { readonly onLogout: () => Promise<void> }) 
   const [journal, setJournal] = useState<DurableActionJournal | null>(null);
   const [journalReady, setJournalReady] = useState(false);
   const [journalBlocked, setJournalBlocked] = useState(false);
+  const [locked, setLocked] = useState(false);
 
   const syncWorkflow = useCallback(() => {
     setEpisode(workflow.current);
@@ -279,11 +282,17 @@ function PosWorkspace({ onLogout }: { readonly onLogout: () => Promise<void> }) 
         <Pressable accessibilityRole="button" onPress={() => setScreen('retail')} style={styles.secondary}>
           <Text style={styles.secondaryLabel}>Retail</Text>
         </Pressable>
+        <Pressable accessibilityRole="button" onPress={() => setScreen('register')} style={styles.secondary}>
+          <Text style={styles.secondaryLabel}>Register</Text>
+        </Pressable>
         <Pressable accessibilityRole="button" onPress={() => setScreen('print')} style={styles.secondary}>
           <Text style={styles.secondaryLabel}>Print Centre</Text>
         </Pressable>
         <Pressable accessibilityRole="button" onPress={() => setScreen('sync')} style={styles.secondary}>
           <Text style={styles.secondaryLabel}>Sync Centre</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" onPress={() => setLocked(true)} style={styles.secondary}>
+          <Text style={styles.secondaryLabel}>Lock</Text>
         </Pressable>
         <Pressable accessibilityRole="button" onPress={() => void onLogout()} style={styles.secondary}>
           <Text style={styles.secondaryLabel}>Sign out</Text>
@@ -501,6 +510,13 @@ function PosWorkspace({ onLogout }: { readonly onLogout: () => Promise<void> }) 
             deviceId={deviceId}
           />
         ) : null}
+        {screen === 'register' ? (
+          <RegisterCentreScreen
+            apiBaseUrl={runtime.apiBaseUrl}
+            apiFetch={runtime.session.fetch.bind(runtime.session) as typeof fetch}
+            deviceId={deviceId}
+          />
+        ) : null}
         {screen === 'print' ? (
           <PrintCentreScreen
             apiFetch={runtime.session.fetch.bind(runtime.session) as typeof fetch}
@@ -533,11 +549,74 @@ function PosWorkspace({ onLogout }: { readonly onLogout: () => Promise<void> }) 
           <NavButton label="Counselling" onPress={() => setScreen('counselling')} />
           <NavButton label="Collection" onPress={() => setScreen('collection')} />
           <NavButton label="Retail" onPress={() => setScreen('retail')} />
+          <NavButton label="Register" onPress={() => setScreen('register')} />
           <NavButton label="Print" onPress={() => setScreen('print')} />
           <NavButton label="Sync" onPress={() => setScreen('sync')} />
         </ScrollView>
       ) : null}
+      <WorkstationLockModal
+        visible={locked}
+        onUnlock={async (username, password) => {
+          if (!(await runtime.verify(username, password))) {
+            throw new Error('Those credentials do not match the operator who locked this device.');
+          }
+          setLocked(false);
+        }}
+        onSignOut={onLogout}
+      />
     </View>
+  );
+}
+
+function WorkstationLockModal({
+  visible,
+  onUnlock,
+  onSignOut,
+}: {
+  readonly visible: boolean;
+  readonly onUnlock: (username: string, password: string) => Promise<void>;
+  readonly onSignOut: () => Promise<void>;
+}) {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  return (
+    <Modal visible={visible} animationType="fade" onRequestClose={() => undefined}>
+      <SafeAreaView style={styles.lockScreen}>
+        <View accessibilityViewIsModal style={styles.lockCard}>
+          <TibaTraceBrand />
+          <Text style={styles.title}>Device locked</Text>
+          <Text style={styles.muted}>Re-verify the current operator. Register and shift accountability remain unchanged.</Text>
+          {error ? <View accessibilityLiveRegion="assertive" style={styles.notice}><Text style={styles.noticeText}>{error}</Text></View> : null}
+          <Text style={styles.label}>Username</Text>
+          <TextInput autoCapitalize="none" autoComplete="username" value={username} onChangeText={setUsername} style={styles.input} />
+          <Text style={styles.label}>Password</Text>
+          <TextInput autoComplete="password" secureTextEntry value={password} onChangeText={setPassword} style={styles.input} />
+          <Pressable
+            accessibilityRole="button"
+            disabled={busy || !username.trim() || !password}
+            onPress={() => {
+              setBusy(true);
+              setError('');
+              void onUnlock(username.trim(), password)
+                .catch((cause: unknown) => setError(describe(cause)))
+                .finally(() => {
+                  setBusy(false);
+                  setPassword('');
+                });
+            }}
+            style={[styles.primary, (busy || !username.trim() || !password) && styles.primaryDisabled]}
+          >
+            <Text style={styles.primaryLabel}>{busy ? 'Verifying…' : 'Unlock device'}</Text>
+          </Pressable>
+          <Pressable accessibilityRole="button" disabled={busy} onPress={() => void onSignOut()} style={styles.secondary}>
+            <Text style={styles.secondaryLabel}>Sign out instead</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    </Modal>
   );
 }
 
@@ -810,4 +889,6 @@ const styles = StyleSheet.create({
   secondaryLabel: { color: text.primary, fontSize: fontSize.caption, fontWeight: '600' },
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.md },
   version: { marginTop: spacing.lg, color: text.tertiary, textAlign: 'center' },
+  lockScreen: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl, backgroundColor: surface.inverse },
+  lockCard: { width: '100%', maxWidth: 440, gap: spacing.md, padding: spacing.xl, borderRadius: 16, backgroundColor: surface.raised },
 });

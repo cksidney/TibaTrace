@@ -85,7 +85,7 @@ class RegisterSessionSerializer(serializers.ModelSerializer):
     opened_by_username = serializers.CharField(source="opened_by.username", read_only=True)
     closed_by_username = serializers.SerializerMethodField()
     has_final_report = serializers.SerializerMethodField()
-    operator_shifts = OperatorShiftSerializer(many=True, read_only=True)
+    operator_shifts = serializers.SerializerMethodField()
 
     class Meta:
         model = RegisterSession
@@ -120,6 +120,17 @@ class RegisterSessionSerializer(serializers.ModelSerializer):
             register_session=session,
             report_type=ShiftReport.TYPE_Z,
         ).exists()
+
+    def get_operator_shifts(self, session) -> list[dict]:
+        shifts = (
+            OperatorShift.all_objects.filter(
+                tenant_id=session.tenant_id,
+                register_session=session,
+            )
+            .select_related("operator", "handed_over_to")
+            .order_by("-started_at")
+        )
+        return OperatorShiftSerializer(shifts, many=True).data
 
 
 class CashDeclarationSerializer(serializers.ModelSerializer):
@@ -215,6 +226,11 @@ class CashMovementRequestSerializer(serializers.Serializer):
     reason_code = serializers.CharField(max_length=40)
     description = serializers.CharField(required=False, allow_blank=True, default="")
     reference = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class OperatorShiftActionRequestSerializer(serializers.Serializer):
+    device_id = serializers.CharField(max_length=128)
+    reason = serializers.CharField(required=False, allow_blank=True, default="")
 
 
 class ReportRequestSerializer(serializers.Serializer):

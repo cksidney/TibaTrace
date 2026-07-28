@@ -117,7 +117,7 @@ class PosRetailService:
 
     @classmethod
     @transaction.atomic
-    def create_draft(*, tenant, branch, store_id, actor, device_id: str, customer=None, patient=None):
+    def create_draft(cls, *, tenant, branch, store_id, actor, device_id: str, customer=None, patient=None):
         _require(actor, tenant.pk, "pos.transaction.create")
         authority = cls._authority(tenant=tenant, branch=branch, actor=actor, device_id=device_id)
         store = cls._store(tenant=tenant, branch=branch, store_id=store_id)
@@ -141,7 +141,7 @@ class PosRetailService:
         )
 
     @classmethod
-    def search_catalogue(*, tenant, branch, store_id, actor, device_id: str, query: str, customer=None):
+    def search_catalogue(cls, *, tenant, branch, store_id, actor, device_id: str, query: str, customer=None):
         _require(actor, tenant.pk, "pos.transaction.create")
         cls._authority(tenant=tenant, branch=branch, actor=actor, device_id=device_id)
         store = cls._store(tenant=tenant, branch=branch, store_id=store_id)
@@ -177,7 +177,7 @@ class PosRetailService:
         return items
 
     @classmethod
-    def resolve_barcode(*, tenant, barcode: str) -> CommercialSKU:
+    def resolve_barcode(cls, *, tenant, barcode: str) -> CommercialSKU:
         code = barcode.strip()
         if not code:
             raise ValidationError("Enter or scan a barcode.")
@@ -207,7 +207,7 @@ class PosRetailService:
 
     @classmethod
     @transaction.atomic
-    def add_line(*, tenant, transaction_id, actor, device_id: str, sku_id, quantity, scan_source="SEARCH"):
+    def add_line(cls, *, tenant, transaction_id, actor, device_id: str, sku_id, quantity, scan_source="SEARCH"):
         transaction_record = (
             PosTransaction.all_objects.select_for_update()
             .select_related("branch", "store", "customer")
@@ -283,7 +283,7 @@ class PosRetailService:
 
     @classmethod
     @transaction.atomic
-    def set_quantity(*, tenant, transaction_id, line_id, actor, device_id: str, quantity):
+    def set_quantity(cls, *, tenant, transaction_id, line_id, actor, device_id: str, quantity):
         transaction_record = PosTransaction.all_objects.select_for_update().select_related(
             "branch", "store", "customer"
         ).filter(tenant=tenant, pk=transaction_id).first()
@@ -330,7 +330,7 @@ class PosRetailService:
 
     @classmethod
     @transaction.atomic
-    def remove_line(*, tenant, transaction_id, line_id, actor, device_id: str):
+    def remove_line(cls, *, tenant, transaction_id, line_id, actor, device_id: str):
         transaction_record = PosTransaction.all_objects.select_for_update().select_related("branch").filter(
             tenant=tenant, pk=transaction_id
         ).first()
@@ -354,12 +354,15 @@ class PosRetailService:
 
     @classmethod
     @transaction.atomic
-    def hold(*, tenant, transaction_id, actor, device_id: str, reason: str = ""):
+    def hold(cls, *, tenant, transaction_id, actor, device_id: str, reason: str = ""):
         _require(actor, tenant.pk, "pos.transaction.hold")
         transaction_record, authority = cls._editable_transaction(
             tenant=tenant, transaction_id=transaction_id, actor=actor, device_id=device_id
         )
-        if not transaction_record.lines.exists():
+        if not PosTransactionLine.all_objects.filter(
+            tenant=tenant,
+            transaction=transaction_record,
+        ).exists():
             raise ValidationError("An empty POS transaction cannot be held.")
         transaction_record.state = PosTransaction.State.HELD
         transaction_record.hold_reason = reason.strip()
@@ -369,7 +372,7 @@ class PosRetailService:
 
     @classmethod
     @transaction.atomic
-    def resume(*, tenant, transaction_id, actor, device_id: str):
+    def resume(cls, *, tenant, transaction_id, actor, device_id: str):
         _require(actor, tenant.pk, "pos.transaction.resume")
         transaction_record, authority = cls._editable_transaction(
             tenant=tenant, transaction_id=transaction_id, actor=actor, device_id=device_id
@@ -382,7 +385,7 @@ class PosRetailService:
 
     @classmethod
     @transaction.atomic
-    def cancel(*, tenant, transaction_id, actor, device_id: str, reason: str):
+    def cancel(cls, *, tenant, transaction_id, actor, device_id: str, reason: str):
         _require(actor, tenant.pk, "pos.transaction.cancel")
         transaction_record, authority = cls._editable_transaction(
             tenant=tenant, transaction_id=transaction_id, actor=actor, device_id=device_id
@@ -399,12 +402,17 @@ class PosRetailService:
 
     @classmethod
     @transaction.atomic
-    def ready_for_payment(*, tenant, transaction_id, actor, device_id: str):
+    def ready_for_payment(cls, *, tenant, transaction_id, actor, device_id: str):
         _require(actor, tenant.pk, "pos.payment.accept")
         transaction_record, authority = cls._editable_transaction(
             tenant=tenant, transaction_id=transaction_id, actor=actor, device_id=device_id
         )
-        lines = list(transaction_record.lines.select_related("sku"))
+        lines = list(
+            PosTransactionLine.all_objects.filter(
+                tenant=tenant,
+                transaction=transaction_record,
+            ).select_related("sku")
+        )
         if not lines:
             raise ValidationError("A POS transaction needs at least one line before payment.")
         for line in lines:
@@ -475,7 +483,10 @@ class PosRetailService:
 
     @staticmethod
     def _recalculate(transaction_record) -> None:
-        totals = transaction_record.lines.aggregate(
+        totals = PosTransactionLine.all_objects.filter(
+            tenant_id=transaction_record.tenant_id,
+            transaction=transaction_record,
+        ).aggregate(
             subtotal=Sum("line_total"),
             discount_total=Sum("discount_amount"),
             tax_total=Sum("tax_amount"),

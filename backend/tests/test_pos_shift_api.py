@@ -257,7 +257,10 @@ class TestWorkbenchLists:
         assert response.status_code == 201
         movement = CashMovement.all_objects.get(pk=response.json()["id"])
         assert movement.register_session_id == world["session"].id
-        assert movement.operator_shift_id == world["session"].operator_shifts.get().id
+        assert movement.operator_shift_id == OperatorShift.all_objects.get(
+            tenant=world["tenant"],
+            register_session=world["session"],
+        ).id
         assert movement.signed_amount == Decimal("-1200.00")
 
     def test_x_report_endpoint_does_not_close_the_register(self, world):
@@ -364,6 +367,105 @@ class TestWorkbenchLists:
         )
         body = rows(world["client"].get("/api/pos/shift/cash-movements/?unapproved=true"))
         assert len(body) == 1
+
+    def test_cash_movement_approval_requires_a_different_operator(self, world):
+        operator = world["operator"]
+        supervisor = world["supervisor"]
+        operator.is_superuser = True
+        supervisor.is_superuser = True
+        operator.save(update_fields=["is_superuser"])
+        supervisor.save(update_fields=["is_superuser"])
+        movement = CashMovement.all_objects.create(
+            tenant=world["tenant"],
+            register_session=world["session"],
+            kind="SAFE_DROP",
+            amount=cash("500.00"),
+            reason_code="SECURITY_THRESHOLD",
+            created_by=operator,
+        )
+
+        refused = world["client"].post(
+            f"/api/pos/shift/cash-movements/{movement.pk}/approve/",
+            {},
+            format="json",
+        )
+        assert refused.status_code == 400
+
+        world["client"].force_authenticate(user=supervisor)
+        approved = world["client"].post(
+            f"/api/pos/shift/cash-movements/{movement.pk}/approve/",
+            {},
+            format="json",
+        )
+        assert approved.status_code == 200
+        assert approved.json()["approved_by_username"] == supervisor.username
+
+    def test_handover_transfers_accountability_without_closing_the_register(self, world):
+        operator = world["operator"]
+        successor = world["supervisor"]
+        operator.is_superuser = True
+        successor.is_superuser = True
+        operator.save(update_fields=["is_superuser"])
+        successor.save(update_fields=["is_superuser"])
+        register = world["register"]
+        register.state = "OPEN"
+        register.device_id = "POS-HANDOVER-01"
+        register.save(update_fields=["state", "device_id", "updated_at"])
+        outgoing = OperatorShift.all_objects.get(
+            tenant=world["tenant"],
+            register_session=world["session"],
+        )
+
+        requested = world["client"].post(
+            f"/api/pos/shift/shifts/{outgoing.pk}/request-handover/",
+            {"device_id": "POS-HANDOVER-01", "reason": "Scheduled relief"},
+            format="json",
+        )
+        assert requested.status_code == 200
+        assert requested.json()["state"] == "HANDOVER_REQUESTED"
+
+        world["client"].force_authenticate(user=successor)
+        accepted = world["client"].post(
+            f"/api/pos/shift/shifts/{outgoing.pk}/accept-handover/",
+            {"device_id": "POS-HANDOVER-01"},
+            format="json",
+        )
+
+        assert accepted.status_code == 201
+        assert accepted.json()["outgoing_shift"]["state"] == "CLOSED"
+        assert accepted.json()["operator_shift"]["operator_id"] == str(successor.pk)
+        world["session"].refresh_from_db()
+        register.refresh_from_db()
+        assert world["session"].state == "OPEN"
+        assert register.state == "OPEN"
+
+    def test_operator_cannot_accept_their_own_handover(self, world):
+        operator = world["operator"]
+        operator.is_superuser = True
+        operator.save(update_fields=["is_superuser"])
+        register = world["register"]
+        register.state = "OPEN"
+        register.device_id = "POS-SELF-HANDOVER"
+        register.save(update_fields=["state", "device_id", "updated_at"])
+        outgoing = OperatorShift.all_objects.get(
+            tenant=world["tenant"],
+            register_session=world["session"],
+        )
+        world["client"].post(
+            f"/api/pos/shift/shifts/{outgoing.pk}/request-handover/",
+            {"device_id": "POS-SELF-HANDOVER"},
+            format="json",
+        )
+
+        response = world["client"].post(
+            f"/api/pos/shift/shifts/{outgoing.pk}/accept-handover/",
+            {"device_id": "POS-SELF-HANDOVER"},
+            format="json",
+        )
+
+        assert response.status_code == 400
+        outgoing.refresh_from_db()
+        assert outgoing.state == "HANDOVER_REQUESTED"
 
 
 class TestSessionReporting:

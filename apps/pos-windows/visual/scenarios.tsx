@@ -16,6 +16,7 @@ import { PatientSafetyBanner } from '../src/components/tibatrace/PatientSafetyBa
 import type { PatientSummary } from '../src/components/tibatrace/PatientSafetyBanner.js';
 import { PaymentPanel } from '../src/components/tibatrace/PaymentPanel.js';
 import { PrintCentre } from '../src/components/tibatrace/PrintCentre.js';
+import { RegisterCentre } from '../src/components/tibatrace/RegisterCentre.js';
 import { SyncCentre } from '../src/components/tibatrace/SyncCentre.js';
 import { BlockingReason, StatusBadge } from '../src/components/tibatrace/StatusBadge.js';
 import { WorkflowRibbon } from '../src/components/tibatrace/WorkflowRibbon.js';
@@ -634,6 +635,103 @@ export const SCENARIOS: readonly Scenario[] = [
           clinicalConnected: true,
           printCounts: { queued: 1, retryRequired: 1 },
         }}
+      />
+    ),
+  },
+  {
+    id: 'register-centre-open-shift',
+    title: 'Register Centre — open shift with pending movement',
+    rationale:
+      'Register accountability, the pending second-person cash approval and the lawful X/Z actions must remain readable together at till resolution.',
+    width: 1024,
+    render: () => (
+      <RegisterCentre
+        apiFetch={visualFetch}
+        deviceId="VISUAL-TILL-01"
+        autoRefresh={false}
+        initialRuntime={{
+          readiness: 'READY',
+          register: {
+            id: 'register-1',
+            code: 'TILL-01',
+            name: 'Front counter',
+            branch_code: 'NAI-CBD',
+            device_id: 'VISUAL-TILL-01',
+            currency: 'KES',
+            state: 'OPEN',
+            expected_float: '5000.00',
+            last_synchronised_at: '2026-07-28T09:00:00.000Z',
+          },
+          business_day: {
+            id: 'day-1',
+            branch_code: 'NAI-CBD',
+            business_date: '2026-07-28',
+            state: 'OPEN',
+            opened_at: '2026-07-28T06:00:00.000Z',
+            closed_at: null,
+            accepts_transactions: true,
+            reopen_reason: '',
+          },
+          register_session: {
+            id: 'session-1',
+            register_code: 'TILL-01',
+            business_date: '2026-07-28',
+            state: 'OPEN',
+            opened_at: '2026-07-28T06:30:00.000Z',
+            opened_by_username: 'cashier.one',
+            closed_at: null,
+            closed_by_username: '',
+            forced_closure: false,
+            forced_closure_reason: '',
+            has_final_report: false,
+            operator_shifts: [{
+              id: 'shift-1',
+              operator_id: 'operator-1',
+              operator_username: 'cashier.one',
+              state: 'OPEN',
+              started_at: '2026-07-28T06:30:00.000Z',
+              ended_at: null,
+              handed_over_to_username: '',
+              close_reason: '',
+            }],
+          },
+          operator_shift: {
+            id: 'shift-1',
+            operator_id: 'operator-1',
+            operator_username: 'cashier.one',
+            state: 'OPEN',
+            started_at: '2026-07-28T06:30:00.000Z',
+            ended_at: null,
+            handed_over_to_username: '',
+            close_reason: '',
+          },
+          device_health: null,
+          notices: [],
+          allowed_actions: ['START_SALE', 'REQUEST_HANDOVER', 'RECORD_CASH_MOVEMENT', 'APPROVE_CASH_MOVEMENT', 'GENERATE_X_REPORT', 'CLOSE_REGISTER'],
+          closure_eligibility: {
+            eligible: false,
+            blocking_reasons: [
+              'A confirmed closing cash declaration is required.',
+              '1 cash movement(s) await approval.',
+            ],
+          },
+        }}
+        initialMovements={[{
+          id: 'movement-1',
+          kind: 'SAFE_DROP',
+          amount: '25000.00',
+          signed_amount: '-25000.00',
+          affects_expected_cash: true,
+          currency: 'KES',
+          reason_code: 'SECURITY_THRESHOLD',
+          description: 'Drawer exceeded the branch cash threshold.',
+          reference: 'SAFE-2026-0142',
+          created_by_username: 'cashier.one',
+          approved_by_username: '',
+          approved_at: null,
+          created_at: '2026-07-28T08:45:00.000Z',
+        }]}
+        initialReports={[]}
       />
     ),
   },
