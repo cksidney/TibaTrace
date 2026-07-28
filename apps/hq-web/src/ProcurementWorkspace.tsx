@@ -30,6 +30,16 @@ type ProcurementTab =
   | 'reconciliation';
 
 type DialogMode =
+  | {
+    readonly kind: 'confirm';
+    readonly confirmation: string;
+    readonly message: string;
+    readonly path: string;
+    readonly payload: unknown;
+    readonly record: string;
+    readonly submitLabel: string;
+    readonly title: string;
+  }
   | { readonly kind: 'supplier' }
   | { readonly kind: 'qualification'; readonly supplier: ProcurementSupplier }
   | { readonly kind: 'suspend-supplier'; readonly supplier: ProcurementSupplier }
@@ -70,7 +80,6 @@ export function ProcurementWorkspace({
   );
   const [data, setData] = useState<ProcurementData | null>(null);
   const [failed, setFailed] = useState(false);
-  const [busy, setBusy] = useState('');
   const [tab, setTab] = useState<ProcurementTab>('suppliers');
   const [dialog, setDialog] = useState<DialogMode>(null);
   const [notice, setNotice] = useState('');
@@ -91,25 +100,6 @@ export function ProcurementWorkspace({
     void reload(controller.signal);
     return () => controller.abort();
   }, [tenantId]);
-
-  const run = async (
-    key: string,
-    path: string,
-    payload: unknown,
-    success: string,
-  ) => {
-    setBusy(key);
-    setNotice('');
-    try {
-      await procurementCommand(path, payload, tenantId, csrfToken);
-      await reload();
-      setNotice(success);
-    } catch (caught) {
-      setNotice(caught instanceof HQApiError ? caught.message : 'The procurement action failed.');
-    } finally {
-      setBusy('');
-    }
-  };
 
   const metrics = useMemo(() => ({
     approvedSuppliers: data?.suppliers.filter((item) => ['APPROVED', 'ACTIVE'].includes(item.status)).length ?? 0,
@@ -182,43 +172,33 @@ export function ProcurementWorkspace({
           <>
             {tab === 'suppliers' ? (
               <SuppliersTab
-                busy={busy}
                 data={data}
                 onDialog={setDialog}
-                onRun={run}
               />
             ) : null}
             {tab === 'requisitions' ? (
               <RequisitionsTab
-                busy={busy}
                 data={data}
                 onDialog={setDialog}
-                onRun={run}
               />
             ) : null}
             {tab === 'orders' ? (
               <OrdersTab
-                busy={busy}
                 data={data}
                 onDialog={setDialog}
-                onRun={run}
               />
             ) : null}
             {tab === 'receiving' ? (
               <ReceivingTab
-                busy={busy}
                 data={data}
                 onDialog={setDialog}
-                onRun={run}
               />
             ) : null}
             {tab === 'quality' ? <QualityTab data={data} onDialog={setDialog} /> : null}
             {tab === 'reconciliation' ? (
               <ReconciliationTab
-                busy={busy}
                 data={data}
                 onDialog={setDialog}
-                onRun={run}
               />
             ) : null}
           </>
@@ -256,10 +236,8 @@ export function ProcurementWorkspace({
 }
 
 function SuppliersTab({
-  busy,
   data,
   onDialog,
-  onRun,
 }: ProcurementTabProps) {
   return (
     <section className="procurement-section">
@@ -298,12 +276,15 @@ function SuppliersTab({
                         <div className="tenant-row-actions">
                           <button onClick={() => onDialog({ kind: 'qualification', supplier })} type="button">Add licence</button>
                           {supplier.status === 'PROSPECTIVE' || supplier.status === 'UNDER_REVIEW' ? (
-                            <button disabled={busy === supplier.id} onClick={() => void onRun(
-                              supplier.id,
-                              `/api/procurement/suppliers/${supplier.id}/approve/`,
-                              { reason: 'Approved in HQ procurement workspace' },
-                              `${supplier.legal_name} approved.`,
-                            )} type="button">Approve</button>
+                            <button onClick={() => onDialog(confirmationDialog({
+                              confirmation: 'Approving this supplier permits new purchase orders once its required qualifications are current and verified.',
+                              message: `${supplier.legal_name} approved.`,
+                              path: `/api/procurement/suppliers/${supplier.id}/approve/`,
+                              payload: { reason: 'Approved in HQ procurement workspace' },
+                              record: supplier.legal_name,
+                              submitLabel: 'Approve supplier',
+                              title: 'Approve supplier',
+                            }))} type="button">Approve</button>
                           ) : null}
                           {['APPROVED', 'ACTIVE'].includes(supplier.status) ? (
                             <button className="danger-link" onClick={() => onDialog({ kind: 'suspend-supplier', supplier })} type="button">Suspend</button>
@@ -327,13 +308,15 @@ function SuppliersTab({
                   </div>
                   <button
                     className="business-action"
-                    disabled={busy === qualification.id}
-                    onClick={() => void onRun(
-                      qualification.id,
-                      `/api/procurement/supplier-qualifications/${qualification.id}/verify/`,
-                      {},
-                      `${qualification.licence_number} verified.`,
-                    )}
+                    onClick={() => onDialog(confirmationDialog({
+                      confirmation: 'Verification marks this supplier evidence as current and makes it eligible for procurement controls.',
+                      message: `${qualification.licence_number} verified.`,
+                      path: `/api/procurement/supplier-qualifications/${qualification.id}/verify/`,
+                      payload: {},
+                      record: `${qualification.supplier_code} · ${qualification.licence_number}`,
+                      submitLabel: 'Verify qualification',
+                      title: 'Verify supplier qualification',
+                    }))}
                     type="button"
                   >
                     Verify
@@ -349,10 +332,8 @@ function SuppliersTab({
 }
 
 function RequisitionsTab({
-  busy,
   data,
   onDialog,
-  onRun,
 }: ProcurementTabProps) {
   return (
     <section className="procurement-section">
@@ -363,8 +344,24 @@ function RequisitionsTab({
             <ProcurementRecord
               actions={
                 <>
-                  {requisition.status === 'DRAFT' ? <button disabled={busy === requisition.id} onClick={() => void onRun(requisition.id, `/api/procurement/requisitions/${requisition.id}/submit/`, {}, `${requisition.requisition_number} submitted.`)} type="button">Submit</button> : null}
-                  {['SUBMITTED', 'UNDER_REVIEW'].includes(requisition.status) ? <button disabled={busy === requisition.id} onClick={() => void onRun(requisition.id, `/api/procurement/requisitions/${requisition.id}/approve/`, {}, `${requisition.requisition_number} approved.`)} type="button">Approve</button> : null}
+                  {requisition.status === 'DRAFT' ? <button onClick={() => onDialog(confirmationDialog({
+                    confirmation: 'Submitting locks the demand request for review and starts the approval workflow.',
+                    message: `${requisition.requisition_number} submitted.`,
+                    path: `/api/procurement/requisitions/${requisition.id}/submit/`,
+                    payload: {},
+                    record: requisition.requisition_number,
+                    submitLabel: 'Submit requisition',
+                    title: 'Submit purchase requisition',
+                  }))} type="button">Submit</button> : null}
+                  {['SUBMITTED', 'UNDER_REVIEW'].includes(requisition.status) ? <button onClick={() => onDialog(confirmationDialog({
+                    confirmation: 'Approval makes this demand available for purchasing. Confirm the quantities, priority and required-by date are correct.',
+                    message: `${requisition.requisition_number} approved.`,
+                    path: `/api/procurement/requisitions/${requisition.id}/approve/`,
+                    payload: {},
+                    record: requisition.requisition_number,
+                    submitLabel: 'Approve requisition',
+                    title: 'Approve purchase requisition',
+                  }))} type="button">Approve</button> : null}
                 </>
               }
               detail={`${requisition.requesting_branch_name} · Needed ${formatDate(requisition.requested_delivery_date)}`}
@@ -386,10 +383,8 @@ function RequisitionsTab({
 }
 
 function OrdersTab({
-  busy,
   data,
   onDialog,
-  onRun,
 }: ProcurementTabProps) {
   return (
     <section className="procurement-section">
@@ -400,8 +395,24 @@ function OrdersTab({
             <ProcurementRecord
               actions={
                 <>
-                  {order.status === 'DRAFT' ? <button disabled={busy === order.id} onClick={() => void onRun(order.id, `/api/procurement/purchase-orders/${order.id}/approve/`, {}, `${order.po_number} approved.`)} type="button">Approve</button> : null}
-                  {order.status === 'APPROVED' ? <button disabled={busy === order.id} onClick={() => void onRun(order.id, `/api/procurement/purchase-orders/${order.id}/send/`, {}, `${order.po_number} released to supplier.`)} type="button">Send to supplier</button> : null}
+                  {order.status === 'DRAFT' ? <button onClick={() => onDialog(confirmationDialog({
+                    confirmation: 'Approval commits this purchase order for supplier transmission. Check commercial terms and expected delivery first.',
+                    message: `${order.po_number} approved.`,
+                    path: `/api/procurement/purchase-orders/${order.id}/approve/`,
+                    payload: {},
+                    record: order.po_number,
+                    submitLabel: 'Approve purchase order',
+                    title: 'Approve purchase order',
+                  }))} type="button">Approve</button> : null}
+                  {order.status === 'APPROVED' ? <button onClick={() => onDialog(confirmationDialog({
+                    confirmation: 'Sending records the supplier release. The order will enter the delivery and receiving workflow.',
+                    message: `${order.po_number} released to supplier.`,
+                    path: `/api/procurement/purchase-orders/${order.id}/send/`,
+                    payload: {},
+                    record: order.po_number,
+                    submitLabel: 'Send to supplier',
+                    title: 'Release purchase order',
+                  }))} type="button">Send to supplier</button> : null}
                 </>
               }
               detail={`${order.supplier_name} · Expected ${formatDate(order.expected_delivery_date)}`}
@@ -423,10 +434,8 @@ function OrdersTab({
 }
 
 function ReceivingTab({
-  busy,
   data,
   onDialog,
-  onRun,
 }: ProcurementTabProps) {
   return (
     <section className="procurement-section">
@@ -447,7 +456,15 @@ function ReceivingTab({
                     <div className="tenant-row-actions">
                       {!['ACCEPTED', 'CLOSED', 'CANCELLED'].includes(receipt.status) ? <button onClick={() => onDialog({ kind: 'receive-batch', receipt })} type="button">Receive batch</button> : null}
                       {!['ACCEPTED', 'CLOSED', 'CANCELLED'].includes(receipt.status) ? <button onClick={() => onDialog({ kind: 'inspection', receipt })} type="button">Inspect</button> : null}
-                      {!['ACCEPTED', 'CLOSED', 'CANCELLED'].includes(receipt.status) ? <button disabled={busy === receipt.id} onClick={() => void onRun(receipt.id, `/api/procurement/goods-receipts/${receipt.id}/close/`, {}, `${receipt.grn_number} closed.`)} type="button">Close</button> : null}
+                      {!['ACCEPTED', 'CLOSED', 'CANCELLED'].includes(receipt.status) ? <button onClick={() => onDialog(confirmationDialog({
+                        confirmation: 'Closing freezes delivery capture and receipt totals. Inspect all received batches before confirming.',
+                        message: `${receipt.grn_number} closed.`,
+                        path: `/api/procurement/goods-receipts/${receipt.id}/close/`,
+                        payload: {},
+                        record: receipt.grn_number,
+                        submitLabel: 'Close goods receipt',
+                        title: 'Close goods receipt',
+                      }))} type="button">Close</button> : null}
                     </div>
                   </td>
                 </tr>
@@ -493,10 +510,8 @@ function QualityTab({
 }
 
 function ReconciliationTab({
-  busy,
   data,
   onDialog,
-  onRun,
 }: ProcurementTabProps) {
   return (
     <section className="procurement-section">
@@ -515,8 +530,24 @@ function ReconciliationTab({
               <div><code>{item.return_number}</code><strong>{item.reason}</strong><small>{item.lines.length} line(s)</small></div>
               <ProcurementStatus value={item.status} />
               <div className="tenant-row-actions">
-                {item.status === 'REQUESTED' ? <button disabled={busy === item.id} onClick={() => void onRun(item.id, `/api/procurement/supplier-returns/${item.id}/approve/`, {}, `${item.return_number} approved.`)} type="button">Approve</button> : null}
-                {item.status === 'APPROVED' ? <button disabled={busy === item.id} onClick={() => void onRun(item.id, `/api/procurement/supplier-returns/${item.id}/dispatch/`, {}, `${item.return_number} dispatched.`)} type="button">Dispatch</button> : null}
+                {item.status === 'REQUESTED' ? <button onClick={() => onDialog(confirmationDialog({
+                  confirmation: 'Approval authorises the return against the supplier and preserves the linked receipt evidence.',
+                  message: `${item.return_number} approved.`,
+                  path: `/api/procurement/supplier-returns/${item.id}/approve/`,
+                  payload: {},
+                  record: item.return_number,
+                  submitLabel: 'Approve return',
+                  title: 'Approve supplier return',
+                }))} type="button">Approve</button> : null}
+                {item.status === 'APPROVED' ? <button onClick={() => onDialog(confirmationDialog({
+                  confirmation: 'Dispatch records that the controlled return has left the receiving location.',
+                  message: `${item.return_number} dispatched.`,
+                  path: `/api/procurement/supplier-returns/${item.id}/dispatch/`,
+                  payload: {},
+                  record: item.return_number,
+                  submitLabel: 'Dispatch return',
+                  title: 'Dispatch supplier return',
+                }))} type="button">Dispatch</button> : null}
               </div>
             </div>
           )) : <span className="muted-cell">No supplier returns.</span>}
@@ -536,10 +567,8 @@ function ReconciliationTab({
 }
 
 interface ProcurementTabProps {
-  readonly busy: string;
   readonly data: ProcurementData;
   readonly onDialog: (dialog: Exclude<DialogMode, null>) => void;
-  readonly onRun: (key: string, path: string, payload: unknown, success: string) => Promise<void>;
 }
 
 function ProcurementDialog({
@@ -585,7 +614,9 @@ function ProcurementDialog({
     setBusy(true);
     setError('');
     try {
-      const { path, payload, message } = dialogRequest(dialog, values, lines, data);
+      const { path, payload, message } = dialog.kind === 'confirm'
+        ? dialog
+        : dialogRequest(dialog, values, lines, data);
       await procurementCommand(path, payload, tenantId, csrfToken);
       await onSaved(message);
     } catch (caught) {
@@ -603,7 +634,12 @@ function ProcurementDialog({
           <button aria-label="Close dialog" onClick={onClose} type="button"><Icon name="close" /></button>
         </header>
         <form onSubmit={(event) => void submit(event)}>
-          <DialogFields data={data} dialog={dialog} lines={lines} setValue={setValue} updateLine={updateLine} values={values} />
+          {dialog.kind === 'confirm' ? (
+            <>
+              <div className="business-dialog-record"><div><code>Governed transition</code><strong>{dialog.record}</strong></div></div>
+              <p className="business-dialog-confirm"><Icon name="shield" /> {dialog.confirmation}</p>
+            </>
+          ) : <DialogFields data={data} dialog={dialog} lines={lines} setValue={setValue} updateLine={updateLine} values={values} />}
           {supportsLines(dialog) ? (
             <div className="procurement-line-editor">
               <div><strong>Document lines</strong>{dialog.kind === 'order' && values.originating_requisition ? <small>Approved requisition quantities</small> : null}</div>
@@ -677,6 +713,8 @@ function DialogFields({
       )}
     </label>
   );
+
+  if (dialog.kind === 'confirm') return null;
 
   if (dialog.kind === 'supplier') return <>
     {field('supplier_code', 'Supplier code')}
@@ -858,6 +896,7 @@ function dialogRequest(
 function dialogDefaults(dialog: Exclude<DialogMode, null>, data: ProcurementData): Record<string, string> {
   const today = new Date().toISOString().slice(0, 10);
   const future = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
+  if (dialog.kind === 'confirm') return {};
   if (dialog.kind === 'supplier') return { contact_email: '', contact_phone: '', legal_name: '', payment_terms: 'NET30', risk_category: 'MEDIUM', supplier_code: '' };
   if (dialog.kind === 'qualification') return { document_reference: '', effective_date: today, expiry_date: '', issuing_authority: '', licence_number: '', qualification_type: 'BUSINESS_REGISTRATION' };
   if (dialog.kind === 'suspend-supplier') return { reason: '' };
@@ -872,6 +911,7 @@ function dialogDefaults(dialog: Exclude<DialogMode, null>, data: ProcurementData
 }
 
 function dialogTitle(dialog: Exclude<DialogMode, null>): string {
+  if (dialog.kind === 'confirm') return dialog.title;
   return {
     inspection: 'Record receiving inspection',
     match: 'Run three-way match',
@@ -889,6 +929,7 @@ function dialogTitle(dialog: Exclude<DialogMode, null>): string {
 }
 
 function dialogSubmitLabel(dialog: Exclude<DialogMode, null>): string {
+  if (dialog.kind === 'confirm') return dialog.submitLabel;
   if (dialog.kind === 'release') return 'Release to inventory';
   if (dialog.kind === 'match') return 'Run match';
   if (dialog.kind === 'inspection') return 'Record inspection';
@@ -898,6 +939,27 @@ function dialogSubmitLabel(dialog: Exclude<DialogMode, null>): string {
 
 function supportsLines(dialog: Exclude<DialogMode, null>): boolean {
   return dialog.kind === 'requisition' || dialog.kind === 'order';
+}
+
+function confirmationDialog({
+  confirmation,
+  message,
+  path,
+  payload,
+  record,
+  submitLabel,
+  title,
+}: Omit<Extract<DialogMode, { readonly kind: 'confirm' }>, 'kind'>): Extract<DialogMode, { readonly kind: 'confirm' }> {
+  return {
+    confirmation,
+    kind: 'confirm',
+    message,
+    path,
+    payload,
+    record,
+    submitLabel,
+    title,
+  };
 }
 
 function emptyLine(): DraftLine {

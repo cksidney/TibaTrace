@@ -21,6 +21,7 @@ interface TenantManagementProps {
 type TenantDialog =
   | { readonly mode: 'create' }
   | { readonly mode: 'edit'; readonly tenant: TenantWorkspace }
+  | { readonly mode: 'activate'; readonly tenant: TenantWorkspace }
   | { readonly mode: 'suspend'; readonly tenant: TenantWorkspace }
   | null;
 
@@ -50,7 +51,6 @@ export function TenantManagement({
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('ALL');
   const [dialog, setDialog] = useState<TenantDialog>(null);
-  const [busyId, setBusyId] = useState('');
   const canManage = overview.is_platform_overview;
 
   const reload = async (signal?: AbortSignal) => {
@@ -89,16 +89,6 @@ export function TenantManagement({
     ),
     [tenants],
   );
-
-  const activate = async (tenant: TenantWorkspace) => {
-    setBusyId(tenant.id);
-    try {
-      await activateTenant(tenant.id, csrfToken);
-      await Promise.all([reload(), onChanged()]);
-    } finally {
-      setBusyId('');
-    }
-  };
 
   return (
     <>
@@ -171,11 +161,11 @@ export function TenantManagement({
                     <td>
                       {canManage ? (
                         <div className="tenant-row-actions">
-                          <button disabled={busyId === tenant.id} onClick={() => setDialog({ mode: 'edit', tenant })} type="button">Edit</button>
+                          <button onClick={() => setDialog({ mode: 'edit', tenant })} type="button">Edit</button>
                           {tenant.status === 'ACTIVE' ? (
-                            <button className="danger-link" disabled={busyId === tenant.id} onClick={() => setDialog({ mode: 'suspend', tenant })} type="button">Suspend</button>
+                            <button className="danger-link" onClick={() => setDialog({ mode: 'suspend', tenant })} type="button">Suspend</button>
                           ) : (
-                            <button disabled={busyId === tenant.id} onClick={() => void activate(tenant)} type="button">Activate</button>
+                            <button onClick={() => setDialog({ mode: 'activate', tenant })} type="button">Activate</button>
                           )}
                         </div>
                       ) : <span className="muted-cell">View only</span>}
@@ -261,7 +251,9 @@ function TenantDialogForm({
     setBusy(true);
     setError('');
     try {
-      if (dialog.mode === 'suspend') {
+      if (dialog.mode === 'activate') {
+        await activateTenant(dialog.tenant.id, csrfToken);
+      } else if (dialog.mode === 'suspend') {
         await suspendTenant(dialog.tenant.id, reason, csrfToken);
       } else {
         const values = {
@@ -292,7 +284,9 @@ function TenantDialogForm({
     ? 'Create tenant workspace'
     : dialog.mode === 'edit'
       ? 'Edit tenant workspace'
-      : 'Suspend tenant workspace';
+      : dialog.mode === 'activate'
+        ? 'Activate tenant workspace'
+        : 'Suspend tenant workspace';
 
   return (
     <div className="business-dialog-backdrop" role="presentation">
@@ -308,7 +302,9 @@ function TenantDialogForm({
           </div>
         ) : null}
         <form onSubmit={(event) => void submit(event)}>
-          {dialog.mode === 'suspend' ? (
+          {dialog.mode === 'activate' ? (
+            <p className="business-dialog-confirm"><Icon name="shield" /> Activation restores normal access to this workspace and its governed business workflows.</p>
+          ) : dialog.mode === 'suspend' ? (
             <>
               <p className="business-dialog-confirm"><Icon name="alert" /> Suspension blocks normal workspace operation without deleting business history.</p>
               <label className="business-field">
@@ -346,7 +342,7 @@ function TenantDialogForm({
           <footer>
             <button className="secondary-button" disabled={busy} onClick={onClose} type="button">Cancel</button>
             <button className="primary-button" disabled={busy} type="submit">
-              {busy ? 'Saving…' : dialog.mode === 'suspend' ? 'Suspend workspace' : 'Save workspace'}
+              {busy ? 'Saving…' : dialog.mode === 'suspend' ? 'Suspend workspace' : dialog.mode === 'activate' ? 'Activate workspace' : 'Save workspace'}
             </button>
           </footer>
         </form>
