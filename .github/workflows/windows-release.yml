@@ -168,11 +168,34 @@ jobs:
           if ($code -eq 0) {
             $publiclyTrusted = 'true'
             Write-Host "signtool: the chain is trusted by the public root store on this runner."
-          } elseif ($out -match 'root certificate which is not trusted' -or $out -match '0x800B0109') {
-            Write-Host "::notice::Signature is valid; its root is not publicly trusted. Expected for the Esenai self-signed certificate. Distribution is via the managed-install package, which enrols the public certificate on the device."
           } else {
-            Write-Error "signtool verify failed for a reason other than an untrusted root. This is a real signing problem."
-            exit 1
+            # Classify the failure by building the chain, not by matching
+            # signtool's prose. signtool wraps its message -- it prints
+            # "terminated in a root\n\tcertificate which is not trusted" -- so a
+            # match on the phrase fails on the one case this branch exists for.
+            # X509Chain answers the same question as a flag, in no language.
+            $chain = [Security.Cryptography.X509Certificates.X509Chain]::new()
+            $chain.ChainPolicy.RevocationMode = 'NoCheck'
+            $null = $chain.Build($cert)
+            $flags = @()
+            foreach ($element in $chain.ChainStatus) { $flags += ($element.Status.ToString() -split ',\s*') }
+            $flags = @($flags | Where-Object { $_ -and $_ -ne 'NoError' } | Select-Object -Unique)
+            Write-Host "Chain status                     : $(if ($flags) { $flags -join ', ' } else { '(none)' })"
+
+            # The one acceptable reason to fail: the chain ends at a root this
+            # machine has not been told to trust. Anything else -- expired,
+            # tampered, revoked, wrong usage -- is a real signing problem.
+            $tolerated = @('UntrustedRoot', 'PartialChain')
+            $unexpected = @($flags | Where-Object { $tolerated -notcontains $_ })
+            if ($flags.Count -eq 0) {
+              Write-Error "signtool verify failed but the certificate chain builds cleanly. The failure is not an untrusted root, so it is a real signing problem."
+              exit 1
+            }
+            if ($unexpected.Count -gt 0) {
+              Write-Error "Certificate chain has problems beyond an untrusted root: $($unexpected -join ', '). This is a real signing problem."
+              exit 1
+            }
+            Write-Host "::notice::Signature is valid; its root is not publicly trusted ($($flags -join ', ')). Expected for the Esenai self-signed certificate. Distribution is via the managed-install package, which enrols the public certificate on the device."
           }
 
           # This runner has not enrolled the certificate, so a non-Valid status
