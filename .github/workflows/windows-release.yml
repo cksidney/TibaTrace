@@ -119,7 +119,25 @@ jobs:
             Where-Object { $_.FullName -match 'x64' } | Select-Object -First 1
           if ($signtool) {
             & $signtool.FullName verify /pa /v $exe
-            if ($LASTEXITCODE -ne 0) { Write-Error "signtool verify failed."; exit 1 }
+            if ($LASTEXITCODE -ne 0) {
+              # The usual cause is a certificate that is not publicly trusted:
+              # self-signed, or issued by a CA absent from the Windows root
+              # store. The file really is signed and the subject really is the
+              # publisher -- but Windows will still warn every user who runs it,
+              # which is the whole thing a certificate is bought to prevent.
+              # Failing here is deliberate. An installer that cannot be verified
+              # must not be published as though it can.
+              Write-Error @"
+signtool verify failed.
+
+If the message above reads "terminated in a root certificate which is not
+trusted", the PFX in WINDOWS_SIGNING_PFX_BASE64 is not from a publicly trusted
+certificate authority. Signing succeeded; the signature simply will not be
+trusted on a customer machine. Obtain an OV or EV code signing certificate from
+a public CA and replace the secret.
+"@
+              exit 1
+            }
           } else {
             Write-Error "signtool.exe not found on the runner; signature not independently verified."
             exit 1
@@ -131,6 +149,10 @@ jobs:
           if (-not $sig.TimeStamperCertificate) { Write-Error "Installer is not timestamped."; exit 1 }
 
       - name: Generate checksums and release manifest
+        # always(): a failed signature verification is exactly when somebody
+        # needs the checksum and the manifest, because the manifest is where
+        # `signed: false` gets recorded.
+        if: always()
         shell: pwsh
         run: |
           Set-Location apps/pos-windows/release
@@ -168,6 +190,7 @@ jobs:
           Get-Content release-manifest.json
 
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: tibatrace-pos-windows-installer
           path: |
