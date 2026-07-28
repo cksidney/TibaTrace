@@ -12,6 +12,8 @@ balancing on the screen.
 """
 from __future__ import annotations
 
+from decimal import Decimal
+
 from rest_framework import serializers
 
 from apps.pos_shift.models import (
@@ -196,3 +198,32 @@ class ShiftReportReprintSerializer(serializers.ModelSerializer):
             "id", "report_number", "copy_number", "reason",
             "reprinted_by_username", "reprinted_at", "printer",
         ]
+
+
+class RegisterOpeningRequestSerializer(serializers.Serializer):
+    device_id = serializers.CharField(max_length=128)
+    opening_amount = serializers.DecimalField(max_digits=14, decimal_places=2, min_value=Decimal("0"))
+    denominations = serializers.DictField(
+        child=serializers.IntegerField(min_value=0), required=False, default=dict
+    )
+
+
+class CashMovementRequestSerializer(serializers.Serializer):
+    device_id = serializers.CharField(max_length=128)
+    kind = serializers.ChoiceField(choices=CashMovement.KINDS)
+    amount = serializers.DecimalField(max_digits=14, decimal_places=2, min_value=Decimal("0.01"))
+    reason_code = serializers.CharField(max_length=40)
+    description = serializers.CharField(required=False, allow_blank=True, default="")
+    reference = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class ReportRequestSerializer(serializers.Serializer):
+    device_id = serializers.CharField(max_length=128)
+
+
+class RegisterCloseRequestSerializer(ReportRequestSerializer):
+    declared_amount = serializers.DecimalField(max_digits=14, decimal_places=2, min_value=Decimal("0"))
+    denominations = serializers.DictField(
+        child=serializers.IntegerField(min_value=0), required=False, default=dict
+    )
+    reason = serializers.CharField(required=False, allow_blank=True, default="")

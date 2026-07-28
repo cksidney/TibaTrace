@@ -1,10 +1,8 @@
 """Shift, cash-control and X/Z report workbench.
 
-Read-only. Opening a register, closing one, declaring cash and generating a Z
-each run through ShiftReportService, which enforces that exactly one Z exists
-per session, that a forced closure names an approver, and that closure
-preconditions are met. An endpoint that could write those columns would be a
-second way to close a till with none of it.
+Collections are read-only. The small set of controlled command endpoints run
+through operation services, which enforce one Z per session, immutable cash
+declarations, device-bound register authority, and closure preconditions.
 
 Reports are served from their stored snapshot. HQ never recalculates a Z: it is
 what somebody counted, signed and banked against, and re-deriving it from
@@ -12,8 +10,10 @@ current data would restate history while the operator holds the printed copy.
 """
 from __future__ import annotations
 
+from django.core.exceptions import ValidationError
 from rest_framework import permissions, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.response import Response
 
 from apps.pos_shift.models import (
@@ -27,22 +27,51 @@ from apps.pos_shift.models import (
     ShiftReportReprint,
 )
 from apps.pos_shift.authority import RegisterAuthorityService
+from apps.pos_shift.operations import (
+    CashMovementService,
+    RegisterOpeningService,
+    RegisterReportService,
+)
 from apps.prescription.pos_dispensing_api.serializers import PosDeviceHealthRecordSerializer
 
 from .serializers import (
     BusinessDaySerializer,
     CashDeclarationSerializer,
     CashMovementSerializer,
+    CashMovementRequestSerializer,
     OperatorShiftSerializer,
     PosRegisterSerializer,
+    RegisterCloseRequestSerializer,
+    RegisterOpeningRequestSerializer,
+    ReportRequestSerializer,
     RegisterSessionSerializer,
     ShiftReportReprintSerializer,
     ShiftReportSerializer,
 )
 
 
-class TenantScopedReadOnly(viewsets.ReadOnlyModelViewSet):
-    """Read-only, tenant-scoped by construction."""
+def _tenant(request):
+    tenant_id = (
+        getattr(request, "tenant_id", None)
+        or getattr(getattr(request, "tenant", None), "pk", None)
+        or getattr(request.user, "tenant_id", None)
+    )
+    if tenant_id is None:
+        raise DRFValidationError("No tenant context is available.")
+    from apps.tenancy.models import Tenant
+
+    return Tenant.objects.get(pk=tenant_id)
+
+
+def _run(operation):
+    try:
+        return operation()
+    except ValidationError as error:
+        raise DRFValidationError(error.messages) from error
+
+
+class TenantScopedViewSet(viewsets.ReadOnlyModelViewSet):
+    """Tenant-scoped collections with explicit controlled commands."""
 
     permission_classes = [permissions.IsAuthenticated]
     model = None
@@ -59,7 +88,7 @@ class TenantScopedReadOnly(viewsets.ReadOnlyModelViewSet):
         return self.model.all_objects.filter(tenant_id=tenant_id)
 
 
-class PosRegisterViewSet(TenantScopedReadOnly):
+class PosRegisterViewSet(TenantScopedViewSet):
     model = PosRegister
     serializer_class = PosRegisterSerializer
 
@@ -68,16 +97,10 @@ class PosRegisterViewSet(TenantScopedReadOnly):
 
     @action(detail=False, methods=["get"], url_path="runtime")
     def runtime(self, request):
-        tenant_id = (
-            getattr(request, "tenant_id", None)
-            or getattr(getattr(request, "tenant", None), "pk", None)
-            or getattr(request.user, "tenant_id", None)
-        )
-        if tenant_id is None:
+        try:
+            tenant = _tenant(request)
+        except DRFValidationError:
             return Response(RegisterAuthorityService._unassigned("No tenant context is available."))
-        from apps.tenancy.models import Tenant
-
-        tenant = Tenant.objects.get(pk=tenant_id)
         status = RegisterAuthorityService.runtime_status(
             tenant=tenant,
             actor=request.user,
@@ -97,8 +120,86 @@ class PosRegisterViewSet(TenantScopedReadOnly):
             }
         )
 
+    @action(detail=True, methods=["post"], url_path="open")
+    def open_register(self, request, pk=None):
+        register = self.get_object()
+        serializer = RegisterOpeningRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        tenant = _tenant(request)
+        session, operator_shift, declaration = _run(
+            lambda: RegisterOpeningService.open(
+                tenant=tenant,
+                register_id=register.pk,
+                actor=request.user,
+                device_id=data["device_id"],
+                opening_amount=data["opening_amount"],
+                denominations=data["denominations"],
+            )
+        )
+        return Response(
+            {
+                "register": PosRegisterSerializer(register).data,
+                "register_session": RegisterSessionSerializer(session).data,
+                "operator_shift": OperatorShiftSerializer(operator_shift).data,
+                "opening_declaration": CashDeclarationSerializer(declaration).data,
+            },
+            status=201,
+        )
 
-class BusinessDayViewSet(TenantScopedReadOnly):
+    @action(detail=True, methods=["post"], url_path="x-report")
+    def x_report(self, request, pk=None):
+        register = self.get_object()
+        serializer = ReportRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        if register.device_id != data["device_id"]:
+            raise DRFValidationError("The selected register is not assigned to this device.")
+        if register.state == "CLOSED":
+            existing = (
+                ShiftReport.all_objects.filter(
+                    tenant_id=register.tenant_id,
+                    register_session__register=register,
+                    report_type=ShiftReport.TYPE_Z,
+                )
+                .order_by("-generated_at")
+                .first()
+            )
+            if existing is not None:
+                return Response(ShiftReportSerializer(existing).data)
+        report = _run(
+            lambda: RegisterReportService.generate_x(
+                tenant=_tenant(request),
+                branch=register.location,
+                actor=request.user,
+                device_id=data["device_id"],
+            )
+        )
+        return Response(ShiftReportSerializer(report).data, status=201)
+
+    @action(detail=True, methods=["post"], url_path="close")
+    def close_register(self, request, pk=None):
+        register = self.get_object()
+        serializer = RegisterCloseRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        if register.device_id != data["device_id"]:
+            raise DRFValidationError("The selected register is not assigned to this device.")
+        report = _run(
+            lambda: RegisterReportService.finalise_z(
+                tenant=_tenant(request),
+                branch=register.location,
+                actor=request.user,
+                device_id=data["device_id"],
+                declared_amount=data["declared_amount"],
+                denominations=data["denominations"],
+                reason=data["reason"],
+            )
+        )
+        return Response(ShiftReportSerializer(report).data, status=201)
+
+
+class BusinessDayViewSet(TenantScopedViewSet):
     model = BusinessDay
     serializer_class = BusinessDaySerializer
 
@@ -106,7 +207,7 @@ class BusinessDayViewSet(TenantScopedReadOnly):
         return super().get_queryset().select_related("location")
 
 
-class RegisterSessionViewSet(TenantScopedReadOnly):
+class RegisterSessionViewSet(TenantScopedViewSet):
     model = RegisterSession
     serializer_class = RegisterSessionSerializer
 
@@ -154,7 +255,7 @@ class RegisterSessionViewSet(TenantScopedReadOnly):
         return Response(self.get_serializer(queryset, many=True).data)
 
 
-class OperatorShiftViewSet(TenantScopedReadOnly):
+class OperatorShiftViewSet(TenantScopedViewSet):
     model = OperatorShift
     serializer_class = OperatorShiftSerializer
 
@@ -162,7 +263,7 @@ class OperatorShiftViewSet(TenantScopedReadOnly):
         return super().get_queryset().select_related("operator", "handed_over_to")
 
 
-class CashDeclarationViewSet(TenantScopedReadOnly):
+class CashDeclarationViewSet(TenantScopedViewSet):
     model = CashDeclaration
     serializer_class = CashDeclarationSerializer
 
@@ -174,7 +275,7 @@ class CashDeclarationViewSet(TenantScopedReadOnly):
         return queryset
 
 
-class CashMovementViewSet(TenantScopedReadOnly):
+class CashMovementViewSet(TenantScopedViewSet):
     model = CashMovement
     serializer_class = CashMovementSerializer
 
@@ -187,8 +288,32 @@ class CashMovementViewSet(TenantScopedReadOnly):
             queryset = queryset.filter(approved_at__isnull=True)
         return queryset
 
+    @action(detail=False, methods=["post"], url_path="record")
+    def record(self, request):
+        serializer = CashMovementRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        tenant = _tenant(request)
+        register = PosRegister.all_objects.filter(tenant=tenant, device_id=data["device_id"]).select_related("location").first()
+        if register is None:
+            raise DRFValidationError("This device is not assigned to a register.")
+        movement = _run(
+            lambda: CashMovementService.record(
+                tenant=tenant,
+                branch=register.location,
+                actor=request.user,
+                device_id=data["device_id"],
+                kind=data["kind"],
+                amount=data["amount"],
+                reason_code=data["reason_code"],
+                description=data["description"],
+                reference=data["reference"],
+            )
+        )
+        return Response(CashMovementSerializer(movement).data, status=201)
 
-class ShiftReportViewSet(TenantScopedReadOnly):
+
+class ShiftReportViewSet(TenantScopedViewSet):
     """X and Z reports, served from their frozen snapshots."""
 
     model = ShiftReport
@@ -238,7 +363,7 @@ class ShiftReportViewSet(TenantScopedReadOnly):
         return Response(self.get_serializer(reports, many=True).data)
 
 
-class ShiftReportReprintViewSet(TenantScopedReadOnly):
+class ShiftReportReprintViewSet(TenantScopedViewSet):
     model = ShiftReportReprint
     serializer_class = ShiftReportReprintSerializer
 

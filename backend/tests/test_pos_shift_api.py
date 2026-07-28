@@ -202,6 +202,114 @@ class TestWorkbenchLists:
         assert body["allowed_actions"] == []
         assert body["notices"] == ["This device is not assigned to a register."]
 
+    def test_register_open_creates_an_immutable_opening_count_and_shift(self, world):
+        operator = world["operator"]
+        operator.is_superuser = True
+        operator.save(update_fields=["is_superuser"])
+        register = PosRegister.all_objects.create(
+            tenant=world["tenant"],
+            location=world["branch"],
+            code="TILL-OPEN",
+            name="Opening till",
+            device_id="POS-OPEN-01",
+            state="AVAILABLE",
+        )
+
+        response = world["client"].post(
+            f"/api/pos/shift/registers/{register.pk}/open/",
+            {
+                "device_id": "POS-OPEN-01",
+                "opening_amount": "1500.00",
+                "denominations": {"500": 3},
+            },
+            format="json",
+        )
+
+        assert response.status_code == 201
+        body = response.json()
+        assert body["register_session"]["state"] == "OPEN"
+        assert body["operator_shift"]["state"] == "OPEN"
+        assert body["opening_declaration"]["declared_amount"] == "1500.00"
+        register.refresh_from_db()
+        assert register.state == "OPEN"
+
+    def test_cash_movement_is_linked_to_the_active_session(self, world):
+        operator = world["operator"]
+        operator.is_superuser = True
+        operator.save(update_fields=["is_superuser"])
+        register = world["register"]
+        register.state = "OPEN"
+        register.device_id = "POS-MOVE-01"
+        register.save(update_fields=["state", "device_id", "updated_at"])
+
+        response = world["client"].post(
+            "/api/pos/shift/cash-movements/record/",
+            {
+                "device_id": "POS-MOVE-01",
+                "kind": "SAFE_DROP",
+                "amount": "1200.00",
+                "reason_code": "SECURITY_THRESHOLD",
+                "reference": "SAFE-01",
+            },
+            format="json",
+        )
+
+        assert response.status_code == 201
+        movement = CashMovement.all_objects.get(pk=response.json()["id"])
+        assert movement.register_session_id == world["session"].id
+        assert movement.operator_shift_id == world["session"].operator_shifts.get().id
+        assert movement.signed_amount == Decimal("-1200.00")
+
+    def test_x_report_endpoint_does_not_close_the_register(self, world):
+        operator = world["operator"]
+        operator.is_superuser = True
+        operator.save(update_fields=["is_superuser"])
+        register = world["register"]
+        register.state = "OPEN"
+        register.device_id = "POS-X-01"
+        register.save(update_fields=["state", "device_id", "updated_at"])
+
+        response = world["client"].post(
+            f"/api/pos/shift/registers/{register.pk}/x-report/",
+            {"device_id": "POS-X-01"},
+            format="json",
+        )
+
+        assert response.status_code == 201
+        assert response.json()["report_type"] == "X"
+        world["session"].refresh_from_db()
+        register.refresh_from_db()
+        assert world["session"].state == "OPEN"
+        assert register.state == "OPEN"
+
+    def test_close_register_returns_the_existing_z_on_a_safe_retry(self, world):
+        operator = world["operator"]
+        operator.is_superuser = True
+        operator.save(update_fields=["is_superuser"])
+        register = world["register"]
+        register.state = "OPEN"
+        register.device_id = "POS-Z-01"
+        register.save(update_fields=["state", "device_id", "updated_at"])
+        request = {
+            "device_id": "POS-Z-01",
+            "declared_amount": "0.00",
+            "denominations": {},
+        }
+
+        first = world["client"].post(
+            f"/api/pos/shift/registers/{register.pk}/close/", request, format="json"
+        )
+        second = world["client"].post(
+            f"/api/pos/shift/registers/{register.pk}/close/", request, format="json"
+        )
+
+        assert first.status_code == 201
+        assert second.status_code == 200
+        assert second.json()["report_number"] == first.json()["report_number"]
+        assert CashDeclaration.all_objects.filter(
+            tenant=world["tenant"], register_session=world["session"], kind="CLOSING"
+        ).count() == 1
+
     def test_open_session_exposes_stable_operator_identity(self, world):
         """Native tills match the accountable shift to the authenticated user.
 
