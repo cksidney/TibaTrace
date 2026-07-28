@@ -142,7 +142,7 @@ function OperationsConsole({
         color: text.primary,
       }}
     >
-      <Header busy={state.busy} userId={session.userId} onLogout={onLogout} />
+      <Header busy={state.busy} operator={session.username ?? session.userId} onLogout={onLogout} />
       <PatientSafetyBanner patient={patient} />
       <WorkflowRibbon stages={stages} />
 
@@ -231,11 +231,11 @@ function OperationsConsole({
 
 function Header({
   busy,
-  userId,
+  operator,
   onLogout,
 }: {
   readonly busy: boolean;
-  readonly userId: string;
+  readonly operator: string;
   readonly onLogout: () => Promise<void>;
 }) {
   return (
@@ -273,7 +273,9 @@ function Header({
       </div>
       <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: spacing.md }}>
         <span style={{ fontSize: fontSize.caption, opacity: 0.8 }}>
-          {busy ? 'Working…' : `Operator ${userId.slice(0, 8)}`}
+          {/* The operator's name, not a truncated primary key. Falls back to
+              the id only when the server did not send a username. */}
+          {busy ? 'Working…' : operator || 'Signed in'}
         </span>
         <button
           type="button"
@@ -432,7 +434,13 @@ function Queue({
   busy,
   onSelect,
 }: {
-  readonly queue: readonly { id: string; dispensing_number: string; status: string }[];
+  readonly queue: readonly {
+    id: string;
+    dispensing_number: string;
+    status: string;
+    patient_name?: string | null;
+    patient_number?: string | null;
+  }[];
   readonly busy: boolean;
   readonly onSelect: (id: string) => void;
 }) {
@@ -467,8 +475,27 @@ function Queue({
             textAlign: 'left',
           }}
         >
-          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
-            {episode.dispensing_number}
+          {/* The patient leads, not the dispensing number.
+              The row showed only the number, so an operator choosing from a
+              queue of several could not tell who was who without opening each
+              one -- on the screen where picking the wrong person is the error
+              that matters most. The Android queue already led with the name.
+              An episode with no name on file says so rather than falling back
+              to the number, which would read as a patient called DEMO-DISP-8001. */}
+          <span style={{ display: 'grid', gap: 2 }}>
+            <span style={{ fontWeight: 600 }}>
+              {episode.patient_name ?? 'Name not recorded'}
+            </span>
+            <span
+              style={{
+                color: text.secondary,
+                fontSize: fontSize.caption,
+                fontVariantNumeric: 'tabular-nums',
+              }}
+            >
+              {episode.patient_number ? `${episode.patient_number} · ` : ''}
+              {episode.dispensing_number}
+            </span>
           </span>
           <span style={{ color: text.secondary }}>{episode.status.replace(/_/g, ' ')}</span>
         </button>

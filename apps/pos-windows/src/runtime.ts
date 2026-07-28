@@ -83,6 +83,7 @@ export function createPosRuntime(): PosRuntime {
     authenticated: session.current !== null,
     tenantId: session.current?.tenantId ?? '',
     userId: session.current?.userId ?? '',
+    ...(session.current?.username ? { username: session.current.username } : {}),
     deviceId: 'POS-WINDOWS-DEVELOPMENT',
     apiBaseUrl: window.location.origin,
   });

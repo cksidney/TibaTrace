@@ -18,4 +18,9 @@ class DawaTraceTokenSerializer(TokenObtainPairSerializer):
             self.fail("no_active_account")
         data["tenant_id"] = str(self.user.tenant_id or "")
         data["user_id"] = str(self.user.id)
+        # The till shows who is dispensing. Without this the POS header rendered
+        # `Operator ${userId.slice(0, 8)}` -- a truncated primary key, which
+        # names nobody on a screen where the operator's identity is part of the
+        # clinical record.
+        data["username"] = self.user.get_username()
         return data

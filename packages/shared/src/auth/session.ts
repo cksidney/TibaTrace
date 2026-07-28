@@ -5,6 +5,13 @@ export interface PosSessionTokens {
   readonly refresh: string;
   readonly tenantId: string;
   readonly userId: string;
+  /**
+   * Who is signed in, for display. The till header showed a truncated user id
+   * -- "Operator 5" -- which names nobody on a screen where the operator's
+   * identity is part of the clinical record. Optional so a token minted before
+   * the server sent it still parses.
+   */
+  readonly username?: string;
 }
 
 export interface PosSessionStorage {
@@ -24,6 +31,7 @@ interface LoginResponse {
   readonly refresh?: unknown;
   readonly tenant_id?: unknown;
   readonly user_id?: unknown;
+  readonly username?: unknown;
 }
 
 interface RefreshResponse {
@@ -187,6 +195,9 @@ function readLoginResponse(payload: unknown): PosSessionTokens {
     access: response.access,
     refresh: response.refresh,
     tenantId: response.tenant_id,
+    ...(typeof response.username === 'string' && response.username
+      ? { username: response.username }
+      : {}),
     userId: response.user_id,
   };
 }

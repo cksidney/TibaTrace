@@ -2,6 +2,8 @@ interface TibaTraceSessionInfo {
   readonly authenticated: boolean;
   readonly tenantId: string;
   readonly userId: string;
+  /** Who is signed in, for display. Absent on an Electron build that predates it. */
+  readonly username?: string;
   readonly deviceId: string;
   readonly apiBaseUrl: string;
 }
