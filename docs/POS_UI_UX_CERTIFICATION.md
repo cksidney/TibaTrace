@@ -3,14 +3,15 @@
 **Decision: `POS_UI_UX_BLOCKED`**
 
 **Assessment date:** 2026-07-28  
-**Scope:** Windows POS, Android POS, shared POS modules and the supporting
-cash-control read API.
+**Scope:** Windows POS, Android POS, shared POS modules, controlled register
+operations and the retail transaction foundation.
 
 This is a release decision, not a visual review. The current native products
-provide a clinically guarded dispensing workflow for existing prescription
-episodes. They do not yet provide the complete pharmacy POS workflow requested
-for retail selling, financial register control, printing and offline
-operations. This record must not be interpreted as a production certification.
+provide a clinically guarded dispensing workflow and a first native,
+server-backed retail basket. They do not yet provide the complete pharmacy POS
+workflow requested for payment completion, financial register control, printing
+and offline operations. This record must not be interpreted as a production
+certification.
 
 ## Validation evidence
 
@@ -22,6 +23,10 @@ operations. This record must not be interpreted as a production certification.
 - `npm test --workspace=@dawatrace/pos-android` — 38 tests passed.
 - `.venv/bin/pytest -c backend/pytest.ini backend/tests/test_pos_shift_api.py -q`
   — passed.
+- `.venv/bin/pytest -c backend/pytest.ini backend/tests/test_pos_retail_transactions.py backend/tests/test_pos_shift_api.py backend/tests/test_pos_dispensing_controls.py -q`
+  — passed.
+- `npm run build --workspace=@dawatrace/pos-windows` — passed.
+- `npm run build --workspace=@dawatrace/pos-android` — passed.
 
 The first backend test attempt against `/Users/sidneykibet/venv` was not used
 as evidence because that virtual environment runs Django 4.2.11, while this
@@ -32,7 +37,7 @@ repository requires the Django 5.1 API. The repository `.venv` runs Django
 
 | # | Control | Status | Evidence / release implication |
 |---:|---|---|---|
-| 1 | Native POS product scope defined | Partial | Clinical dispensing is implemented; retail POS scope is not. |
+| 1 | Native POS product scope defined | Partial | Clinical dispensing and the initial native retail basket are implemented; settlement, print and Sync Centre remain. |
 | 2 | Shared design tokens | Implemented | Shared tokens are used by Windows and Android. |
 | 3 | Windows authenticated session | Implemented | Secure Electron session and sign-out flow exist. |
 | 4 | Android authenticated session | Implemented | Keystore-backed session is required. |
@@ -49,19 +54,19 @@ repository requires the Django 5.1 API. The repository `.venv` runs Django
 | 15 | Lock POS action | Absent | No workstation lock UI is implemented. |
 | 16 | Register opening workflow | Blocked | No native authoritative register-open action exists. |
 | 17 | Opening-float denomination count | Blocked | No native cash-declaration workflow exists. |
-| 18 | Pre-sale register enforcement | Blocked | Payment/supply endpoints do not bind to RegisterSession. |
-| 19 | Branch assignment enforcement | Partial | UI detects assignment; server transaction binding is absent. |
+| 18 | Pre-sale register enforcement | Partial | New retail and clinical payment service actions resolve device, register, session, shift and business day server-side; legacy operational paths remain to be migrated. |
+| 19 | Branch assignment enforcement | Implemented | Retail and clinical payment actions reject tenant, branch, device and session mismatches on the server. |
 | 20 | Previous Z verification | Blocked | Native app does not consume or enforce Z closure. |
 | 21 | Windows 1366×768 validation | Not validated | No full-screen visual test at mandated resolution. |
 | 22 | Windows 1920×1080 validation | Not validated | No full-screen visual test at mandated resolution. |
 | 23 | Android tablet layout validation | Not validated | No device or emulator validation was performed. |
 | 24 | Desktop keyboard workflow | Partial | Existing keyboard helpers are tested; no full POS key map exists. |
-| 25 | Barcode scanner workflow | Absent | No scanner adapter or retail barcode flow exists. |
-| 26 | Retail catalogue search | Absent | Native POS has no retail sale workspace. |
-| 27 | Retail basket | Absent | Native POS only opens existing dispensing episodes. |
-| 28 | Branch pricing | Absent | No retail price resolution is presented in native POS. |
+| 25 | Barcode scanner workflow | Partial | Windows and Android accept scan input and resolve active tenant barcode mappings; physical scanner validation remains outstanding. |
+| 26 | Retail catalogue search | Implemented | Native clients use a server filter for tenant, branch assortment, sellable status, price and inventory eligibility. |
+| 27 | Retail basket | Implemented | POS transaction and line aggregates hold immutable operational context and are used by both native clients. |
+| 28 | Branch pricing | Implemented | Each retail line resolves and records an authoritative price trace before it enters the basket. |
 | 29 | Promotions and discounts | Absent | No authorised discount flow is implemented. |
-| 30 | Held and resumed retail sales | Absent | No retail transaction lifecycle exists. |
+| 30 | Held and resumed retail sales | Partial | Native hold/resume controls and service transitions exist; controlled reassignment and restart recovery remain. |
 | 31 | Prescription queue | Implemented | Windows and Android load server-backed dispensing queues. |
 | 32 | Patient identity banner | Implemented | Resolved patient identity is displayed without invented data. |
 | 33 | Allergy status | Implemented | Empty allergy data is rendered as unknown, not “none”. |

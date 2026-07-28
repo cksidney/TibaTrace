@@ -40,6 +40,7 @@ urlpatterns = [
     path("api/pos/clinical-screening/", include("apps.cds.pos_api.urls")),
     path("api/pos/dispensing/", include("apps.prescription.pos_dispensing_api.urls")),
     path("api/pos/payments/", include("apps.prescription.payment_api.urls")),
+    path("api/pos/retail/", include("apps.pos_transactions.api.urls")),
     path("api/terminology/", include("apps.terminology.urls")),
     path("api/audit/", include("apps.audit.urls")),
     path("api/documents/", include("apps.documents.urls")),

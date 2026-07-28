@@ -43,8 +43,9 @@ import { SecureOfflineStore } from './offline/secureStore';
 import { CollectionScreen, CounsellingScreen } from './screens/CounsellingScreen';
 import { DispensingScreen } from './screens/DispensingScreen';
 import { PaymentScreen } from './screens/PaymentScreen';
+import { RetailScreen } from './screens/RetailScreen';
 
-type WorkspaceScreen = 'queue' | 'episode' | 'payment' | 'counselling' | 'collection';
+type WorkspaceScreen = 'queue' | 'episode' | 'payment' | 'counselling' | 'collection' | 'retail';
 
 const runtime = createAndroidPosRuntime();
 const EMPTY_GATE: GateState = {
@@ -261,6 +262,9 @@ function PosWorkspace({ onLogout }: { readonly onLogout: () => Promise<void> }) 
     <View style={styles.workspace}>
       <View style={styles.topBar}>
         <TibaTraceBrand />
+        <Pressable accessibilityRole="button" onPress={() => setScreen('retail')} style={styles.secondary}>
+          <Text style={styles.secondaryLabel}>Retail</Text>
+        </Pressable>
         <Pressable accessibilityRole="button" onPress={() => void onLogout()} style={styles.secondary}>
           <Text style={styles.secondaryLabel}>Sign out</Text>
         </Pressable>
@@ -370,6 +374,13 @@ function PosWorkspace({ onLogout }: { readonly onLogout: () => Promise<void> }) 
           }}
           />
         ) : null}
+        {screen === 'retail' ? (
+          <RetailScreen
+            apiBaseUrl={runtime.apiBaseUrl}
+            apiFetch={runtime.session.fetch.bind(runtime.session) as typeof fetch}
+            deviceId={deviceId}
+          />
+        ) : null}
       </View>
 
       {screen !== 'queue' ? (
@@ -386,6 +397,7 @@ function PosWorkspace({ onLogout }: { readonly onLogout: () => Promise<void> }) 
           />
           <NavButton label="Counselling" onPress={() => setScreen('counselling')} />
           <NavButton label="Collection" onPress={() => setScreen('collection')} />
+          <NavButton label="Retail" onPress={() => setScreen('retail')} />
         </View>
       ) : null}
     </View>

@@ -7,6 +7,7 @@ import { PatientSafetyBanner } from './components/tibatrace/PatientSafetyBanner.
 import { OperationalStatusBar } from './components/tibatrace/OperationalStatusBar.js';
 import { PaymentPanel } from './components/tibatrace/PaymentPanel.js';
 import { PrescriptionWorkspace } from './components/tibatrace/PrescriptionWorkspace.js';
+import { RetailWorkspace } from './components/tibatrace/RetailWorkspace.js';
 import type { PatientSummary } from './components/tibatrace/PatientSafetyBanner.js';
 import { BlockingReason } from './components/tibatrace/StatusBadge.js';
 import { WorkflowRibbon } from './components/tibatrace/WorkflowRibbon.js';
@@ -82,6 +83,7 @@ function OperationsConsole({
   readonly apiFetch: typeof fetch;
   readonly onLogout: () => Promise<void>;
 }) {
+  const [workspace, setWorkspace] = useState<'clinical' | 'retail'>('clinical');
   const { state, refreshQueue, select, refresh, takePayment, confirmCollection, recordCounselling } =
     usePosWorkflow('/api/pos/dispensing', apiFetch, runtime.offline, session.deviceId);
   // Was `useState<ClinicalSummary | null>(null)` with no setter, so the rail
@@ -143,11 +145,20 @@ function OperationsConsole({
         color: text.primary,
       }}
     >
-      <Header busy={state.busy} operator={session.username ?? session.userId} onLogout={onLogout} />
+      <Header
+        busy={state.busy}
+        operator={session.username ?? session.userId}
+        workspace={workspace}
+        onWorkspaceChange={setWorkspace}
+        onLogout={onLogout}
+      />
       <OperationalStatusBar
         apiFetch={apiFetch}
         deviceId={session.deviceId}
       />
+      {workspace === 'retail' ? (
+        <RetailWorkspace apiFetch={apiFetch} deviceId={session.deviceId} />
+      ) : <>
       <PatientSafetyBanner patient={patient} />
       <WorkflowRibbon stages={stages} />
 
@@ -230,6 +241,7 @@ function OperationsConsole({
         onTakePayment={() => void takePayment('CASH', '0.00', '')}
         onConfirmCollection={() => void confirmCollection('', '', 'SELF')}
       />
+      </>}
     </div>
   );
 }
@@ -237,10 +249,14 @@ function OperationsConsole({
 function Header({
   busy,
   operator,
+  workspace,
+  onWorkspaceChange,
   onLogout,
 }: {
   readonly busy: boolean;
   readonly operator: string;
+  readonly workspace: 'clinical' | 'retail';
+  readonly onWorkspaceChange: (workspace: 'clinical' | 'retail') => void;
   readonly onLogout: () => Promise<void>;
 }) {
   return (
@@ -275,6 +291,28 @@ function Header({
           <strong style={{ fontSize: fontSize.bodyLarge, letterSpacing: 0.3 }}>TibaTrace</strong>
           <span style={{ fontSize: fontSize.caption, opacity: 0.8 }}>Clinical operations console</span>
         </div>
+      </div>
+      <div style={{ display: 'flex', gap: 4 }}>
+        {(['clinical', 'retail'] as const).map((option) => (
+          <button
+            key={option}
+            type="button"
+            onClick={() => onWorkspaceChange(option)}
+            style={{
+              minHeight: 34,
+              padding: '4px 10px',
+              border: '1px solid rgba(255,255,255,0.35)',
+              borderRadius: 7,
+              background: workspace === option ? '#fff' : 'transparent',
+              color: workspace === option ? surface.inverse : '#fff',
+              fontWeight: 700,
+              cursor: 'pointer',
+              textTransform: 'capitalize',
+            }}
+          >
+            {option}
+          </button>
+        ))}
       </div>
       <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: spacing.md }}>
         <span style={{ fontSize: fontSize.caption, opacity: 0.8 }}>
