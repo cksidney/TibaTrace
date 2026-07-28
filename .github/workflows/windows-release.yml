@@ -127,15 +127,12 @@ jobs:
               # which is the whole thing a certificate is bought to prevent.
               # Failing here is deliberate. An installer that cannot be verified
               # must not be published as though it can.
-              Write-Error @"
-signtool verify failed.
-
-If the message above reads "terminated in a root certificate which is not
-trusted", the PFX in WINDOWS_SIGNING_PFX_BASE64 is not from a publicly trusted
-certificate authority. Signing succeeded; the signature simply will not be
-trusted on a customer machine. Obtain an OV or EV code signing certificate from
-a public CA and replace the secret.
-"@
+              Write-Error ("signtool verify failed. If the message above reads " +
+                "'terminated in a root certificate which is not trusted', the PFX in " +
+                "WINDOWS_SIGNING_PFX_BASE64 is not from a publicly trusted certificate " +
+                "authority. Signing succeeded and the subject is correct; the signature " +
+                "simply will not be trusted on a customer machine. Obtain an OV or EV " +
+                "code signing certificate from a public CA and replace the secret.")
               exit 1
             }
           } else {
