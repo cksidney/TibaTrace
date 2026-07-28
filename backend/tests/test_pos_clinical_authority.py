@@ -117,11 +117,12 @@ def test_pharmacist_may_decide(screening, pharmacist_user):  # noqa: F811
         screening=screening,
         finding_id=finding_for(screening).id,
         pharmacist=pharmacist_user,
-        decision="APPROVE_AS_WRITTEN",
+        decision="APPROVE",
+        clinical_justification="Reviewed and approved the current clinical context.",
         idempotency_key="k-ok",
         expected_context_hash=screening.context_hash,
     )
-    assert decision.decision == "APPROVE_AS_WRITTEN"
+    assert decision.decision == "APPROVE"
 
 
 # --------------------------------------------------------- separation of duties

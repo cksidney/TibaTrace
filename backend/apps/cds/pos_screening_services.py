@@ -35,7 +35,7 @@ from apps.patients.models import (
     PatientAllergy,
     PatientClinicalSummary,
 )
-from apps.prescription.models import PrescriptionItem
+from apps.prescription.models import DispensingLine, PrescriptionItem
 from apps.prescription.services.clinical_dispensing import _require_capability
 from apps.workflows.service import emit_event
 
@@ -49,6 +49,11 @@ class StaleClinicalContext(ValidationError):
 
     def __init__(self, message="The prescription or basket changed after this screening."):
         super().__init__(f"STALE_CLINICAL_CONTEXT: {message}")
+
+
+def _canonical_quantity(value):
+    """Represent an equivalent decimal quantity identically at every POS edge."""
+    return format(Decimal(str(value)).normalize(), 'f')
 
 
 def _require_actor(actor, capability, tenant_id):
@@ -89,7 +94,7 @@ def _require_current_context(screening, expected_context_hash):
 
 class PosTransactionContextBuilder:
     @staticmethod
-    def build_context(*, tenant, basket_lines, patient_id=None, prescription_id=None):
+    def build_context(*, tenant, basket_lines, branch_id=None, patient_id=None, prescription_id=None):
         items = []
         ingredient_codes = set()
         for line in basket_lines:
@@ -118,7 +123,7 @@ class PosTransactionContextBuilder:
                 "line_id": line.get("line_id"),
                 "sku_id": sku_id,
                 "clinical_product_id": clin_prod.id if clin_prod else None,
-                "quantity": str(quantity),
+                "quantity": _canonical_quantity(quantity),
                 "dose_instructions": dose_instructions,
                 "ingredients": ingredients,
                 "is_controlled": clin_prod.controlled_classification != "NONE" if clin_prod else False,
@@ -156,6 +161,7 @@ class PosTransactionContextBuilder:
             "prescription_items": prescription_items,
             "patient_id": str(patient_id) if patient_id else None,
             "prescription_id": str(prescription_id) if prescription_id else None,
+            "branch_id": str(branch_id) if branch_id else None,
         }
 
     @staticmethod
@@ -163,6 +169,8 @@ class PosTransactionContextBuilder:
         hashable_data = {
             "items": sorted([{"line_id": i["line_id"], "sku_id": i["sku_id"], "quantity": i["quantity"]} for i in context.get("items", [])], key=lambda x: str(x["line_id"])),
             "patient_id": context.get("patient_id"),
+            "prescription_id": context.get("prescription_id"),
+            "branch_id": context.get("branch_id"),
             "allergy_codes": sorted([a["code"] for a in context.get("allergies", []) if a["code"]]),
             "clinical_summary": context.get("clinical_summary"),
         }
@@ -173,10 +181,11 @@ class PosTransactionContextBuilder:
 class PosClinicalScreeningService:
     @staticmethod
     @transaction.atomic
-    def evaluate(*, tenant, transaction_id, device_id, register_id='', patient_id=None, prescription_id=None, dispensing_episode_id='', basket_lines, context_hash=None, cashier=None, offline_state=False):
+    def evaluate(*, tenant, transaction_id, device_id, register_id='', branch_id=None, patient_id=None, prescription_id=None, dispensing_episode_id='', basket_lines, context_hash=None, cashier=None, offline_state=False):
         context = PosTransactionContextBuilder.build_context(
             tenant=tenant,
             basket_lines=basket_lines,
+            branch_id=branch_id,
             patient_id=patient_id,
             prescription_id=prescription_id
         )
@@ -199,6 +208,7 @@ class PosClinicalScreeningService:
             transaction_id=transaction_id,
             device_id=device_id,
             register_id=register_id,
+            branch_id=branch_id,
             patient_id=patient_id,
             prescription_id=prescription_id,
             dispensing_episode_id=dispensing_episode_id,
@@ -372,7 +382,7 @@ class PosPharmacistReviewService:
         return audit
 
     @staticmethod
-    def submit_decision(*, screening, finding_id, pharmacist, decision, clinical_justification='', counselling_notes='', prescriber_contact_ref='', override_reason='CLINICALLY_JUSTIFIED', override_capability='pos.clinical_findings.override_high', idempotency_key=None, expected_context_hash=None):
+    def submit_decision(*, screening, finding_id, pharmacist, decision, clinical_justification='', conditions='', counselling_notes='', prescriber_contact_ref='', follow_up_actions='', override_reason='CLINICALLY_JUSTIFIED', override_capability='pos.clinical_findings.override_high', idempotency_key=None, expected_context_hash=None):
         # An override is a strictly higher authority than an ordinary decision,
         # so it is gated separately rather than folded into one capability.
         required = (
@@ -391,8 +401,10 @@ class PosPharmacistReviewService:
             pharmacist=pharmacist,
             decision=decision,
             clinical_justification=clinical_justification,
+            conditions=conditions,
             counselling_notes=counselling_notes,
             prescriber_contact_ref=prescriber_contact_ref,
+            follow_up_actions=follow_up_actions,
             override_reason=override_reason,
             override_capability=override_capability,
             idempotency_key=idempotency_key,
@@ -400,15 +412,41 @@ class PosPharmacistReviewService:
 
     @staticmethod
     @transaction.atomic
-    def _apply_decision(*, screening, finding_id, pharmacist, decision, clinical_justification='', counselling_notes='', prescriber_contact_ref='', override_reason='CLINICALLY_JUSTIFIED', override_capability='pos.clinical_findings.override_high', idempotency_key=None):
-            
+    def _apply_decision(*, screening, finding_id, pharmacist, decision, clinical_justification='', conditions='', counselling_notes='', prescriber_contact_ref='', follow_up_actions='', override_reason='CLINICALLY_JUSTIFIED', override_capability='pos.clinical_findings.override_high', idempotency_key=None):
         if screening.status != 'COMPLETE':
             raise ValueError("Screening must be COMPLETE.")
-            
-        finding = PosClinicalFinding.all_objects.get(tenant=screening.tenant, pk=finding_id, screening=screening)
-        
+
+        valid_decisions = {choice for choice, _ in PosClinicalDecision.Decision.choices}
+        if decision not in valid_decisions:
+            raise ValidationError("Unsupported pharmacist review decision.")
+        if not finding_id:
+            raise ValidationError("A pharmacist review must identify the finding being decided.")
+        if not clinical_justification or not clinical_justification.strip():
+            raise ValidationError("Every pharmacist review requires a clinical justification.")
+        if decision == PosClinicalDecision.Decision.APPROVE_WITH_CONDITIONS and not conditions.strip():
+            raise ValidationError("Approval with conditions requires the conditions to be recorded.")
+
         if not idempotency_key:
             idempotency_key = f"DEC-{uuid.uuid4().hex}"
+
+        existing = PosClinicalDecision.all_objects.filter(idempotency_key=idempotency_key).first()
+        if existing:
+            if (
+                existing.tenant_id == screening.tenant_id
+                and existing.screening_id == screening.id
+                and str(existing.finding_id) == str(finding_id)
+                and existing.decision == decision
+            ):
+                return existing
+            raise ValidationError("This idempotency key was already used for a different clinical decision.")
+
+        finding = PosClinicalFinding.all_objects.get(
+            tenant=screening.tenant,
+            pk=finding_id,
+            screening=screening,
+        )
+        if finding.resolution_status != PosClinicalFinding.ResolutionStatus.OPEN:
+            raise ValidationError("This finding already has a final clinical decision.")
 
         dec = PosClinicalDecision.all_objects.create(
             tenant=screening.tenant,
@@ -416,16 +454,22 @@ class PosPharmacistReviewService:
             finding=finding,
             pharmacist=pharmacist,
             decision=decision,
-            clinical_justification=clinical_justification,
+            clinical_justification=clinical_justification.strip(),
+            conditions=conditions.strip(),
             counselling_notes=counselling_notes,
             prescriber_contact_ref=prescriber_contact_ref,
+            follow_up_actions=follow_up_actions.strip(),
             context_hash_at_decision=screening.context_hash,
+            rule_version_at_decision=finding.rule_version or screening.rule_set_version,
+            branch_id=screening.branch_id,
+            transaction_id=screening.transaction_id,
+            register_id=screening.register_id,
+            patient_ref=str(screening.patient_id or ''),
+            prescription_ref=str(screening.prescription_id or ''),
             idempotency_key=idempotency_key
         )
-        
+
         if decision == 'AUTHORIZED_OVERRIDE':
-            if not clinical_justification:
-                raise ValueError("Override requires clinical justification.")
             PosClinicalOverride.all_objects.create(
                 tenant=screening.tenant,
                 decision=dec,
@@ -438,22 +482,52 @@ class PosPharmacistReviewService:
                 transaction_id=screening.transaction_id,
                 device_id=screening.device_id
             )
-            finding.resolution_status = 'OVERRIDDEN'
-        elif decision == 'REJECT_SUPPLY':
-            finding.resolution_status = 'OPEN'
+            finding.resolution_status = PosClinicalFinding.ResolutionStatus.OVERRIDDEN
+            event_type = 'OVERRIDE_RECORDED'
+        elif decision in {
+            PosClinicalDecision.Decision.APPROVE,
+            PosClinicalDecision.Decision.APPROVE_AS_WRITTEN,
+        }:
+            finding.resolution_status = PosClinicalFinding.ResolutionStatus.PHARMACIST_REVIEWED
+            event_type = 'FINDING_RESOLVED'
         else:
-            finding.resolution_status = 'RESOLVED'
-            
-        finding.resolved_by = pharmacist
-        finding.resolved_at = timezone.now()
+            # A conditioned approval is not complete until its conditions are
+            # fulfilled and a new screening proves the changed workflow safe.
+            # The same rule applies to correction, clarification, rejection,
+            # and alternative decisions.
+            finding.resolution_status = PosClinicalFinding.ResolutionStatus.OPEN
+            event_type = 'FINDING_RESOLVED'
+
+        if finding.resolution_status == PosClinicalFinding.ResolutionStatus.OPEN:
+            finding.resolved_by = None
+            finding.resolved_at = None
+        else:
+            finding.resolved_by = pharmacist
+            finding.resolved_at = timezone.now()
         finding.save()
-        
+
         PosClinicalAuditEvent.all_objects.create(
             tenant=screening.tenant,
             screening=screening,
-            event_type='FINDING_RESOLVED' if decision != 'AUTHORIZED_OVERRIDE' else 'OVERRIDE_RECORDED',
+            finding=finding,
+            event_type=event_type,
             pharmacist=pharmacist,
-            payload={"finding_id": str(finding.id), "decision": decision}
+            branch_id=screening.branch_id,
+            device_id=screening.device_id,
+            register_id=screening.register_id,
+            transaction_id=screening.transaction_id,
+            patient_ref=str(screening.patient_id or ''),
+            prescription_ref=str(screening.prescription_id or ''),
+            severity=finding.severity,
+            rule_version=finding.rule_version or screening.rule_set_version,
+            context_hash=screening.context_hash,
+            payload={
+                "decision_id": str(dec.id),
+                "finding_id": str(finding.id),
+                "decision": decision,
+                "conditions": dec.conditions,
+                "follow_up_actions": dec.follow_up_actions,
+            },
         )
         
         screening.blocking_count = PosClinicalFinding.all_objects.filter(
@@ -503,6 +577,59 @@ class PosClinicalApprovalService:
                 "Clinical screening does not permit progression: unresolved blocking findings."
             )
         return True
+
+    @classmethod
+    def assert_dispensing_episode_safe(cls, *, episode):
+        """Require a safe CDS result for the exact persisted dispensing basket."""
+        lines = list(
+            DispensingLine.all_objects.filter(
+                tenant_id=episode.tenant_id,
+                episode_id=episode.id,
+            ).only(
+                'id',
+                'supplied_sku_id',
+                'prescribed_sku_id',
+                'quantity_authorized',
+                'dosage_label_instructions',
+            )
+        )
+        if not lines:
+            raise ValidationError("Clinical screening cannot be verified without dispensing lines.")
+
+        context = PosTransactionContextBuilder.build_context(
+            tenant=episode.tenant,
+            patient_id=episode.patient_id,
+            prescription_id=episode.prescription_id,
+            basket_lines=[
+                {
+                    'line_id': str(line.id),
+                    'sku_id': str(line.supplied_sku_id or line.prescribed_sku_id),
+                    'quantity': str(line.quantity_authorized),
+                    'dose_instructions': line.dosage_label_instructions,
+                }
+                for line in lines
+            ],
+        )
+        expected_context_hash = PosTransactionContextBuilder.compute_context_hash(context=context)
+        screening = (
+            PosClinicalScreening.all_objects.filter(
+                tenant_id=episode.tenant_id,
+                dispensing_episode_id=str(episode.id),
+                context_hash=expected_context_hash,
+            )
+            .order_by('-evaluated_at', '-created_at')
+            .first()
+        )
+        if not screening:
+            raise ValidationError(
+                "A current POS clinical screening is required before payment or supply."
+            )
+        if screening.expires_at and screening.expires_at <= timezone.now():
+            raise ValidationError("The POS clinical screening has expired and must be repeated.")
+        return cls.assert_current_and_safe(
+            screening=screening,
+            expected_context_hash=expected_context_hash,
+        )
 
     @staticmethod
     def validate_basket_unchanged(*, screening, current_context_hash):

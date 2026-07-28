@@ -41,6 +41,19 @@ export interface ScreeningFinding {
   readonly blocking: boolean;
   readonly requiresPharmacist: boolean;
   readonly overrideAllowed: boolean;
+  readonly resolutionStatus: string;
+}
+
+export interface ScreeningDecision {
+  readonly id: string;
+  readonly findingId: string;
+  readonly pharmacistName: string;
+  readonly decision: string;
+  readonly clinicalJustification: string;
+  readonly conditions: string;
+  readonly followUpActions: string;
+  readonly ruleVersion: string;
+  readonly createdAt: string;
 }
 
 export interface ScreeningResult {
@@ -55,6 +68,7 @@ export interface ScreeningResult {
   readonly screeningStatus: ClinicalScreeningStatus | '';
   readonly evaluatedAt: string;
   readonly ruleSetVersion: string;
+  readonly decisions: readonly ScreeningDecision[];
 }
 
 function text(value: unknown): string {
@@ -82,6 +96,21 @@ function mapFinding(raw: Record<string, unknown>): ScreeningFinding {
     blocking: bool(raw['blocking']),
     requiresPharmacist: bool(raw['requires_pharmacist']),
     overrideAllowed: bool(raw['override_allowed']),
+    resolutionStatus: text(raw['resolution_status']),
+  };
+}
+
+function mapDecision(raw: Record<string, unknown>): ScreeningDecision {
+  return {
+    id: text(raw['id']),
+    findingId: text(raw['finding_id']),
+    pharmacistName: text(raw['pharmacist_name']),
+    decision: text(raw['decision']),
+    clinicalJustification: text(raw['clinical_justification']),
+    conditions: text(raw['conditions']),
+    followUpActions: text(raw['follow_up_actions']),
+    ruleVersion: text(raw['rule_version_at_decision']),
+    createdAt: text(raw['created_at']),
   };
 }
 
@@ -110,6 +139,9 @@ export function readScreeningResult(payload: unknown): ScreeningResult {
   const findings = rawFindings
     .filter((f): f is Record<string, unknown> => f !== null && typeof f === 'object')
     .map(mapFinding);
+  const decisions = (Array.isArray(raw['decisions']) ? raw['decisions'] : [])
+    .filter((decision): decision is Record<string, unknown> => decision !== null && typeof decision === 'object')
+    .map(mapDecision);
 
   // Prefer the server's own count. Fall back to counting the findings it sent
   // rather than to zero -- zero is the answer that lets a blocked basket
@@ -131,6 +163,7 @@ export function readScreeningResult(payload: unknown): ScreeningResult {
     screeningStatus: text(raw['status'] ?? raw['screening_status']) as ClinicalScreeningStatus | '',
     evaluatedAt: text(raw['evaluated_at']),
     ruleSetVersion: text(raw['rule_set_version']),
+    decisions,
   };
 }
 

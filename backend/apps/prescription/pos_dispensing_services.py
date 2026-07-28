@@ -103,6 +103,9 @@ class PosDispensingQueueService:
                 raise ValidationError(
                     "An independent final check must pass before payment or supply."
                 )
+            from apps.cds.pos_screening_services import PosClinicalApprovalService
+
+            PosClinicalApprovalService.assert_dispensing_episode_safe(episode=episode)
 
         episode.status = new_status
         if notes:
@@ -287,6 +290,10 @@ class PosPaymentOrchestrationService:
                 f"Episode {episode.dispensing_number} is not ready for payment "
                 f"(current status: {episode.status})"
             )
+
+        from apps.cds.pos_screening_services import PosClinicalApprovalService
+
+        PosClinicalApprovalService.assert_dispensing_episode_safe(episode=episode)
 
         if tender_type == "MPESA":
             raise ValidationError(

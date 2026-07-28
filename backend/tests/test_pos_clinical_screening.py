@@ -318,9 +318,9 @@ def test_submit_pharmacist_approval(tenant, basket_lines, cashier_user, pharmaci
     )
     finding = PosClinicalFinding.all_objects.filter(screening=screening).first()
     dec = PosPharmacistReviewService.submit_decision(
-        screening=screening, finding_id=finding.id, pharmacist=pharmacist_user, decision="APPROVE_AS_WRITTEN", expected_context_hash=screening.context_hash, idempotency_key="idemp-1"
+        screening=screening, finding_id=finding.id, pharmacist=pharmacist_user, decision="APPROVE", clinical_justification="Reviewed interaction and approved supply.", expected_context_hash=screening.context_hash, idempotency_key="idemp-1"
     )
-    assert dec.decision == "APPROVE_AS_WRITTEN"
+    assert dec.decision == "APPROVE"
     screening.refresh_from_db()
     assert screening.safe_to_proceed
 
@@ -330,9 +330,9 @@ def test_submit_pharmacist_rejection(tenant, basket_lines, cashier_user, pharmac
     )
     finding = PosClinicalFinding.all_objects.filter(screening=screening).first()
     dec = PosPharmacistReviewService.submit_decision(
-        screening=screening, finding_id=finding.id, pharmacist=pharmacist_user, decision="REJECT_SUPPLY", expected_context_hash=screening.context_hash, idempotency_key="idemp-2"
+        screening=screening, finding_id=finding.id, pharmacist=pharmacist_user, decision="REJECT", clinical_justification="Interaction makes supply inappropriate.", expected_context_hash=screening.context_hash, idempotency_key="idemp-2"
     )
-    assert dec.decision == "REJECT_SUPPLY"
+    assert dec.decision == "REJECT"
     assert not screening.safe_to_proceed
 
 def test_pharmacist_override_with_justification(tenant, basket_lines, cashier_user, pharmacist_user, drug_drug_rule):
@@ -404,13 +404,56 @@ def test_decision_idempotency_key_prevents_duplicate(tenant, basket_lines, cashi
     )
     finding = PosClinicalFinding.all_objects.filter(screening=screening).first()
     dec1 = PosPharmacistReviewService.submit_decision(
-        screening=screening, finding_id=finding.id, pharmacist=pharmacist_user, decision="APPROVE_AS_WRITTEN", expected_context_hash=screening.context_hash, idempotency_key="idemp-4"
+        screening=screening, finding_id=finding.id, pharmacist=pharmacist_user, decision="APPROVE", clinical_justification="Reviewed interaction and approved supply.", expected_context_hash=screening.context_hash, idempotency_key="idemp-4"
     )
-    assert dec1.decision == "APPROVE_AS_WRITTEN"
-    import django.db
-    with pytest.raises(django.db.utils.IntegrityError):
+    assert dec1.decision == "APPROVE"
+    dec2 = PosPharmacistReviewService.submit_decision(
+        screening=screening, finding_id=finding.id, pharmacist=pharmacist_user, decision="APPROVE", clinical_justification="Reviewed interaction and approved supply.", expected_context_hash=screening.context_hash, idempotency_key="idemp-4"
+    )
+    assert dec2.id == dec1.id
+
+
+def test_correction_decision_keeps_finding_open_and_records_follow_up(tenant, basket_lines, cashier_user, pharmacist_user, drug_drug_rule):
+    screening = PosClinicalScreeningService.evaluate(
+        tenant=tenant, transaction_id="tx-correction", device_id="dev-1", basket_lines=basket_lines, cashier=cashier_user
+    )
+    finding = PosClinicalFinding.all_objects.filter(screening=screening).first()
+
+    decision = PosPharmacistReviewService.submit_decision(
+        screening=screening,
+        finding_id=finding.id,
+        pharmacist=pharmacist_user,
+        decision="RETURN_FOR_CORRECTION",
+        clinical_justification="The prescribed combination requires correction.",
+        follow_up_actions="Contact the prescriber and rescreen the corrected basket.",
+        expected_context_hash=screening.context_hash,
+        idempotency_key="idemp-correction",
+    )
+
+    finding.refresh_from_db()
+    screening.refresh_from_db()
+    assert finding.resolution_status == "OPEN"
+    assert screening.safe_to_proceed is False
+    assert decision.transaction_id == screening.transaction_id
+    assert decision.patient_ref == str(screening.patient_id or "")
+    assert decision.follow_up_actions
+
+
+def test_approval_with_conditions_requires_conditions(tenant, basket_lines, cashier_user, pharmacist_user, drug_drug_rule):
+    screening = PosClinicalScreeningService.evaluate(
+        tenant=tenant, transaction_id="tx-conditions", device_id="dev-1", basket_lines=basket_lines, cashier=cashier_user
+    )
+    finding = PosClinicalFinding.all_objects.filter(screening=screening).first()
+
+    with pytest.raises(Exception, match="conditions"):
         PosPharmacistReviewService.submit_decision(
-            screening=screening, finding_id=finding.id, pharmacist=pharmacist_user, decision="APPROVE_AS_WRITTEN", expected_context_hash=screening.context_hash, idempotency_key="idemp-4"
+            screening=screening,
+            finding_id=finding.id,
+            pharmacist=pharmacist_user,
+            decision="APPROVE_WITH_CONDITIONS",
+            clinical_justification="Supply may proceed only with counselling.",
+            expected_context_hash=screening.context_hash,
+            idempotency_key="idemp-conditions",
         )
 
 def test_generate_offline_package(tenant, pharmacist_user):

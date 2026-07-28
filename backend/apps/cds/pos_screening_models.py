@@ -28,6 +28,7 @@ class PosClinicalScreening(TenantConsistencyMixin, TimestampedModel):
     transaction_id = models.CharField(max_length=128, db_index=True)
     device_id = models.CharField(max_length=128)
     register_id = models.CharField(max_length=128, blank=True, default="")
+    branch_id = models.UUIDField(null=True, blank=True)
     patient = models.ForeignKey(
         "patients.Patient", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
     )
@@ -152,6 +153,16 @@ class PosClinicalDecision(TenantConsistencyMixin, TimestampedModel):
     tenant_relation_fields = ("screening",)
 
     class Decision(models.TextChoices):
+        APPROVE = "APPROVE", "Approve"
+        APPROVE_WITH_CONDITIONS = "APPROVE_WITH_CONDITIONS", "Approve with conditions"
+        RETURN_FOR_CORRECTION = "RETURN_FOR_CORRECTION", "Return for correction"
+        REJECT = "REJECT", "Reject"
+        CONTACT_PRESCRIBER = "CONTACT_PRESCRIBER", "Contact prescriber"
+        REQUIRE_ALTERNATIVE = "REQUIRE_ALTERNATIVE", "Require alternative"
+        REQUEST_MORE_INFORMATION = "REQUEST_MORE_INFORMATION", "Request more information"
+
+        # Retained for previously persisted client payloads. New POS screens use
+        # the canonical review vocabulary above.
         APPROVE_AS_WRITTEN = "APPROVE_AS_WRITTEN", "Approve as written"
         APPROVE_WITH_COUNSELLING = "APPROVE_WITH_COUNSELLING", "Approve with counselling"
         REMOVE_MEDICINE = "REMOVE_MEDICINE", "Remove medicine"
@@ -171,10 +182,17 @@ class PosClinicalDecision(TenantConsistencyMixin, TimestampedModel):
     pharmacist = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
     decision = models.CharField(max_length=64, choices=Decision.choices)
     clinical_justification = models.TextField(blank=True, default="")
+    conditions = models.TextField(blank=True, default="")
     counselling_notes = models.TextField(blank=True, default="")
     prescriber_contact_ref = models.CharField(max_length=255, blank=True, default="")
+    follow_up_actions = models.TextField(blank=True, default="")
     context_hash_at_decision = models.CharField(max_length=128)
     rule_version_at_decision = models.CharField(max_length=64, blank=True, default="")
+    branch_id = models.UUIDField(null=True, blank=True)
+    transaction_id = models.CharField(max_length=128, blank=True, default="")
+    register_id = models.CharField(max_length=128, blank=True, default="")
+    patient_ref = models.CharField(max_length=128, blank=True, default="")
+    prescription_ref = models.CharField(max_length=128, blank=True, default="")
     idempotency_key = models.CharField(max_length=128, unique=True)
 
     objects = StrictTenantManager()

@@ -2,6 +2,7 @@ import {
   permitsProgression,
   readScreeningResult,
 } from '@dawatrace/shared/clinical/index.js';
+import type { ScreeningResult } from '@dawatrace/shared/clinical/index.js';
 import {
   actionIdempotencyKey,
   DispensingWorkflow,
@@ -41,11 +42,17 @@ import { TibaTraceBrand } from './components/tibatrace/TibaTraceBrand';
 import { createAndroidPosRuntime } from './native/runtime';
 import { SecureOfflineStore } from './offline/secureStore';
 import { CollectionScreen, CounsellingScreen } from './screens/CounsellingScreen';
+import { ClinicalReviewScreen } from './screens/ClinicalReviewScreen';
 import { DispensingScreen } from './screens/DispensingScreen';
 import { PaymentScreen } from './screens/PaymentScreen';
 import { RetailScreen } from './screens/RetailScreen';
 
-type WorkspaceScreen = 'queue' | 'episode' | 'payment' | 'counselling' | 'collection' | 'retail';
+type WorkspaceScreen = 'queue' | 'episode' | 'clinical-review' | 'payment' | 'counselling' | 'collection' | 'retail';
+
+interface ClinicalScreeningOutcome {
+  readonly summary: AndroidClinicalSummary;
+  readonly result: ScreeningResult;
+}
 
 const runtime = createAndroidPosRuntime();
 const EMPTY_GATE: GateState = {
@@ -135,6 +142,7 @@ function PosWorkspace({ onLogout }: { readonly onLogout: () => Promise<void> }) 
   const [episode, setEpisode] = useState<DispensingEpisodeDTO | null>(null);
   const [gate, setGate] = useState<GateState>(EMPTY_GATE);
   const [clinical, setClinical] = useState<AndroidClinicalSummary>(UNSCREENED);
+  const [clinicalResult, setClinicalResult] = useState<ScreeningResult | null>(null);
   const [screen, setScreen] = useState<WorkspaceScreen>('queue');
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
@@ -189,13 +197,16 @@ function PosWorkspace({ onLogout }: { readonly onLogout: () => Promise<void> }) 
     async (id: string) => {
       setBusy(true);
       setClinical(UNSCREENED);
+      setClinicalResult(null);
       try {
         const loaded = await workflow.load(id);
         syncWorkflow();
         setJournalBlocked(journal ? !journal.canProceed(loaded.id) : false);
         setScreen('episode');
         setNotice('');
-        setClinical(await screenClinically(loaded, deviceId || (await runtime.deviceId())));
+        const outcome = await screenClinically(loaded, deviceId || (await runtime.deviceId()));
+        setClinical(outcome.summary);
+        setClinicalResult(outcome.result);
       } catch (cause) {
         setClinical({
           ...UNSCREENED,
@@ -203,6 +214,7 @@ function PosWorkspace({ onLogout }: { readonly onLogout: () => Promise<void> }) 
           headlineDetail: 'Supply is blocked until the screening service can be reached.',
           headlineStatus: 'BLOCKING',
         });
+        setClinicalResult(null);
         setNotice(describe(cause));
       } finally {
         syncWorkflow();
@@ -292,6 +304,54 @@ function PosWorkspace({ onLogout }: { readonly onLogout: () => Promise<void> }) 
             gateBlockedReason={effectiveGate.blockedReason}
             canConfirmCollection={effectiveGate.canConfirmCollection}
             onConfirmCollection={() => setScreen('collection')}
+            onReviewFinding={() => setScreen('clinical-review')}
+          />
+        ) : null}
+        {screen === 'clinical-review' && episode && clinicalResult ? (
+          <ClinicalReviewScreen
+            episode={episode}
+            result={clinicalResult}
+            busy={busy}
+            onBack={() => setScreen('episode')}
+            onRequestReview={async () => {
+              const response = await runtime.session.fetch(
+                `/api/pos/clinical-screening/${clinicalResult.screeningId}/request-pharmacist/`,
+                {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+                  body: JSON.stringify({
+                    cashier_id: runtime.session.current?.userId ?? '',
+                    expected_context_hash: clinicalResult.contextHash,
+                  }),
+                },
+              );
+              if (!response.ok) throw new Error(`The pharmacist review request was refused (${response.status}).`);
+              setNotice('Pharmacist review request recorded.');
+            }}
+            onSubmit={async (input) => {
+              const response = await runtime.session.fetch(
+                `/api/pos/clinical-screening/${clinicalResult.screeningId}/pharmacist-review/`,
+                {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+                  body: JSON.stringify({
+                    finding_id: input.findingId,
+                    decision: input.decision,
+                    clinical_justification: input.clinicalJustification,
+                    conditions: input.conditions,
+                    follow_up_actions: input.followUpActions,
+                    idempotency_key: `POS-ANDROID-CLINICAL-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+                    expected_context_hash: clinicalResult.contextHash,
+                  }),
+                },
+              );
+              if (!response.ok) throw new Error(`The clinical decision was refused (${response.status}).`);
+              const result = readScreeningResult(await response.json());
+              setClinicalResult(result);
+              setClinical(toAndroidClinicalSummary(result));
+              setNotice('Clinical decision recorded.');
+              setScreen('episode');
+            }}
           />
         ) : null}
         {screen === 'payment' && episode ? (
@@ -388,6 +448,7 @@ function PosWorkspace({ onLogout }: { readonly onLogout: () => Promise<void> }) 
         <View style={styles.navigation}>
           <NavButton label="Queue" onPress={() => setScreen('queue')} />
           <NavButton label="Episode" onPress={() => setScreen('episode')} />
+          <NavButton label="Clinical" disabled={!clinicalResult} onPress={() => setScreen('clinical-review')} />
           <NavButton
             label="Payment"
             disabled={
@@ -541,13 +602,14 @@ function LoadingScreen({ message }: { readonly message: string }) {
 async function screenClinically(
   episode: DispensingEpisodeDTO,
   deviceId: string,
-): Promise<AndroidClinicalSummary> {
+): Promise<ClinicalScreeningOutcome> {
   const response = await runtime.session.fetch('/api/pos/clinical-screening/evaluate/', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
     body: JSON.stringify({
       transaction_id: `POS-ANDROID-${episode.dispensing_number}`,
       device_id: deviceId,
+      patient_id: episode.patient,
       prescription_id: episode.prescription,
       dispensing_episode_id: episode.id,
       basket_lines: episode.lines.map((line) => ({
@@ -560,6 +622,10 @@ async function screenClinically(
   });
   if (!response.ok) throw new Error(`Clinical screening responded ${response.status}.`);
   const result = readScreeningResult(await response.json());
+  return { summary: toAndroidClinicalSummary(result), result };
+}
+
+function toAndroidClinicalSummary(result: ScreeningResult): AndroidClinicalSummary {
   const safe = permitsProgression(result);
   return {
     safeToProceed: safe,

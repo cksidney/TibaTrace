@@ -26,6 +26,8 @@ import type { ClinicalFinding } from '../components/tibatrace/ClinicalRail.js';
 
 export interface ClinicalScreeningState {
   readonly summary: ClinicalSummary | null;
+  /** The server response used to render the native pharmacist workspace. */
+  readonly result: ScreeningResult | null;
   readonly loading: boolean;
   /** Operator-facing reason the screening is unavailable. Empty when fine. */
   readonly error: string;
@@ -101,6 +103,7 @@ export function useClinicalScreening(
 ): ClinicalScreeningState & { readonly refresh: () => Promise<void> } {
   const [state, setState] = useState<ClinicalScreeningState>({
     summary: null,
+    result: null,
     loading: false,
     error: '',
   });
@@ -111,7 +114,7 @@ export function useClinicalScreening(
 
   const refresh = useCallback(async () => {
     if (!episode) {
-      setState({ summary: null, loading: false, error: '' });
+      setState({ summary: null, result: null, loading: false, error: '' });
       return;
     }
 
@@ -119,6 +122,7 @@ export function useClinicalScreening(
     if (lines.length === 0) {
       setState({
         summary: UNSCREENED,
+        result: null,
         loading: false,
         error: 'No dispensing lines are loaded, so nothing has been screened.',
       });
@@ -152,17 +156,20 @@ export function useClinicalScreening(
       if (!response.ok) {
         setState({
           summary: UNSCREENED,
+          result: null,
           loading: false,
           error: `Clinical screening could not be performed (server responded ${response.status}). Supply is not authorised.`,
         });
         return;
       }
 
-      setState({ summary: toSummary(readScreeningResult(await response.json())), loading: false, error: '' });
+      const result = readScreeningResult(await response.json());
+      setState({ summary: toSummary(result), result, loading: false, error: '' });
     } catch (error) {
       const unreadable = error instanceof UnreadableScreeningResponse;
       setState({
         summary: UNSCREENED,
+        result: null,
         loading: false,
         error: unreadable
           ? 'The clinical screening response could not be read. Supply is not authorised.'

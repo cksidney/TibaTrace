@@ -72,6 +72,13 @@ export type ClinicalFindingResolution =
 
 /** Pharmacist decision outcomes */
 export type PharmacistDecisionType =
+  | "APPROVE"
+  | "APPROVE_WITH_CONDITIONS"
+  | "RETURN_FOR_CORRECTION"
+  | "REJECT"
+  | "CONTACT_PRESCRIBER"
+  | "REQUIRE_ALTERNATIVE"
+  | "REQUEST_MORE_INFORMATION"
   | "APPROVE_AS_WRITTEN"
   | "APPROVE_WITH_COUNSELLING"
   | "REMOVE_MEDICINE"
@@ -256,6 +263,29 @@ export interface PosClinicalScreeningResult {
   screeningStatus: ClinicalScreeningStatus;
   evaluatedAt: string;
   ruleSetVersion: string;
+  decisions: PosClinicalDecisionHistory[];
+}
+
+/** Immutable pharmacist decision history returned with a screening. */
+export interface PosClinicalDecisionHistory {
+  id: string;
+  findingId?: string;
+  pharmacistId: string;
+  pharmacistName: string;
+  decision: PharmacistDecisionType;
+  clinicalJustification: string;
+  conditions?: string;
+  counsellingNotes?: string;
+  prescriberContactRef?: string;
+  followUpActions?: string;
+  contextHashAtDecision: string;
+  ruleVersionAtDecision: string;
+  branchId?: string;
+  transactionId: string;
+  registerId?: string;
+  patientRef?: string;
+  prescriptionRef?: string;
+  createdAt: string;
 }
 
 // ─── API Request/Response Contracts ─────────────────────────────────────────────
@@ -306,8 +336,10 @@ export interface PosPharmacistDecision {
   authMethod: PharmacistAuthMethod;
   decision: PharmacistDecisionType;
   clinicalJustification?: string;
+  conditions?: string;
   counsellingNotes?: string;
   prescriberContactRef?: string;
+  followUpActions?: string;
   overrideReason?: ClinicalOverrideReason;
   idempotencyKey: string;
 }

@@ -37,6 +37,12 @@ certification.
   `backend/tests/test_pos_dispensing_controls.py::test_replayed_payment_does_not_charge_twice`
   `backend/tests/test_pos_dispensing_controls.py::test_payment_is_refused_without_authoritative_pricing`
   `backend/tests/test_pos_payment_ledger.py -q` — **30 passed** (2026-07-28).
+- `./.venv/bin/pytest -c backend/pytest.ini --no-migrations`
+  `backend/tests/test_pos_clinical_screening.py`
+  `backend/tests/test_pos_clinical_authority.py`
+  `backend/tests/test_pos_enterprise_dispensing.py`
+  `backend/tests/test_pos_dispensing_controls.py -q` — **89 passed**
+  (2026-07-28).
 
 The first backend test attempt against `/Users/sidneykibet/venv` was not used
 as evidence because that virtual environment runs Django 4.2.11, while this
@@ -82,8 +88,8 @@ repository requires the Django 5.1 API. The repository `.venv` runs Django
 | 33 | Allergy status | Implemented | Empty allergy data is rendered as unknown, not “none”. |
 | 34 | Prescription workflow ribbon | Partial | Windows ribbon exists; Android uses staged navigation. |
 | 35 | Clinical screening | Implemented for prescription dispensing | Native actions submit actual episode identifiers under the server-recognised `sku_id` contract; the backend resolves clinical ingredients and returns authoritative output. Retail screening remains incomplete. |
-| 36 | Critical clinical blockers | Implemented for existing guarded transitions | Backend gates remain authoritative, Windows retains its safety rail and Android retains a compact clinical summary during payment. Full preparation/final-check/collection persistence is not yet certified. |
-| 37 | Pharmacist review panel | Partial | Windows review components exist; native decision and override completion is incomplete. |
+| 36 | Critical clinical blockers | Implemented for authoritative POS progression | The server rebuilds the persisted dispensing basket and rejects payment, supply and transitions to payment/supply without a current, safe CDS result. |
+| 37 | Pharmacist review panel | Partial | Windows and Android provide a native review workspace and decision history. Scoped lifecycle overrides remain incomplete. |
 | 38 | Controlled-medicine verification | Partial | Backend/client capability exists; not a complete native workspace. |
 | 39 | Insurance context | Partial | Episode data exposes cover identity; claim and preauthorisation UI is absent. |
 | 40 | Per-line insurance state | Absent | Native apps do not show coverage per dispensing line. |
@@ -128,10 +134,10 @@ Full production certification requires all of the following:
    physical printer, drawer and scanner behaviour.
 6. Run end-to-end workflow, accessibility and visual validation on the mandated
    Windows and Android device profiles.
-7. Complete and test native pharmacist review and scoped override actions,
-   Android expanded finding review, retail-medicine screening, clinical
-   invalidation after patient/medicine/quantity/substitution changes, and
-   restart/resume restoration of clinical decision and override state.
+7. Complete and test scoped clinical override actions, retail-medicine
+   screening, clinical invalidation after patient/medicine/quantity/substitution
+   changes, and restart/resume restoration of clinical decision and override
+   state.
 
 Until those conditions are met, this code should be released only as a
 controlled clinical-dispensing pilot, not as a complete pharmacy POS system.
@@ -166,10 +172,36 @@ medicine before evaluating rules.
 
 This resolves a critical data-integrity defect in the client/server boundary and
 keeps clinical state visible when the Android operator enters payment. It does
-**not** certify the whole clinical workflow: native review and override actions,
-Android expanded findings, all invalidation triggers and full restoration across
-every lifecycle transition still require implementation and evidence. Therefore
-the decision at the top of this record remains exactly `POS_UI_UX_BLOCKED`.
+**not** certify the whole clinical workflow: scoped override actions, retail
+medicine screening, all invalidation triggers and full restoration across every
+lifecycle transition still require implementation and evidence. Therefore the
+decision at the top of this record remains exactly `POS_UI_UX_BLOCKED`.
+
+## Clinical Review and Progression Gate Increment (2026-07-28)
+
+Windows and Android now open a full native pharmacist-review workspace from
+the CDS finding, rather than attempting review in a small modal. Both present
+the same canonical decision choices, require a clinical rationale, require
+conditions for a conditional approval, show immutable decision history, and
+submit only to the authenticated CDS endpoint. A conditional approval does not
+release supply: the finding remains open until the stated conditions are met
+and a fresh screening succeeds.
+
+The server records the tenant, branch reference, patient and prescription
+references, transaction, register, rule version, authenticated pharmacist,
+rationale, conditions and follow-up actions with each decision. It replays a
+matching idempotency key safely and refuses it for a different decision.
+
+Payment settlement, transition to `READY_FOR_PAYMENT` or `READY_FOR_SUPPLY`,
+and final medicine supply each rebuild the persisted dispensing basket and
+require a completed, current and safe CDS screening for the exact context.
+This makes a changed medicine, patient, prescription or quantity fail closed.
+Quantity hashing is canonicalised, so `30` and `30.0000` represent the same
+clinical context across native clients and persisted dispensing lines.
+
+This pass does not deliver expiry/condition lifecycle overrides, durable
+printing, a Sync Centre, restart evidence, visual certification or hardware
+certification. The decision remains exactly `POS_UI_UX_BLOCKED`.
 
 ## World-Class UI/UX Design Certification
 
@@ -203,8 +235,8 @@ the decision at the top of this record remains exactly `POS_UI_UX_BLOCKED`.
 
 ### Evidence still required
 
-This is not a full world-class design certification. There is no completed
-native pharmacist review/override workflow, retail medicine screening,
-settlement, printing, Sync Centre, responsive device validation, end-to-end
-visual suite for the required screens, screen-reader validation or physical
-hardware evidence. The release decision remains exactly `POS_UI_UX_BLOCKED`.
+This is not a full world-class design certification. Scoped override lifecycle,
+retail medicine screening, printing, Sync Centre, responsive device validation,
+an end-to-end visual suite for the required screens, screen-reader validation
+and physical hardware evidence remain outstanding. The release decision remains
+exactly `POS_UI_UX_BLOCKED`.

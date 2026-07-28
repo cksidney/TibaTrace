@@ -17,6 +17,7 @@ from tests.test_pos_enterprise_dispensing import (  # noqa: F401
 )
 
 from apps.identity.models import User
+from apps.cds.pos_screening_models import PosClinicalScreening
 from apps.inventory.models import InventoryLedgerEntry
 from apps.prescription.models import (
     DispensingCheck,
@@ -53,6 +54,25 @@ def test_payment_is_refused_before_the_clinical_gate(domain):
             paid_amount=Decimal("500.00"),
             cashier=domain["cashier"],
             idempotency_key="PAY-1",
+        )
+
+
+def test_ready_episode_cannot_reach_payment_without_current_pos_screening(domain):
+    data = domain
+    episode = data["episode"]
+    make_clinically_ready(data)
+    PosClinicalScreening.all_objects.filter(
+        tenant=data["tenant"],
+        dispensing_episode_id=str(episode.id),
+    ).delete()
+    episode.status = "CHECKING"
+    episode.save(update_fields=["status", "updated_at"])
+
+    with pytest.raises(ValidationError, match="POS clinical screening"):
+        PosDispensingQueueService.transition_state(
+            episode=episode,
+            new_status="READY_FOR_PAYMENT",
+            actor=data["pharmacist"],
         )
 
 

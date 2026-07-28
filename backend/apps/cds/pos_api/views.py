@@ -71,6 +71,7 @@ class PosClinicalScreeningViewSet(viewsets.GenericViewSet):
                 transaction_id=data['transaction_id'],
                 device_id=data['device_id'],
                 register_id=data.get('register_id', ''),
+                branch_id=data.get('branch_id'),
                 patient_id=data.get('patient_id'),
                 prescription_id=data.get('prescription_id'),
                 dispensing_episode_id=data.get('dispensing_episode_id', ''),
@@ -144,8 +145,10 @@ class PosClinicalScreeningViewSet(viewsets.GenericViewSet):
                 pharmacist=self._actor(),
                 decision=data['decision'],
                 clinical_justification=data.get('clinical_justification', ''),
+                conditions=data.get('conditions', ''),
                 counselling_notes=data.get('counselling_notes', ''),
                 prescriber_contact_ref=data.get('prescriber_contact_ref', ''),
+                follow_up_actions=data.get('follow_up_actions', ''),
                 idempotency_key=data['idempotency_key'],
                 expected_context_hash=data.get('expected_context_hash'),
             )

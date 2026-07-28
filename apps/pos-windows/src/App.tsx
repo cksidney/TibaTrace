@@ -2,6 +2,7 @@ import { action, deriveStages, fontFamily, fontSize, nextAction, spacing, surfac
 import { useEffect, useMemo, useState } from 'react';
 
 import { ClinicalRail } from './components/tibatrace/ClinicalRail.js';
+import { ClinicalReviewWorkspace } from './components/tibatrace/ClinicalReviewWorkspace.js';
 import { CollectionPanel, CounsellingPanel } from './components/tibatrace/CounsellingAndCollection.js';
 import { PatientSafetyBanner } from './components/tibatrace/PatientSafetyBanner.js';
 import { OperationalStatusBar } from './components/tibatrace/OperationalStatusBar.js';
@@ -89,10 +90,13 @@ function OperationsConsole({
   // Was `useState<ClinicalSummary | null>(null)` with no setter, so the rail
   // rendered "No clinical result" for every episode and the screening endpoint
   // had no caller anywhere in the repository.
-  const { summary: clinical, error: clinicalError } = useClinicalScreening(state.selected, {
+  const { summary: clinical, result: clinicalResult, error: clinicalError, refresh: refreshClinical } = useClinicalScreening(state.selected, {
     deviceId: session.deviceId,
     fetcher: apiFetch,
   });
+  const [reviewFindingId, setReviewFindingId] = useState('');
+  const [clinicalReviewBusy, setClinicalReviewBusy] = useState(false);
+  const [clinicalReviewError, setClinicalReviewError] = useState('');
 
   useEffect(() => {
     void refreshQueue();
@@ -134,6 +138,52 @@ function OperationsConsole({
       }
     : null;
 
+  const requestClinicalReview = async () => {
+    if (!clinicalResult) return;
+    setClinicalReviewBusy(true);
+    setClinicalReviewError('');
+    try {
+      const response = await apiFetch(`/api/pos/clinical-screening/${clinicalResult.screeningId}/request-pharmacist/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ cashier_id: session.userId, expected_context_hash: clinicalResult.contextHash }),
+      });
+      if (!response.ok) throw new Error(`The pharmacist review request was refused (${response.status}).`);
+    } catch (cause) {
+      setClinicalReviewError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setClinicalReviewBusy(false);
+    }
+  };
+
+  const submitClinicalDecision = async (input: { decision: string; clinicalJustification: string; conditions: string; followUpActions: string }) => {
+    if (!clinicalResult) return;
+    setClinicalReviewBusy(true);
+    setClinicalReviewError('');
+    try {
+      const response = await apiFetch(`/api/pos/clinical-screening/${clinicalResult.screeningId}/pharmacist-review/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({
+          finding_id: reviewFindingId,
+          decision: input.decision,
+          clinical_justification: input.clinicalJustification,
+          conditions: input.conditions,
+          follow_up_actions: input.followUpActions,
+          idempotency_key: `POS-WINDOWS-CLINICAL-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+          expected_context_hash: clinicalResult.contextHash,
+        }),
+      });
+      if (!response.ok) throw new Error(`The clinical decision was refused (${response.status}).`);
+      await refreshClinical();
+      setReviewFindingId('');
+    } catch (cause) {
+      setClinicalReviewError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setClinicalReviewBusy(false);
+    }
+  };
+
   return (
     <div
       style={{
@@ -174,6 +224,19 @@ function OperationsConsole({
           ) : null}
 
           {state.selected ? (
+            clinicalResult && reviewFindingId ? (
+              <ClinicalReviewWorkspace
+                result={clinicalResult}
+                findingId={reviewFindingId}
+                patientName={state.selected.patient_name ?? 'Name not recorded'}
+                prescriptionReference={state.selected.prescription_number ?? state.selected.dispensing_number}
+                busy={clinicalReviewBusy}
+                error={clinicalReviewError}
+                onBack={() => setReviewFindingId('')}
+                onRequestReview={() => void requestClinicalReview()}
+                onSubmit={(input) => void submitClinicalDecision(input)}
+              />
+            ) : (
             <>
               <EpisodeWorkspace
                 episode={state.selected}
@@ -216,6 +279,7 @@ function OperationsConsole({
                 />
               </section>
             </>
+            )
           ) : (
             <Queue queue={state.queue} busy={state.busy} onSelect={(id) => void select(id)} />
           )}
@@ -230,7 +294,13 @@ function OperationsConsole({
               <BlockingReason status="ACTION_REQUIRED" reason={clinicalError} />
             </div>
           ) : null}
-          <ClinicalRail summary={clinical} />
+          <ClinicalRail
+            summary={clinical}
+            onOpenReview={(findingId) => {
+              setClinicalReviewError('');
+              setReviewFindingId(findingId);
+            }}
+          />
         </div>
       </div>
 

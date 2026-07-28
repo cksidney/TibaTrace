@@ -52,13 +52,13 @@ export interface ClinicalSummary {
 export function ClinicalRail({
   summary,
   onAcknowledge,
-  onRequestPharmacist,
+  onOpenReview,
   onRequestOverride,
   capabilities,
 }: {
   readonly summary: ClinicalSummary | null;
   readonly onAcknowledge?: (findingId: string) => void;
-  readonly onRequestPharmacist?: () => void;
+  readonly onOpenReview?: (findingId: string) => void;
   readonly onRequestOverride?: (findingId: string) => void;
   /** Used only to hide controls the user cannot use. The server still decides. */
   readonly capabilities?: ReadonlySet<string>;
@@ -153,7 +153,7 @@ export function ClinicalRail({
                   finding={finding}
                   {...(capabilities ? { capabilities } : {})}
                   {...(onAcknowledge ? { onAcknowledge } : {})}
-                  {...(onRequestPharmacist ? { onRequestPharmacist } : {})}
+                  {...(onOpenReview ? { onOpenReview } : {})}
                   {...(onRequestOverride ? { onRequestOverride } : {})}
                 />
               ))}
@@ -178,13 +178,13 @@ function FindingCard({
   finding,
   capabilities,
   onAcknowledge,
-  onRequestPharmacist,
+  onOpenReview,
   onRequestOverride,
 }: {
   readonly finding: ClinicalFinding;
   readonly capabilities?: ReadonlySet<string>;
   readonly onAcknowledge?: (findingId: string) => void;
-  readonly onRequestPharmacist?: () => void;
+  readonly onOpenReview?: (findingId: string) => void;
   readonly onRequestOverride?: (findingId: string) => void;
 }) {
   const palette = statusPalette[finding.severity];
@@ -242,8 +242,8 @@ function FindingCard({
           <SecondaryButton onClick={() => onAcknowledge(finding.id)}>Acknowledge</SecondaryButton>
         ) : null}
 
-        {finding.requiresPharmacist && onRequestPharmacist ? (
-          <SecondaryButton onClick={onRequestPharmacist}>Request pharmacist review</SecondaryButton>
+        {(finding.requiresPharmacist || finding.blocking) && onOpenReview ? (
+          <SecondaryButton onClick={() => onOpenReview(finding.id)}>Open clinical review</SecondaryButton>
         ) : null}
 
         {/* Never offered for a finding the server marks non-overridable, and

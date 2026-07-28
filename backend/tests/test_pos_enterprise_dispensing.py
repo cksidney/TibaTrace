@@ -6,6 +6,8 @@ from django.core.exceptions import ValidationError
 from django.utils import timezone
 
 from apps.identity.models import Role, User, UserRole
+from apps.cds.pos_screening_services import PosClinicalScreeningService
+from apps.cds.pos_screening_models import PosClinicalScreening
 from apps.customers.models import Customer
 from apps.inventory.models import InventoryBatch, InventoryLedgerEntry, InventoryLocation, InventoryReservation
 from apps.inventory.services import InventoryLedgerService
@@ -353,7 +355,47 @@ def make_clinically_ready(data):
     # setup_domain builds the InventoryReservation row directly, so no
     # RESERVATION ledger entry backs it. The supply path releases against those
     # entries, so post the reservation the way reserve_stock would.
+    episode = data["episode"]
     line = data["line"]
+    screening = PosClinicalScreeningService.evaluate(
+        tenant=data["tenant"],
+        transaction_id=f"POS-TEST-{episode.id}",
+        device_id=data["device_id"],
+        patient_id=episode.patient_id,
+        prescription_id=episode.prescription_id,
+        dispensing_episode_id=str(episode.id),
+        basket_lines=[
+            {
+                "line_id": str(line.id),
+                "sku_id": str(line.supplied_sku_id),
+                "quantity": str(line.quantity_authorized),
+                "dose_instructions": line.dosage_label_instructions,
+            }
+        ],
+        cashier=data["cashier"],
+    )
+    from apps.cds.pos_screening_services import PosTransactionContextBuilder
+
+    expected_context = PosTransactionContextBuilder.build_context(
+        tenant=data["tenant"],
+        patient_id=episode.patient_id,
+        prescription_id=episode.prescription_id,
+        basket_lines=[
+            {
+                "line_id": str(line.id),
+                "sku_id": str(line.supplied_sku_id),
+                "quantity": str(line.quantity_authorized),
+                "dose_instructions": line.dosage_label_instructions,
+            }
+        ],
+    )
+    assert screening.context_hash == PosTransactionContextBuilder.compute_context_hash(context=expected_context)
+    assert screening.dispensing_episode_id == str(episode.id)
+    assert PosClinicalScreening.all_objects.filter(
+        tenant_id=episode.tenant_id,
+        dispensing_episode_id=str(episode.id),
+        context_hash=screening.context_hash,
+    ).exists()
     reservation = line.inventory_allocation.reservation.inventory_reservation
     InventoryLedgerService.post_entry(
         tenant=data["tenant"],
