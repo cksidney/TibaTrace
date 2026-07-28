@@ -1,12 +1,17 @@
 from rest_framework import mixins, permissions, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.response import Response
 
 from apps.core.tenant_context import get_current_tenant_id
+from apps.customers.models import Customer
+from apps.medicines.models import CommercialSKU
+from apps.organizations.models import Location
 from apps.sales.api.serializers import (
     CustomerPriceAgreementSerializer,
     DeliveryRecordSerializer,
     DispatchOrderSerializer,
+    OrderLineCreateSerializer,
     PackageSerializer,
     PackingSessionSerializer,
     PickingTaskSerializer,
@@ -14,11 +19,16 @@ from apps.sales.api.serializers import (
     PriceListEntrySerializer,
     PriceListSerializer,
     PromotionRuleSerializer,
+    QuotationCreateSerializer,
     QuotationSerializer,
     SalesOrderAllocationSerializer,
+    SalesOrderCreateSerializer,
     SalesOrderHoldSerializer,
     SalesOrderSerializer,
     SalesReturnAuthorizationSerializer,
+    SalesReturnRequestSerializer,
+    SubstitutionProposalSerializer,
+    SubstitutionProposeSerializer,
 )
 from apps.sales.models import (
     CustomerPriceAgreement,
@@ -35,6 +45,7 @@ from apps.sales.models import (
     SalesOrder,
     SalesOrderAllocation,
     SalesOrderHold,
+    SalesOrderLine,
     SalesReturnAuthorization,
 )
 from apps.sales.services import (
@@ -49,7 +60,22 @@ from apps.sales.services import (
     SalesOrderService,
     SalesReservationService,
     SalesReturnService,
+    SubstitutionProposalService,
 )
+from apps.tenancy.models import Tenant
+
+
+def _tenant_scoped(model, tenant_id, pk, field):
+    """Fetch a related record inside the caller's tenant, or refuse by name.
+
+    all_objects with an explicit tenant filter, not the strict manager: these run
+    in a request where tenant context exists, but naming the filter keeps the
+    isolation on a line you can read rather than in a thread-local.
+    """
+    obj = model.all_objects.filter(tenant_id=tenant_id, pk=pk).first()
+    if obj is None:
+        raise DRFValidationError({field: [f"Unknown {field}."]})
+    return obj
 
 
 class BaseSalesViewSet(viewsets.ReadOnlyModelViewSet):
@@ -77,6 +103,13 @@ class BaseSalesViewSet(viewsets.ReadOnlyModelViewSet):
             # detail route 404'd for data that exists.
             return self.model.all_objects.filter(tenant_id=tenant_id)
         return self.model.all_objects.none()
+
+    def _tenant_id(self):
+        return (
+            get_current_tenant_id()
+            or getattr(self.request, "tenant_id", None)
+            or getattr(self.request.user, "tenant_id", None)
+        )
 
     def perform_create(self, serializer):
         tenant_id = (
@@ -127,6 +160,51 @@ class QuotationViewSet(BaseSalesViewSet):
     model = Quotation
     serializer_class = QuotationSerializer
 
+    def create(self, request, *args, **kwargs):
+        """Raise a quotation through the service.
+
+        Creation was previously the generic ModelViewSet POST, which wrote the
+        row straight from the serializer and skipped create_quotation entirely --
+        no numbering, no tenant checks on branch and customer, no pricing. That
+        path is closed; this is the governed one.
+        """
+        payload = QuotationCreateSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        tenant_id = self._tenant_id()
+        quotation = QuotationService.create_quotation(
+            tenant=Tenant.objects.get(pk=tenant_id),
+            branch=_tenant_scoped(Location, tenant_id, payload.validated_data["branch"], "branch"),
+            customer=_tenant_scoped(Customer, tenant_id, payload.validated_data["customer"], "customer"),
+            currency=payload.validated_data["currency"],
+            customer_reference=payload.validated_data["customer_reference"],
+            notes=payload.validated_data["notes"],
+            terms=payload.validated_data["terms"],
+            valid_until=payload.validated_data["valid_until"],
+            created_by=request.user,
+        )
+        return Response(self.get_serializer(quotation).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["post"], url_path="lines")
+    def add_line(self, request, pk=None):
+        payload = OrderLineCreateSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        quotation = self.get_object()
+        QuotationService.add_quotation_line(
+            quotation=quotation,
+            sku=_tenant_scoped(CommercialSKU, quotation.tenant_id, payload.validated_data["sku"], "sku"),
+            requested_quantity=payload.validated_data["requested_quantity"],
+            unit=payload.validated_data["unit"],
+        )
+        quotation.refresh_from_db()
+        return Response(self.get_serializer(quotation).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["post"])
+    def reject(self, request, pk=None):
+        obj = self.get_object()
+        QuotationService.reject_quotation(quotation=obj)
+        obj.refresh_from_db()
+        return Response(self.get_serializer(obj).data)
+
     @action(detail=True, methods=["post"])
     def submit(self, request, pk=None):
         obj = self.get_object()
@@ -173,6 +251,80 @@ class QuotationViewSet(BaseSalesViewSet):
 class SalesOrderViewSet(BaseSalesViewSet):
     model = SalesOrder
     serializer_class = SalesOrderSerializer
+
+    def create(self, request, *args, **kwargs):
+        """Raise a sales order through the service.
+
+        The generic POST that used to do this wrote the row from the serializer,
+        skipping the tenant checks on branch, customer and delivery address, the
+        numbering, and the policies that govern partial fulfilment, substitution
+        and invoicing. Those policies decide whether a medicine may be swapped;
+        they are not form defaults.
+        """
+        payload = SalesOrderCreateSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        tenant_id = self._tenant_id()
+        data = payload.validated_data
+        source = (
+            _tenant_scoped(Quotation, tenant_id, data["source_quotation"], "source_quotation")
+            if data["source_quotation"] else None
+        )
+        order = SalesOrderService.create_sales_order(
+            tenant=Tenant.objects.get(pk=tenant_id),
+            branch=_tenant_scoped(Location, tenant_id, data["branch"], "branch"),
+            customer=_tenant_scoped(Customer, tenant_id, data["customer"], "customer"),
+            currency=data["currency"],
+            customer_po_reference=data["customer_po_reference"],
+            requested_delivery_date=data["requested_delivery_date"],
+            fulfilment_policy=data["fulfilment_policy"],
+            substitution_policy=data["substitution_policy"],
+            invoice_policy=data["invoice_policy"],
+            source_quotation=source,
+            created_by=request.user,
+        )
+        return Response(self.get_serializer(order).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["post"], url_path="lines")
+    def add_line(self, request, pk=None):
+        payload = OrderLineCreateSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        order = self.get_object()
+        SalesOrderService.add_order_line(
+            sales_order=order,
+            sku=_tenant_scoped(CommercialSKU, order.tenant_id, payload.validated_data["sku"], "sku"),
+            requested_quantity=payload.validated_data["requested_quantity"],
+            unit=payload.validated_data["unit"],
+        )
+        order.refresh_from_db()
+        return Response(self.get_serializer(order).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["post"], url_path="substitutions")
+    def propose_substitution(self, request, pk=None):
+        """Propose swapping one medicine for another on an order line.
+
+        Routed because it is a clinical decision, not a stock convenience. The
+        service refuses it outright when the order's substitution policy forbids
+        it, and the proposal needs separate approval before it takes effect.
+        """
+        payload = SubstitutionProposeSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        order = self.get_object()
+        line = _tenant_scoped(
+            SalesOrderLine, order.tenant_id,
+            payload.validated_data["sales_order_line"], "sales_order_line",
+        )
+        proposal = SubstitutionProposalService.propose_substitution(
+            sales_order_line=line,
+            proposed_sku=_tenant_scoped(
+                CommercialSKU, order.tenant_id,
+                payload.validated_data["proposed_sku"], "proposed_sku",
+            ),
+            reason=payload.validated_data["reason"],
+            actor=request.user,
+        )
+        return Response(
+            SubstitutionProposalSerializer(proposal).data, status=status.HTTP_201_CREATED
+        )
 
     @action(detail=True, methods=["post"])
     def submit(self, request, pk=None):
@@ -373,6 +525,24 @@ class DeliveryRecordViewSet(BaseSalesViewSet):
 class SalesReturnAuthorizationViewSet(BaseSalesViewSet):
     model = SalesReturnAuthorization
     serializer_class = SalesReturnAuthorizationSerializer
+
+    def create(self, request, *args, **kwargs):
+        """Raise a return against a delivered order, through the service."""
+        payload = SalesReturnRequestSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        tenant_id = self._tenant_id()
+        order = _tenant_scoped(
+            SalesOrder, tenant_id, payload.validated_data["sales_order"], "sales_order"
+        )
+        authorisation = SalesReturnService.request_return(
+            sales_order=order,
+            customer=order.customer,
+            reason=payload.validated_data["reason"],
+            requested_by=request.user,
+        )
+        return Response(
+            self.get_serializer(authorisation).data, status=status.HTTP_201_CREATED
+        )
 
     @action(detail=True, methods=["post"])
     def approve(self, request, pk=None):

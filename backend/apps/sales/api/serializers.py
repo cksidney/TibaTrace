@@ -619,3 +619,51 @@ class SalesReturnAuthorizationSerializer(serializers.ModelSerializer):
             "customer_name",
         ]
         read_only_fields = ["id", "tenant", "status", "created_at", "updated_at"]
+
+
+# ── origination ──────────────────────────────────────────────────────────────
+#
+# Creating a quotation, an order or a return goes through a service. These carry
+# only what the caller supplies; everything derived -- numbering, pricing,
+# totals, status -- is the service's to decide.
+
+
+class QuotationCreateSerializer(serializers.Serializer):
+    branch = serializers.UUIDField()
+    customer = serializers.UUIDField()
+    currency = serializers.CharField(max_length=3, required=False, default="KES")
+    customer_reference = serializers.CharField(required=False, allow_blank=True, default="")
+    notes = serializers.CharField(required=False, allow_blank=True, default="")
+    terms = serializers.CharField(required=False, allow_blank=True, default="")
+    valid_until = serializers.DateField(required=False, allow_null=True, default=None)
+
+
+class SalesOrderCreateSerializer(serializers.Serializer):
+    branch = serializers.UUIDField()
+    customer = serializers.UUIDField()
+    currency = serializers.CharField(max_length=3, required=False, default="KES")
+    customer_po_reference = serializers.CharField(required=False, allow_blank=True, default="")
+    requested_delivery_date = serializers.DateField(required=False, allow_null=True, default=None)
+    fulfilment_policy = serializers.CharField(required=False, default="ALLOW_PARTIAL")
+    #: Governs whether a dispensed item may be swapped. Not a display preference.
+    substitution_policy = serializers.CharField(required=False, default="NO_SUBSTITUTION")
+    invoice_policy = serializers.CharField(required=False, default="ON_DISPATCH")
+    source_quotation = serializers.UUIDField(required=False, allow_null=True, default=None)
+
+
+class OrderLineCreateSerializer(serializers.Serializer):
+    sku = serializers.UUIDField()
+    requested_quantity = serializers.DecimalField(max_digits=14, decimal_places=3)
+    unit = serializers.CharField(max_length=32, required=False, default="each")
+
+
+class SubstitutionProposeSerializer(serializers.Serializer):
+    sales_order_line = serializers.UUIDField()
+    proposed_sku = serializers.UUIDField()
+    #: Required. A substitution with no stated reason cannot be reviewed.
+    reason = serializers.CharField()
+
+
+class SalesReturnRequestSerializer(serializers.Serializer):
+    sales_order = serializers.UUIDField()
+    reason = serializers.CharField()
