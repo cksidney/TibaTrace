@@ -36,6 +36,21 @@
         "DAWATRACE_REDIS_URL": "locmem://",
         "DAWATRACE_CELERY_TASK_ALWAYS_EAGER": "1"
       }
+    },
+    {
+      "name": "pos-windows",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--workspace",
+        "@dawatrace/pos-windows",
+        "--",
+        "--port",
+        "5174",
+        "--strictPort"
+      ],
+      "port": 5174
     }
   ]
 }
