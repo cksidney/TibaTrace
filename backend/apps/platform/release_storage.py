@@ -58,7 +58,10 @@ def signed_download_url(object_key: str, *, filename: str) -> str:
         aws_secret_access_key=config["secret_key"],
         region_name=config["region"],
         # SigV4 is required by MinIO and by S3 in newer regions.
-        config=Config(signature_version="s3v4"),
+        config=Config(
+            signature_version="s3v4",
+            s3={"addressing_style": "path"},
+        ),
     )
     return client.generate_presigned_url(
         "get_object",

@@ -28,6 +28,7 @@ urlpatterns = [
         name="pos-release-download",
     ),
     path("api/tenancy/", include("apps.tenancy.api.urls")),
+    path("api/pharmacy-network/", include("apps.pharmacy_network.api.urls")),
     path("api/identity/", include("apps.identity.api.urls")),
     path("api/organizations/", include("apps.organizations.api.urls")),
     path("api/patients/", include("apps.patients.api.urls")),

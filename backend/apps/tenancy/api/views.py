@@ -1,18 +1,7 @@
-from django.core.exceptions import ValidationError as DjangoValidationError
-from rest_framework import permissions, status, viewsets
-from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied
-from rest_framework.response import Response
+from rest_framework import permissions, viewsets
 
-from apps.tenancy.api.serializers import TenantSerializer, TenantSuspensionSerializer
+from apps.tenancy.api.serializers import TenantSerializer
 from apps.tenancy.models import Tenant
-from apps.tenancy.services import TenantManagementService
-
-
-def _error_payload(exc: DjangoValidationError) -> dict:
-    if hasattr(exc, "message_dict"):
-        return exc.message_dict
-    return {"detail": list(getattr(exc, "messages", [str(exc)]))}
 
 
 class TenantViewSet(viewsets.ReadOnlyModelViewSet):
@@ -27,55 +16,13 @@ class TenantViewSet(viewsets.ReadOnlyModelViewSet):
             return Tenant.objects.filter(pk=user.tenant_id)
         return Tenant.objects.none()
 
-    def _require_platform_admin(self):
-        user = self.request.user
-        if not (user.is_superuser or user.is_platform_admin):
-            raise PermissionDenied("Tenant management is restricted to platform administrators.")
-
-    def create(self, request, *args, **kwargs):
-        self._require_platform_admin()
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        try:
-            tenant = TenantManagementService.create_tenant(**serializer.validated_data)
-        except DjangoValidationError as exc:
-            return Response(_error_payload(exc), status=status.HTTP_400_BAD_REQUEST)
-        return Response(self.get_serializer(tenant).data, status=status.HTTP_201_CREATED)
-
-    def partial_update(self, request, *args, **kwargs):
-        self._require_platform_admin()
-        tenant = self.get_object()
-        serializer = self.get_serializer(tenant, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        values = {
-            "name": serializer.validated_data.get("name", tenant.name),
-            "slug": serializer.validated_data.get("slug", tenant.slug),
-            "country_code": serializer.validated_data.get("country_code", tenant.country_code),
-            "time_zone": serializer.validated_data.get("time_zone", tenant.time_zone),
-            "metadata": serializer.validated_data.get("metadata", tenant.metadata),
-        }
-        try:
-            tenant = TenantManagementService.update_tenant(tenant=tenant, **values)
-        except DjangoValidationError as exc:
-            return Response(_error_payload(exc), status=status.HTTP_400_BAD_REQUEST)
-        return Response(self.get_serializer(tenant).data)
-
-    @action(detail=True, methods=["post"])
-    def suspend(self, request, pk=None):
-        self._require_platform_admin()
-        serializer = TenantSuspensionSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        try:
-            tenant = TenantManagementService.suspend_tenant(
-                tenant=self.get_object(),
-                reason=serializer.validated_data["reason"],
-            )
-        except DjangoValidationError as exc:
-            return Response(_error_payload(exc), status=status.HTTP_400_BAD_REQUEST)
-        return Response(self.get_serializer(tenant).data)
-
-    @action(detail=True, methods=["post"])
-    def activate(self, request, pk=None):
-        self._require_platform_admin()
-        tenant = TenantManagementService.activate_tenant(tenant=self.get_object())
-        return Response(self.get_serializer(tenant).data)
+    # The write surface that used to live here is gone.
+    #
+    # It created a tenant straight into ACTIVE and let a generic PATCH change
+    # any field, with no licence check, no actor and no record. A pharmacy could
+    # be made live in one POST with no premises licence, no superintendent, no
+    # organization and no branch -- and suspending it afterwards stopped nothing.
+    #
+    # Administration now lives in apps.pharmacy_network, where every transition
+    # is guarded and recorded. This viewset stays read-only so that tenancy
+    # remains what it is: the scoping infrastructure every request touches.

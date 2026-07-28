@@ -234,6 +234,7 @@ class TestStorageConfiguration:
 
         assert url == "https://signed"
         assert client.call_args.kwargs["endpoint_url"] == "https://minio.example.test"
+        assert client.call_args.kwargs["config"].s3 == {"addressing_style": "path"}
         params = client.return_value.generate_presigned_url.call_args.kwargs["Params"]
         assert params["Bucket"] == "tibatrace-releases"
         assert params["Key"] == "k/v.apk"

@@ -1,74 +1,70 @@
+"""What /api/tenancy/tenants/ is for now.
+
+This file used to assert the lifecycle that no longer exists: create a tenant
+and get a live pharmacy back in one POST, PATCH any field, suspend it, activate
+it. Every step of that was a defect rather than a feature -- the created tenant
+had no premises licence, no superintendent, no organization, no branch and
+nobody who could sign in, and the suspension stopped nothing at all.
+
+Administration moved to apps.pharmacy_network, where the transitions are guarded
+and recorded; those paths are covered in test_pharmacy_network_api.py and
+test_pharmacy_lifecycle.py. What remains here is the read surface, which the
+scope picker and tenant switcher depend on.
+"""
 import pytest
 
+from apps.pharmacy_network.services import PharmacyOnboardingService
 from apps.tenancy.models import Tenant
 
 
 @pytest.mark.django_db
-def test_platform_admin_can_manage_tenant_lifecycle(client, django_user_model):
-    platform_admin = django_user_model.objects.create_user(
+def test_a_platform_admin_reads_every_tenant(client, django_user_model):
+    admin = django_user_model.objects.create_user(
         username="tenant-platform-admin",
         password="tenant-platform-admin-password",
         is_platform_admin=True,
     )
-    client.force_login(platform_admin)
-
-    created = client.post(
-        "/api/tenancy/tenants/",
-        {
-            "name": "Westlands Pharmacy Group",
-            "slug": "westlands-pharmacy",
-            "country_code": "KE",
-            "time_zone": "Africa/Nairobi",
-            "metadata": {"support_email": "ops@example.test"},
-        },
-        content_type="application/json",
+    PharmacyOnboardingService.register_prospect(
+        name="Westlands Pharmacy Group", slug="westlands-pharmacy",
+        legal_name="Westlands Pharmacy Group Ltd",
     )
-    assert created.status_code == 201
-    tenant_id = created.json()["id"]
+    client.force_login(admin)
 
-    updated = client.patch(
-        f"/api/tenancy/tenants/{tenant_id}/",
-        {"name": "Westlands Pharmacy Network"},
-        content_type="application/json",
-    )
-    assert updated.status_code == 200
-    assert updated.json()["name"] == "Westlands Pharmacy Network"
-
-    suspended = client.post(
-        f"/api/tenancy/tenants/{tenant_id}/suspend/",
-        {"reason": "Contract review"},
-        content_type="application/json",
-    )
-    assert suspended.status_code == 200
-    assert suspended.json()["status"] == Tenant.STATUS_SUSPENDED
-    assert suspended.json()["suspension_reason"] == "Contract review"
-
-    activated = client.post(
-        f"/api/tenancy/tenants/{tenant_id}/activate/",
-        content_type="application/json",
-    )
-    assert activated.status_code == 200
-    assert activated.json()["status"] == Tenant.STATUS_ACTIVE
+    listed = client.get("/api/tenancy/tenants/")
+    assert listed.status_code == 200
+    assert any(row["slug"] == "westlands-pharmacy" for row in listed.json())
 
 
 @pytest.mark.django_db
-def test_tenant_operator_cannot_manage_other_tenants(client, django_user_model):
-    tenant = Tenant.objects.create(name="Tenant A", slug="tenant-a")
-    other = Tenant.objects.create(name="Tenant B", slug="tenant-b")
+def test_an_operator_sees_only_their_own_tenant(client, django_user_model):
+    mine = Tenant.objects.create(name="Mine", slug="mine")
+    Tenant.objects.create(name="Theirs", slug="theirs")
     operator = django_user_model.objects.create_user(
-        username="tenant-operator",
-        password="tenant-operator-password",
-        tenant=tenant,
+        username="tenant-operator", password="tenant-operator-password", tenant=mine
     )
     client.force_login(operator)
 
     listed = client.get("/api/tenancy/tenants/")
     assert listed.status_code == 200
-    assert [row["id"] for row in listed.json()] == [str(tenant.id)]
+    assert [row["id"] for row in listed.json()] == [str(mine.id)]
 
-    forbidden = client.post(
-        f"/api/tenancy/tenants/{other.id}/suspend/",
-        {"reason": "Not allowed"},
+
+@pytest.mark.django_db
+def test_the_write_surface_is_gone(client, django_user_model):
+    """The point of the change.
+
+    A pharmacy created here would skip the licence check, the provisioning and
+    the record of who decided.
+    """
+    admin = django_user_model.objects.create_user(
+        username="tenant-writer", password="tenant-writer-password", is_platform_admin=True
+    )
+    client.force_login(admin)
+
+    created = client.post(
+        "/api/tenancy/tenants/",
+        {"name": "Backdoor Pharmacy", "slug": "backdoor-pharmacy"},
         content_type="application/json",
     )
-    assert forbidden.status_code == 403
+    assert created.status_code in (403, 405)
+    assert not Tenant.objects.filter(slug="backdoor-pharmacy").exists()
