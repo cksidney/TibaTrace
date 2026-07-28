@@ -129,6 +129,7 @@ class PosDispensingViewSet(viewsets.ReadOnlyModelViewSet):
                 payment_reference=data.get("payment_reference", ""),
                 cashier=request.user,
                 idempotency_key=data["idempotency_key"],
+                device_id=data["device_id"],
             )
             return Response(res)
         except ValidationError as e:

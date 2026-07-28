@@ -34,6 +34,7 @@ export function usePosWorkflow(
   baseUrl = '/api/pos/dispensing',
   fetcher: typeof fetch = fetch,
   offlineStore?: OfflineStore,
+  deviceId = '',
 ) {
   const client = useMemo(
     () => new PosDispensingClient(baseUrl, '', 15000, { fetcher }),
@@ -156,6 +157,7 @@ export function usePosWorkflow(
           tender_type: tenderType,
           paid_amount: amount,
           payment_reference: reference,
+          device_id: deviceId,
           idempotency_key: idempotencyKey,
         };
       return run(() =>
@@ -173,7 +175,7 @@ export function usePosWorkflow(
           : workflow.takePayment(request),
       );
     },
-    [workflow, run, journal],
+    [workflow, run, journal, deviceId],
   );
 
   const confirmCollection = useCallback(

@@ -130,6 +130,7 @@ def test_replayed_payment_does_not_charge_twice(domain):
         paid_amount=Decimal("500.00"),
         cashier=data["cashier"],
         idempotency_key="PAY-IDEMPOTENT-1",
+        device_id=data["device_id"],
     )
     first = PosPaymentOrchestrationService.process_payment(episode=episode, **kwargs)
     episode.refresh_from_db()
@@ -139,6 +140,57 @@ def test_replayed_payment_does_not_charge_twice(domain):
     assert replay["replayed"] is True
     episode.refresh_from_db()
     assert episode.paid_amount == Decimal("500.00")
+    assert episode.payment_register_session_id == data["register_session"].id
+    assert episode.payment_operator_shift_id == data["operator_shift"].id
+    assert episode.payment_device_id == data["device_id"]
+
+
+def test_payment_is_refused_without_an_assigned_device(domain):
+    data = domain
+    episode = data["episode"]
+    make_clinically_ready(data)
+    PosDispensingQueueService.transition_state(
+        episode=episode, new_status="CHECKING", actor=data["pharmacist"]
+    )
+    episode.refresh_from_db()
+    PosDispensingQueueService.transition_state(
+        episode=episode, new_status="READY_FOR_PAYMENT", actor=data["pharmacist"]
+    )
+
+    with pytest.raises(ValidationError, match="not assigned to a register"):
+        PosPaymentOrchestrationService.process_payment(
+            episode=episode,
+            tender_type="CASH",
+            paid_amount=Decimal("500.00"),
+            cashier=data["cashier"],
+            idempotency_key="PAY-NO-DEVICE",
+            device_id="UNKNOWN-DEVICE",
+        )
+
+
+def test_payment_is_refused_when_the_operator_shift_is_closed(domain):
+    data = domain
+    episode = data["episode"]
+    make_clinically_ready(data)
+    PosDispensingQueueService.transition_state(
+        episode=episode, new_status="CHECKING", actor=data["pharmacist"]
+    )
+    episode.refresh_from_db()
+    PosDispensingQueueService.transition_state(
+        episode=episode, new_status="READY_FOR_PAYMENT", actor=data["pharmacist"]
+    )
+    data["operator_shift"].state = "CLOSED"
+    data["operator_shift"].save(update_fields=["state", "updated_at"])
+
+    with pytest.raises(ValidationError, match="no active shift"):
+        PosPaymentOrchestrationService.process_payment(
+            episode=episode,
+            tender_type="CASH",
+            paid_amount=Decimal("500.00"),
+            cashier=data["cashier"],
+            idempotency_key="PAY-CLOSED-SHIFT",
+            device_id=data["device_id"],
+        )
 
 
 def test_repeat_is_consumed_on_supply_not_merely_probed(domain):

@@ -106,6 +106,9 @@ export interface DispensingEpisodeDTO {
   payment_reference: string;
   tender_type: PaymentTenderType;
   paid_amount: string;
+  payment_register_session?: string | null;
+  payment_operator_shift?: string | null;
+  payment_device_id?: string;
   /**
    * Authoritative totals from the active PaymentIntent, or null when no intent
    * is open. `paid_amount` on the episode is a convenience mirror and must not
@@ -173,11 +176,7 @@ export interface PaymentProcessRequest {
   tender_type: PaymentTenderType;
   paid_amount: string;
   payment_reference?: string;
-  /**
-   * Required by the server. Must stay stable across retries of the *same*
-   * attempt so a dropped connection cannot charge the patient twice; generate a
-   * fresh one only for a genuinely new payment.
-   */
+  device_id: string;
   idempotency_key: string;
 }
 

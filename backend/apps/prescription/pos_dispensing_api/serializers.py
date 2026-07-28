@@ -220,6 +220,9 @@ class PosDispensingEpisodeSerializer(serializers.ModelSerializer):
             "payment_reference",
             "tender_type",
             "paid_amount",
+            "payment_register_session",
+            "payment_operator_shift",
+            "payment_device_id",
             "amount_due",
             "amount_settled",
             "amount_remaining",
@@ -267,6 +270,9 @@ class PosDispensingEpisodeSerializer(serializers.ModelSerializer):
             "payment_reference",
             "tender_type",
             "paid_amount",
+            "payment_register_session",
+            "payment_operator_shift",
+            "payment_device_id",
             "collector_name",
             "collector_id_number",
             "collector_phone",
@@ -296,6 +302,7 @@ class ProcessPaymentRequestSerializer(serializers.Serializer):
     tender_type = serializers.ChoiceField(choices=TENDER_TYPES, default="CASH")
     paid_amount = serializers.DecimalField(max_digits=15, decimal_places=2)
     payment_reference = serializers.CharField(max_length=128, required=False, allow_blank=True, default="")
+    device_id = serializers.CharField(max_length=128)
     # Client-generated and stable across retries: this is what makes a replayed
     # payment a no-op instead of a second charge.
     idempotency_key = serializers.CharField(max_length=255)

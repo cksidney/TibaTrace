@@ -18,6 +18,7 @@ from apps.medicines.models import (
 )
 from apps.organizations.models import Location, Organization
 from apps.patients.models import Patient
+from apps.pos_shift.models import BusinessDay, OperatorShift, PosRegister, RegisterSession
 from apps.practitioners.models import Practitioner
 from apps.prescription.models import (
     DispensingAllocation,
@@ -57,6 +58,34 @@ def setup_domain(db):
     pharmacist = User.objects.create(username="test_rph", tenant=tenant)
     cashier = User.objects.create(username="test_cashier", tenant=tenant)
     witness = User.objects.create(username="test_witness", tenant=tenant)
+
+    register = PosRegister.all_objects.create(
+        tenant=tenant,
+        location=branch,
+        code="TILL-01",
+        name="Main till",
+        device_id="POS-TEST-01",
+        state="OPEN",
+    )
+    business_day = BusinessDay.all_objects.create(
+        tenant=tenant,
+        location=branch,
+        business_date=timezone.localdate(),
+        state="OPEN",
+    )
+    register_session = RegisterSession.all_objects.create(
+        tenant=tenant,
+        register=register,
+        business_day=business_day,
+        opened_by=cashier,
+        state="OPEN",
+    )
+    operator_shift = OperatorShift.all_objects.create(
+        tenant=tenant,
+        register_session=register_session,
+        operator=cashier,
+        state="OPEN",
+    )
 
     patient = Patient.all_objects.create(
         tenant=tenant,
@@ -202,6 +231,11 @@ def setup_domain(db):
         "pharmacist": pharmacist,
         "cashier": cashier,
         "witness": witness,
+        "register": register,
+        "business_day": business_day,
+        "register_session": register_session,
+        "operator_shift": operator_shift,
+        "device_id": "POS-TEST-01",
         "patient": patient,
         "practitioner": practitioner,
         "sku": sku,
@@ -420,6 +454,7 @@ def test_payment_orchestration_links_payment_without_inventory_deduction(domain)
         payment_reference="MPESA-REF-999",
         cashier=data["cashier"],
         idempotency_key="PAY-KEY-1",
+        device_id=data["device_id"],
     )
 
     assert res["success"]

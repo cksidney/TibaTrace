@@ -1,8 +1,7 @@
 import {
   PosOperationsClient,
-  resolveOperationalContext,
 } from '@dawatrace/shared/operational/index.js';
-import type { PosOperationalContext } from '@dawatrace/shared/operational/index.js';
+import type { PosOperationalRuntimeDTO } from '@dawatrace/shared/operational/index.js';
 import { fontSize, spacing, statusPalette, surface, text } from '@dawatrace/shared/design-system/index.js';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -11,43 +10,26 @@ interface OperationalStatusStripProps {
   readonly apiBaseUrl: string;
   readonly apiFetch: typeof fetch;
   readonly deviceId: string;
-  readonly operatorId: string;
 }
 
 export function OperationalStatusStrip({
   apiBaseUrl,
   apiFetch,
   deviceId,
-  operatorId,
 }: OperationalStatusStripProps) {
   const client = useMemo(
     () => new PosOperationsClient(`${apiBaseUrl}/api/pos/shift`, { fetcher: apiFetch }),
     [apiBaseUrl, apiFetch],
   );
-  const [context, setContext] = useState<PosOperationalContext | null>(null);
+  const [context, setContext] = useState<PosOperationalRuntimeDTO | null>(null);
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
 
   const refresh = useCallback(async () => {
-    if (!deviceId || !operatorId) return;
+    if (!deviceId) return;
     setRefreshing(true);
     try {
-      const [registers, businessDays, openSessions, devices] = await Promise.all([
-        client.getRegisters(),
-        client.getBusinessDays(),
-        client.getOpenSessions(),
-        client.getDevices(),
-      ]);
-      setContext(
-        resolveOperationalContext({
-          deviceId,
-          operatorId,
-          registers,
-          businessDays,
-          openSessions,
-          devices,
-        }),
-      );
+      setContext(await client.getRuntime(deviceId));
       setError('');
     } catch (cause) {
       setContext(null);
@@ -55,7 +37,7 @@ export function OperationalStatusStrip({
     } finally {
       setRefreshing(false);
     }
-  }, [client, deviceId, operatorId]);
+  }, [client, deviceId]);
 
   useEffect(() => {
     void refresh();
@@ -84,16 +66,16 @@ export function OperationalStatusStrip({
         <Text style={[styles.title, { color: palette.foreground }]}>{title}</Text>
         <Text style={styles.detail}>{detail}</Text>
         <Text style={styles.context}>
-          {context?.register?.branch_code ?? 'Branch unassigned'} · {context?.register?.code ?? 'Register unassigned'} · {context?.businessDay?.business_date ?? 'Business date unavailable'}
+          {context?.register?.branch_code ?? 'Branch unassigned'} · {context?.register?.code ?? 'Register unassigned'} · {context?.business_day?.business_date ?? 'Business date unavailable'}
         </Text>
         <Text style={styles.context}>
-          {context?.operatorShift ? `Shift ${context.operatorShift.state.replace(/_/g, ' ')}` : 'No active shift'} · {context?.deviceHealth ? `Printer ${context.deviceHealth.printer_paper_level}` : 'No printer report'}
+          {context?.operator_shift ? `Shift ${context.operator_shift.state.replace(/_/g, ' ')}` : 'No active shift'} · {context?.device_health ? `Printer ${context.device_health.printer_paper_level}` : 'No printer report'}
         </Text>
       </View>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Refresh operational status"
-        disabled={refreshing || !deviceId || !operatorId}
+        disabled={refreshing || !deviceId}
         onPress={() => void refresh()}
         style={[styles.refresh, { borderColor: palette.border }]}
       >

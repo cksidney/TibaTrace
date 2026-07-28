@@ -83,7 +83,7 @@ function OperationsConsole({
   readonly onLogout: () => Promise<void>;
 }) {
   const { state, refreshQueue, select, refresh, takePayment, confirmCollection, recordCounselling } =
-    usePosWorkflow('/api/pos/dispensing', apiFetch, runtime.offline);
+    usePosWorkflow('/api/pos/dispensing', apiFetch, runtime.offline, session.deviceId);
   // Was `useState<ClinicalSummary | null>(null)` with no setter, so the rail
   // rendered "No clinical result" for every episode and the screening endpoint
   // had no caller anywhere in the repository.
@@ -147,7 +147,6 @@ function OperationsConsole({
       <OperationalStatusBar
         apiFetch={apiFetch}
         deviceId={session.deviceId}
-        operatorId={session.userId}
       />
       <PatientSafetyBanner patient={patient} />
       <WorkflowRibbon stages={stages} />

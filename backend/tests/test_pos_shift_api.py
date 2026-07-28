@@ -23,6 +23,7 @@ from apps.pos_shift.models import (
     RegisterSession,
 )
 from apps.pos_shift.reporting import ShiftReportService
+from apps.prescription.models import PosDeviceHealthRecord
 from apps.tenancy.models import Tenant
 
 TODAY = date(2026, 7, 26)
@@ -168,6 +169,38 @@ class TestWorkbenchLists:
         body = rows(world["client"].get("/api/pos/shift/sessions/open/"))
         assert len(body) == 1
         assert body[0]["state"] == "OPEN"
+
+    def test_runtime_returns_one_authoritative_operational_context(self, world):
+        register = world["register"]
+        register.state = "OPEN"
+        register.device_id = "POS-SA-01"
+        register.save(update_fields=["state", "device_id", "updated_at"])
+        PosDeviceHealthRecord.all_objects.create(
+            tenant=world["tenant"],
+            device_id="POS-SA-01",
+            device_type="TERMINAL",
+            status="OK",
+            printer_paper_level="OK",
+        )
+
+        response = world["client"].get("/api/pos/shift/registers/runtime/?device_id=POS-SA-01")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["readiness"] == "READY"
+        assert body["register"]["code"] == "TILL-SA"
+        assert body["register_session"]["id"] == str(world["session"].pk)
+        assert body["operator_shift"]["operator_id"] == str(world["operator"].pk)
+        assert body["business_day"]["business_date"] == TODAY.isoformat()
+
+    def test_runtime_does_not_guess_an_unassigned_register(self, world):
+        response = world["client"].get("/api/pos/shift/registers/runtime/?device_id=UNKNOWN")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["readiness"] == "UNASSIGNED"
+        assert body["allowed_actions"] == []
+        assert body["notices"] == ["This device is not assigned to a register."]
 
     def test_open_session_exposes_stable_operator_identity(self, world):
         """Native tills match the accountable shift to the authenticated user.

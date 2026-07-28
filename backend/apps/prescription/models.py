@@ -947,6 +947,8 @@ class DispensingEpisode(TenantConsistencyMixin, TimestampedModel):
         "branch",
         "pharmacy_location",
         "sales_order",
+        "payment_register_session",
+        "payment_operator_shift",
     )
     tenant = models.ForeignKey("tenancy.Tenant", on_delete=models.CASCADE, related_name="+")
     dispensing_number = models.CharField(max_length=80)
@@ -995,6 +997,21 @@ class DispensingEpisode(TenantConsistencyMixin, TimestampedModel):
     payment_reference = models.CharField(max_length=128, blank=True, default="")
     tender_type = models.CharField(max_length=64, default="CASH")
     paid_amount = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+    payment_register_session = models.ForeignKey(
+        "pos_shift.RegisterSession",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="payment_episodes",
+    )
+    payment_operator_shift = models.ForeignKey(
+        "pos_shift.OperatorShift",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="payment_episodes",
+    )
+    payment_device_id = models.CharField(max_length=128, blank=True, default="")
     collector_name = models.CharField(max_length=255, blank=True, default="")
     collector_id_number = models.CharField(max_length=128, blank=True, default="")
     collector_phone = models.CharField(max_length=64, blank=True, default="")

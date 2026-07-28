@@ -1,49 +1,31 @@
 import {
   PosOperationsClient,
-  resolveOperationalContext,
 } from '@dawatrace/shared/operational/index.js';
-import type { PosOperationalContext } from '@dawatrace/shared/operational/index.js';
+import type { PosOperationalRuntimeDTO } from '@dawatrace/shared/operational/index.js';
 import { spacing, statusPalette, surface, text } from '@dawatrace/shared/design-system/index.js';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 interface OperationalStatusBarProps {
   readonly apiFetch: typeof fetch;
   readonly deviceId: string;
-  readonly operatorId: string;
 }
 
 export function OperationalStatusBar({
   apiFetch,
   deviceId,
-  operatorId,
 }: OperationalStatusBarProps) {
   const client = useMemo(
     () => new PosOperationsClient('/api/pos/shift', { fetcher: apiFetch }),
     [apiFetch],
   );
-  const [context, setContext] = useState<PosOperationalContext | null>(null);
+  const [context, setContext] = useState<PosOperationalRuntimeDTO | null>(null);
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
 
   const refresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      const [registers, businessDays, openSessions, devices] = await Promise.all([
-        client.getRegisters(),
-        client.getBusinessDays(),
-        client.getOpenSessions(),
-        client.getDevices(),
-      ]);
-      setContext(
-        resolveOperationalContext({
-          deviceId,
-          operatorId,
-          registers,
-          businessDays,
-          openSessions,
-          devices,
-        }),
-      );
+      setContext(await client.getRuntime(deviceId));
       setError('');
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
@@ -51,7 +33,7 @@ export function OperationalStatusBar({
     } finally {
       setRefreshing(false);
     }
-  }, [client, deviceId, operatorId]);
+  }, [client, deviceId]);
 
   useEffect(() => {
     void refresh();
@@ -72,14 +54,14 @@ export function OperationalStatusBar({
         : context
           ? 'Operational attention required'
           : 'Loading operational context';
-  const printer = context?.deviceHealth
-    ? `${context.deviceHealth.status} · paper ${context.deviceHealth.printer_paper_level}`
+  const printer = context?.device_health
+    ? `${context.device_health.status} · paper ${context.device_health.printer_paper_level}`
     : 'No device report';
   const sync = context?.register?.last_synchronised_at
     ? `Recorded ${formatDateTime(context.register.last_synchronised_at)}`
     : 'No sync record';
-  const shift = context?.operatorShift
-    ? `${context.operatorShift.state.replace(/_/g, ' ')} since ${formatTime(context.operatorShift.started_at)}`
+  const shift = context?.operator_shift
+    ? `${context.operator_shift.state.replace(/_/g, ' ')} since ${formatTime(context.operator_shift.started_at)}`
     : 'No active shift';
   const details = error || context?.notices.join(' ') || 'Register, business day, operator shift and device health match this session.';
 
@@ -103,7 +85,7 @@ export function OperationalStatusBar({
       </div>
       <StatusItem label="Branch" value={context?.register?.branch_code ?? 'Unassigned'} />
       <StatusItem label="Register" value={context?.register?.code ?? 'Unassigned'} />
-      <StatusItem label="Business date" value={context?.businessDay?.business_date ?? 'Unavailable'} />
+      <StatusItem label="Business date" value={context?.business_day?.business_date ?? 'Unavailable'} />
       <StatusItem label="Shift" value={shift} />
       <StatusItem label="Printer" value={printer} />
       <div style={{ display: 'flex', alignItems: 'center', gap: spacing.sm }}>

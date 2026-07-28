@@ -42,6 +42,20 @@ export class PosOperationsClient {
     return this.collection<OperatorShiftDTO>('/shifts/');
   }
 
+  async getRuntime(deviceId: string): Promise<import('./types.js').PosOperationalRuntimeDTO> {
+    const response = await this.fetcher(
+      `${this.baseUrl}/registers/runtime/?device_id=${encodeURIComponent(deviceId)}`,
+      {
+        credentials: 'include',
+        headers: { Accept: 'application/json' },
+      },
+    );
+    if (!response.ok) {
+      throw new Error(`Operational status request failed with ${response.status}.`);
+    }
+    return (await response.json()) as import('./types.js').PosOperationalRuntimeDTO;
+  }
+
   private async collection<T>(path: string): Promise<readonly T[]> {
     const response = await this.fetcher(`${this.baseUrl}${path}`, {
       credentials: 'include',

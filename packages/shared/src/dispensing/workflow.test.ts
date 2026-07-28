@@ -135,6 +135,7 @@ describe('unknown outcomes', () => {
     const outcome = await workflow.takePayment({
       tender_type: 'CASH',
       paid_amount: '100.00',
+      device_id: 'device-1',
       idempotency_key: 'pay-1',
     });
 
@@ -155,6 +156,7 @@ describe('unknown outcomes', () => {
     await workflow.takePayment({
       tender_type: 'CASH',
       paid_amount: '100.00',
+      device_id: 'device-1',
       idempotency_key: 'pay-1',
     });
     expect(workflow.gate().outcomeUnknown).toBe(true);
@@ -188,6 +190,7 @@ describe('server state is authoritative', () => {
     const outcome = await workflow.takePayment({
       tender_type: 'CASH',
       paid_amount: '100.00',
+      device_id: 'device-1',
       idempotency_key: 'pay-1',
     });
 

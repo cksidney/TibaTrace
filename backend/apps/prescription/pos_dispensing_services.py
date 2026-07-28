@@ -10,6 +10,7 @@ from django.utils import timezone
 
 from apps.inventory.models import InventoryBalance, InventoryBatch
 from apps.medicines.models import CommercialSKU
+from apps.pos_shift.authority import RegisterAuthorityService
 from apps.practitioners.models import Practitioner
 from apps.prescription.models import (
     DispensingCheck,
@@ -228,6 +229,7 @@ class PosPaymentOrchestrationService:
         payment_reference="",
         cashier=None,
         idempotency_key=None,
+        device_id="",
     ):
         _require_capability(cashier, episode.tenant_id, "prescriptions.record_payment")
 
@@ -265,6 +267,13 @@ class PosPaymentOrchestrationService:
                 f"(current status: {episode.status})"
             )
 
+        authority = RegisterAuthorityService.resolve_for_transaction(
+            tenant=episode.tenant,
+            branch=episode.branch,
+            actor=cashier,
+            device_id=device_id,
+        )
+
         amount = Decimal(str(paid_amount))
         if amount <= 0:
             raise ValidationError("Paid amount must be greater than zero.")
@@ -282,8 +291,24 @@ class PosPaymentOrchestrationService:
         episode.tender_type = tender_type
         episode.paid_amount = amount
         episode.payment_idempotency_key = idempotency_key
+        episode.payment_register_session = authority.session
+        episode.payment_operator_shift = authority.operator_shift
+        episode.payment_device_id = device_id
         episode.status = "PAID"
-        episode.save()
+        episode.save(
+            update_fields=[
+                "payment_state",
+                "payment_reference",
+                "tender_type",
+                "paid_amount",
+                "payment_idempotency_key",
+                "payment_register_session",
+                "payment_operator_shift",
+                "payment_device_id",
+                "status",
+                "updated_at",
+            ]
+        )
 
         emit_event(
             tenant_id=str(episode.tenant_id),
@@ -295,6 +320,9 @@ class PosPaymentOrchestrationService:
                 "paid_amount": str(amount),
                 "payment_reference": episode.payment_reference,
                 "cashier_id": str(cashier.id) if cashier else None,
+                "register_session_id": str(authority.session.id),
+                "operator_shift_id": str(authority.operator_shift.id),
+                "device_id": device_id,
             },
         )
 

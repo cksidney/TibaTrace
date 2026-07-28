@@ -269,7 +269,6 @@ function PosWorkspace({ onLogout }: { readonly onLogout: () => Promise<void> }) 
         apiBaseUrl={runtime.apiBaseUrl}
         apiFetch={runtime.session.fetch.bind(runtime.session) as typeof fetch}
         deviceId={deviceId}
-        operatorId={runtime.session.current?.userId ?? ''}
       />
       {notice ? (
         <View accessibilityLiveRegion="assertive" style={styles.notice}>
@@ -310,6 +309,7 @@ function PosWorkspace({ onLogout }: { readonly onLogout: () => Promise<void> }) 
                 tender_type: tender,
                 paid_amount: amount,
                 payment_reference: reference,
+                device_id: deviceId,
                 idempotency_key: idempotencyKey,
               };
             void runJournalled(

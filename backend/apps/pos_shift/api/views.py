@@ -26,6 +26,8 @@ from apps.pos_shift.models import (
     ShiftReport,
     ShiftReportReprint,
 )
+from apps.pos_shift.authority import RegisterAuthorityService
+from apps.prescription.pos_dispensing_api.serializers import PosDeviceHealthRecordSerializer
 
 from .serializers import (
     BusinessDaySerializer,
@@ -63,6 +65,37 @@ class PosRegisterViewSet(TenantScopedReadOnly):
 
     def get_queryset(self):
         return super().get_queryset().select_related("location")
+
+    @action(detail=False, methods=["get"], url_path="runtime")
+    def runtime(self, request):
+        tenant_id = (
+            getattr(request, "tenant_id", None)
+            or getattr(getattr(request, "tenant", None), "pk", None)
+            or getattr(request.user, "tenant_id", None)
+        )
+        if tenant_id is None:
+            return Response(RegisterAuthorityService._unassigned("No tenant context is available."))
+        from apps.tenancy.models import Tenant
+
+        tenant = Tenant.objects.get(pk=tenant_id)
+        status = RegisterAuthorityService.runtime_status(
+            tenant=tenant,
+            actor=request.user,
+            device_id=request.query_params.get("device_id", ""),
+        )
+        return Response(
+            {
+                "readiness": status["readiness"],
+                "register": PosRegisterSerializer(status["register"]).data if status["register"] else None,
+                "business_day": BusinessDaySerializer(status["business_day"]).data if status["business_day"] else None,
+                "register_session": RegisterSessionSerializer(status["register_session"]).data if status["register_session"] else None,
+                "operator_shift": OperatorShiftSerializer(status["operator_shift"]).data if status["operator_shift"] else None,
+                "device_health": PosDeviceHealthRecordSerializer(status["device_health"]).data if status["device_health"] else None,
+                "notices": status["notices"],
+                "allowed_actions": status["allowed_actions"],
+                "closure_eligibility": status["closure_eligibility"],
+            }
+        )
 
 
 class BusinessDayViewSet(TenantScopedReadOnly):

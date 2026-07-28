@@ -71,3 +71,18 @@ export interface PosOperationalContext {
   readonly deviceHealth: DeviceHealthDTO | null;
   readonly notices: readonly string[];
 }
+
+export interface PosOperationalRuntimeDTO {
+  readonly readiness: OperationalReadiness;
+  readonly register: PosRegisterDTO | null;
+  readonly business_day: BusinessDayDTO | null;
+  readonly register_session: RegisterSessionDTO | null;
+  readonly operator_shift: OperatorShiftDTO | null;
+  readonly device_health: DeviceHealthDTO | null;
+  readonly notices: readonly string[];
+  readonly allowed_actions: readonly string[];
+  readonly closure_eligibility: {
+    readonly eligible: boolean;
+    readonly blocking_reasons: readonly string[];
+  };
+}
