@@ -16,3 +16,4 @@ fi
 
 cd "${ROOT}"
 npm run android:bundle:release --workspace @dawatrace/pos-android
+npm run android:apk:release --workspace @dawatrace/pos-android

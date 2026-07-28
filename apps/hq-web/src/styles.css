@@ -2608,15 +2608,20 @@ tbody tr:hover {
 }
 
 .tenant-row-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
+  display: grid;
+  /* A pharmacy can offer up to four actions. Free wrapping put them on three
+     ragged lines of differing widths in a 157px cell and pushed rows to 126px;
+     a two-column grid keeps them in a predictable block whatever the state,
+     so the column does not reflow as pharmacies move through the lifecycle. */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+  min-width: 168px;
 }
 
 .tenant-row-actions button {
   min-height: 29px;
-  padding: 0 9px;
+  padding: 0 7px;
+  white-space: nowrap;
   border: 1px solid var(--line);
   border-radius: 7px;
   color: var(--teal-700);

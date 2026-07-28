@@ -12,6 +12,7 @@
     "android": "react-native run-android",
     "start": "react-native start",
     "android:assemble:debug": "cd android && ./gradlew assembleDebug",
+    "android:apk:release": "cd android && ./gradlew assembleRelease",
     "android:bundle:release": "cd android && ./gradlew bundleRelease",
     "release:android": "../../scripts/package_pos_android_release.sh"
   },

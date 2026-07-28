@@ -8,6 +8,7 @@ react {
     codegenDir = file("../../../../node_modules/@react-native/codegen")
     cliFile = file("../../../../node_modules/react-native/cli.js")
     nodeExecutableAndArgs = [System.getenv("NODE_BINARY") ?: "node"]
+    hermesCommand = "../../node_modules/hermes-compiler/hermesc/%OS-BIN%/hermesc"
     autolinkLibrariesWithApp()
 }
 

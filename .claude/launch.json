@@ -31,7 +31,11 @@
         "runserver",
         "127.0.0.1:8000"
       ],
-      "port": 8000
+      "port": 8000,
+      "env": {
+        "DAWATRACE_REDIS_URL": "locmem://",
+        "DAWATRACE_CELERY_TASK_ALWAYS_EAGER": "1"
+      }
     }
   ]
 }

@@ -406,9 +406,11 @@ function PharmacyDialog({
             </table>
           </div>
         ) : <p className="muted-cell">No transitions recorded.</p>}
-        <footer className="dialog-actions">
-          <button onClick={onClose} type="button">Close</button>
-        </footer>
+        <form onSubmit={(event) => { event.preventDefault(); onClose(); }}>
+          <footer>
+            <button onClick={onClose} type="button">Close</button>
+          </footer>
+        </form>
       </Modal>
     );
   }
@@ -419,8 +421,11 @@ function PharmacyDialog({
         {error ? <p className="auth-error" role="alert"><Icon name="alert" /> {error}</p> : null}
         {describeIntent(dialog) ? <p className="panel-note">{describeIntent(dialog)}</p> : null}
         {fieldsFor(dialog).map((field) => (
-          <label key={field.name}>
-            <span>{field.label}</span>
+          <label className="business-field" key={field.name}>
+            <span>
+              {field.label}
+              {REASON_REQUIRED.has(dialog.mode) && field.name === 'reason' ? <b>Required</b> : null}
+            </span>
             {field.multiline ? (
               <textarea onChange={set(field.name)} rows={3} value={fields[field.name] ?? ''} />
             ) : (
@@ -433,7 +438,7 @@ function PharmacyDialog({
             )}
           </label>
         ))}
-        <footer className="dialog-actions">
+        <footer>
           <button disabled={busy} onClick={onClose} type="button">Cancel</button>
           <button className="primary-button" disabled={busy} type="submit">
             {busy ? 'Working…' : submitLabel(dialog)}
@@ -454,9 +459,9 @@ function Modal({
   readonly title: string;
 }) {
   return (
-    <div className="dialog-scrim" role="presentation">
-      <div aria-modal="true" className="dialog-card" role="dialog">
-        <header className="dialog-head">
+    <div className="business-dialog-backdrop" role="presentation">
+      <div aria-modal="true" className="business-dialog" role="dialog">
+        <header>
           <h2>{title}</h2>
           <button aria-label="Close" onClick={onClose} type="button"><Icon name="close" /></button>
         </header>
