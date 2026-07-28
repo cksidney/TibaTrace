@@ -44,8 +44,53 @@ class TenantContextMiddleware:
             return JsonResponse({"detail": "Requested tenant is outside the authenticated identity."}, status=403)
 
         request.tenant_id = header_tenant or user_tenant or None
+
+        # Suspension has to mean something.
+        #
+        # A tenant's status was decorative until now: suspending a pharmacy set a
+        # column and a JSON key, and that pharmacy carried on signing in and
+        # reading the API exactly as before. A "Suspend" button that stops
+        # nothing is worse than none, because it reports an action that did not
+        # happen.
+        #
+        # Platform administrators are exempt: somebody has to be able to look at
+        # a suspended pharmacy in order to reinstate it.
+        refusal = self._refuse_non_operational_tenant(request, user)
+        if refusal is not None:
+            return refusal
+
         token = set_current_tenant_id(request.tenant_id)
         try:
             return self.get_response(request)
         finally:
             reset_current_tenant_id(token)
+
+    def _refuse_non_operational_tenant(self, request, user):
+        if not request.tenant_id:
+            return None
+        if getattr(user, "is_platform_admin", False) or getattr(user, "is_superuser", False):
+            return None
+        if any(request.path.startswith(prefix) for prefix in self.EXEMPT_PREFIXES):
+            return None
+
+        from apps.tenancy.models import Tenant
+
+        status = (
+            Tenant.objects.filter(pk=request.tenant_id)
+            .values_list("status", flat=True)
+            .first()
+        )
+        # An unknown tenant id is not this check's business; the request will
+        # fail on its own terms further in.
+        if status is None or status in Tenant.OPERATIONAL_STATUSES:
+            return None
+
+        # The state is named so an operator can tell "we have not gone live yet"
+        # from "we have been stopped", which need different phone calls.
+        return JsonResponse(
+            {
+                "detail": "This pharmacy is not currently active on the platform.",
+                "tenant_status": status,
+            },
+            status=403,
+        )

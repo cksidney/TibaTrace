@@ -21,7 +21,12 @@ def test_procurement_bounded_query_assertions(django_assert_num_queries):
     client = APIClient()
     client.force_authenticate(user=user)
 
-    with django_assert_num_queries(1):
+    # Two queries, both constant: the supplier list itself, and the tenant status
+    # lookup TenantContextMiddleware does on every request to refuse a suspended
+    # pharmacy. The second is an indexed primary-key read that does not grow with
+    # the number of suppliers, so this still catches the N+1 it was written for --
+    # add a supplier and the count must stay at two.
+    with django_assert_num_queries(2):
         res = client.get("/api/procurement/suppliers/", HTTP_X_TENANT_ID=str(tenant.pk))
         assert res.status_code == 200
         results = res.data if isinstance(res.data, list) else res.data.get("results", [])

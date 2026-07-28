@@ -65,6 +65,7 @@ INSTALLED_APPS = [
     "apps.core",
     "apps.platform",
     "apps.tenancy",
+    "apps.pharmacy_network",
     "apps.identity",
     "apps.pos_shift",
     "apps.pricing",
