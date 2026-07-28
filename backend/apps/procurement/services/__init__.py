@@ -18,6 +18,7 @@ from .returns_service import SupplierReturnService
 from .sourcing_service import SourcingService
 from .supplier_agreement_service import SupplierProductAgreementService
 from .supplier_governance_service import SupplierGovernanceService, SupplierNotQualified
+from .supplier_site_service import SupplierSiteService
 from .three_way_match_service import ProcurementMatchingService, ThreeWayMatchService
 
 # Genuine aliases: the same implementation reached from a differently-named
@@ -46,6 +47,7 @@ __all__ = [
     "SourcingService",
     "SupplierNotQualified",
     "SupplierProductAgreementService",
+    "SupplierSiteService",
     "SupplierQualificationService",
     "SupplierReturnService",
     "ThreeWayMatchService",

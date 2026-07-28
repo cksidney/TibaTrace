@@ -20,6 +20,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.procurement.models import (
+    ProcurementPolicy,
     QuotationAward,
     RequestForQuotation,
     RFQLine,
@@ -45,6 +46,25 @@ class SourcingService:
     #: Only a supplier governance has cleared may be invited to quote or be
     #: awarded. Suspension exists to stop new commitments.
     QUOTABLE_STATUSES = (Supplier.Status.APPROVED, Supplier.Status.ACTIVE)
+
+
+    @staticmethod
+    def _variance_percent(lowest, winning) -> Decimal:
+        """How far above the lowest quotation the winner is, as a percentage.
+
+        Zero when there is no comparison to make, or when the winner is the
+        lowest. Never negative: a winner below the lowest submitted quotation is
+        not a case, and reporting a negative variance would read as a discount.
+        """
+        if lowest is None or lowest.pk == winning.pk:
+            return Decimal("0.00")
+        base = Decimal(str(lowest.total_quoted_cost or 0))
+        if base <= 0:
+            return Decimal("0.00")
+        delta = Decimal(str(winning.total_quoted_cost or 0)) - base
+        if delta <= 0:
+            return Decimal("0.00")
+        return (delta / base * Decimal("100")).quantize(Decimal("0.01"))
 
     # ── request ──────────────────────────────────────────────────────────────
 
@@ -268,8 +288,9 @@ class SourcingService:
             )
 
         # Awarding anything other than the lowest total is legitimate -- quality,
-        # lead time, capacity -- but it has to be said out loud, because an
-        # unexplained award above the lowest quote is what an audit looks for.
+        # lead time, cold chain, capacity -- so how strictly it is policed is the
+        # tenant's policy rather than this service's opinion. What is not
+        # negotiable is that the comparison is made and recorded.
         lowest = (
             SupplierQuotation.all_objects.filter(
                 rfq=rfq, status=SourcingService.SUBMITTED
@@ -277,21 +298,32 @@ class SourcingService:
             .order_by("total_quoted_cost")
             .first()
         )
-        if (
-            lowest is not None
-            and lowest.pk != winning_quotation.pk
-            and not str(justification or "").strip()
-        ):
-            raise ValidationError(
-                {
-                    "justification": (
-                        f"{winning_quotation.quotation_reference} is not the lowest "
-                        f"quotation ({lowest.quotation_reference} at "
-                        f"{lowest.total_quoted_cost}). Awarding above the lowest "
-                        "quote requires a stated reason."
+        policy = ProcurementPolicy.for_tenant(rfq.tenant)
+        variance = SourcingService._variance_percent(lowest, winning_quotation)
+
+        if lowest is not None and lowest.pk != winning_quotation.pk:
+            within_tolerance = variance <= policy.award_variance_tolerance_percent
+            if policy.award_above_lowest == ProcurementPolicy.AwardAboveLowest.BLOCK:
+                if not within_tolerance:
+                    raise ValidationError(
+                        f"Policy requires awarding the lowest quotation. "
+                        f"{lowest.quotation_reference} quoted "
+                        f"{lowest.total_quoted_cost}, which is "
+                        f"{variance:.2f}% below this one."
                     )
-                }
-            )
+            elif policy.award_above_lowest == ProcurementPolicy.AwardAboveLowest.REQUIRE_REASON:
+                if not within_tolerance and not str(justification or "").strip():
+                    raise ValidationError(
+                        {
+                            "justification": (
+                                f"{winning_quotation.quotation_reference} is "
+                                f"{variance:.2f}% above the lowest quotation "
+                                f"({lowest.quotation_reference} at "
+                                f"{lowest.total_quoted_cost}). Awarding above the "
+                                "lowest quote requires a stated reason."
+                            )
+                        }
+                    )
 
         award = QuotationAward.all_objects.create(
             tenant=rfq.tenant, rfq=rfq, winning_quotation=winning_quotation,
@@ -316,6 +348,11 @@ class SourcingService:
                 "supplier_code": winning_quotation.supplier.supplier_code,
                 "total_quoted_cost": str(winning_quotation.total_quoted_cost),
                 "lowest_quoted_cost": str(lowest.total_quoted_cost) if lowest else None,
+                # Recorded whatever the policy: a later audit asks how far above
+                # the lowest quote this went, and the answer must not depend on
+                # what the policy happened to be that month.
+                "variance_percent": str(variance),
+                "policy": policy.award_above_lowest,
                 "justification": (justification or "").strip(),
             },
         )

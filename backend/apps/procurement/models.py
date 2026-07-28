@@ -1,4 +1,5 @@
 import decimal
+from decimal import Decimal
 
 from django.conf import settings
 from django.db import models
@@ -600,3 +601,61 @@ class QualityDecision(TimestampedModel):
     objects = StrictTenantManager()
     all_objects = models.Manager()
 
+class ProcurementPolicy(TimestampedModel):
+    """Per-tenant procurement rules that are policy rather than law.
+
+    Some procurement constraints are not negotiable -- a suspended supplier
+    cannot be awarded to, a return cannot exceed what was rejected. Those stay
+    in the services.
+
+    Awarding above the lowest quotation is different. It is legitimate for
+    quality, lead time, cold chain or capacity, and how strictly it is policed
+    varies by organisation. That belongs here, where a pharmacy group can set it,
+    rather than being fixed in code for everybody.
+    """
+
+    class AwardAboveLowest(models.TextChoices):
+        #: Permitted, with a stated reason recorded on the award. The default,
+        #: and what the service enforced before this was configurable.
+        REQUIRE_REASON = "REQUIRE_REASON", "Require a stated reason"
+        #: Refused outright. The lowest compliant quotation wins.
+        BLOCK = "BLOCK", "Award the lowest quotation only"
+        #: Permitted with no reason. For groups whose controls sit elsewhere.
+        ALLOW = "ALLOW", "Allow without explanation"
+
+    tenant = models.OneToOneField(
+        "tenancy.Tenant", on_delete=models.CASCADE, related_name="procurement_policy"
+    )
+    award_above_lowest = models.CharField(
+        max_length=20,
+        choices=AwardAboveLowest.choices,
+        default=AwardAboveLowest.REQUIRE_REASON,
+    )
+    #: Below this margin over the lowest quotation, no reason is asked for.
+    #:
+    #: Awarding 0.4% above the lowest quote is rounding; 40% is a decision.
+    #: Treating both the same trains buyers to type "cheapest declined" into
+    #: every award, which is how a control becomes a formality.
+    award_variance_tolerance_percent = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal("0.00")
+    )
+
+    objects = StrictTenantManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        verbose_name_plural = "procurement policies"
+
+    def __str__(self) -> str:
+        return f"Procurement policy for {self.tenant}"
+
+    @classmethod
+    def for_tenant(cls, tenant):
+        """The tenant's policy, or the default one.
+
+        Returns an unsaved instance when none is configured rather than creating
+        a row on read: a policy nobody set should not start existing because
+        somebody looked at a tender.
+        """
+        existing = cls.all_objects.filter(tenant=tenant).first()
+        return existing if existing is not None else cls(tenant=tenant)
