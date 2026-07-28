@@ -13,11 +13,75 @@ from __future__ import annotations
 from django.core.exceptions import ValidationError
 from django.db import transaction
 
-from apps.procurement.models import GoodsReceipt, SupplierReturn, SupplierReturnLine
+from apps.procurement.models import (
+    GoodsReceipt,
+    GoodsReceiptLine,
+    SupplierReturn,
+    SupplierReturnLine,
+)
 
 
 class SupplierReturnService:
     """Requests and progresses returns to a supplier."""
+
+    @staticmethod
+    @transaction.atomic
+    def add_return_line(*, supplier_return: SupplierReturn, sku, quantity, batch=None) -> SupplierReturnLine:
+        """Add a line to a return, bounded by what the receipt actually rejected.
+
+        This control was written but unreachable: it lived in a services.py that
+        the services/ package shadowed, so nothing could call it.
+
+        Two guards. Lines may only be added while the return is REQUESTED --
+        once it is approved or dispatched, the quantities have been agreed with
+        the supplier and adding to them silently changes what was agreed.
+
+        And the quantity may not exceed what the goods receipt recorded as
+        rejected or quarantined. Without that, a return can claim more than was
+        ever refused, which produces a credit claim the supplier will not honour
+        and a stock position that never reconciles.
+        """
+        if supplier_return.status != SupplierReturn.Status.REQUESTED:
+            raise ValidationError(
+                "Lines can only be added while the return is still requested."
+            )
+        if quantity is None or quantity <= 0:
+            raise ValidationError("A return line requires a positive quantity.")
+
+        receipt_lines = GoodsReceiptLine.all_objects.filter(
+            goods_receipt=supplier_return.goods_receipt, sku=sku
+        )
+        eligible = sum(
+            (line.rejected_quantity or 0) + (line.quarantined_quantity or 0)
+            for line in receipt_lines
+        )
+        if not eligible:
+            raise ValidationError(
+                "This receipt recorded nothing rejected or quarantined for that "
+                "product, so there is nothing to return."
+            )
+
+        # Everything already on the return counts against the same allowance;
+        # otherwise the limit could be cleared one line at a time.
+        already = sum(
+            line.quantity or 0
+            for line in SupplierReturnLine.all_objects.filter(
+                supplier_return=supplier_return, sku=sku
+            )
+        )
+        if already + quantity > eligible:
+            raise ValidationError(
+                f"Only {eligible - already} of that product remains eligible to "
+                f"return; the receipt rejected or quarantined {eligible}."
+            )
+
+        return SupplierReturnLine.objects.create(
+            tenant=supplier_return.tenant,
+            supplier_return=supplier_return,
+            sku=sku,
+            batch=batch,
+            quantity=quantity,
+        )
 
     @staticmethod
     @transaction.atomic
