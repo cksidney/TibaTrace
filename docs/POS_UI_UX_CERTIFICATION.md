@@ -18,7 +18,7 @@ certification.
 - `npm run typecheck --workspace=@dawatrace/shared` — passed.
 - `npm run typecheck --workspace=@dawatrace/pos-windows` — passed.
 - `npm run typecheck --workspace=@dawatrace/pos-android` — passed.
-- `npm test --workspace=@dawatrace/shared` — 160 tests passed.
+- `npm test --workspace=@dawatrace/shared` — 163 tests passed.
 - `npm test --workspace=@dawatrace/pos-windows` — 92 tests passed.
 - `npm test --workspace=@dawatrace/pos-android` — 38 tests passed.
 - `.venv/bin/pytest -c backend/pytest.ini backend/tests/test_pos_shift_api.py -q`
@@ -29,6 +29,9 @@ certification.
   — passed.
 - `npm run build --workspace=@dawatrace/pos-windows` — passed.
 - `npm run build --workspace=@dawatrace/pos-android` — passed.
+- `npm run visual --workspace=@dawatrace/pos-windows` — local structural
+  checks pass at `1280×900` and `1024×768`; CI-only pixel baselines are skipped
+  locally and remain awaiting review.
 
 The first backend test attempt against `/Users/sidneykibet/venv` was not used
 as evidence because that virtual environment runs Django 4.2.11, while this
@@ -143,3 +146,41 @@ keeps clinical state visible when the Android operator enters payment. It does
 Android expanded findings, all invalidation triggers and full restoration across
 every lifecycle transition still require implementation and evidence. Therefore
 the decision at the top of this record remains exactly `POS_UI_UX_BLOCKED`.
+
+## World-Class UI/UX Design Certification
+
+### Verified design pass
+
+- **One primary action:** shared retail state presentation gives Windows and
+  Android the same precise next action. A prepared retail basket states that
+  settlement is unavailable in the pilot; it does not present a local success.
+- **Authoritative totals:** after retail add, scan, quantity or removal actions,
+  both clients reload the transaction from the POS API. They no longer recreate
+  subtotal, discount, tax or total values in component state.
+- **Operational layout:** Windows retail has a stable find/scan, basket and
+  sticky summary composition. Android has full-width touch panels and a sticky
+  total/action bar. Both expose clear empty, error and safety states.
+- **Safety:** the Windows footer now only opens payment/collection review; it
+  cannot submit a zero-value payment. Both retail surfaces state that
+  prescription medicines must remain in the CDS-enabled prescription workflow.
+- **Keyboard and touch:** Windows maps `F2` to product search and `F12` to
+  barcode focus. Android quantity controls and primary actions use 48dp
+  minimum touch targets and labelled accessibility roles.
+
+### Anti-pattern findings fixed
+
+| Finding | Resolution |
+|---|---|
+| Client-recalculated retail totals | Server rehydration after each retail line mutation |
+| Two competing footer actions with direct zero-value payment | One navigation-only primary action |
+| Generic retail progression label | State-specific `Start new sale`, `Resume sale`, `Prepare payment` or explicit settlement limitation |
+| Desktop-style tablet line density | Structured Android transaction rows and sticky action/totals region |
+| Unclear retail medicine clinical boundary | Persistent instruction to use the prescription workspace |
+
+### Evidence still required
+
+This is not a full world-class design certification. There is no completed
+native pharmacist review/override workflow, retail medicine screening,
+settlement, printing, Sync Centre, responsive device validation, end-to-end
+visual suite for the required screens, screen-reader validation or physical
+hardware evidence. The release decision remains exactly `POS_UI_UX_BLOCKED`.

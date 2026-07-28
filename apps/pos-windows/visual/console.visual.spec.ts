@@ -35,6 +35,10 @@ async function openScenario(page: import('@playwright/test').Page, id: string) {
 for (const scenario of SCENARIOS) {
   test.describe(scenario.title, () => {
     test(`renders as approved — ${scenario.id}`, async ({ page }) => {
+      test.skip(
+        !process.env.CI,
+        'Approved pixel baselines are captured and reviewed only by the CI visual job.',
+      );
       // Recorded on the test, so the rationale is in front of whoever reviews
       // a baseline change rather than buried in the catalogue.
       test.info().annotations.push({ type: 'rationale', description: scenario.rationale });

@@ -34,3 +34,41 @@ The architecture has not yet been completed for the native pharmacist review
 and override workflow, Android detailed findings drawer, all re-screening
 triggers, retail medicine screening, lifecycle restoration or full device
 validation. Those omissions keep `POS_UI_UX_BLOCKED` in force.
+
+## World-Class UI/UX Design Certification
+
+### Information architecture
+
+The implemented native workspaces are intentionally limited to the workflows
+that exist today. Windows has a compact product header, server-derived
+operational status, then either the prescription workspace or retail workspace.
+The retail workspace uses three stable regions: find/scan, authoritative basket
+and a sticky sale summary. Android uses a compact header and operational strip,
+full-width tablet panels, contextual bottom navigation and a sticky retail
+total/action region.
+
+The repository does not yet implement complete Patients, Held, Tasks, Reports,
+More, Printing or Sync Centre workspaces. They are not represented as dead
+navigation controls; adding labels without server-backed screens would degrade
+operational clarity.
+
+### Shared interaction standards
+
+- `action` tokens distinguish a teal next action from green verified state.
+- `deriveRetailPrimaryAction` provides one exact primary action from the
+  server-provided retail state on Windows and Android.
+- Retail line mutations rehydrate the complete transaction using the POS API;
+  clients do not recompute totals, discounts or taxes locally.
+- Windows `F2` focuses catalogue search and `F12` focuses barcode input. These
+  shortcuts only navigate or focus; they cannot complete clinical, stock or
+  financial actions.
+- The Windows footer navigates to payment or collection review. It never posts
+  a zero-value payment or confirms collection by itself.
+
+### Clinical and retail safety boundary
+
+Prescription medicine dispensing remains the only native workflow with the CDS
+screening integration described above. Both retail workspaces display that
+prescription medicines must use the prescription workspace because retail
+medicine screening is not yet implemented. This is an explicit limitation, not
+a claim that all retail items are clinically irrelevant.

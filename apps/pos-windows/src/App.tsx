@@ -1,4 +1,4 @@
-import { deriveStages, fontFamily, fontSize, nextAction, spacing, surface, text } from '@dawatrace/shared/design-system/index.js';
+import { action, deriveStages, fontFamily, fontSize, nextAction, spacing, surface, text } from '@dawatrace/shared/design-system/index.js';
 import { useEffect, useMemo, useState } from 'react';
 
 import { ClinicalRail } from './components/tibatrace/ClinicalRail.js';
@@ -183,7 +183,7 @@ function OperationsConsole({
               <div style={{ marginTop: spacing.xl }}>
                 <PrescriptionWorkspace lines={state.selected.lines} />
               </div>
-              <div style={{ marginTop: spacing.xxl }}>
+              <section id="payment-workspace" style={{ marginTop: spacing.xxl }}>
                 <PaymentPanel
                   paymentState={state.selected.payment_state}
                   amountDue={state.selected.amount_due ?? null}
@@ -195,7 +195,7 @@ function OperationsConsole({
                     void takePayment(tender, amount, reference)
                   }
                 />
-              </div>
+              </section>
               <div style={{ marginTop: spacing.xxl }}>
                 <CounsellingPanel
                   counsellingStatus={state.selected.counselling_status}
@@ -203,7 +203,7 @@ function OperationsConsole({
                   onRecord={(request) => void recordCounselling(request)}
                 />
               </div>
-              <div style={{ marginTop: spacing.xxl }}>
+              <section id="collection-workspace" style={{ marginTop: spacing.xxl }}>
                 <CollectionPanel
                   canConfirm={state.gate.canConfirmCollection}
                   blockedReason={state.gate.canConfirmCollection ? '' : state.gate.blockedReason}
@@ -214,7 +214,7 @@ function OperationsConsole({
                     void confirmCollection(name, id, relationship)
                   }
                 />
-              </div>
+              </section>
             </>
           ) : (
             <Queue queue={state.queue} busy={state.busy} onSelect={(id) => void select(id)} />
@@ -238,8 +238,8 @@ function OperationsConsole({
         nextLabel={next ? next.label : 'No action available'}
         canTakePayment={state.gate.canTakePayment}
         canConfirmCollection={state.gate.canConfirmCollection}
-        onTakePayment={() => void takePayment('CASH', '0.00', '')}
-        onConfirmCollection={() => void confirmCollection('', '', 'SELF')}
+        onOpenPayment={() => document.getElementById('payment-workspace')?.scrollIntoView({ block: 'start' })}
+        onOpenCollection={() => document.getElementById('collection-workspace')?.scrollIntoView({ block: 'start' })}
       />
       </>}
     </div>
@@ -595,15 +595,21 @@ function ActionBar({
   nextLabel,
   canTakePayment,
   canConfirmCollection,
-  onTakePayment,
-  onConfirmCollection,
+  onOpenPayment,
+  onOpenCollection,
 }: {
   readonly nextLabel: string;
   readonly canTakePayment: boolean;
   readonly canConfirmCollection: boolean;
-  readonly onTakePayment: () => void;
-  readonly onConfirmCollection: () => void;
+  readonly onOpenPayment: () => void;
+  readonly onOpenCollection: () => void;
 }) {
+  const primary = canTakePayment
+    ? { label: 'Review payment', onClick: onOpenPayment }
+    : canConfirmCollection
+      ? { label: 'Review collection', onClick: onOpenCollection }
+      : null;
+
   return (
     <footer
       style={{
@@ -617,42 +623,38 @@ function ActionBar({
     >
       <span style={{ fontSize: fontSize.caption, color: text.secondary }}>Next: {nextLabel}</span>
       <div style={{ marginLeft: 'auto', display: 'flex', gap: spacing.sm }}>
-        {/* Disabled state is driven by the server-derived gate, never by local
-            optimism. A disabled control still cannot be activated by keyboard. */}
-        <PrimaryButton disabled={!canTakePayment} onClick={onTakePayment}>
-          Take payment
-        </PrimaryButton>
-        <PrimaryButton disabled={!canConfirmCollection} onClick={onConfirmCollection}>
-          Confirm collection
-        </PrimaryButton>
+        {primary ? (
+          <PrimaryButton onClick={primary.onClick}>{primary.label}</PrimaryButton>
+        ) : (
+          <span style={{ alignSelf: 'center', color: text.tertiary, fontSize: fontSize.caption }}>
+            Complete the required clinical or workflow step to continue.
+          </span>
+        )}
       </div>
     </footer>
   );
 }
 
 function PrimaryButton({
-  disabled,
   onClick,
   children,
 }: {
-  readonly disabled: boolean;
   readonly onClick: () => void;
   readonly children: React.ReactNode;
 }) {
   return (
     <button
       type="button"
-      disabled={disabled}
       onClick={onClick}
       style={{
         padding: '10px 18px',
         borderRadius: 8,
         border: 'none',
-        background: disabled ? surface.sunken : '#12854A',
-        color: disabled ? text.tertiary : '#fff',
+        background: action.primary,
+        color: action.primaryForeground,
         fontSize: fontSize.body,
         fontWeight: 600,
-        cursor: disabled ? 'not-allowed' : 'pointer',
+        cursor: 'pointer',
         minHeight: 44,
       }}
     >

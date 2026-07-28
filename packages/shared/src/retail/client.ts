@@ -25,6 +25,10 @@ export class PosRetailClient {
     return this.request('/transactions/draft/', 'POST', input);
   }
 
+  getTransaction(transactionId: string): Promise<RetailTransactionDTO> {
+    return this.request(`/transactions/${transactionId}/`, 'GET');
+  }
+
   search(input: { device_id: string; store_id: string; query: string }): Promise<readonly RetailCatalogueItemDTO[]> {
     return this.request('/catalogue/search/', 'POST', input);
   }
@@ -61,12 +65,12 @@ export class PosRetailClient {
     return this.request(`/transactions/${transactionId}/ready-for-payment/`, 'POST', input);
   }
 
-  private async request<T>(path: string, method: string, body: unknown): Promise<T> {
+  private async request<T>(path: string, method: string, body?: unknown): Promise<T> {
     const response = await this.fetcher(`${this.baseUrl}${path}`, {
       method,
       credentials: 'include',
       headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
     if (response.status === 204) return undefined as T;
     if (!response.ok) throw new Error(await describeFailure(response));

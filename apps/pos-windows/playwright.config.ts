@@ -26,7 +26,7 @@ export default defineConfig({
   reporter: process.env.CI ? [['github'], ['html', { open: 'never' }]] : [['list']],
 
   snapshotPathTemplate:
-    '{testDir}/__screenshots__/{platform}/{arg}{ext}',
+    '{testDir}/__screenshots__/{platform}/{projectName}/{arg}{ext}',
 
   expect: {
     toHaveScreenshot: {

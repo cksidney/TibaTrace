@@ -228,6 +228,26 @@ export const focus = {
 } as const;
 
 /**
+ * Action colours are intentionally separate from completion colours.
+ *
+ * A green operational result means verified or complete; the teal primary
+ * action means "this is the next control". Keeping those meanings separate
+ * prevents a primary button from implying that its outcome is already proven.
+ */
+export const action = {
+  primary: '#087765',
+  primaryPressed: '#064C42',
+  primaryForeground: '#FFFFFF',
+  secondary: surface.raised,
+  secondaryBorder: surface.borderStrong,
+  disabled: surface.sunken,
+  disabledForeground: text.tertiary,
+  danger: statusPalette.BLOCKING.foreground,
+  dangerSurface: statusPalette.BLOCKING.surface,
+  dangerBorder: statusPalette.BLOCKING.border,
+} as const;
+
+/**
  * System-first stacks. No webfont is fetched: a till may be offline, and a
  * clinical instruction must never wait on -- or fall back from -- a download.
  */

@@ -20,8 +20,8 @@
     "typecheck:visual": "tsc --project tsconfig.visual.json --noEmit",
     "visual:build": "vite build --config vite.visual.config.ts",
     "visual:serve": "npm run visual:build && vite preview --config vite.visual.config.ts",
-    "visual": "playwright test",
-    "visual:update": "playwright test --update-snapshots"
+    "visual": "playwright test --project=console-1280 --workers=1 && playwright test --project=console-1024 --workers=1",
+    "visual:update": "playwright test --update-snapshots --project=console-1280 --workers=1 && playwright test --update-snapshots --project=console-1024 --workers=1"
   },
   "dependencies": {
     "@dawatrace/shared": "*"
