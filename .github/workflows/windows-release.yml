@@ -54,7 +54,7 @@ jobs:
 
       - name: Decode signing certificate
         id: cert
-        if: inputs.sign != false
+        if: github.event_name != 'workflow_dispatch' || inputs.sign
         shell: pwsh
         env:
           WINDOWS_SIGNING_PFX_BASE64: ${{ secrets.WINDOWS_SIGNING_PFX_BASE64 }}
@@ -72,7 +72,7 @@ jobs:
           Write-Host "Certificate decoded to the runner temp directory."
 
       - name: Build signed installer
-        if: inputs.sign != false
+        if: github.event_name != 'workflow_dispatch' || inputs.sign
         shell: pwsh
         env:
           # electron-builder reads the certificate from these two variables.
@@ -85,7 +85,7 @@ jobs:
         run: npm run dist:win --workspace @dawatrace/pos-windows
 
       - name: Build unsigned installer
-        if: inputs.sign == false
+        if: github.event_name == 'workflow_dispatch' && !inputs.sign
         run: npm run dist:win --workspace @dawatrace/pos-windows
 
       - name: Remove signing certificate
@@ -100,7 +100,7 @@ jobs:
           }
 
       - name: Verify Authenticode signature
-        if: inputs.sign != false
+        if: github.event_name != 'workflow_dispatch' || inputs.sign
         shell: pwsh
         run: |
           $exe = 'apps/pos-windows/release/TibaTrace-POS-Setup-1.0.0.exe'
