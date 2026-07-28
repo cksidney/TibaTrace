@@ -94,7 +94,10 @@ class PosPrintDocument(TenantConsistencyMixin, TimestampedModel):
         ]
 
     def save(self, *args, **kwargs):
-        if self.pk and PosPrintDocument.all_objects.filter(pk=self.pk).exists():
+        if self.pk and PosPrintDocument.all_objects.filter(
+            tenant_id=self.tenant_id,
+            pk=self.pk,
+        ).exists():
             raise ValueError("PosPrintDocument is immutable; create a new document revision instead.")
         return super().save(*args, **kwargs)
 

@@ -2588,9 +2588,6 @@ class MedicineSupplyService:
             and not counselling.refusal_reason
         ):
             raise ValidationError("Required counselling is incomplete.")
-        from apps.cds.pos_screening_services import PosClinicalApprovalService
-
-        PosClinicalApprovalService.assert_dispensing_episode_safe(episode=episode)
         if prescription.is_controlled_medicine:
             _require_capability(
                 actor,
