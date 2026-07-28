@@ -47,6 +47,30 @@ class PharmacyProfile(TimestampedModel):
     superintendent_name = models.CharField(max_length=200, blank=True)
     superintendent_ppb_number = models.CharField(max_length=80, blank=True)
 
+    # ── where the licence data came from ─────────────────────────────────────
+    #
+    # The Pharmacy and Poisons Board is the registrar; these columns are a copy
+    # of its record, not the record itself. Until the PPB API exists every row
+    # is MANUAL: somebody read a certificate and typed it in.
+    #
+    # That distinction has to be visible. A licence typed in eight months ago
+    # and one confirmed with the registrar an hour ago make the same claim in
+    # the same columns, and only one of them is worth much -- PPB can revoke a
+    # licence without our copy changing.
+    class LicenceSource(models.TextChoices):
+        MANUAL = "MANUAL", "Entered by hand"
+        PPB_API = "PPB_API", "Confirmed with PPB"
+
+    licence_source = models.CharField(
+        max_length=16, choices=LicenceSource.choices, default=LicenceSource.MANUAL
+    )
+    #: When the registrar last confirmed this licence. Null while no integration
+    #: exists, which is itself the honest answer: never.
+    licence_last_verified_at = models.DateTimeField(null=True, blank=True)
+    #: The registrar's own response, kept for audit. A compliance question asked
+    #: in a year is about what PPB said, not about what we stored.
+    licence_verification_payload = models.JSONField(default=dict, blank=True)
+
     # ── contact ──────────────────────────────────────────────────────────────
     primary_contact_name = models.CharField(max_length=200, blank=True)
     primary_contact_email = models.EmailField(blank=True)
@@ -86,6 +110,20 @@ class PharmacyProfile(TimestampedModel):
         if not self.ppb_premises_licence_number or not self.ppb_licence_expiry:
             return False
         return self.ppb_licence_expiry >= timezone.localdate()
+
+    @property
+    def licence_is_registrar_confirmed(self) -> bool:
+        """Whether the registrar itself confirmed this, rather than a person.
+
+        Kept separate from `licence_is_current`, which answers the legal
+        question -- is there an unexpired licence on file. This answers where
+        that answer came from, and the two must not be conflated: a hand-typed
+        licence can be current and wrong at the same time.
+        """
+        return (
+            self.licence_source == self.LicenceSource.PPB_API
+            and self.licence_last_verified_at is not None
+        )
 
     @property
     def days_until_licence_expiry(self) -> int | None:

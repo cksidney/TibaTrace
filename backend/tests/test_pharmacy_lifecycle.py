@@ -283,3 +283,51 @@ class TestOnboardingProvisions:
         profile = PharmacyProfile.all_objects.get(tenant=tenant)
         assert profile.onboarding_started_at is not None
         assert profile.activated_at is not None
+
+
+# ── where the licence came from ──────────────────────────────────────────────
+
+
+class TestLicenceProvenance:
+    """PPB is the registrar; these columns are a copy of its record.
+
+    Until the integration exists every licence is hand-entered, and the module
+    has to be able to say so. A licence typed in months ago and one confirmed
+    with the registrar an hour ago make the same claim in the same columns, and
+    PPB can revoke a licence without our copy changing.
+    """
+
+    def test_a_hand_entered_licence_is_marked_as_such(self, db):
+        tenant = register(slug="hand-entered")
+        profile = tenant.pharmacy_profile
+        assert profile.licence_source == PharmacyProfile.LicenceSource.MANUAL
+        assert profile.licence_last_verified_at is None
+        assert profile.licence_is_registrar_confirmed is False
+
+    def test_current_and_registrar_confirmed_are_different_questions(self, db):
+        """A hand-typed licence can be current and wrong at the same time."""
+        tenant = register(slug="current-not-confirmed")
+        profile = tenant.pharmacy_profile
+        assert profile.licence_is_current is True
+        assert profile.licence_is_registrar_confirmed is False
+
+    def test_confirmation_requires_both_a_source_and_a_timestamp(self, db):
+        # Either alone is not a confirmation: a source with no timestamp cannot
+        # be aged, and a timestamp with no source says nothing about who checked.
+        tenant = register(slug="half-confirmed")
+        profile = tenant.pharmacy_profile
+        profile.licence_source = PharmacyProfile.LicenceSource.PPB_API
+        profile.save(update_fields=["licence_source"])
+        assert profile.licence_is_registrar_confirmed is False
+
+        profile.licence_last_verified_at = timezone.now()
+        profile.save(update_fields=["licence_last_verified_at"])
+        assert profile.licence_is_registrar_confirmed is True
+
+    def test_the_registrar_client_refuses_rather_than_inventing_an_answer(self, db):
+        """A stub returning "recognised" would let an unlicensed pharmacy trade
+        the moment somebody wired it in and forgot it was fiction."""
+        from apps.pharmacy_network.registrar import verify_premises_licence
+
+        with pytest.raises(NotImplementedError, match="not built"):
+            verify_premises_licence("PPB/PREM/2026/0001")

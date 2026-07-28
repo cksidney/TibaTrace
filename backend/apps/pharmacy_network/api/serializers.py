@@ -10,6 +10,10 @@ class PharmacyProfileSerializer(serializers.ModelSerializer):
     #: Derived, not stored: whether the premises may legally dispense today.
     licence_is_current = serializers.BooleanField(read_only=True)
     days_until_licence_expiry = serializers.IntegerField(read_only=True)
+    #: Whether the registrar confirmed this, or a person typed it. Separate from
+    #: licence_is_current on purpose: a hand-entered licence can be current and
+    #: wrong at the same time, and the screen should be able to say so.
+    licence_is_registrar_confirmed = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = PharmacyProfile
@@ -21,6 +25,9 @@ class PharmacyProfileSerializer(serializers.ModelSerializer):
             "ppb_licence_expiry",
             "superintendent_name",
             "superintendent_ppb_number",
+            "licence_source",
+            "licence_last_verified_at",
+            "licence_is_registrar_confirmed",
             "primary_contact_name",
             "primary_contact_email",
             "primary_contact_phone",
@@ -31,7 +38,17 @@ class PharmacyProfileSerializer(serializers.ModelSerializer):
             "licence_is_current",
             "days_until_licence_expiry",
         )
-        read_only_fields = ("onboarding_started_at", "activated_at", "terminated_at")
+        # Provenance is set by the verification path, never by a client. A
+        # caller that could write licence_source could mark a hand-typed licence
+        # as registrar-confirmed, which is the one claim it must not be able to
+        # make.
+        read_only_fields = (
+            "onboarding_started_at",
+            "activated_at",
+            "terminated_at",
+            "licence_source",
+            "licence_last_verified_at",
+        )
 
 
 class PharmacySerializer(serializers.ModelSerializer):

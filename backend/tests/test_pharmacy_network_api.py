@@ -268,3 +268,39 @@ class TestTheOldSurfaceIsClosed:
     def test_reading_tenants_still_works(self, client):
         # The read side is used for scope pickers and must keep working.
         assert client.get("/api/tenancy/tenants/").status_code == 200
+
+
+class TestProvenanceCannotBeForged:
+    def test_a_client_cannot_mark_its_own_licence_registrar_confirmed(self, client):
+        """The one claim a caller must not be able to make.
+
+        Writable provenance would let a hand-typed licence present itself as
+        confirmed by the Pharmacy and Poisons Board.
+        """
+        pk = client.post(
+            "/api/pharmacy-network/pharmacies/",
+            registration_payload(slug="forger"), format="json",
+        ).json()["id"]
+
+        client.patch(
+            f"/api/pharmacy-network/pharmacies/{pk}/profile/",
+            {
+                "licence_source": "PPB_API",
+                "licence_last_verified_at": timezone.now().isoformat(),
+            },
+            format="json",
+        )
+
+        profile = client.get(f"/api/pharmacy-network/pharmacies/{pk}/").json()["profile"]
+        assert profile["licence_source"] == "MANUAL"
+        assert profile["licence_last_verified_at"] is None
+        assert profile["licence_is_registrar_confirmed"] is False
+
+    def test_the_screen_can_tell_recorded_from_confirmed(self, client):
+        pk = client.post(
+            "/api/pharmacy-network/pharmacies/",
+            registration_payload(slug="provenance-visible"), format="json",
+        ).json()["id"]
+        profile = client.get(f"/api/pharmacy-network/pharmacies/{pk}/").json()["profile"]
+        assert profile["licence_is_current"] is True
+        assert profile["licence_is_registrar_confirmed"] is False

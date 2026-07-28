@@ -301,6 +301,15 @@ function LicenceCell({ pharmacy }: { readonly pharmacy: Pharmacy }) {
       <code>{profile.ppb_premises_licence_number}</code>
       <br />
       <span className={`licence-flag ${tone}`}>{label}</span>
+      {/* Recorded and confirmed are different claims. Until the PPB
+          integration exists every licence is hand-entered, and the screen says
+          so rather than implying the registrar stands behind it. */}
+      {!profile.licence_is_registrar_confirmed ? (
+        <>
+          <br />
+          <span className="licence-provenance">Entered by hand</span>
+        </>
+      ) : null}
     </>
   );
 }

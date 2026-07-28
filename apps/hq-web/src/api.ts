@@ -567,6 +567,18 @@ export interface PharmacyProfile {
   readonly ppb_licence_expiry: string | null;
   readonly superintendent_name: string;
   readonly superintendent_ppb_number: string;
+  /**
+   * Where the licence data came from. PPB is the registrar; these fields are a
+   * copy of its record. Until that integration exists every row is MANUAL.
+   */
+  readonly licence_source: 'MANUAL' | 'PPB_API';
+  readonly licence_last_verified_at: string | null;
+  /**
+   * Whether the registrar confirmed it, or a person typed it. Deliberately not
+   * the same question as `licence_is_current`: a hand-entered licence can be
+   * current and wrong at once.
+   */
+  readonly licence_is_registrar_confirmed: boolean;
   readonly primary_contact_name: string;
   readonly primary_contact_email: string;
   readonly primary_contact_phone: string;

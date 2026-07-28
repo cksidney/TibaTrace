@@ -4758,3 +4758,10 @@ td .digest {
 .licence-missing {
   color: var(--danger-ink);
 }
+
+/* Provenance sits below the currency flag and stays quiet: it is context for
+   the claim above it, not a warning of its own. */
+.licence-provenance {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
