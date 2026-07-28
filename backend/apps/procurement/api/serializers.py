@@ -9,9 +9,13 @@ from apps.procurement.models import (
     PurchaseRequisitionLine,
     ReceivedBatch,
     ReceivingInspection,
+    RequestForQuotation,
+    RFQLine,
     Supplier,
     SupplierProductAgreement,
     SupplierQualification,
+    SupplierQuotation,
+    SupplierQuotationLine,
     SupplierReturn,
     SupplierReturnLine,
     ThreeWayMatch,
@@ -448,3 +452,70 @@ class ThreeWayMatchCreateSerializer(serializers.Serializer):
     goods_receipt = serializers.UUIDField()
     invoice_reference = serializers.CharField(max_length=128)
     invoice_amount = serializers.DecimalField(max_digits=14, decimal_places=2)
+
+# ── competitive sourcing ─────────────────────────────────────────────────────
+
+
+class RFQLineSerializer(serializers.ModelSerializer):
+    sku_code = serializers.CharField(source="sku.sku_code", read_only=True)
+
+    class Meta:
+        model = RFQLine
+        fields = ("id", "sku", "sku_code", "requested_quantity")
+
+
+class RequestForQuotationSerializer(serializers.ModelSerializer):
+    lines = RFQLineSerializer(many=True, read_only=True)
+    quotation_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = RequestForQuotation
+        fields = (
+            "id", "rfq_number", "title", "issue_date", "closing_date",
+            "status", "lines", "quotation_count",
+        )
+        read_only_fields = fields
+
+    def get_quotation_count(self, rfq) -> int:
+        return SupplierQuotation.all_objects.filter(rfq=rfq).count()
+
+
+class SupplierQuotationLineSerializer(serializers.ModelSerializer):
+    sku_code = serializers.CharField(source="sku.sku_code", read_only=True)
+
+    class Meta:
+        model = SupplierQuotationLine
+        fields = ("id", "sku", "sku_code", "quoted_quantity", "quoted_unit_cost")
+
+
+class SupplierQuotationSerializer(serializers.ModelSerializer):
+    lines = SupplierQuotationLineSerializer(many=True, read_only=True)
+    supplier_code = serializers.CharField(source="supplier.supplier_code", read_only=True)
+
+    class Meta:
+        model = SupplierQuotation
+        fields = (
+            "id", "rfq", "supplier", "supplier_code", "quotation_reference",
+            "total_quoted_cost", "valid_until", "status", "lines",
+        )
+        read_only_fields = fields
+
+
+class RFQCreateSerializer(serializers.Serializer):
+    title = serializers.CharField(max_length=255)
+    closing_date = serializers.DateField()
+    lines = serializers.ListField(child=serializers.DictField(), allow_empty=False)
+
+
+class QuotationSubmitSerializer(serializers.Serializer):
+    supplier_id = serializers.UUIDField()
+    quotation_reference = serializers.CharField(max_length=120)
+    #: Required. A quoted price with no expiry is one the supplier can disown.
+    valid_until = serializers.DateField()
+    lines = serializers.ListField(child=serializers.DictField(), allow_empty=False)
+
+
+class QuotationAwardSerializer(serializers.Serializer):
+    quotation_id = serializers.UUIDField()
+    #: Required by the service when the award is above the lowest quotation.
+    justification = serializers.CharField(required=False, allow_blank=True, default="")

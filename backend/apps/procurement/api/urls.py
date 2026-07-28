@@ -8,6 +8,7 @@ from apps.procurement.api.views import (
     PurchaseRequisitionViewSet,
     ReceivedBatchViewSet,
     ReceivingInspectionViewSet,
+    RequestForQuotationViewSet,
     SupplierProductAgreementViewSet,
     SupplierQualificationViewSet,
     SupplierReturnViewSet,
@@ -19,6 +20,7 @@ router = DefaultRouter()
 router.register(r"suppliers", SupplierViewSet, basename="supplier")
 router.register(r"supplier-qualifications", SupplierQualificationViewSet, basename="supplier-qualification")
 router.register(r"supplier-products", SupplierProductAgreementViewSet, basename="supplier-product")
+router.register(r"rfqs", RequestForQuotationViewSet, basename="rfq")
 router.register(r"requisitions", PurchaseRequisitionViewSet, basename="purchase-requisition")
 router.register(r"purchase-orders", PurchaseOrderViewSet, basename="purchase-order")
 router.register(r"goods-receipts", GoodsReceiptViewSet, basename="goods-receipt")

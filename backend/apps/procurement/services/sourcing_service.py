@@ -91,8 +91,13 @@ class SourcingService:
             status=SourcingService.OPEN,
         )
         for line in lines_data:
-            quantity = line.get("requested_quantity")
-            if quantity is None or quantity <= 0:
+            try:
+                quantity = Decimal(str(line.get("requested_quantity")))
+            except (ArithmeticError, TypeError, ValueError) as exc:
+                raise ValidationError(
+                    {"lines_data": "Every line requires a numeric requested quantity."}
+                ) from exc
+            if quantity <= 0:
                 raise ValidationError(
                     {"lines_data": "Every line requires a positive requested quantity."}
                 )
@@ -182,15 +187,26 @@ class SourcingService:
                 "A quotation may only price products the request asked for."
             )
 
+        # Coerced here rather than trusted. Line values arrive from a DictField,
+        # so a quantity or price crosses this boundary as whatever JSON carried
+        # -- usually a string. Comparing that against zero raises TypeError and
+        # the guard never runs.
         total = Decimal("0.00")
+        priced = []
         for line in lines_data:
-            quantity = line.get("quoted_quantity")
-            unit_cost = line.get("quoted_unit_cost")
-            if quantity is None or quantity <= 0:
+            try:
+                quantity = Decimal(str(line.get("quoted_quantity")))
+                unit_cost = Decimal(str(line.get("quoted_unit_cost")))
+            except (ArithmeticError, TypeError, ValueError) as exc:
+                raise ValidationError(
+                    "Every quotation line requires a numeric quantity and unit cost."
+                ) from exc
+            if quantity <= 0:
                 raise ValidationError("Every quotation line requires a positive quantity.")
-            if unit_cost is None or unit_cost < 0:
-                raise ValidationError("Every quotation line requires a unit cost.")
-            total += Decimal(str(unit_cost)) * Decimal(str(quantity))
+            if unit_cost < 0:
+                raise ValidationError("A quotation line cannot have a negative unit cost.")
+            total += unit_cost * quantity
+            priced.append((line["sku"], quantity, unit_cost))
 
         quotation = SupplierQuotation.all_objects.create(
             tenant=rfq.tenant, rfq=rfq, supplier=supplier,
@@ -198,11 +214,10 @@ class SourcingService:
             total_quoted_cost=total, valid_until=valid_until,
             status=SourcingService.SUBMITTED,
         )
-        for line in lines_data:
+        for sku, quantity, unit_cost in priced:
             SupplierQuotationLine.all_objects.create(
-                tenant=rfq.tenant, quotation=quotation, sku=line["sku"],
-                quoted_quantity=line["quoted_quantity"],
-                quoted_unit_cost=line["quoted_unit_cost"],
+                tenant=rfq.tenant, quotation=quotation, sku=sku,
+                quoted_quantity=quantity, quoted_unit_cost=unit_cost,
             )
 
         emit_event(

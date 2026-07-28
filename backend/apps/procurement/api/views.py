@@ -23,12 +23,17 @@ from apps.procurement.api.serializers import (
     PurchaseOrderSerializer,
     PurchaseRequisitionCreateSerializer,
     PurchaseRequisitionSerializer,
+    QuotationAwardSerializer,
+    QuotationSubmitSerializer,
     ReceiveBatchSerializer,
     ReceivedBatchSerializer,
     ReceivingInspectionCreateSerializer,
     ReceivingInspectionSerializer,
+    RequestForQuotationSerializer,
+    RFQCreateSerializer,
     SupplierProductAgreementSerializer,
     SupplierQualificationSerializer,
+    SupplierQuotationSerializer,
     SupplierReturnCreateSerializer,
     SupplierReturnSerializer,
     SupplierSerializer,
@@ -42,9 +47,11 @@ from apps.procurement.models import (
     PurchaseRequisition,
     ReceivedBatch,
     ReceivingInspection,
+    RequestForQuotation,
     Supplier,
     SupplierProductAgreement,
     SupplierQualification,
+    SupplierQuotation,
     SupplierReturn,
     ThreeWayMatch,
 )
@@ -54,6 +61,7 @@ from apps.procurement.services import (
     PurchaseOrderService,
     PurchaseRequisitionService,
     QualityService,
+    SourcingService,
     SupplierGovernanceService,
     SupplierQualificationService,
     SupplierReturnService,
@@ -664,3 +672,123 @@ class ThreeWayMatchViewSet(BaseProcurementViewSet):
         except (DjangoValidationError, DjangoPermissionDenied) as exc:
             return _service_error(exc)
         return Response(self.get_serializer(match).data, status=status.HTTP_201_CREATED)
+
+class RequestForQuotationViewSet(BaseProcurementViewSet):
+    """Competitive sourcing: raise, receive quotations, award.
+
+    Read-only over the collection with every state change behind a service
+    action, like the rest of procurement. There is no generic PATCH on status:
+    awarding is the decision this module exists to govern, and it must not be
+    reachable by writing a column.
+    """
+
+    model = RequestForQuotation
+    serializer_class = RequestForQuotationSerializer
+
+    def create(self, request, *args, **kwargs):
+        serializer = RFQCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        tenant = self.current_tenant()
+        lines = []
+        for row in serializer.validated_data["lines"]:
+            sku = CommercialSKU.all_objects.filter(
+                tenant=tenant, pk=row.get("sku_id")
+            ).first()
+            if sku is None:
+                return Response(
+                    {"lines": [f"Unknown product {row.get('sku_id')}."]},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            lines.append({"sku": sku, "requested_quantity": row.get("requested_quantity")})
+        try:
+            rfq = SourcingService.create_rfq(
+                tenant=tenant,
+                title=serializer.validated_data["title"],
+                closing_date=serializer.validated_data["closing_date"],
+                lines_data=lines,
+                actor=request.user,
+            )
+        except (DjangoValidationError, DjangoPermissionDenied) as exc:
+            return _service_error(exc)
+        return Response(self.get_serializer(rfq).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["get"], url_path="quotations")
+    def quotations(self, request, pk=None):
+        """Every quotation on this tender, dearest last.
+
+        Ordered by total so the comparison an award is judged on is the first
+        thing the screen can show.
+        """
+        rfq = self.get_object()
+        quotations = (
+            SupplierQuotation.all_objects.filter(rfq=rfq)
+            .select_related("supplier")
+            .order_by("total_quoted_cost")
+        )
+        return Response(SupplierQuotationSerializer(quotations, many=True).data)
+
+    @action(detail=True, methods=["post"], url_path="quotations/submit")
+    def submit_quotation(self, request, pk=None):
+        serializer = QuotationSubmitSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        rfq = self.get_object()
+        tenant = self.current_tenant()
+        supplier = Supplier.all_objects.filter(
+            tenant=tenant, pk=serializer.validated_data["supplier_id"]
+        ).first()
+        if supplier is None:
+            return Response(
+                {"supplier_id": ["Unknown supplier."]}, status=status.HTTP_400_BAD_REQUEST
+            )
+        lines = []
+        for row in serializer.validated_data["lines"]:
+            sku = CommercialSKU.all_objects.filter(
+                tenant=tenant, pk=row.get("sku_id")
+            ).first()
+            if sku is None:
+                return Response(
+                    {"lines": [f"Unknown product {row.get('sku_id')}."]},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            lines.append({
+                "sku": sku,
+                "quoted_quantity": row.get("quoted_quantity"),
+                "quoted_unit_cost": row.get("quoted_unit_cost"),
+            })
+        try:
+            quotation = SourcingService.submit_quotation(
+                rfq=rfq, supplier=supplier,
+                quotation_reference=serializer.validated_data["quotation_reference"],
+                valid_until=serializer.validated_data["valid_until"],
+                lines_data=lines, actor=request.user,
+            )
+        except (DjangoValidationError, DjangoPermissionDenied) as exc:
+            return _service_error(exc)
+        return Response(
+            SupplierQuotationSerializer(quotation).data, status=status.HTTP_201_CREATED
+        )
+
+    @action(detail=True, methods=["post"], url_path="award")
+    def award(self, request, pk=None):
+        serializer = QuotationAwardSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        rfq = self.get_object()
+        # Fetched without filtering on this RFQ on purpose: the service refuses a
+        # quotation from another tender by name, and that refusal is the control.
+        # Filtering here would hide it behind a generic "not found".
+        quotation = SupplierQuotation.all_objects.filter(
+            tenant_id=rfq.tenant_id, pk=serializer.validated_data["quotation_id"]
+        ).first()
+        if quotation is None:
+            return Response(
+                {"quotation_id": ["Unknown quotation."]}, status=status.HTTP_400_BAD_REQUEST
+            )
+        try:
+            SourcingService.award_quotation(
+                rfq=rfq, winning_quotation=quotation, awarded_by=request.user,
+                justification=serializer.validated_data["justification"],
+            )
+        except (DjangoValidationError, DjangoPermissionDenied) as exc:
+            return _service_error(exc)
+        rfq.refresh_from_db()
+        return Response(self.get_serializer(rfq).data, status=status.HTTP_200_OK)
