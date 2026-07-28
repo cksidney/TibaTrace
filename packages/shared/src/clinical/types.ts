@@ -103,6 +103,17 @@ export type ClinicalOverrideReason =
   | "SPECIALIST_INSTRUCTION"
   | "OTHER";
 
+/** Authoritative lifecycle state for a governed clinical override. */
+export type ClinicalOverrideStatus =
+  | "REQUESTED"
+  | "UNDER_REVIEW"
+  | "APPROVED"
+  | "APPROVED_WITH_CONDITIONS"
+  | "REJECTED"
+  | "REVOKED"
+  | "EXPIRED"
+  | "CONSUMED";
+
 /** Offline clinical state */
 export type OfflineClinicalState =
   | "ONLINE_VERIFIED"
@@ -264,6 +275,7 @@ export interface PosClinicalScreeningResult {
   evaluatedAt: string;
   ruleSetVersion: string;
   decisions: PosClinicalDecisionHistory[];
+  overrides: PosClinicalOverrideHistory[];
 }
 
 /** Immutable pharmacist decision history returned with a screening. */
@@ -286,6 +298,39 @@ export interface PosClinicalDecisionHistory {
   patientRef?: string;
   prescriptionRef?: string;
   createdAt: string;
+}
+
+/** Immutable request, approval, revocation, and consumption history for an override. */
+export interface PosClinicalOverrideHistory {
+  id: string;
+  decisionId?: string;
+  findingId: string;
+  requestedById?: string;
+  pharmacistId?: string;
+  overrideReason: ClinicalOverrideReason;
+  requestedReason: string;
+  supportingNotes?: string;
+  clinicalJustification?: string;
+  conditions?: string;
+  scope: Record<string, unknown>;
+  status: ClinicalOverrideStatus;
+  expiresAt?: string;
+  approvedAt?: string;
+  rejectedAt?: string;
+  rejectedById?: string;
+  rejectionReason?: string;
+  revokedAt?: string;
+  revokedById?: string;
+  revocationReason?: string;
+  consumedAt?: string;
+  consumedById?: string;
+  consumedEvent?: string;
+  contextHash: string;
+  ruleVersion: string;
+  transactionId: string;
+  deviceId: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 // ─── API Request/Response Contracts ─────────────────────────────────────────────
@@ -340,19 +385,39 @@ export interface PosPharmacistDecision {
   counsellingNotes?: string;
   prescriberContactRef?: string;
   followUpActions?: string;
-  overrideReason?: ClinicalOverrideReason;
   idempotencyKey: string;
 }
 
-/** Request body for POST .../override/ */
-export interface PosClinicalOverride {
+/** Request body for POST /api/pos/clinical-screening/overrides/. */
+export interface PosClinicalOverrideRequest {
+  screeningId: string;
   findingId: string;
   overrideReason: ClinicalOverrideReason;
-  /** Mandatory. The server rejects an override without one. */
-  clinicalJustification: string;
-  overrideCapability: string;
+  /** Mandatory request rationale, recorded before approval. */
+  requestedReason: string;
+  supportingNotes?: string;
   idempotencyKey: string;
   expectedContextHash: string;
+}
+
+/** Request body for POST .../overrides/{id}/approve/. */
+export interface PosClinicalOverrideApproval {
+  /** Mandatory pharmacist rationale, recorded separately from the request. */
+  clinicalJustification: string;
+  conditions?: string;
+  expiresAt?: string;
+  idempotencyKey: string;
+  expectedContextHash: string;
+}
+
+/** Request body for POST .../overrides/{id}/reject/. */
+export interface PosClinicalOverrideRejection {
+  rejectionReason: string;
+}
+
+/** Request body for POST .../overrides/{id}/revoke/. */
+export interface PosClinicalOverrideRevocation {
+  revocationReason: string;
 }
 
 /** Offline clinical sync record */

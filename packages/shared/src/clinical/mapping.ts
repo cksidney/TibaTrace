@@ -21,7 +21,7 @@
  * could not parse all mean "not safe", because none of them is the server
  * saying it is.
  */
-import type { ClinicalSeverity, ClinicalScreeningStatus } from './types.js';
+import type { ClinicalOverrideStatus, ClinicalSeverity, ClinicalScreeningStatus } from './types.js';
 
 /** Raised when a screening response cannot be read as authoritative. */
 export class UnreadableScreeningResponse extends Error {
@@ -56,6 +56,30 @@ export interface ScreeningDecision {
   readonly createdAt: string;
 }
 
+export interface ScreeningOverride {
+  readonly id: string;
+  readonly findingId: string;
+  readonly requestedById: string;
+  readonly pharmacistId: string;
+  readonly overrideReason: string;
+  readonly requestedReason: string;
+  readonly supportingNotes: string;
+  readonly clinicalJustification: string;
+  readonly conditions: string;
+  readonly status: ClinicalOverrideStatus | '';
+  readonly expiresAt: string;
+  readonly approvedAt: string;
+  readonly rejectedAt: string;
+  readonly rejectionReason: string;
+  readonly revokedAt: string;
+  readonly revocationReason: string;
+  readonly consumedAt: string;
+  readonly consumedEvent: string;
+  readonly contextHash: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
 export interface ScreeningResult {
   readonly screeningId: string;
   readonly contextHash: string;
@@ -69,6 +93,7 @@ export interface ScreeningResult {
   readonly evaluatedAt: string;
   readonly ruleSetVersion: string;
   readonly decisions: readonly ScreeningDecision[];
+  readonly overrides: readonly ScreeningOverride[];
 }
 
 function text(value: unknown): string {
@@ -114,6 +139,32 @@ function mapDecision(raw: Record<string, unknown>): ScreeningDecision {
   };
 }
 
+function mapOverride(raw: Record<string, unknown>): ScreeningOverride {
+  return {
+    id: text(raw['id']),
+    findingId: text(raw['finding']),
+    requestedById: text(raw['requested_by']),
+    pharmacistId: text(raw['pharmacist']),
+    overrideReason: text(raw['override_reason']),
+    requestedReason: text(raw['requested_reason']),
+    supportingNotes: text(raw['supporting_notes']),
+    clinicalJustification: text(raw['clinical_justification']),
+    conditions: text(raw['conditions']),
+    status: text(raw['status']) as ClinicalOverrideStatus | '',
+    expiresAt: text(raw['expires_at']),
+    approvedAt: text(raw['approved_at']),
+    rejectedAt: text(raw['rejected_at']),
+    rejectionReason: text(raw['rejection_reason']),
+    revokedAt: text(raw['revoked_at']),
+    revocationReason: text(raw['revocation_reason']),
+    consumedAt: text(raw['consumed_at']),
+    consumedEvent: text(raw['consumed_event']),
+    contextHash: text(raw['context_hash']),
+    createdAt: text(raw['created_at']),
+    updatedAt: text(raw['updated_at']),
+  };
+}
+
 /**
  * Read a screening response.
  *
@@ -142,6 +193,9 @@ export function readScreeningResult(payload: unknown): ScreeningResult {
   const decisions = (Array.isArray(raw['decisions']) ? raw['decisions'] : [])
     .filter((decision): decision is Record<string, unknown> => decision !== null && typeof decision === 'object')
     .map(mapDecision);
+  const overrides = (Array.isArray(raw['overrides']) ? raw['overrides'] : [])
+    .filter((override): override is Record<string, unknown> => override !== null && typeof override === 'object')
+    .map(mapOverride);
 
   // Prefer the server's own count. Fall back to counting the findings it sent
   // rather than to zero -- zero is the answer that lets a blocked basket
@@ -164,6 +218,7 @@ export function readScreeningResult(payload: unknown): ScreeningResult {
     evaluatedAt: text(raw['evaluated_at']),
     ruleSetVersion: text(raw['rule_set_version']),
     decisions,
+    overrides,
   };
 }
 

@@ -1,5 +1,5 @@
 import { fontSize, spacing, statusPalette, surface, text } from '@dawatrace/shared/design-system/index.js';
-import type { ScreeningDecision, ScreeningResult } from '@dawatrace/shared/clinical/index.js';
+import type { ScreeningDecision, ScreeningOverride, ScreeningResult } from '@dawatrace/shared/clinical/index.js';
 import { useMemo, useState } from 'react';
 
 type ReviewDecision =
@@ -21,6 +21,21 @@ const DECISIONS: readonly { value: ReviewDecision; label: string; consequence: s
   { value: 'REQUEST_MORE_INFORMATION', label: 'Request more information', consequence: 'Keeps supply blocked until missing clinical information is recorded.' },
 ];
 
+type OverrideAction = 'request' | 'start-review' | 'approve' | 'reject' | 'revoke';
+
+export interface ClinicalOverrideActionInput {
+  readonly action: OverrideAction;
+  readonly overrideId?: string;
+  readonly findingId: string;
+  readonly overrideReason?: string;
+  readonly requestedReason?: string;
+  readonly supportingNotes?: string;
+  readonly clinicalJustification?: string;
+  readonly conditions?: string;
+  readonly expiresAt?: string;
+  readonly reason?: string;
+}
+
 export function ClinicalReviewWorkspace({
   result,
   findingId,
@@ -31,6 +46,7 @@ export function ClinicalReviewWorkspace({
   onBack,
   onRequestReview,
   onSubmit,
+  onOverrideAction,
 }: {
   readonly result: ScreeningResult;
   readonly findingId: string;
@@ -46,6 +62,7 @@ export function ClinicalReviewWorkspace({
     conditions: string;
     followUpActions: string;
   }) => void;
+  readonly onOverrideAction: (input: ClinicalOverrideActionInput) => void;
 }) {
   const finding = result.findings.find((candidate) => candidate.id === findingId) ?? result.findings[0];
   const [decision, setDecision] = useState<ReviewDecision>('APPROVE');
@@ -127,6 +144,12 @@ export function ClinicalReviewWorkspace({
       </section>
 
       <DecisionHistory decisions={history} />
+      <OverrideLifecycle
+        finding={finding}
+        overrides={result.overrides.filter((item) => item.findingId === finding.id)}
+        busy={busy}
+        onSubmit={onOverrideAction}
+      />
     </section>
   );
 }
@@ -145,6 +168,128 @@ function DecisionHistory({ decisions }: { readonly decisions: readonly Screening
           {item.followUpActions ? <p style={body}>Follow-up: {item.followUpActions}</p> : null}
         </article>
       ))}
+    </section>
+  );
+}
+
+function OverrideLifecycle({
+  finding,
+  overrides,
+  busy,
+  onSubmit,
+}: {
+  readonly finding: { readonly id: string; readonly overrideAllowed: boolean };
+  readonly overrides: readonly ScreeningOverride[];
+  readonly busy: boolean;
+  readonly onSubmit: (input: ClinicalOverrideActionInput) => void;
+}) {
+  const [action, setAction] = useState<OverrideAction | null>(null);
+  const [overrideReason, setOverrideReason] = useState('CLINICALLY_JUSTIFIED');
+  const [requestedReason, setRequestedReason] = useState('');
+  const [supportingNotes, setSupportingNotes] = useState('');
+  const [clinicalJustification, setClinicalJustification] = useState('');
+  const [conditions, setConditions] = useState('');
+  const [expiresAt, setExpiresAt] = useState('');
+  const [reason, setReason] = useState('');
+  const current = overrides[0];
+  const mayRequest = finding.overrideAllowed && (!current || ['REJECTED', 'REVOKED', 'EXPIRED'].includes(current.status));
+  const actionLabel = action === 'request'
+    ? 'Request override'
+    : action === 'start-review'
+      ? 'Start pharmacist review'
+      : action === 'approve'
+        ? 'Approve override'
+        : action === 'reject'
+          ? 'Reject override'
+          : 'Revoke override';
+  const modalReady = !busy && (
+    action === 'start-review'
+    || (action === 'request' && requestedReason.trim().length > 0)
+    || (action === 'approve' && clinicalJustification.trim().length > 0)
+    || ((action === 'reject' || action === 'revoke') && reason.trim().length > 0)
+  );
+
+  const submit = () => {
+    if (!action || !modalReady) return;
+    onSubmit({
+      action,
+      ...(current ? { overrideId: current.id } : {}),
+      findingId: finding.id,
+      overrideReason,
+      requestedReason: requestedReason.trim(),
+      supportingNotes: supportingNotes.trim(),
+      clinicalJustification: clinicalJustification.trim(),
+      conditions: conditions.trim(),
+      ...(expiresAt ? { expiresAt: new Date(expiresAt).toISOString() } : {}),
+      reason: reason.trim(),
+    });
+    setAction(null);
+  };
+
+  return (
+    <section style={historyCard} aria-label="Governed clinical override lifecycle">
+      <p style={eyebrow}>Controlled exception</p>
+      <h3 style={sectionHeading}>Clinical override lifecycle</h3>
+      <p style={body}>Overrides are time-bound, scoped to this screening, and require a separate authorised approval. They cannot be used to bypass an unresolved clinical finding.</p>
+      {current ? <article style={historyItem}>
+        <strong>{current.status.replace(/_/g, ' ')}</strong>
+        <span style={historyMeta}>{current.overrideReason.replace(/_/g, ' ')} · {current.createdAt || 'Recorded now'}</span>
+        <p style={body}>Request: {current.requestedReason || 'Not recorded'}</p>
+        {current.clinicalJustification ? <p style={body}>Approval rationale: {current.clinicalJustification}</p> : null}
+        {current.conditions ? <p style={body}>Conditions: {current.conditions}</p> : null}
+        {current.expiresAt ? <p style={body}>Expires: {new Date(current.expiresAt).toLocaleString()}</p> : null}
+        {current.rejectionReason ? <p style={body}>Rejection: {current.rejectionReason}</p> : null}
+        {current.revocationReason ? <p style={body}>Revocation: {current.revocationReason}</p> : null}
+        {current.consumedEvent ? <p style={body}>Consumed by: {current.consumedEvent}</p> : null}
+      </article> : <p style={body}>No override has been requested for this finding.</p>}
+      <div style={overrideActions}>
+        {mayRequest ? <button type="button" disabled={busy} onClick={() => setAction('request')} style={secondaryButton}>Request override</button> : null}
+        {current?.status === 'REQUESTED' ? <button type="button" disabled={busy} onClick={() => setAction('start-review')} style={secondaryButton}>Start review</button> : null}
+        {['REQUESTED', 'UNDER_REVIEW'].includes(current?.status ?? '') ? <button type="button" disabled={busy} onClick={() => setAction('approve')} style={primaryButton(!busy)}>Approve override</button> : null}
+        {['REQUESTED', 'UNDER_REVIEW'].includes(current?.status ?? '') ? <button type="button" disabled={busy} onClick={() => setAction('reject')} style={secondaryButton}>Reject override</button> : null}
+        {['APPROVED', 'APPROVED_WITH_CONDITIONS'].includes(current?.status ?? '') ? <button type="button" disabled={busy} onClick={() => setAction('revoke')} style={secondaryButton}>Revoke override</button> : null}
+      </div>
+      {action ? <div role="dialog" aria-modal="true" aria-label={actionLabel} style={modalBackdrop}>
+        <section style={modalCard}>
+          <p style={eyebrow}>Controlled clinical action</p>
+          <h3 style={sectionHeading}>{actionLabel}</h3>
+          {action === 'request' ? <>
+            <label style={fieldLabel}>Override reason
+              <select value={overrideReason} onChange={(event) => setOverrideReason(event.target.value)} style={select}>
+                <option value="CLINICALLY_JUSTIFIED">Clinically justified</option>
+                <option value="PRESCRIBER_CONFIRMED">Prescriber confirmed</option>
+                <option value="KNOWN_AND_MONITORED">Known and monitored</option>
+                <option value="OTHER">Other</option>
+              </select>
+            </label>
+            <label style={fieldLabel}>Request rationale (required)
+              <textarea value={requestedReason} onChange={(event) => setRequestedReason(event.target.value)} rows={4} style={textarea} />
+            </label>
+            <label style={fieldLabel}>Supporting notes
+              <textarea value={supportingNotes} onChange={(event) => setSupportingNotes(event.target.value)} rows={3} style={textarea} />
+            </label>
+          </> : null}
+          {action === 'approve' ? <>
+            <label style={fieldLabel}>Clinical approval rationale (required)
+              <textarea value={clinicalJustification} onChange={(event) => setClinicalJustification(event.target.value)} rows={4} style={textarea} />
+            </label>
+            <label style={fieldLabel}>Conditions (optional; keeps supply blocked until rescreened)
+              <textarea value={conditions} onChange={(event) => setConditions(event.target.value)} rows={3} style={textarea} />
+            </label>
+            <label style={fieldLabel}>Expiry (optional; defaults to the policy window)
+              <input type="datetime-local" value={expiresAt} onChange={(event) => setExpiresAt(event.target.value)} style={select} />
+            </label>
+          </> : null}
+          {action === 'reject' || action === 'revoke' ? <label style={fieldLabel}>{action === 'reject' ? 'Rejection' : 'Revocation'} reason (required)
+            <textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={3} style={textarea} />
+          </label> : null}
+          {action === 'start-review' ? <p style={body}>This records that an authorised pharmacist has opened the override request for review. It does not approve supply.</p> : null}
+          <div style={modalActions}>
+            <button type="button" onClick={() => setAction(null)} style={secondaryButton}>Cancel</button>
+            <button type="button" disabled={!modalReady} onClick={submit} style={primaryButton(modalReady)}>{actionLabel}</button>
+          </div>
+        </section>
+      </div> : null}
     </section>
   );
 }
@@ -178,3 +323,8 @@ const errorText: React.CSSProperties = { margin: 0, padding: spacing.md, borderR
 const historyCard: React.CSSProperties = { padding: spacing.lg, border: `1px solid ${surface.border}`, borderRadius: 12, background: surface.raised };
 const historyItem: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: spacing.xs, padding: `${spacing.md}px 0`, borderTop: `1px solid ${surface.border}` };
 const historyMeta: React.CSSProperties = { color: text.tertiary, fontSize: fontSize.caption };
+const overrideActions: React.CSSProperties = { display: 'flex', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.md };
+const modalBackdrop: React.CSSProperties = { position: 'fixed', inset: 0, zIndex: 20, display: 'grid', placeItems: 'center', padding: spacing.lg, background: 'rgba(10, 24, 43, 0.52)' };
+const modalCard: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: spacing.md, width: 'min(560px, 100%)', maxHeight: 'calc(100vh - 48px)', overflowY: 'auto', padding: spacing.xl, borderRadius: 12, background: surface.raised, boxShadow: '0 20px 55px rgba(10, 24, 43, 0.28)' };
+const modalActions: React.CSSProperties = { display: 'flex', justifyContent: 'flex-end', gap: spacing.sm };
+const select: React.CSSProperties = { minHeight: 42, padding: `0 ${spacing.sm}px`, border: `1px solid ${surface.borderStrong}`, borderRadius: 8, background: surface.raised, color: text.primary, fontFamily: 'inherit', fontSize: fontSize.body };

@@ -13,7 +13,11 @@ import type {
   PosClinicalAcknowledgement,
   PosPharmacistReviewRequest,
   PosPharmacistDecision,
-  PosClinicalOverride,
+  PosClinicalOverrideApproval,
+  PosClinicalOverrideHistory,
+  PosClinicalOverrideRejection,
+  PosClinicalOverrideRequest,
+  PosClinicalOverrideRevocation,
   PosClinicalSyncRecord,
   PosOfflineClinicalPackage,
   PosClinicalErrorResponse,
@@ -136,19 +140,53 @@ export async function submitPosPharmacistDecision(
 }
 
 /**
- * Record a clinical override for a finding.
- * Calls POST /api/pos/clinical-screening/{screeningId}/override/
+ * Request a governed clinical override for a finding.
+ * Calls POST /api/pos/clinical-screening/overrides/
  */
-export async function overridePosClinicalFinding(
+export async function requestPosClinicalOverride(
   config: PosClinicalApiConfig,
-  screeningId: string,
-  override: PosClinicalOverride
-): Promise<ApiResponse<PosClinicalScreeningResult>> {
-  return apiPost<PosClinicalScreeningResult>(
+  request: PosClinicalOverrideRequest
+): Promise<ApiResponse<PosClinicalOverrideHistory>> {
+  return apiPost<PosClinicalOverrideHistory>(
     config,
-    `${BASE_PATH}/${screeningId}/override/`,
-    override
+    `${BASE_PATH}/overrides/`,
+    request
   );
+}
+
+/** Move a requested override into pharmacist review. */
+export async function startPosClinicalOverrideReview(
+  config: PosClinicalApiConfig,
+  overrideId: string,
+): Promise<ApiResponse<PosClinicalOverrideHistory>> {
+  return apiPost<PosClinicalOverrideHistory>(config, `${BASE_PATH}/overrides/${overrideId}/start-review/`, {});
+}
+
+/** Approve a requested override with a bounded clinical rationale. */
+export async function approvePosClinicalOverride(
+  config: PosClinicalApiConfig,
+  overrideId: string,
+  approval: PosClinicalOverrideApproval,
+): Promise<ApiResponse<PosClinicalOverrideHistory>> {
+  return apiPost<PosClinicalOverrideHistory>(config, `${BASE_PATH}/overrides/${overrideId}/approve/`, approval);
+}
+
+/** Reject a requested override while retaining the immutable request history. */
+export async function rejectPosClinicalOverride(
+  config: PosClinicalApiConfig,
+  overrideId: string,
+  rejection: PosClinicalOverrideRejection,
+): Promise<ApiResponse<PosClinicalOverrideHistory>> {
+  return apiPost<PosClinicalOverrideHistory>(config, `${BASE_PATH}/overrides/${overrideId}/reject/`, rejection);
+}
+
+/** Revoke an approved override and reopen the clinical blocker. */
+export async function revokePosClinicalOverride(
+  config: PosClinicalApiConfig,
+  overrideId: string,
+  revocation: PosClinicalOverrideRevocation,
+): Promise<ApiResponse<PosClinicalOverrideHistory>> {
+  return apiPost<PosClinicalOverrideHistory>(config, `${BASE_PATH}/overrides/${overrideId}/revoke/`, revocation);
 }
 
 /**

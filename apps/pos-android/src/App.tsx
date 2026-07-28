@@ -45,9 +45,10 @@ import { CollectionScreen, CounsellingScreen } from './screens/CounsellingScreen
 import { ClinicalReviewScreen } from './screens/ClinicalReviewScreen';
 import { DispensingScreen } from './screens/DispensingScreen';
 import { PaymentScreen } from './screens/PaymentScreen';
+import { PrintCentreScreen } from './screens/PrintCentreScreen';
 import { RetailScreen } from './screens/RetailScreen';
 
-type WorkspaceScreen = 'queue' | 'episode' | 'clinical-review' | 'payment' | 'counselling' | 'collection' | 'retail';
+type WorkspaceScreen = 'queue' | 'episode' | 'clinical-review' | 'payment' | 'counselling' | 'collection' | 'retail' | 'print';
 
 interface ClinicalScreeningOutcome {
   readonly summary: AndroidClinicalSummary;
@@ -277,6 +278,9 @@ function PosWorkspace({ onLogout }: { readonly onLogout: () => Promise<void> }) 
         <Pressable accessibilityRole="button" onPress={() => setScreen('retail')} style={styles.secondary}>
           <Text style={styles.secondaryLabel}>Retail</Text>
         </Pressable>
+        <Pressable accessibilityRole="button" onPress={() => setScreen('print')} style={styles.secondary}>
+          <Text style={styles.secondaryLabel}>Print Centre</Text>
+        </Pressable>
         <Pressable accessibilityRole="button" onPress={() => void onLogout()} style={styles.secondary}>
           <Text style={styles.secondaryLabel}>Sign out</Text>
         </Pressable>
@@ -351,6 +355,57 @@ function PosWorkspace({ onLogout }: { readonly onLogout: () => Promise<void> }) 
               setClinical(toAndroidClinicalSummary(result));
               setNotice('Clinical decision recorded.');
               setScreen('episode');
+            }}
+            onOverrideAction={async (input) => {
+              const idempotencyKey = `POS-ANDROID-OVERRIDE-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+              let path = '/api/pos/clinical-screening/overrides/';
+              let body: Record<string, string> = {};
+
+              if (input.action === 'request') {
+                body = {
+                  screening_id: clinicalResult.screeningId,
+                  finding_id: input.findingId,
+                  override_reason: input.overrideReason ?? 'CLINICALLY_JUSTIFIED',
+                  requested_reason: input.requestedReason ?? '',
+                  supporting_notes: input.supportingNotes ?? '',
+                  idempotency_key: idempotencyKey,
+                  expected_context_hash: clinicalResult.contextHash,
+                };
+              } else {
+                if (!input.overrideId) throw new Error('The override record is missing. Refresh the clinical result and try again.');
+                path = `/api/pos/clinical-screening/overrides/${input.overrideId}/${input.action}/`;
+                if (input.action === 'start-review') {
+                  body = {};
+                } else if (input.action === 'approve') {
+                  body = {
+                    clinical_justification: input.clinicalJustification ?? '',
+                    conditions: input.conditions ?? '',
+                    ...(input.expiresAt ? { expires_at: input.expiresAt } : {}),
+                    idempotency_key: idempotencyKey,
+                    expected_context_hash: clinicalResult.contextHash,
+                  };
+                } else if (input.action === 'reject') {
+                  body = { rejection_reason: input.reason ?? '' };
+                } else {
+                  body = { revocation_reason: input.reason ?? '' };
+                }
+              }
+
+              const response = await runtime.session.fetch(path, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+                body: JSON.stringify(body),
+              });
+              if (!response.ok) throw new Error(`The override action was refused (${response.status}).`);
+              const refreshed = await runtime.session.fetch(
+                `/api/pos/clinical-screening/${clinicalResult.screeningId}/`,
+                { headers: { Accept: 'application/json' } },
+              );
+              if (!refreshed.ok) throw new Error(`The clinical result could not be refreshed (${refreshed.status}).`);
+              const result = readScreeningResult(await refreshed.json());
+              setClinicalResult(result);
+              setClinical(toAndroidClinicalSummary(result));
+              setNotice('Clinical override lifecycle updated.');
             }}
           />
         ) : null}
@@ -442,10 +497,16 @@ function PosWorkspace({ onLogout }: { readonly onLogout: () => Promise<void> }) 
             deviceId={deviceId}
           />
         ) : null}
+        {screen === 'print' ? (
+          <PrintCentreScreen
+            apiFetch={runtime.session.fetch.bind(runtime.session) as typeof fetch}
+            deviceId={deviceId}
+          />
+        ) : null}
       </View>
 
       {screen !== 'queue' ? (
-        <View style={styles.navigation}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.navigation} style={styles.navigationBar}>
           <NavButton label="Queue" onPress={() => setScreen('queue')} />
           <NavButton label="Episode" onPress={() => setScreen('episode')} />
           <NavButton label="Clinical" disabled={!clinicalResult} onPress={() => setScreen('clinical-review')} />
@@ -460,7 +521,8 @@ function PosWorkspace({ onLogout }: { readonly onLogout: () => Promise<void> }) 
           <NavButton label="Counselling" onPress={() => setScreen('counselling')} />
           <NavButton label="Collection" onPress={() => setScreen('collection')} />
           <NavButton label="Retail" onPress={() => setScreen('retail')} />
-        </View>
+          <NavButton label="Print" onPress={() => setScreen('print')} />
+        </ScrollView>
       ) : null}
     </View>
   );
@@ -692,14 +754,14 @@ const styles = StyleSheet.create({
   queueNumber: { fontSize: fontSize.bodyLarge, fontWeight: '700', color: text.primary },
   queueStatus: { fontSize: fontSize.caption, color: text.secondary },
   emptyText: { paddingVertical: spacing.xxl, textAlign: 'center', color: text.secondary },
-  navigation: {
+  navigationBar: {
     minHeight: 58,
-    flexDirection: 'row',
     borderTopWidth: 1,
     borderTopColor: surface.border,
     backgroundColor: surface.raised,
   },
-  navButton: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xs },
+  navigation: { minHeight: 58, flexDirection: 'row' },
+  navButton: { minWidth: 82, alignItems: 'center', justifyContent: 'center', padding: spacing.xs },
   navLabel: { color: '#075E37', fontSize: fontSize.caption, fontWeight: '600' },
   navDisabled: { color: text.tertiary },
   login: { flexGrow: 1, justifyContent: 'center', padding: spacing.xl, gap: spacing.md },

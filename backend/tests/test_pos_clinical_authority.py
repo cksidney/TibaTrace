@@ -27,6 +27,7 @@ from tests.test_pos_clinical_screening import (  # noqa: F401
 from apps.cds.pos_screening_models import PosClinicalFinding
 from apps.cds.pos_screening_services import (
     PosClinicalApprovalService,
+    PosClinicalOverrideService,
     PosClinicalScreeningService,
     PosPharmacistReviewService,
     StaleClinicalContext,
@@ -87,13 +88,13 @@ def test_cashier_cannot_submit_a_pharmacist_decision(screening, cashier_user):  
 
 def test_cashier_cannot_authorise_an_override(screening, cashier_user):  # noqa: F811
     with pytest.raises(PermissionDenied):
-        PosPharmacistReviewService.submit_decision(
+        PosClinicalOverrideService.request(
             screening=screening,
             finding_id=finding_for(screening).id,
-            pharmacist=cashier_user,
-            decision="AUTHORIZED_OVERRIDE",
-            clinical_justification="not permitted",
-            idempotency_key="k-cashier-override",
+            requester=cashier_user,
+            override_reason="CLINICALLY_JUSTIFIED",
+            requested_reason="not permitted",
+            idempotency_key="k-cashier-override-request",
             expected_context_hash=screening.context_hash,
         )
 
@@ -168,13 +169,13 @@ def test_stale_context_blocks_a_pharmacist_decision(screening, pharmacist_user):
 
 def test_stale_context_blocks_an_override(screening, pharmacist_user):  # noqa: F811
     with pytest.raises(StaleClinicalContext):
-        PosPharmacistReviewService.submit_decision(
+        PosClinicalOverrideService.request(
             screening=screening,
             finding_id=finding_for(screening).id,
-            pharmacist=pharmacist_user,
-            decision="AUTHORIZED_OVERRIDE",
-            clinical_justification="stale",
-            idempotency_key="k-stale-override",
+            requester=pharmacist_user,
+            override_reason="CLINICALLY_JUSTIFIED",
+            requested_reason="stale",
+            idempotency_key="k-stale-override-request",
             expected_context_hash=STALE,
         )
 

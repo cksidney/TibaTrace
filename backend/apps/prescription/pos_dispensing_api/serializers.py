@@ -6,6 +6,7 @@ from apps.prescription.models import (
     PosDeviceHealthRecord,
     PosShiftRecord,
 )
+from apps.prescription.pos_printing_models import PosPrintJob
 
 #: Tender types the POS accepts. Kept in step with PaymentTenderType in
 #: packages/shared/src/dispensing/types.ts. Only CASH, CARD and MPESA are
@@ -400,3 +401,60 @@ class PosDeviceHealthRecordSerializer(serializers.ModelSerializer):
             "storage_used_pct",
             "last_heartbeat",
         ]
+
+
+class PosPrintJobSerializer(serializers.ModelSerializer):
+    document_number = serializers.CharField(source="document.document_number", read_only=True)
+    document_type = serializers.CharField(source="document.document_type", read_only=True)
+
+    class Meta:
+        model = PosPrintJob
+        fields = [
+            "id",
+            "document",
+            "document_number",
+            "document_type",
+            "branch",
+            "device_id",
+            "printer",
+            "transport",
+            "status",
+            "copy_classification",
+            "copy_number",
+            "reprint_reason",
+            "requested_by",
+            "requested_at",
+            "attempt_count",
+            "last_attempt_at",
+            "failure_code",
+            "failure_message",
+            "printed_at",
+            "printed_by",
+            "cancelled_at",
+            "cancelled_by",
+            "cancellation_reason",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = fields
+
+
+class PrintResultSerializer(serializers.Serializer):
+    succeeded = serializers.BooleanField()
+    failure_code = serializers.CharField(max_length=64, required=False, allow_blank=True, default="")
+    failure_message = serializers.CharField(required=False, allow_blank=True, default="")
+    retryable = serializers.BooleanField(required=False, default=True)
+
+
+class PrintCancellationSerializer(serializers.Serializer):
+    reason = serializers.CharField(required=True, allow_blank=False, trim_whitespace=True)
+
+
+class PrintReprintSerializer(serializers.Serializer):
+    reason = serializers.CharField(required=True, allow_blank=False, trim_whitespace=True)
+    printer = serializers.CharField(max_length=128, required=False, allow_blank=True, default="")
+    transport = serializers.ChoiceField(
+        choices=PosPrintJob.Transport.choices,
+        required=False,
+        default=PosPrintJob.Transport.SIMULATOR,
+    )

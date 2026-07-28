@@ -2,11 +2,12 @@ import { action, deriveStages, fontFamily, fontSize, nextAction, spacing, surfac
 import { useEffect, useMemo, useState } from 'react';
 
 import { ClinicalRail } from './components/tibatrace/ClinicalRail.js';
-import { ClinicalReviewWorkspace } from './components/tibatrace/ClinicalReviewWorkspace.js';
+import { ClinicalReviewWorkspace, type ClinicalOverrideActionInput } from './components/tibatrace/ClinicalReviewWorkspace.js';
 import { CollectionPanel, CounsellingPanel } from './components/tibatrace/CounsellingAndCollection.js';
 import { PatientSafetyBanner } from './components/tibatrace/PatientSafetyBanner.js';
 import { OperationalStatusBar } from './components/tibatrace/OperationalStatusBar.js';
 import { PaymentPanel } from './components/tibatrace/PaymentPanel.js';
+import { PrintCentre } from './components/tibatrace/PrintCentre.js';
 import { PrescriptionWorkspace } from './components/tibatrace/PrescriptionWorkspace.js';
 import { RetailWorkspace } from './components/tibatrace/RetailWorkspace.js';
 import type { PatientSummary } from './components/tibatrace/PatientSafetyBanner.js';
@@ -84,7 +85,7 @@ function OperationsConsole({
   readonly apiFetch: typeof fetch;
   readonly onLogout: () => Promise<void>;
 }) {
-  const [workspace, setWorkspace] = useState<'clinical' | 'retail'>('clinical');
+  const [workspace, setWorkspace] = useState<'clinical' | 'retail' | 'print'>('clinical');
   const { state, refreshQueue, select, refresh, takePayment, confirmCollection, recordCounselling } =
     usePosWorkflow('/api/pos/dispensing', apiFetch, runtime.offline, session.deviceId);
   // Was `useState<ClinicalSummary | null>(null)` with no setter, so the rail
@@ -184,6 +185,59 @@ function OperationsConsole({
     }
   };
 
+  const submitClinicalOverride = async (input: ClinicalOverrideActionInput) => {
+    if (!clinicalResult) return;
+    setClinicalReviewBusy(true);
+    setClinicalReviewError('');
+    try {
+      const idempotencyKey = `POS-WINDOWS-OVERRIDE-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      let path = '/api/pos/clinical-screening/overrides/';
+      let body: Record<string, string> = {};
+
+      if (input.action === 'request') {
+        body = {
+          screening_id: clinicalResult.screeningId,
+          finding_id: input.findingId,
+          override_reason: input.overrideReason ?? 'CLINICALLY_JUSTIFIED',
+          requested_reason: input.requestedReason ?? '',
+          supporting_notes: input.supportingNotes ?? '',
+          idempotency_key: idempotencyKey,
+          expected_context_hash: clinicalResult.contextHash,
+        };
+      } else {
+        if (!input.overrideId) throw new Error('The override record is missing. Refresh the clinical result and try again.');
+        path = `/api/pos/clinical-screening/overrides/${input.overrideId}/${input.action}/`;
+        if (input.action === 'start-review') {
+          body = {};
+        } else if (input.action === 'approve') {
+          body = {
+            clinical_justification: input.clinicalJustification ?? '',
+            conditions: input.conditions ?? '',
+            ...(input.expiresAt ? { expires_at: input.expiresAt } : {}),
+            idempotency_key: idempotencyKey,
+            expected_context_hash: clinicalResult.contextHash,
+          };
+        } else if (input.action === 'reject') {
+          body = { rejection_reason: input.reason ?? '' };
+        } else {
+          body = { revocation_reason: input.reason ?? '' };
+        }
+      }
+
+      const response = await apiFetch(path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) throw new Error(`The override action was refused (${response.status}).`);
+      await refreshClinical();
+    } catch (cause) {
+      setClinicalReviewError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setClinicalReviewBusy(false);
+    }
+  };
+
   return (
     <div
       style={{
@@ -208,6 +262,8 @@ function OperationsConsole({
       />
       {workspace === 'retail' ? (
         <RetailWorkspace apiFetch={apiFetch} deviceId={session.deviceId} />
+      ) : workspace === 'print' ? (
+        <PrintCentre apiFetch={apiFetch} deviceId={session.deviceId} />
       ) : <>
       <PatientSafetyBanner patient={patient} />
       <WorkflowRibbon stages={stages} />
@@ -235,6 +291,7 @@ function OperationsConsole({
                 onBack={() => setReviewFindingId('')}
                 onRequestReview={() => void requestClinicalReview()}
                 onSubmit={(input) => void submitClinicalDecision(input)}
+                onOverrideAction={(input) => void submitClinicalOverride(input)}
               />
             ) : (
             <>
@@ -325,8 +382,8 @@ function Header({
 }: {
   readonly busy: boolean;
   readonly operator: string;
-  readonly workspace: 'clinical' | 'retail';
-  readonly onWorkspaceChange: (workspace: 'clinical' | 'retail') => void;
+  readonly workspace: 'clinical' | 'retail' | 'print';
+  readonly onWorkspaceChange: (workspace: 'clinical' | 'retail' | 'print') => void;
   readonly onLogout: () => Promise<void>;
 }) {
   return (
@@ -363,7 +420,7 @@ function Header({
         </div>
       </div>
       <div style={{ display: 'flex', gap: 4 }}>
-        {(['clinical', 'retail'] as const).map((option) => (
+        {(['clinical', 'retail', 'print'] as const).map((option) => (
           <button
             key={option}
             type="button"
@@ -380,7 +437,7 @@ function Header({
               textTransform: 'capitalize',
             }}
           >
-            {option}
+            {option === 'print' ? 'Print Centre' : option}
           </button>
         ))}
       </div>

@@ -203,7 +203,17 @@ class PosClinicalDecision(TenantConsistencyMixin, TimestampedModel):
 
 
 class PosClinicalOverride(TenantConsistencyMixin, TimestampedModel):
-    tenant_relation_fields = ("decision",)
+    tenant_relation_fields = ("decision", "finding")
+
+    class Status(models.TextChoices):
+        REQUESTED = "REQUESTED", "Requested"
+        UNDER_REVIEW = "UNDER_REVIEW", "Under review"
+        APPROVED = "APPROVED", "Approved"
+        APPROVED_WITH_CONDITIONS = "APPROVED_WITH_CONDITIONS", "Approved with conditions"
+        REJECTED = "REJECTED", "Rejected"
+        REVOKED = "REVOKED", "Revoked"
+        EXPIRED = "EXPIRED", "Expired"
+        CONSUMED = "CONSUMED", "Consumed"
 
     class OverrideReason(models.TextChoices):
         KNOWN_AND_MONITORED = "KNOWN_AND_MONITORED", "Known and monitored"
@@ -218,16 +228,70 @@ class PosClinicalOverride(TenantConsistencyMixin, TimestampedModel):
         OTHER = "OTHER", "Other"
 
     tenant = models.ForeignKey("tenancy.Tenant", on_delete=models.CASCADE, related_name="+")
-    decision = models.ForeignKey(PosClinicalDecision, on_delete=models.CASCADE, related_name="overrides")
+    decision = models.ForeignKey(
+        PosClinicalDecision,
+        on_delete=models.CASCADE,
+        related_name="overrides",
+        null=True,
+        blank=True,
+    )
     finding = models.ForeignKey(PosClinicalFinding, on_delete=models.PROTECT, related_name="overrides")
-    pharmacist = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
+    pharmacist = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="+",
+        null=True,
+        blank=True,
+    )
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="+",
+        null=True,
+        blank=True,
+    )
     override_reason = models.CharField(max_length=64, choices=OverrideReason.choices)
-    clinical_justification = models.TextField()
-    override_capability = models.CharField(max_length=128)
+    requested_reason = models.TextField(blank=True, default="")
+    supporting_notes = models.TextField(blank=True, default="")
+    clinical_justification = models.TextField(blank=True, default="")
+    conditions = models.TextField(blank=True, default="")
+    scope = models.JSONField(default=dict, blank=True)
+    status = models.CharField(max_length=32, choices=Status.choices, default=Status.REQUESTED)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    approved_at = models.DateTimeField(null=True, blank=True)
+    rejected_at = models.DateTimeField(null=True, blank=True)
+    rejected_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="+",
+        null=True,
+        blank=True,
+    )
+    rejection_reason = models.TextField(blank=True, default="")
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    revoked_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="+",
+        null=True,
+        blank=True,
+    )
+    revocation_reason = models.TextField(blank=True, default="")
+    consumed_at = models.DateTimeField(null=True, blank=True)
+    consumed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="+",
+        null=True,
+        blank=True,
+    )
+    consumed_event = models.CharField(max_length=128, blank=True, default="")
+    override_capability = models.CharField(max_length=128, blank=True, default="")
     context_hash = models.CharField(max_length=128)
     rule_version = models.CharField(max_length=64, blank=True, default="")
     transaction_id = models.CharField(max_length=128)
     device_id = models.CharField(max_length=128)
+    idempotency_key = models.CharField(max_length=128, unique=True)
 
     objects = StrictTenantManager()
     all_objects = models.Manager()
@@ -306,8 +370,13 @@ class PosClinicalAuditEvent(TenantConsistencyMixin, TimestampedModel):
         FINDING_ACKNOWLEDGED = "FINDING_ACKNOWLEDGED", "Finding acknowledged"
         PHARMACIST_REVIEW_REQUESTED = "PHARMACIST_REVIEW_REQUESTED", "Pharmacist review requested"
         PHARMACIST_AUTHENTICATED = "PHARMACIST_AUTHENTICATED", "Pharmacist authenticated"
+        OVERRIDE_REQUESTED = "OVERRIDE_REQUESTED", "Override requested"
         FINDING_RESOLVED = "FINDING_RESOLVED", "Finding resolved"
         OVERRIDE_RECORDED = "OVERRIDE_RECORDED", "Override recorded"
+        OVERRIDE_REJECTED = "OVERRIDE_REJECTED", "Override rejected"
+        OVERRIDE_REVOKED = "OVERRIDE_REVOKED", "Override revoked"
+        OVERRIDE_EXPIRED = "OVERRIDE_EXPIRED", "Override expired"
+        OVERRIDE_CONSUMED = "OVERRIDE_CONSUMED", "Override consumed"
         SCREENING_INVALIDATED = "SCREENING_INVALIDATED", "Screening invalidated"
         OFFLINE_SCREENING_USED = "OFFLINE_SCREENING_USED", "Offline screening used"
         SCREENING_UNAVAILABLE = "SCREENING_UNAVAILABLE", "Screening unavailable"

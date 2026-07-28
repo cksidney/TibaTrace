@@ -7,11 +7,11 @@
 operations and the retail transaction foundation.
 
 This is a release decision, not a visual review. The current native products
-provide a clinically guarded dispensing workflow and a first native,
-server-backed retail basket. They do not yet provide the complete pharmacy POS
-workflow requested for payment completion, financial register control, printing
-and offline operations. This record must not be interpreted as a production
-certification.
+provide a clinically guarded dispensing workflow, a first native server-backed
+retail basket, and a durable simulator-scoped receipt queue. They do not yet
+provide the complete pharmacy POS workflow requested for financial register
+control, physical printing, Sync Centre and offline operations. This record
+must not be interpreted as a production certification.
 
 ## Validation evidence
 
@@ -41,8 +41,14 @@ certification.
   `backend/tests/test_pos_clinical_screening.py`
   `backend/tests/test_pos_clinical_authority.py`
   `backend/tests/test_pos_enterprise_dispensing.py`
-  `backend/tests/test_pos_dispensing_controls.py -q` — **89 passed**
+  `backend/tests/test_pos_dispensing_controls.py -q` — **92 passed**
   (2026-07-28).
+- `./.venv/bin/pytest -c backend/pytest.ini --no-migrations`
+  `backend/tests/test_pos_printing.py`
+  `backend/tests/test_pos_dispensing_controls.py`
+  `backend/tests/test_pos_label_reprint.py -q` — **36 passed** (2026-07-28).
+- `./.venv/bin/python backend/manage.py makemigrations --check --dry-run` and
+  `./.venv/bin/python backend/manage.py check` — passed (2026-07-28).
 
 The first backend test attempt against `/Users/sidneykibet/venv` was not used
 as evidence because that virtual environment runs Django 4.2.11, while this
@@ -53,7 +59,7 @@ repository requires the Django 5.1 API. The repository `.venv` runs Django
 
 | # | Control | Status | Evidence / release implication |
 |---:|---|---|---|
-| 1 | Native POS product scope defined | Partial | Clinical dispensing and the initial native retail basket are implemented; settlement, print and Sync Centre remain. |
+| 1 | Native POS product scope defined | Partial | Clinical dispensing, an initial native retail basket and simulator-scoped receipt queue are implemented; register controls, physical print and Sync Centre remain. |
 | 2 | Shared design tokens | Implemented | Shared tokens are used by Windows and Android. |
 | 3 | Windows authenticated session | Implemented | Secure Electron session and sign-out flow exist. |
 | 4 | Android authenticated session | Implemented | Keystore-backed session is required. |
@@ -65,7 +71,7 @@ repository requires the Django 5.1 API. The repository `.venv` runs Django
 | 10 | Persistent business-date context | Implemented | Read from the authoritative business-day API. |
 | 11 | Connectivity indicator | Partial | API failure is shown; no device network telemetry adapter exists. |
 | 12 | Sync indicator | Partial | Latest recorded register synchronisation is shown; no Sync Centre exists. |
-| 13 | Printer indicator | Partial | Last health report and paper level are shown; no printer adapter exists. |
+| 13 | Printer indicator | Partial | Native Print Centre shows a durable per-device/branch queue; device health and physical transport adapters remain absent. |
 | 14 | Operational notifications | Partial | Unresolved operational context is visible; no notification centre exists. |
 | 15 | Lock POS action | Absent | No workstation lock UI is implemented. |
 | 16 | Register opening workflow | Blocked | No native authoritative register-open action exists. |
@@ -89,7 +95,7 @@ repository requires the Django 5.1 API. The repository `.venv` runs Django
 | 34 | Prescription workflow ribbon | Partial | Windows ribbon exists; Android uses staged navigation. |
 | 35 | Clinical screening | Implemented for prescription dispensing | Native actions submit actual episode identifiers under the server-recognised `sku_id` contract; the backend resolves clinical ingredients and returns authoritative output. Retail screening remains incomplete. |
 | 36 | Critical clinical blockers | Implemented for authoritative POS progression | The server rebuilds the persisted dispensing basket and rejects payment, supply and transitions to payment/supply without a current, safe CDS result. |
-| 37 | Pharmacist review panel | Partial | Windows and Android provide a native review workspace and decision history. Scoped lifecycle overrides remain incomplete. |
+| 37 | Pharmacist review panel | Implemented for prescription dispensing | Windows and Android provide native decision history and a governed, time-bound override request/review/approval/revocation lifecycle with separation of duties. |
 | 38 | Controlled-medicine verification | Partial | Backend/client capability exists; not a complete native workspace. |
 | 39 | Insurance context | Partial | Episode data exposes cover identity; claim and preauthorisation UI is absent. |
 | 40 | Per-line insurance state | Absent | Native apps do not show coverage per dispensing line. |
@@ -104,7 +110,7 @@ repository requires the Django 5.1 API. The repository `.venv` runs Django
 | 49 | Split tender | Blocked | Shared helper exists but backend settlement rejects split tender. |
 | 50 | Unknown-payment recovery | Implemented | Durable journal and server refresh prevent unsafe retries. |
 | 51 | Supply and collection separation | Implemented | Collection remains a separate idempotent server action. |
-| 52 | Receipt printing | Absent | No receipt printer adapter, queue or retry UI exists. |
+| 52 | Receipt printing | Partial | Settlement creates one immutable receipt snapshot and branch/device queue job. Windows and Android provide retry, cancellation and permissioned reprint in deterministic simulator mode; no physical adapter is certified. |
 | 53 | Label printing | Absent | No label printer adapter or reprint workflow exists. |
 | 54 | X report access | Absent | Native POS does not expose interim reports. |
 | 55 | Z close and reconciliation | Blocked | Authoritative service exists, but no native controlled close flow exists. |
@@ -127,16 +133,15 @@ Full production certification requires all of the following:
 2. Bind every financial/dispensing transaction to an authoritative open
    `RegisterSession` and accountable `OperatorShift` on the server.
 3. Implement, test and permission-protect native register opening, cash
-   declarations, movements, X reports, Z closure, handover and reprint flows.
-4. Build retail catalogue, assortment, pricing, barcode, stock and receipt
+   declarations, movements, X reports, Z closure and handover flows.
+4. Build retail catalogue, assortment, pricing, barcode and stock
    workflows backed by the current tenant’s authoritative APIs.
-5. Implement device adapters and deterministic print/sync queues, then validate
-   physical printer, drawer and scanner behaviour.
+5. Implement physical device adapters and the Sync Centre, then validate
+   printer, drawer and scanner behaviour.
 6. Run end-to-end workflow, accessibility and visual validation on the mandated
    Windows and Android device profiles.
-7. Complete and test scoped clinical override actions, retail-medicine
-   screening, clinical invalidation after patient/medicine/quantity/substitution
-   changes, and restart/resume restoration of clinical decision and override
+7. Complete retail-medicine screening, remaining clinical invalidation
+   scenarios, and restart/resume restoration of clinical decision and override
    state.
 
 Until those conditions are met, this code should be released only as a
@@ -172,10 +177,10 @@ medicine before evaluating rules.
 
 This resolves a critical data-integrity defect in the client/server boundary and
 keeps clinical state visible when the Android operator enters payment. It does
-**not** certify the whole clinical workflow: scoped override actions, retail
-medicine screening, all invalidation triggers and full restoration across every
-lifecycle transition still require implementation and evidence. Therefore the
-decision at the top of this record remains exactly `POS_UI_UX_BLOCKED`.
+**not** certify the whole clinical workflow: retail medicine screening, all
+invalidation triggers and full restoration across every lifecycle transition
+still require implementation and evidence. Therefore the decision at the top
+of this record remains exactly `POS_UI_UX_BLOCKED`.
 
 ## Clinical Review and Progression Gate Increment (2026-07-28)
 
@@ -199,9 +204,34 @@ This makes a changed medicine, patient, prescription or quantity fail closed.
 Quantity hashing is canonicalised, so `30` and `30.0000` represent the same
 clinical context across native clients and persisted dispensing lines.
 
-This pass does not deliver expiry/condition lifecycle overrides, durable
-printing, a Sync Centre, restart evidence, visual certification or hardware
-certification. The decision remains exactly `POS_UI_UX_BLOCKED`.
+This pass is extended by the governed override and durable print increment
+below. Sync Centre, restart evidence, visual certification and hardware
+certification remain outstanding. The decision remains exactly
+`POS_UI_UX_BLOCKED`.
+
+## Governed Override and Durable Print Increment (2026-07-28)
+
+Clinical overrides are no longer a direct pharmacist decision. A requester
+submits a time-bound, context-hashed override request, a different authorised
+operator starts and approves or rejects the review, and the backend records
+conditions, expiry, revocation and controlled consumption. Conditions keep the
+finding open; expiry and revocation reopen the clinical gate. Windows and
+Android expose only these native modal actions and refresh the authoritative
+screening result after each action.
+
+After an authoritative settlement, the backend creates exactly one immutable
+receipt snapshot and one original print job. Print transport failure cannot
+reverse settlement. Jobs are held in an accountable tenant/branch/device queue
+and progress through `QUEUED`, `RENDERED`, `SENDING`, `PRINTED`,
+`RETRY_REQUIRED`, `FAILED` or `CANCELLED`. Retrying preserves the existing job;
+a reprint creates a separately numbered copy with a required reason.
+
+The Windows and Android Print Centres exercise those controls only through an
+explicit deterministic simulator. They visibly state that no physical spooler,
+ESC/POS, Bluetooth or network printer was used. The new tests provide service
+and queue evidence, not physical-print certification. Sync Centre, restart
+recovery, visual/accessibility evidence and hardware evidence remain required.
+The decision remains exactly `POS_UI_UX_BLOCKED`.
 
 ## World-Class UI/UX Design Certification
 
@@ -235,8 +265,8 @@ certification. The decision remains exactly `POS_UI_UX_BLOCKED`.
 
 ### Evidence still required
 
-This is not a full world-class design certification. Scoped override lifecycle,
-retail medicine screening, printing, Sync Centre, responsive device validation,
-an end-to-end visual suite for the required screens, screen-reader validation
-and physical hardware evidence remain outstanding. The release decision remains
-exactly `POS_UI_UX_BLOCKED`.
+This is not a full world-class design certification. Retail medicine screening,
+physical printing, Sync Centre, responsive device validation, an end-to-end
+visual suite for the required screens, screen-reader validation and physical
+hardware evidence remain outstanding. The release decision remains exactly
+`POS_UI_UX_BLOCKED`.

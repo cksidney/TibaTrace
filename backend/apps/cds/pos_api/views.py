@@ -7,17 +7,22 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from apps.cds.pos_screening_models import PosClinicalScreening, PosOfflineClinicalPackage
+from apps.cds.pos_screening_models import PosClinicalOverride, PosClinicalScreening, PosOfflineClinicalPackage
 from apps.cds.pos_screening_services import (
     PosClinicalScreeningService,
     PosOfflinePackageService,
+    PosClinicalOverrideService,
     PosPharmacistReviewService,
 )
 from apps.core.tenant_context import get_current_tenant_id
 
 from .serializers import (
     PosClinicalAcknowledgementSerializer,
-    PosClinicalOverrideSerializer,
+    PosClinicalOverrideApprovalSerializer,
+    PosClinicalOverrideHistorySerializer,
+    PosClinicalOverrideRejectionSerializer,
+    PosClinicalOverrideRequestSerializer,
+    PosClinicalOverrideRevocationSerializer,
     PosClinicalScreeningRequestSerializer,
     PosClinicalScreeningResultSerializer,
     PosPharmacistDecisionSerializer,
@@ -159,30 +164,6 @@ class PosClinicalScreeningViewSet(viewsets.GenericViewSet):
         except DjangoValidationError as e:
             raise ValidationError(str(e)) from e
 
-    @action(detail=True, methods=['post'], url_path='override')
-    def override(self, request, screening_id=None):
-        screening = self.get_object()
-        serializer = PosClinicalOverrideSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        data = serializer.validated_data
-        
-        try:
-            PosPharmacistReviewService.submit_decision(
-                screening=screening,
-                finding_id=data['finding_id'],
-                pharmacist=self._actor(),
-                decision='AUTHORIZED_OVERRIDE',
-                clinical_justification=data['clinical_justification'],
-                idempotency_key=data['idempotency_key'],
-                expected_context_hash=data.get('expected_context_hash'),
-            )
-            screening.refresh_from_db()
-            return Response(PosClinicalScreeningResultSerializer(screening).data)
-        except PermissionDenied:
-            raise
-        except DjangoValidationError as e:
-            raise ValidationError(str(e)) from e
-
     @action(detail=True, methods=['post'], url_path='resolve')
     def resolve(self, request, screening_id=None):
         # Additional action requested. Simple implementation.
@@ -206,3 +187,103 @@ class PosClinicalScreeningViewSet(viewsets.GenericViewSet):
                 "signature": package.signature
             })
         return Response({"detail": "No offline package available"}, status=404)
+
+
+class PosClinicalOverrideViewSet(viewsets.GenericViewSet):
+    permission_classes = [IsAuthenticated]
+    lookup_field = 'pk'
+
+    def get_queryset(self):
+        return PosClinicalOverride.all_objects.filter(tenant_id=get_current_tenant_id()).select_related(
+            'finding__screening',
+        )
+
+    def create(self, request):
+        serializer = PosClinicalOverrideRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        screening = PosClinicalScreening.all_objects.filter(
+            tenant_id=get_current_tenant_id(),
+            screening_id=data['screening_id'],
+        ).first()
+        if not screening:
+            raise ValidationError('Clinical screening was not found for this tenant.')
+        try:
+            override = PosClinicalOverrideService.request(
+                screening=screening,
+                finding_id=data['finding_id'],
+                requester=request.user,
+                override_reason=data['override_reason'],
+                requested_reason=data['requested_reason'],
+                supporting_notes=data.get('supporting_notes', ''),
+                idempotency_key=data['idempotency_key'],
+                expected_context_hash=data['expected_context_hash'],
+            )
+            return Response(PosClinicalOverrideHistorySerializer(override).data, status=status.HTTP_201_CREATED)
+        except PermissionDenied:
+            raise
+        except DjangoValidationError as error:
+            raise ValidationError(str(error)) from error
+
+    @action(detail=True, methods=['post'], url_path='start-review')
+    def start_review(self, request, pk=None):
+        try:
+            override = PosClinicalOverrideService.start_review(override=self.get_object(), pharmacist=request.user)
+            return Response(PosClinicalOverrideHistorySerializer(override).data)
+        except PermissionDenied:
+            raise
+        except DjangoValidationError as error:
+            raise ValidationError(str(error)) from error
+
+    @action(detail=True, methods=['post'])
+    def approve(self, request, pk=None):
+        serializer = PosClinicalOverrideApprovalSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        try:
+            override = PosClinicalOverrideService.approve(
+                override=self.get_object(),
+                pharmacist=request.user,
+                clinical_justification=data['clinical_justification'],
+                conditions=data.get('conditions', ''),
+                expires_at=data.get('expires_at'),
+                idempotency_key=data['idempotency_key'],
+                expected_context_hash=data['expected_context_hash'],
+            )
+            return Response(PosClinicalOverrideHistorySerializer(override).data)
+        except PermissionDenied:
+            raise
+        except DjangoValidationError as error:
+            raise ValidationError(str(error)) from error
+
+    @action(detail=True, methods=['post'])
+    def reject(self, request, pk=None):
+        serializer = PosClinicalOverrideRejectionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            override = PosClinicalOverrideService.reject(
+                override=self.get_object(),
+                pharmacist=request.user,
+                rejection_reason=serializer.validated_data['rejection_reason'],
+            )
+            return Response(PosClinicalOverrideHistorySerializer(override).data)
+        except PermissionDenied:
+            raise
+        except DjangoValidationError as error:
+            raise ValidationError(str(error)) from error
+
+    @action(detail=True, methods=['post'])
+    def revoke(self, request, pk=None):
+        serializer = PosClinicalOverrideRevocationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            override = PosClinicalOverrideService.revoke(
+                override=self.get_object(),
+                actor=request.user,
+                reason=serializer.validated_data['revocation_reason'],
+            )
+            return Response(PosClinicalOverrideHistorySerializer(override).data)
+        except PermissionDenied:
+            raise
+        except DjangoValidationError as error:
+            raise ValidationError(str(error)) from error

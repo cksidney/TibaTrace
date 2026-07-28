@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
+from datetime import timedelta
 from decimal import Decimal
 
 from django.core.exceptions import PermissionDenied, ValidationError
@@ -382,15 +383,12 @@ class PosPharmacistReviewService:
         return audit
 
     @staticmethod
-    def submit_decision(*, screening, finding_id, pharmacist, decision, clinical_justification='', conditions='', counselling_notes='', prescriber_contact_ref='', follow_up_actions='', override_reason='CLINICALLY_JUSTIFIED', override_capability='pos.clinical_findings.override_high', idempotency_key=None, expected_context_hash=None):
-        # An override is a strictly higher authority than an ordinary decision,
-        # so it is gated separately rather than folded into one capability.
-        required = (
-            "clinical.override.approve"
-            if decision == 'AUTHORIZED_OVERRIDE'
-            else "clinical.pharmacist_review.decide"
-        )
-        _require_actor(pharmacist, required, screening.tenant_id)
+    def submit_decision(*, screening, finding_id, pharmacist, decision, clinical_justification='', conditions='', counselling_notes='', prescriber_contact_ref='', follow_up_actions='', idempotency_key=None, expected_context_hash=None):
+        if decision == PosClinicalDecision.Decision.AUTHORIZED_OVERRIDE:
+            raise ValidationError(
+                'Use the governed override request and approval workflow; direct overrides are not allowed.'
+            )
+        _require_actor(pharmacist, "clinical.pharmacist_review.decide", screening.tenant_id)
         _require_current_context(screening, expected_context_hash)
         # Separation of duties: whoever rang the basket cannot also clear it.
         if screening.cashier_id and screening.cashier_id == pharmacist.id:
@@ -405,20 +403,22 @@ class PosPharmacistReviewService:
             counselling_notes=counselling_notes,
             prescriber_contact_ref=prescriber_contact_ref,
             follow_up_actions=follow_up_actions,
-            override_reason=override_reason,
-            override_capability=override_capability,
             idempotency_key=idempotency_key,
         )
 
     @staticmethod
     @transaction.atomic
-    def _apply_decision(*, screening, finding_id, pharmacist, decision, clinical_justification='', conditions='', counselling_notes='', prescriber_contact_ref='', follow_up_actions='', override_reason='CLINICALLY_JUSTIFIED', override_capability='pos.clinical_findings.override_high', idempotency_key=None):
+    def _apply_decision(*, screening, finding_id, pharmacist, decision, clinical_justification='', conditions='', counselling_notes='', prescriber_contact_ref='', follow_up_actions='', idempotency_key=None):
         if screening.status != 'COMPLETE':
             raise ValueError("Screening must be COMPLETE.")
 
         valid_decisions = {choice for choice, _ in PosClinicalDecision.Decision.choices}
         if decision not in valid_decisions:
             raise ValidationError("Unsupported pharmacist review decision.")
+        if decision == PosClinicalDecision.Decision.AUTHORIZED_OVERRIDE:
+            raise ValidationError(
+                'Use the governed override request and approval workflow; direct overrides are not allowed.'
+            )
         if not finding_id:
             raise ValidationError("A pharmacist review must identify the finding being decided.")
         if not clinical_justification or not clinical_justification.strip():
@@ -469,22 +469,7 @@ class PosPharmacistReviewService:
             idempotency_key=idempotency_key
         )
 
-        if decision == 'AUTHORIZED_OVERRIDE':
-            PosClinicalOverride.all_objects.create(
-                tenant=screening.tenant,
-                decision=dec,
-                finding=finding,
-                pharmacist=pharmacist,
-                override_reason=override_reason,
-                clinical_justification=clinical_justification,
-                override_capability=override_capability,
-                context_hash=screening.context_hash,
-                transaction_id=screening.transaction_id,
-                device_id=screening.device_id
-            )
-            finding.resolution_status = PosClinicalFinding.ResolutionStatus.OVERRIDDEN
-            event_type = 'OVERRIDE_RECORDED'
-        elif decision in {
+        if decision in {
             PosClinicalDecision.Decision.APPROVE,
             PosClinicalDecision.Decision.APPROVE_AS_WRITTEN,
         }:
@@ -541,6 +526,280 @@ class PosPharmacistReviewService:
         return dec
 
 
+class PosClinicalOverrideService:
+    DEFAULT_VALIDITY = timedelta(minutes=30)
+
+    @staticmethod
+    def scope_for(*, screening, finding):
+        return {
+            'tenant_id': str(screening.tenant_id),
+            'branch_id': str(screening.branch_id or ''),
+            'patient_id': str(screening.patient_id or ''),
+            'prescription_id': str(screening.prescription_id or ''),
+            'transaction_id': screening.transaction_id,
+            'screening_id': str(screening.screening_id),
+            'finding_id': str(finding.id),
+            'affected_basket_line_ids': list(finding.affected_basket_line_ids),
+            'affected_medicine_ids': list(finding.affected_medicine_ids),
+            'context_hash': screening.context_hash,
+        }
+
+    @staticmethod
+    def _refresh_screening(screening):
+        screening.blocking_count = PosClinicalFinding.all_objects.filter(
+            screening=screening,
+            blocking=True,
+            resolution_status=PosClinicalFinding.ResolutionStatus.OPEN,
+        ).count()
+        screening.safe_to_proceed = screening.status == PosClinicalScreening.Status.COMPLETE and screening.blocking_count == 0
+        screening.save(update_fields=['blocking_count', 'safe_to_proceed', 'updated_at'])
+
+    @staticmethod
+    def _audit(*, override, event_type, actor=None, payload=None):
+        screening = override.finding.screening
+        PosClinicalAuditEvent.all_objects.create(
+            tenant=override.tenant,
+            screening=screening,
+            finding=override.finding,
+            event_type=event_type,
+            cashier=actor if event_type == PosClinicalAuditEvent.EventType.OVERRIDE_REQUESTED else None,
+            pharmacist=actor if event_type != PosClinicalAuditEvent.EventType.OVERRIDE_REQUESTED else None,
+            branch_id=screening.branch_id,
+            device_id=screening.device_id,
+            register_id=screening.register_id,
+            transaction_id=screening.transaction_id,
+            patient_ref=str(screening.patient_id or ''),
+            prescription_ref=str(screening.prescription_id or ''),
+            severity=override.finding.severity,
+            rule_version=override.finding.rule_version or screening.rule_set_version,
+            context_hash=screening.context_hash,
+            payload={'override_id': str(override.id), **(payload or {})},
+        )
+
+    @classmethod
+    @transaction.atomic
+    def request(cls, *, screening, finding_id, requester, override_reason, requested_reason, supporting_notes='', idempotency_key, expected_context_hash):
+        _require_actor(requester, 'clinical.override.request', screening.tenant_id)
+        _require_current_context(screening, expected_context_hash)
+        if screening.status != PosClinicalScreening.Status.COMPLETE:
+            raise ValidationError('Only a complete clinical screening may be escalated for override.')
+        if screening.expires_at and screening.expires_at <= timezone.now():
+            raise ValidationError('The clinical screening has expired and must be repeated.')
+        if not requested_reason or not requested_reason.strip():
+            raise ValidationError('An override request requires a clinical reason.')
+        existing = PosClinicalOverride.all_objects.filter(idempotency_key=idempotency_key).first()
+        if existing:
+            if (
+                existing.tenant_id == screening.tenant_id
+                and existing.finding.screening_id == screening.id
+                and existing.finding_id == finding_id
+                and existing.requested_by_id == requester.id
+                and existing.override_reason == override_reason
+                and existing.requested_reason == requested_reason.strip()
+            ):
+                return existing
+            raise ValidationError('This idempotency key was already used for a different override request.')
+        finding = PosClinicalFinding.all_objects.select_for_update().get(
+            tenant=screening.tenant,
+            screening=screening,
+            pk=finding_id,
+        )
+        if not finding.override_allowed:
+            raise ValidationError('This clinical finding cannot be overridden.')
+        if finding.resolution_status != PosClinicalFinding.ResolutionStatus.OPEN:
+            raise ValidationError('An override can be requested only for an open finding.')
+        if PosClinicalOverride.all_objects.filter(
+            finding=finding,
+            status__in=[
+                PosClinicalOverride.Status.REQUESTED,
+                PosClinicalOverride.Status.UNDER_REVIEW,
+                PosClinicalOverride.Status.APPROVED,
+                PosClinicalOverride.Status.APPROVED_WITH_CONDITIONS,
+            ],
+        ).exists():
+            raise ValidationError('An active override request already exists for this finding.')
+        override = PosClinicalOverride.all_objects.create(
+            tenant=screening.tenant,
+            finding=finding,
+            requested_by=requester,
+            override_reason=override_reason,
+            requested_reason=requested_reason.strip(),
+            supporting_notes=supporting_notes.strip(),
+            context_hash=screening.context_hash,
+            rule_version=finding.rule_version or screening.rule_set_version,
+            transaction_id=screening.transaction_id,
+            device_id=screening.device_id,
+            scope=cls.scope_for(screening=screening, finding=finding),
+            idempotency_key=idempotency_key,
+        )
+        cls._audit(override=override, event_type=PosClinicalAuditEvent.EventType.OVERRIDE_REQUESTED, actor=requester)
+        return override
+
+    @classmethod
+    @transaction.atomic
+    def start_review(cls, *, override, pharmacist):
+        _require_actor(pharmacist, 'clinical.override.approve', override.tenant_id)
+        override = PosClinicalOverride.all_objects.select_for_update().select_related('finding__screening').get(pk=override.pk)
+        if override.status == PosClinicalOverride.Status.REQUESTED:
+            override.status = PosClinicalOverride.Status.UNDER_REVIEW
+            override.save(update_fields=['status', 'updated_at'])
+            cls._audit(override=override, event_type=PosClinicalAuditEvent.EventType.PHARMACIST_AUTHENTICATED, actor=pharmacist)
+        elif override.status != PosClinicalOverride.Status.UNDER_REVIEW:
+            raise ValidationError('Only a requested override may enter review.')
+        return override
+
+    @classmethod
+    @transaction.atomic
+    def approve(cls, *, override, pharmacist, clinical_justification, conditions='', expires_at=None, idempotency_key='', expected_context_hash=None):
+        _require_actor(pharmacist, 'clinical.override.approve', override.tenant_id)
+        override = PosClinicalOverride.all_objects.select_for_update().select_related('finding__screening').get(pk=override.pk)
+        screening = override.finding.screening
+        _require_current_context(screening, expected_context_hash)
+        approval_key = idempotency_key or f'override-approval:{override.id}'
+        existing = PosClinicalDecision.all_objects.filter(idempotency_key=approval_key).first()
+        if existing:
+            if (
+                existing.id == override.decision_id
+                and override.status in [
+                    PosClinicalOverride.Status.APPROVED,
+                    PosClinicalOverride.Status.APPROVED_WITH_CONDITIONS,
+                ]
+            ):
+                return override
+            raise ValidationError('This idempotency key was already used for a different override approval.')
+        if screening.status != PosClinicalScreening.Status.COMPLETE:
+            raise ValidationError('Only a complete clinical screening may be approved for override.')
+        if screening.expires_at and screening.expires_at <= timezone.now():
+            raise ValidationError('The clinical screening has expired and must be repeated.')
+        if override.status not in [PosClinicalOverride.Status.REQUESTED, PosClinicalOverride.Status.UNDER_REVIEW]:
+            raise ValidationError('Only a requested override may be approved.')
+        if override.requested_by_id == pharmacist.id:
+            raise ValidationError('The override approver must differ from the requesting operator.')
+        if not clinical_justification or not clinical_justification.strip():
+            raise ValidationError('Override approval requires a clinical rationale.')
+        if expires_at is None:
+            expires_at = timezone.now() + cls.DEFAULT_VALIDITY
+        if expires_at <= timezone.now():
+            raise ValidationError('Override expiry must be in the future.')
+        if screening.expires_at and expires_at > screening.expires_at:
+            raise ValidationError('Override expiry cannot outlast its clinical screening.')
+        decision = existing or PosClinicalDecision.all_objects.create(
+            tenant=override.tenant,
+            screening=screening,
+            finding=override.finding,
+            pharmacist=pharmacist,
+            decision=PosClinicalDecision.Decision.AUTHORIZED_OVERRIDE,
+            clinical_justification=clinical_justification.strip(),
+            conditions=conditions.strip(),
+            context_hash_at_decision=screening.context_hash,
+            rule_version_at_decision=override.rule_version,
+            branch_id=screening.branch_id,
+            transaction_id=screening.transaction_id,
+            register_id=screening.register_id,
+            patient_ref=str(screening.patient_id or ''),
+            prescription_ref=str(screening.prescription_id or ''),
+            idempotency_key=approval_key,
+        )
+        override.decision = decision
+        override.pharmacist = pharmacist
+        override.clinical_justification = clinical_justification.strip()
+        override.conditions = conditions.strip()
+        override.expires_at = expires_at
+        override.approved_at = timezone.now()
+        override.status = PosClinicalOverride.Status.APPROVED_WITH_CONDITIONS if override.conditions else PosClinicalOverride.Status.APPROVED
+        override.override_capability = 'clinical.override.approve'
+        override.save()
+        if override.status == PosClinicalOverride.Status.APPROVED:
+            override.finding.resolution_status = PosClinicalFinding.ResolutionStatus.OVERRIDDEN
+            override.finding.resolved_by = pharmacist
+            override.finding.resolved_at = timezone.now()
+        else:
+            override.finding.resolution_status = PosClinicalFinding.ResolutionStatus.OPEN
+            override.finding.resolved_by = None
+            override.finding.resolved_at = None
+        override.finding.save(update_fields=['resolution_status', 'resolved_by', 'resolved_at', 'updated_at'])
+        cls._refresh_screening(screening)
+        cls._audit(override=override, event_type=PosClinicalAuditEvent.EventType.OVERRIDE_RECORDED, actor=pharmacist)
+        return override
+
+    @classmethod
+    @transaction.atomic
+    def reject(cls, *, override, pharmacist, rejection_reason):
+        _require_actor(pharmacist, 'clinical.override.approve', override.tenant_id)
+        override = PosClinicalOverride.all_objects.select_for_update().select_related('finding__screening').get(pk=override.pk)
+        if override.status not in [PosClinicalOverride.Status.REQUESTED, PosClinicalOverride.Status.UNDER_REVIEW]:
+            raise ValidationError('Only a requested override may be rejected.')
+        if not rejection_reason or not rejection_reason.strip():
+            raise ValidationError('Override rejection requires a reason.')
+        override.status = PosClinicalOverride.Status.REJECTED
+        override.rejected_by = pharmacist
+        override.rejected_at = timezone.now()
+        override.rejection_reason = rejection_reason.strip()
+        override.save()
+        cls._audit(override=override, event_type=PosClinicalAuditEvent.EventType.OVERRIDE_REJECTED, actor=pharmacist)
+        return override
+
+    @classmethod
+    @transaction.atomic
+    def revoke(cls, *, override, actor, reason):
+        _require_actor(actor, 'clinical.override.approve', override.tenant_id)
+        override = PosClinicalOverride.all_objects.select_for_update().select_related('finding__screening').get(pk=override.pk)
+        if override.status not in [PosClinicalOverride.Status.APPROVED, PosClinicalOverride.Status.APPROVED_WITH_CONDITIONS]:
+            raise ValidationError('Only an approved override may be revoked.')
+        if not reason or not reason.strip():
+            raise ValidationError('Override revocation requires a reason.')
+        override.status = PosClinicalOverride.Status.REVOKED
+        override.revoked_by = actor
+        override.revoked_at = timezone.now()
+        override.revocation_reason = reason.strip()
+        override.save()
+        override.finding.resolution_status = PosClinicalFinding.ResolutionStatus.OPEN
+        override.finding.resolved_by = None
+        override.finding.resolved_at = None
+        override.finding.save(update_fields=['resolution_status', 'resolved_by', 'resolved_at', 'updated_at'])
+        cls._refresh_screening(override.finding.screening)
+        cls._audit(override=override, event_type=PosClinicalAuditEvent.EventType.OVERRIDE_REVOKED, actor=actor)
+        return override
+
+    @classmethod
+    @transaction.atomic
+    def expire_active(cls, *, screening):
+        now = timezone.now()
+        overrides = list(PosClinicalOverride.all_objects.select_for_update().filter(
+            finding__screening=screening,
+            status__in=[PosClinicalOverride.Status.APPROVED, PosClinicalOverride.Status.APPROVED_WITH_CONDITIONS],
+            expires_at__lte=now,
+        ).select_related('finding'))
+        for override in overrides:
+            override.status = PosClinicalOverride.Status.EXPIRED
+            override.save(update_fields=['status', 'updated_at'])
+            override.finding.resolution_status = PosClinicalFinding.ResolutionStatus.OPEN
+            override.finding.resolved_by = None
+            override.finding.resolved_at = None
+            override.finding.save(update_fields=['resolution_status', 'resolved_by', 'resolved_at', 'updated_at'])
+            cls._audit(override=override, event_type=PosClinicalAuditEvent.EventType.OVERRIDE_EXPIRED)
+        if overrides:
+            cls._refresh_screening(screening)
+        return overrides
+
+    @classmethod
+    @transaction.atomic
+    def consume_for_event(cls, *, screening, actor, event):
+        cls.expire_active(screening=screening)
+        overrides = list(PosClinicalOverride.all_objects.select_for_update().filter(
+            finding__screening=screening,
+            status=PosClinicalOverride.Status.APPROVED,
+        ).select_related('finding'))
+        for override in overrides:
+            override.status = PosClinicalOverride.Status.CONSUMED
+            override.consumed_by = actor
+            override.consumed_at = timezone.now()
+            override.consumed_event = event
+            override.save()
+            cls._audit(override=override, event_type=PosClinicalAuditEvent.EventType.OVERRIDE_CONSUMED, actor=actor, payload={'event': event})
+        return overrides
+
+
 class PosClinicalApprovalService:
     @staticmethod
     def is_approved(*, screening):
@@ -569,6 +828,8 @@ class PosClinicalApprovalService:
         Both the freshness of the context and the authoritative safe_to_proceed
         flag are checked; neither alone is sufficient.
         """
+        PosClinicalOverrideService.expire_active(screening=screening)
+        screening.refresh_from_db()
         _require_current_context(screening, expected_context_hash)
         if screening.status != 'COMPLETE':
             raise ValidationError(f"Clinical screening is {screening.status}; it must be COMPLETE.")
@@ -626,10 +887,11 @@ class PosClinicalApprovalService:
             )
         if screening.expires_at and screening.expires_at <= timezone.now():
             raise ValidationError("The POS clinical screening has expired and must be repeated.")
-        return cls.assert_current_and_safe(
+        cls.assert_current_and_safe(
             screening=screening,
             expected_context_hash=expected_context_hash,
         )
+        return screening
 
     @staticmethod
     def validate_basket_unchanged(*, screening, current_context_hash):

@@ -2017,3 +2017,4 @@ from apps.prescription.payment_models import (  # noqa: E402,F401
     PaymentSettlement,
     PaymentTender,
 )
+from apps.prescription.pos_printing_models import PosPrintDocument, PosPrintJob  # noqa: E402,F401

@@ -103,6 +103,9 @@ CAPABILITY_ALIASES = {
     # to a supervisory capability rather than to dispensing.prepare.
     "pos.label.print": ("dispensing.prepare",),
     "pos.label.reprint": ("dispensing.complete",),
+    "pos.document.print": ("dispensing.prepare",),
+    "pos.document.cancel": ("dispensing.prepare",),
+    "pos.document.reprint": ("dispensing.complete",),
 }
 
 

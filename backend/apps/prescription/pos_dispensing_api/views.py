@@ -11,6 +11,7 @@ from apps.prescription.models import (
     PosDeviceHealthRecord,
     PosShiftRecord,
 )
+from apps.prescription.pos_printing_models import PosPrintJob
 from apps.prescription.pos_dispensing_api.serializers import (
     BatchVerificationRequestSerializer,
     CollectionConfirmRequestSerializer,
@@ -20,6 +21,10 @@ from apps.prescription.pos_dispensing_api.serializers import (
     PartialDispenseRequestSerializer,
     PosDeviceHealthRecordSerializer,
     PosDispensingEpisodeSerializer,
+    PosPrintJobSerializer,
+    PrintCancellationSerializer,
+    PrintReprintSerializer,
+    PrintResultSerializer,
     PosShiftRecordSerializer,
     ProcessPaymentRequestSerializer,
     ShiftEndSerializer,
@@ -36,6 +41,7 @@ from apps.prescription.pos_dispensing_services import (
     PosPaymentOrchestrationService,
     PosShiftService,
 )
+from apps.prescription.pos_printing_services import PosPrintJobService
 
 
 class PosDispensingViewSet(viewsets.ReadOnlyModelViewSet):
@@ -314,3 +320,97 @@ class PosDeviceHealthViewSet(viewsets.ReadOnlyModelViewSet):
             },
         )
         return Response(self.get_serializer(record).data)
+
+
+class PosPrintJobViewSet(viewsets.ReadOnlyModelViewSet):
+    """Durable print-job queue; no direct document or job mutation is exposed."""
+
+    permission_classes = [IsAuthenticated]
+    serializer_class = PosPrintJobSerializer
+
+    def get_queryset(self):
+        tenant_id = get_current_tenant_id() or getattr(self.request, "tenant_id", None)
+        queryset = PosPrintJob.all_objects.filter(tenant_id=tenant_id).select_related("document")
+        status_filter = self.request.query_params.get("status")
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+        branch_id = self.request.query_params.get("branch_id")
+        if branch_id:
+            queryset = queryset.filter(branch_id=branch_id)
+        device_id = self.request.query_params.get("device_id")
+        if device_id:
+            queryset = queryset.filter(device_id=device_id)
+        return queryset.order_by("-created_at")
+
+    @action(detail=True, methods=["post"])
+    def render(self, request, pk=None):
+        try:
+            job = PosPrintJobService.mark_rendered(job=self.get_object(), actor=request.user)
+            return Response(self.get_serializer(job).data)
+        except ValidationError as error:
+            return Response({"error": str(error)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=["post"])
+    def start(self, request, pk=None):
+        try:
+            job = PosPrintJobService.start_attempt(job=self.get_object(), actor=request.user)
+            return Response(self.get_serializer(job).data)
+        except ValidationError as error:
+            return Response({"error": str(error)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=["post"])
+    def result(self, request, pk=None):
+        serializer = PrintResultSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        try:
+            job = PosPrintJobService.record_result(
+                job=self.get_object(),
+                actor=request.user,
+                succeeded=data["succeeded"],
+                failure_code=data.get("failure_code", ""),
+                failure_message=data.get("failure_message", ""),
+                retryable=data.get("retryable", True),
+            )
+            return Response(self.get_serializer(job).data)
+        except ValidationError as error:
+            return Response({"error": str(error)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=["post"])
+    def retry(self, request, pk=None):
+        try:
+            job = PosPrintJobService.retry(job=self.get_object(), actor=request.user)
+            return Response(self.get_serializer(job).data)
+        except ValidationError as error:
+            return Response({"error": str(error)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=["post"])
+    def cancel(self, request, pk=None):
+        serializer = PrintCancellationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            job = PosPrintJobService.cancel(
+                job=self.get_object(),
+                actor=request.user,
+                reason=serializer.validated_data["reason"],
+            )
+            return Response(self.get_serializer(job).data)
+        except ValidationError as error:
+            return Response({"error": str(error)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=["post"])
+    def reprint(self, request, pk=None):
+        serializer = PrintReprintSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        try:
+            job = PosPrintJobService.request_reprint(
+                document=self.get_object().document,
+                actor=request.user,
+                reason=data["reason"],
+                printer=data.get("printer", ""),
+                transport=data.get("transport", PosPrintJob.Transport.SIMULATOR),
+            )
+            return Response(self.get_serializer(job).data, status=status.HTTP_201_CREATED)
+        except ValidationError as error:
+            return Response({"error": str(error)}, status=status.HTTP_400_BAD_REQUEST)

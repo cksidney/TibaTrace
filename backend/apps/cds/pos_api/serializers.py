@@ -82,9 +82,23 @@ class PosClinicalDecisionHistorySerializer(serializers.ModelSerializer):
     def get_pharmacist_name(self, decision):
         return decision.pharmacist.get_full_name() or decision.pharmacist.get_username()
 
+
+class PosClinicalOverrideHistorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PosClinicalOverride
+        fields = [
+            'id', 'decision', 'finding', 'requested_by', 'pharmacist', 'override_reason',
+            'requested_reason', 'supporting_notes', 'clinical_justification', 'conditions',
+            'scope', 'status', 'expires_at', 'approved_at', 'rejected_at', 'rejected_by',
+            'rejection_reason', 'revoked_at', 'revoked_by', 'revocation_reason', 'consumed_at',
+            'consumed_by', 'consumed_event', 'context_hash', 'rule_version', 'transaction_id',
+            'device_id', 'created_at', 'updated_at',
+        ]
+
 class PosClinicalScreeningResultSerializer(serializers.ModelSerializer):
     findings = PosClinicalFindingSerializer(many=True, read_only=True)
     decisions = PosClinicalDecisionHistorySerializer(many=True, read_only=True)
+    overrides = serializers.SerializerMethodField()
     screening_id = serializers.UUIDField(read_only=True)
     blocking_findings = serializers.IntegerField(source='blocking_count', read_only=True)
 
@@ -96,8 +110,14 @@ class PosClinicalScreeningResultSerializer(serializers.ModelSerializer):
             'status', 'highest_severity', 'blocking_findings', 'requires_pharmacist',
             'safe_to_proceed', 'rule_set_version', 'evaluated_at', 'expires_at',
             'cashier', 'offline_state', 'idempotency_key', 'created_at', 'updated_at',
-            'findings', 'decisions'
+            'findings', 'decisions', 'overrides'
         ]
+
+    def get_overrides(self, screening):
+        overrides = PosClinicalOverride.all_objects.filter(
+            finding__screening=screening,
+        ).order_by('-created_at')
+        return PosClinicalOverrideHistorySerializer(overrides, many=True).data
 
 class PosClinicalAcknowledgementSerializer(serializers.Serializer):
     finding_id = serializers.UUIDField(required=True)
@@ -117,13 +137,23 @@ class PosPharmacistDecisionSerializer(serializers.Serializer):
     finding_id = serializers.UUIDField(required=True)
     pharmacist_id = serializers.CharField(required=False, allow_blank=True)
     auth_method = serializers.CharField(required=False, allow_blank=True)
-    decision = serializers.ChoiceField(choices=PosClinicalDecision.Decision.choices, required=True)
+    decision = serializers.ChoiceField(
+        choices=[
+            PosClinicalDecision.Decision.APPROVE,
+            PosClinicalDecision.Decision.APPROVE_WITH_CONDITIONS,
+            PosClinicalDecision.Decision.RETURN_FOR_CORRECTION,
+            PosClinicalDecision.Decision.REJECT,
+            PosClinicalDecision.Decision.CONTACT_PRESCRIBER,
+            PosClinicalDecision.Decision.REQUIRE_ALTERNATIVE,
+            PosClinicalDecision.Decision.REQUEST_MORE_INFORMATION,
+        ],
+        required=True,
+    )
     clinical_justification = serializers.CharField(required=True, allow_blank=False, trim_whitespace=True)
     conditions = serializers.CharField(required=False, allow_blank=True)
     counselling_notes = serializers.CharField(required=False, allow_blank=True)
     prescriber_contact_ref = serializers.CharField(required=False, allow_blank=True)
     follow_up_actions = serializers.CharField(required=False, allow_blank=True)
-    override_reason = serializers.ChoiceField(choices=PosClinicalOverride.OverrideReason.choices, required=False, allow_blank=True, allow_null=True)
     idempotency_key = serializers.CharField(required=True)
     #: The context the client believes it is acting on. The server refuses
     #: the write if the basket has moved on since.
@@ -139,13 +169,27 @@ class PosPharmacistDecisionSerializer(serializers.Serializer):
             )
         return attrs
 
-class PosClinicalOverrideSerializer(serializers.Serializer):
+class PosClinicalOverrideRequestSerializer(serializers.Serializer):
+    screening_id = serializers.UUIDField(required=True)
     finding_id = serializers.UUIDField(required=True)
-    pharmacist_id = serializers.CharField(required=False, allow_blank=True)
     override_reason = serializers.ChoiceField(choices=PosClinicalOverride.OverrideReason.choices, required=True)
-    clinical_justification = serializers.CharField(required=True)
-    override_capability = serializers.CharField(required=True)
+    requested_reason = serializers.CharField(required=True, allow_blank=False, trim_whitespace=True)
+    supporting_notes = serializers.CharField(required=False, allow_blank=True)
     idempotency_key = serializers.CharField(required=True)
-    #: The context the client believes it is acting on. The server refuses
-    #: the write if the basket has moved on since.
     expected_context_hash = serializers.CharField(max_length=64)
+
+
+class PosClinicalOverrideApprovalSerializer(serializers.Serializer):
+    clinical_justification = serializers.CharField(required=True, allow_blank=False, trim_whitespace=True)
+    conditions = serializers.CharField(required=False, allow_blank=True)
+    expires_at = serializers.DateTimeField(required=False, allow_null=True)
+    idempotency_key = serializers.CharField(required=True)
+    expected_context_hash = serializers.CharField(max_length=64)
+
+
+class PosClinicalOverrideRejectionSerializer(serializers.Serializer):
+    rejection_reason = serializers.CharField(required=True, allow_blank=False, trim_whitespace=True)
+
+
+class PosClinicalOverrideRevocationSerializer(serializers.Serializer):
+    revocation_reason = serializers.CharField(required=True, allow_blank=False, trim_whitespace=True)

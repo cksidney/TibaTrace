@@ -2,6 +2,7 @@ import uuid
 from decimal import Decimal
 
 import pytest
+from django.core.exceptions import ValidationError
 from django.utils import timezone
 
 from apps.cds.models import ActiveIngredient, ClinicalKnowledgeRelease, ClinicalKnowledgeRule
@@ -13,10 +14,12 @@ from apps.cds.pos_screening_models import (
 )
 from apps.cds.pos_screening_services import (
     PosClinicalApprovalService,
+    PosClinicalOverrideService,
     PosClinicalScreeningService,
     PosOfflinePackageService,
     PosPharmacistReviewService,
 )
+from apps.identity.models import Role, User, UserRole
 from apps.cds.pos_api.serializers import PosClinicalScreeningRequestSerializer
 from apps.medicines.models import (
     ActiveSubstance,
@@ -46,6 +49,42 @@ def pharmacist_user(clinical_user):
 @pytest.fixture
 def cashier_user(cashier_user):
     return cashier_user
+
+
+@pytest.fixture
+def override_requester(tenant):
+    user = User.objects.create_user(
+        username="override-requester",
+        email="override-requester@example.test",
+        password="test-password-strong",
+        tenant=tenant,
+    )
+    role = Role.all_objects.create(
+        tenant=tenant,
+        code="OVERRIDE_REQUESTER",
+        name="Override requester",
+        capabilities=["prescriptions.approve", "cds.override"],
+    )
+    UserRole.all_objects.create(tenant=tenant, user=user, role=role)
+    return user
+
+
+@pytest.fixture
+def override_approver(tenant):
+    user = User.objects.create_user(
+        username="override-approver",
+        email="override-approver@example.test",
+        password="test-password-strong",
+        tenant=tenant,
+    )
+    role = Role.all_objects.create(
+        tenant=tenant,
+        code="OVERRIDE_APPROVER",
+        name="Override approver",
+        capabilities=["cds.override"],
+    )
+    UserRole.all_objects.create(tenant=tenant, user=user, role=role)
+    return user
 
 @pytest.fixture
 def active_substance(tenant):
@@ -335,15 +374,132 @@ def test_submit_pharmacist_rejection(tenant, basket_lines, cashier_user, pharmac
     assert dec.decision == "REJECT"
     assert not screening.safe_to_proceed
 
-def test_pharmacist_override_with_justification(tenant, basket_lines, cashier_user, pharmacist_user, drug_drug_rule):
+def test_override_requires_separate_request_and_approval(
+    tenant,
+    basket_lines,
+    cashier_user,
+    override_requester,
+    override_approver,
+    drug_drug_rule,
+):
     screening = PosClinicalScreeningService.evaluate(
         tenant=tenant, transaction_id="tx-9", device_id="dev-1", basket_lines=basket_lines, cashier=cashier_user
     )
     finding = PosClinicalFinding.all_objects.filter(screening=screening).first()
-    dec = PosPharmacistReviewService.submit_decision(
-        screening=screening, finding_id=finding.id, pharmacist=pharmacist_user, decision="AUTHORIZED_OVERRIDE", clinical_justification="Ok", expected_context_hash=screening.context_hash, idempotency_key="idemp-3"
+    override = PosClinicalOverrideService.request(
+        screening=screening,
+        finding_id=finding.id,
+        requester=override_requester,
+        override_reason="CLINICALLY_JUSTIFIED",
+        requested_reason="Prescriber confirmed the intended combination.",
+        idempotency_key="override-request-1",
+        expected_context_hash=screening.context_hash,
     )
-    assert PosClinicalOverride.all_objects.filter(decision=dec).exists()
+    approved = PosClinicalOverrideService.approve(
+        override=override,
+        pharmacist=override_approver,
+        clinical_justification="Reviewed the documented indication and monitoring plan.",
+        idempotency_key="override-approval-1",
+        expected_context_hash=screening.context_hash,
+    )
+    screening.refresh_from_db()
+    finding.refresh_from_db()
+    assert approved.status == PosClinicalOverride.Status.APPROVED
+    assert approved.decision_id
+    assert finding.resolution_status == PosClinicalFinding.ResolutionStatus.OVERRIDDEN
+    assert screening.safe_to_proceed is True
+
+
+def test_override_cannot_be_approved_by_its_requester(
+    tenant,
+    basket_lines,
+    cashier_user,
+    override_requester,
+    drug_drug_rule,
+):
+    screening = PosClinicalScreeningService.evaluate(
+        tenant=tenant, transaction_id="tx-override-sod", device_id="dev-1", basket_lines=basket_lines, cashier=cashier_user
+    )
+    finding = PosClinicalFinding.all_objects.filter(screening=screening).first()
+    override = PosClinicalOverrideService.request(
+        screening=screening,
+        finding_id=finding.id,
+        requester=override_requester,
+        override_reason="CLINICALLY_JUSTIFIED",
+        requested_reason="Escalated for documented clinical assessment.",
+        idempotency_key="override-request-sod",
+        expected_context_hash=screening.context_hash,
+    )
+    with pytest.raises(ValidationError, match="differ from the requesting operator"):
+        PosClinicalOverrideService.approve(
+            override=override,
+            pharmacist=override_requester,
+            clinical_justification="This must be rejected by separation of duties.",
+            idempotency_key="override-approval-sod",
+            expected_context_hash=screening.context_hash,
+        )
+
+
+def test_expired_override_reopens_the_clinical_gate(
+    tenant,
+    basket_lines,
+    cashier_user,
+    override_requester,
+    override_approver,
+    drug_drug_rule,
+):
+    screening = PosClinicalScreeningService.evaluate(
+        tenant=tenant, transaction_id="tx-override-expiry", device_id="dev-1", basket_lines=basket_lines, cashier=cashier_user
+    )
+    finding = PosClinicalFinding.all_objects.filter(screening=screening).first()
+    override = PosClinicalOverrideService.request(
+        screening=screening,
+        finding_id=finding.id,
+        requester=override_requester,
+        override_reason="CLINICALLY_JUSTIFIED",
+        requested_reason="Escalated for time-bounded pharmacist assessment.",
+        idempotency_key="override-request-expiry",
+        expected_context_hash=screening.context_hash,
+    )
+    PosClinicalOverrideService.approve(
+        override=override,
+        pharmacist=override_approver,
+        clinical_justification="Approved only for the current transaction window.",
+        expires_at=timezone.now() + timezone.timedelta(minutes=1),
+        idempotency_key="override-approval-expiry",
+        expected_context_hash=screening.context_hash,
+    )
+    override.refresh_from_db()
+    override.expires_at = timezone.now() - timezone.timedelta(seconds=1)
+    override.save(update_fields=["expires_at", "updated_at"])
+
+    with pytest.raises(ValidationError, match="unresolved blocking findings"):
+        PosClinicalApprovalService.assert_current_and_safe(
+            screening=screening,
+            expected_context_hash=screening.context_hash,
+        )
+
+    override.refresh_from_db()
+    finding.refresh_from_db()
+    assert override.status == PosClinicalOverride.Status.EXPIRED
+    assert finding.resolution_status == PosClinicalFinding.ResolutionStatus.OPEN
+
+
+def test_direct_override_decision_is_rejected(tenant, basket_lines, cashier_user, pharmacist_user, drug_drug_rule):
+    screening = PosClinicalScreeningService.evaluate(
+        tenant=tenant, transaction_id="tx-direct-override", device_id="dev-1", basket_lines=basket_lines, cashier=cashier_user
+    )
+    finding = PosClinicalFinding.all_objects.filter(screening=screening).first()
+    with pytest.raises(ValidationError, match="governed override request"):
+        PosPharmacistReviewService.submit_decision(
+            screening=screening,
+            finding_id=finding.id,
+            pharmacist=pharmacist_user,
+            decision="AUTHORIZED_OVERRIDE",
+            clinical_justification="Direct override is intentionally unavailable.",
+            expected_context_hash=screening.context_hash,
+            idempotency_key="direct-override",
+        )
 
 def test_override_requires_capability():
     pass

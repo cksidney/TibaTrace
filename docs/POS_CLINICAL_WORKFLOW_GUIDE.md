@@ -32,10 +32,14 @@ findings and a required action. Existing guarded payment and supply transitions
 must use that server result. A cashier must not use an “ignore” or “continue
 anyway” action.
 
-Pharmacist decision and scoped override models/services already exist on the
-backend. The native end-to-end review and override workflow is still incomplete
-and is not certified. Until it is complete, unresolved findings must remain
-blocked rather than being worked around in the client.
+Windows and Android present the same native pharmacist-review workspace and
+immutable decision history. A scoped override is a governed lifecycle, not a
+direct bypass: an authorised requester records the rationale and a different
+authorised reviewer starts and approves or rejects it against the current
+screening hash. The server records expiry, conditions, revocation and the
+controlled event that consumes an approval. Conditions, expiry or revocation
+leave or return the finding to a blocked state. Clients must never offer an
+ignore or continue-anyway action.
 
 ## Offline use
 
@@ -46,6 +50,8 @@ current online screening without valid package evidence.
 
 ## Release status
 
-The clinical banner foundation is retained, but it is not a completed clinical
-workflow certification. See `docs/POS_UI_UX_CERTIFICATION.md` for the current
-blocked release decision and remaining evidence requirements.
+Prescription-dispensing review and the governed override lifecycle are
+implemented, but this is not a complete clinical workflow certification. Retail
+medicine screening, all invalidation paths and restart/resume evidence remain
+outstanding. See `docs/POS_UI_UX_CERTIFICATION.md` for the current blocked
+release decision and remaining evidence requirements.

@@ -105,7 +105,14 @@ class PosDispensingQueueService:
                 )
             from apps.cds.pos_screening_services import PosClinicalApprovalService
 
-            PosClinicalApprovalService.assert_dispensing_episode_safe(episode=episode)
+            screening = PosClinicalApprovalService.assert_dispensing_episode_safe(episode=episode)
+            from apps.cds.pos_screening_services import PosClinicalOverrideService
+
+            PosClinicalOverrideService.consume_for_event(
+                screening=screening,
+                actor=actor,
+                event=f"TRANSITION_{new_status}",
+            )
 
         episode.status = new_status
         if notes:
@@ -273,8 +280,16 @@ class PosPaymentOrchestrationService:
         # shift has since closed. Re-validating current authority here would
         # turn a safe retry into an ambiguous outcome after a network failure.
         if existing_settlement:
+            receipt = PosPaymentOrchestrationService._issue_receipt_safely(
+                episode=episode,
+                settlement=existing_settlement,
+                actor=cashier,
+            )
             return PosPaymentOrchestrationService._response(
-                episode=episode, settlement=existing_settlement, replayed=True
+                episode=episode,
+                settlement=existing_settlement,
+                replayed=True,
+                receipt=receipt,
             )
 
         if episode.payment_state == "PAID":
@@ -429,8 +444,17 @@ class PosPaymentOrchestrationService:
             },
         )
 
+        receipt = PosPaymentOrchestrationService._issue_receipt_safely(
+            episode=episode,
+            settlement=settlement,
+            actor=cashier,
+        )
+
         return PosPaymentOrchestrationService._response(
-            episode=episode, settlement=settlement, replayed=False
+            episode=episode,
+            settlement=settlement,
+            replayed=False,
+            receipt=receipt,
         )
 
     @staticmethod
@@ -438,7 +462,34 @@ class PosPaymentOrchestrationService:
         return f"{prefix}{idempotency_key}"
 
     @staticmethod
-    def _response(*, episode, settlement, replayed):
+    def _issue_receipt_safely(*, episode, settlement, actor):
+        """Queue a receipt without allowing print infrastructure to undo payment.
+
+        The ledger settlement has already been recorded. A failed queue write is
+        visible to the operator and recoverable through the Print Centre, but
+        it must never make a settled transaction look unpaid or replay its
+        tender collection.
+        """
+        from apps.prescription.pos_printing_services import PosPrintDocumentService
+
+        try:
+            with transaction.atomic():
+                document, job, _ = PosPrintDocumentService.issue_receipt_for_settlement(
+                    episode=episode,
+                    settlement=settlement,
+                    actor=actor,
+                )
+            return {
+                "document_number": document.document_number,
+                "document_id": str(document.id),
+                "print_job_id": str(job.id) if job else "",
+                "status": job.status if job else "QUEUED",
+            }
+        except Exception:
+            return {"status": "QUEUE_UNAVAILABLE"}
+
+    @staticmethod
+    def _response(*, episode, settlement, replayed, receipt=None):
         tender = settlement.payment_tender
         return {
             "success": True,
@@ -450,6 +501,7 @@ class PosPaymentOrchestrationService:
             "tender_type": tender.tender_type,
             "paid_amount": str(settlement.amount),
             "replayed": replayed,
+            "receipt": receipt or {"status": "QUEUE_UNAVAILABLE"},
         }
 
     @staticmethod
