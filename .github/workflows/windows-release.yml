@@ -1,0 +1,178 @@
+# Signed Windows installer for the TibaTrace POS terminal.
+#
+# Separate from ci.yml on purpose. CI builds an unsigned package on every push;
+# this produces the artefact a pharmacy actually installs, and it touches a code
+# signing certificate. Those want different triggers and different review.
+#
+# The certificate never exists on disk outside the runner's own temporary
+# directory, is never echoed, and is deleted in a step that runs even when the
+# build fails.
+
+name: Windows release
+
+on:
+  workflow_dispatch:
+    inputs:
+      sign:
+        description: "Sign the installer (requires the signing secrets)"
+        type: boolean
+        default: true
+  push:
+    tags:
+      - "pos-windows-v*"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build shared package
+        run: npm run build --workspace @dawatrace/shared
+
+      # The gates the installer should not be built past. A signed installer of
+      # a broken build is worse than no installer: it carries the publisher's
+      # name and installs without a warning.
+      - name: Typecheck
+        run: npm run typecheck --workspace @dawatrace/pos-windows
+
+      - name: Unit tests
+        run: npm run test --workspace @dawatrace/pos-windows
+
+      - name: Decode signing certificate
+        id: cert
+        if: inputs.sign != false
+        shell: pwsh
+        env:
+          WINDOWS_SIGNING_PFX_BASE64: ${{ secrets.WINDOWS_SIGNING_PFX_BASE64 }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_SIGNING_PFX_BASE64)) {
+            Write-Error "WINDOWS_SIGNING_PFX_BASE64 is not set. Run with sign=false to produce an unsigned build."
+            exit 1
+          }
+          # RUNNER_TEMP only. It is outside the workspace, so it cannot be picked
+          # up by a checkout, an artifact upload or a stray `git add`.
+          $pfx = Join-Path $env:RUNNER_TEMP 'tibatrace-signing.pfx'
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_SIGNING_PFX_BASE64))
+          # The path is written to the step output; the contents never are.
+          "pfx=$pfx" >> $env:GITHUB_OUTPUT
+          Write-Host "Certificate decoded to the runner temp directory."
+
+      - name: Build signed installer
+        if: inputs.sign != false
+        shell: pwsh
+        env:
+          # electron-builder reads the certificate from these two variables.
+          # GitHub masks secrets in logs, and neither is ever echoed here.
+          CSC_LINK: ${{ steps.cert.outputs.pfx }}
+          CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_SIGNING_PFX_PASSWORD }}
+          # Fail rather than quietly producing an unsigned file. A build that
+          # silently skips signing is how an unsigned installer reaches a till.
+          CSC_IDENTITY_AUTO_DISCOVERY: "true"
+        run: npm run dist:win --workspace @dawatrace/pos-windows
+
+      - name: Build unsigned installer
+        if: inputs.sign == false
+        run: npm run dist:win --workspace @dawatrace/pos-windows
+
+      - name: Remove signing certificate
+        # always(): the certificate must not survive a failed build.
+        if: always()
+        shell: pwsh
+        run: |
+          $pfx = Join-Path $env:RUNNER_TEMP 'tibatrace-signing.pfx'
+          if (Test-Path $pfx) {
+            Remove-Item $pfx -Force
+            Write-Host "Signing certificate removed from the runner."
+          }
+
+      - name: Verify Authenticode signature
+        if: inputs.sign != false
+        shell: pwsh
+        run: |
+          $exe = 'apps/pos-windows/release/TibaTrace-POS-Setup-1.0.0.exe'
+          if (-not (Test-Path $exe)) { Write-Error "Installer not found at $exe"; exit 1 }
+
+          # Both checks, because they answer different questions.
+          # Get-AuthenticodeSignature reports the chain as this machine trusts
+          # it; signtool verifies against the Authenticode policy a client
+          # applies. A file can satisfy one and not the other.
+          $sig = Get-AuthenticodeSignature $exe
+          Write-Host "Get-AuthenticodeSignature status : $($sig.Status)"
+          Write-Host "Signer                           : $($sig.SignerCertificate.Subject)"
+          Write-Host "Timestamp                        : $($sig.TimeStamperCertificate.Subject)"
+
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -Filter signtool.exe -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match 'x64' } | Select-Object -First 1
+          if ($signtool) {
+            & $signtool.FullName verify /pa /v $exe
+            if ($LASTEXITCODE -ne 0) { Write-Error "signtool verify failed."; exit 1 }
+          } else {
+            Write-Error "signtool.exe not found on the runner; signature not independently verified."
+            exit 1
+          }
+
+          if ($sig.Status -ne 'Valid') { Write-Error "Signature status is $($sig.Status)."; exit 1 }
+          # An unstamped signature expires with the certificate, including on
+          # copies already installed.
+          if (-not $sig.TimeStamperCertificate) { Write-Error "Installer is not timestamped."; exit 1 }
+
+      - name: Generate checksums and release manifest
+        shell: pwsh
+        run: |
+          Set-Location apps/pos-windows/release
+          $exe = 'TibaTrace-POS-Setup-1.0.0.exe'
+          $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLower()
+
+          # sha256sum-compatible, so `sha256sum -c` verifies it unchanged.
+          "$hash  $exe" | Out-File -Encoding ascii SHA256SUMS.txt
+
+          $signed = $false
+          $signer = ''
+          try {
+            $sig = Get-AuthenticodeSignature $exe
+            $signed = ($sig.Status -eq 'Valid')
+            if ($sig.SignerCertificate) { $signer = $sig.SignerCertificate.Subject }
+          } catch { }
+
+          @{
+            product      = 'TibaTrace POS'
+            appId        = 'com.esenai.tibatrace.pos'
+            publisher    = 'Esenai Group Ltd'
+            version      = '1.0.0'
+            architecture = 'x64'
+            installer    = $exe
+            sha256       = $hash
+            sizeBytes    = (Get-Item $exe).Length
+            signed       = $signed
+            signer       = $signer
+            commit       = $env:GITHUB_SHA
+            runId        = $env:GITHUB_RUN_ID
+            builtAt      = (Get-Date).ToUniversalTime().ToString('o')
+          } | ConvertTo-Json -Depth 3 | Out-File -Encoding utf8 release-manifest.json
+
+          Get-Content SHA256SUMS.txt
+          Get-Content release-manifest.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tibatrace-pos-windows-installer
+          path: |
+            apps/pos-windows/release/TibaTrace-POS-Setup-1.0.0.exe
+            apps/pos-windows/release/SHA256SUMS.txt
+            apps/pos-windows/release/release-manifest.json
+          retention-days: 90
+          if-no-files-found: error

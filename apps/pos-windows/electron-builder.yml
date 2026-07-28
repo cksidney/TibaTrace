@@ -1,0 +1,88 @@
+# Windows packaging for the TibaTrace POS terminal.
+#
+# NSIS is the customer installer: a till is set up by a pharmacy technician who
+# double-clicks a file, not by an administrator running a sideload script. MSIX
+# is kept because the existing CI job already publishes one, and dropping it
+# would break whatever consumes that artifact.
+#
+# Signing is driven entirely by environment variables so the certificate never
+# appears in this file or anywhere else in the repository. See
+# .github/workflows/windows-release.yml for how they are populated.
+
+# Pinned rather than inferred. electron-builder resolves the version from the
+# installed module, which fails when the binary has not been downloaded -- and
+# a range like ^43.2.0 would let two builds of "1.0.0" ship different runtimes.
+electronVersion: "43.2.0"
+
+appId: com.esenai.tibatrace.pos
+productName: TibaTrace POS
+copyright: © Esenai Group Ltd
+
+directories:
+  output: release
+  buildResources: build
+
+# The renderer and main bundles, plus the runtime dependencies they resolve.
+# Source and test files are deliberately absent: an installer is not a place to
+# ship a test suite.
+files:
+  - dist/**/*
+  - package.json
+  - "!**/*.map"
+  - "!**/*.ts"
+  - "!**/test-results/**"
+  - "!**/playwright-report/**"
+
+# The shared workspace package is a symlink under npm workspaces, which
+# electron-builder will not follow into the app bundle unless it is named here.
+extraMetadata:
+  main: dist/main/main.js
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  # Only these two are set here. The certificate itself and its password come
+  # from CSC_LINK and CSC_KEY_PASSWORD in the environment, which electron-builder
+  # reads directly -- naming them in this file would put a path to a secret in
+  # version control.
+  verifyUpdateCodeSignature: false
+  # electron-builder 25 moved these under signtoolOptions; the top-level forms
+  # still work but warn, and warnings that are ignored become breakages at the
+  # next major.
+  signtoolOptions:
+    # Matches the Authenticode subject on the signing certificate. A mismatch
+    # makes SmartScreen treat every install as a first sighting of an unknown
+    # publisher, which is the reputation the certificate exists to build.
+    publisherName: Esenai Group Ltd
+    signingHashAlgorithms:
+      - sha256
+    # RFC 3161 timestamping. Without it every installer stops validating the day
+    # the certificate expires, including copies already on tills.
+    timeStampServer: http://timestamp.digicert.com
+
+nsis:
+  oneClick: false
+  perMachine: true
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: TibaTrace POS
+  # Fixed rather than templated, because the release manifest, the checksum file
+  # and the operations runbook all name this exact file.
+  artifactName: TibaTrace-POS-Setup-${version}.exe
+  uninstallDisplayName: TibaTrace POS
+  # A till is shared equipment. Installing per-machine means the next operator to
+  # sign in finds the terminal already there rather than a blank desktop.
+  runAfterFinish: false
+
+# MSIX is deliberately not built here.
+#
+# electron-builder's Windows store target is `appx`, which produces a .appx --
+# not the .msix that scripts/package_pos_windows.ps1 already builds and that the
+# pos-windows CI job already publishes. Adding a second, different store package
+# would leave two artifacts claiming to be the same thing.
+#
+# So electron-builder owns the NSIS customer installer and the PowerShell script
+# keeps MSIX. Requirement 6 asks for MSIX only if the existing release workflow
+# needs it; it does, and it already has one.
