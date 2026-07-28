@@ -550,47 +550,130 @@ export interface TenantInput {
 export const loadTenants = (signal?: AbortSignal) =>
   getCollection<TenantWorkspace>('/api/tenancy/tenants/', signal);
 
-export const createTenant = (
-  values: TenantInput,
-  csrfToken: string,
-) => mutateJson<TenantWorkspace>(
-  '/api/tenancy/tenants/',
-  'POST',
-  values,
-  csrfToken,
-);
+/* ── pharmacy network ─────────────────────────────────────────────────────── */
 
-export const updateTenant = (
-  tenantId: string,
-  values: TenantInput,
-  csrfToken: string,
-) => mutateJson<TenantWorkspace>(
-  `/api/tenancy/tenants/${encodeURIComponent(tenantId)}/`,
-  'PATCH',
-  values,
-  csrfToken,
-);
+/**
+ * A pharmacy's regulatory and commercial record.
+ *
+ * `licence_is_current` is derived server-side rather than computed here: an
+ * expiry is only meaningful against the pharmacy's own date, and the client's
+ * clock is not that.
+ */
+export interface PharmacyProfile {
+  readonly legal_name: string;
+  readonly business_registration_number: string;
+  readonly kra_pin: string;
+  readonly ppb_premises_licence_number: string;
+  readonly ppb_licence_expiry: string | null;
+  readonly superintendent_name: string;
+  readonly superintendent_ppb_number: string;
+  readonly primary_contact_name: string;
+  readonly primary_contact_email: string;
+  readonly primary_contact_phone: string;
+  readonly onboarding_started_at: string | null;
+  readonly activated_at: string | null;
+  readonly terminated_at: string | null;
+  readonly notes: string;
+  readonly licence_is_current: boolean;
+  readonly days_until_licence_expiry: number | null;
+}
 
-export const suspendTenant = (
-  tenantId: string,
-  reason: string,
-  csrfToken: string,
-) => mutateJson<TenantWorkspace>(
-  `/api/tenancy/tenants/${encodeURIComponent(tenantId)}/suspend/`,
-  'POST',
-  { reason },
-  csrfToken,
-);
+export type PharmacyStatus =
+  | 'PROSPECT' | 'ONBOARDING' | 'ACTIVE' | 'SUSPENDED' | 'TERMINATED';
 
-export const activateTenant = (
-  tenantId: string,
+export interface Pharmacy {
+  readonly id: string;
+  readonly name: string;
+  readonly slug: string;
+  readonly status: PharmacyStatus;
+  readonly country_code: string;
+  readonly time_zone: string;
+  readonly created_at: string;
+  readonly profile: PharmacyProfile | null;
+  /**
+   * What this pharmacy may legitimately do next, decided by the server.
+   * The UI renders exactly these, so a button can never offer a transition the
+   * service will refuse.
+   */
+  readonly available_transitions: readonly PharmacyStatus[];
+  readonly branch_count: number;
+}
+
+export interface PharmacyLifecycleEvent {
+  readonly id: string;
+  readonly from_state: string;
+  readonly to_state: string;
+  /** Null means the platform acted, not that nobody is accountable. */
+  readonly actor_name: string | null;
+  readonly reason: string;
+  readonly occurred_at: string;
+  readonly context: Readonly<Record<string, unknown>>;
+}
+
+export interface PharmacyRegistrationInput {
+  readonly name: string;
+  readonly slug: string;
+  readonly legal_name: string;
+  readonly country_code?: string;
+  readonly time_zone?: string;
+  readonly business_registration_number?: string;
+  readonly ppb_premises_licence_number?: string;
+  readonly ppb_licence_expiry?: string | null;
+  readonly superintendent_name?: string;
+  readonly superintendent_ppb_number?: string;
+  readonly primary_contact_name?: string;
+  readonly primary_contact_email?: string;
+  readonly primary_contact_phone?: string;
+}
+
+export interface BeginOnboardingInput {
+  readonly organization_name: string;
+  readonly organization_code: string;
+  readonly branch_name: string;
+  readonly branch_code: string;
+}
+
+const pharmacyPath = (id: string, suffix = '') =>
+  `/api/pharmacy-network/pharmacies/${encodeURIComponent(id)}/${suffix}`;
+
+export const loadPharmacies = (signal?: AbortSignal) =>
+  getCollection<Pharmacy>('/api/pharmacy-network/pharmacies/', signal);
+
+export const loadPharmacyLifecycle = (id: string, signal?: AbortSignal) =>
+  getCollection<PharmacyLifecycleEvent>(pharmacyPath(id, 'lifecycle/'), signal);
+
+/** Registers a PROSPECT. It cannot trade until provisioned and licensed. */
+export const registerPharmacy = (
+  values: PharmacyRegistrationInput,
   csrfToken: string,
-) => mutateJson<TenantWorkspace>(
-  `/api/tenancy/tenants/${encodeURIComponent(tenantId)}/activate/`,
-  'POST',
-  {},
-  csrfToken,
-);
+) => mutateJson<Pharmacy>('/api/pharmacy-network/pharmacies/', 'POST', values, csrfToken);
+
+/** Provisions the organization and first branch, and moves to ONBOARDING. */
+export const beginPharmacyOnboarding = (
+  id: string,
+  values: BeginOnboardingInput,
+  csrfToken: string,
+) => mutateJson<Pharmacy>(pharmacyPath(id, 'begin-onboarding/'), 'POST', values, csrfToken);
+
+/** Refused unless the premises licence is current and a superintendent is named. */
+export const activatePharmacy = (id: string, reason: string, csrfToken: string) =>
+  mutateJson<Pharmacy>(pharmacyPath(id, 'activate/'), 'POST', { reason }, csrfToken);
+
+export const suspendPharmacy = (id: string, reason: string, csrfToken: string) =>
+  mutateJson<Pharmacy>(pharmacyPath(id, 'suspend/'), 'POST', { reason }, csrfToken);
+
+export const reinstatePharmacy = (id: string, reason: string, csrfToken: string) =>
+  mutateJson<Pharmacy>(pharmacyPath(id, 'reinstate/'), 'POST', { reason }, csrfToken);
+
+export const terminatePharmacy = (id: string, reason: string, csrfToken: string) =>
+  mutateJson<Pharmacy>(pharmacyPath(id, 'terminate/'), 'POST', { reason }, csrfToken);
+
+/** Routine paperwork: recording a renewed licence is not a state change. */
+export const updatePharmacyProfile = (
+  id: string,
+  values: Partial<PharmacyProfile>,
+  csrfToken: string,
+) => mutateJson<Pharmacy>(pharmacyPath(id, 'profile/'), 'PATCH', values, csrfToken);
 
 /* ── procurement cockpit ──────────────────────────────────────────────────── */
 

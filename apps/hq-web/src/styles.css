@@ -4697,3 +4697,64 @@ td .digest {
   font-size: 0.75rem;
   line-height: 1.4;
 }
+
+/* ── pharmacy lifecycle ───────────────────────────────────────────────────── */
+
+/* Five states, five tones. A pharmacy that has not gone live yet and one that
+   has been stopped need different responses, so they must not look alike. */
+.pharmacy-state {
+  display: inline-block;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.state-prospect {
+  color: var(--muted);
+  background: var(--line-soft);
+}
+
+.state-onboarding {
+  color: var(--violet-700);
+  background: var(--violet-100);
+}
+
+.state-active {
+  color: var(--teal-700);
+  background: var(--teal-100);
+}
+
+.state-suspended {
+  color: var(--amber-700);
+  background: var(--amber-100);
+}
+
+/* Terminated is deliberately the most severe: it cannot be undone. */
+.state-terminated {
+  color: var(--danger-ink);
+  background: var(--red-100);
+}
+
+/* Licence currency. "Not recorded" is not a neutral absence -- an unlicensed
+   pharmacy may not dispense -- so it reads as a problem rather than a blank. */
+.licence-flag {
+  display: inline-block;
+  margin-top: 3px;
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.licence-current {
+  color: var(--teal-700);
+}
+
+.licence-expiring {
+  color: var(--amber-700);
+}
+
+.licence-expired,
+.licence-missing {
+  color: var(--danger-ink);
+}
