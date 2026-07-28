@@ -24,12 +24,25 @@
 
 [CmdletBinding()]
 param(
-    [string] $PackageRoot = $PSScriptRoot,
+    [string] $PackageRoot,
     [switch] $SkipInstall
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+
+# Resolved here, not as a parameter default. Windows PowerShell 5.1 -- which is
+# what the guide tells operators to use, and what every Windows terminal has --
+# has not populated $PSScriptRoot yet while parameter defaults are being
+# evaluated, so `$PackageRoot = $PSScriptRoot` in the param block silently
+# yields an empty string and every path built from it fails.
+if ([string]::IsNullOrWhiteSpace($PackageRoot)) { $PackageRoot = $PSScriptRoot }
+if ([string]::IsNullOrWhiteSpace($PackageRoot) -and $MyInvocation.MyCommand.Path) {
+    $PackageRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+}
+if ([string]::IsNullOrWhiteSpace($PackageRoot)) {
+    throw 'Could not determine the package directory. Pass it explicitly: -PackageRoot <path to the extracted folder>.'
+}
 
 # Injected at package time from the certificate that actually signed this
 # installer. A literal here rather than a value read from the package: reading
