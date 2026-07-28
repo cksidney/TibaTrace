@@ -18,7 +18,7 @@ must not be interpreted as a production certification.
 - `npm run typecheck --workspace=@dawatrace/shared` — passed.
 - `npm run typecheck --workspace=@dawatrace/pos-windows` — passed.
 - `npm run typecheck --workspace=@dawatrace/pos-android` — passed.
-- `npm test --workspace=@dawatrace/shared` — 163 tests passed.
+- `npm test --workspace=@dawatrace/shared` — 165 tests passed.
 - `npm test --workspace=@dawatrace/pos-windows` — 92 tests passed.
 - `npm test --workspace=@dawatrace/pos-android` — 38 tests passed.
 - `.venv/bin/pytest -c backend/pytest.ini backend/tests/test_pos_shift_api.py -q`
@@ -29,9 +29,9 @@ must not be interpreted as a production certification.
   — passed.
 - `npm run build --workspace=@dawatrace/pos-windows` — passed.
 - `npm run build --workspace=@dawatrace/pos-android` — passed.
-- `npm run visual --workspace=@dawatrace/pos-windows` — local structural
-  checks pass at `1280×900` and `1024×768`; CI-only pixel baselines are skipped
-  locally and remain awaiting review.
+- `npm run visual --workspace=@dawatrace/pos-windows` — local structural and
+  no-clipping checks pass for all 33 scenarios at `1280×900` and `1024×768`;
+  CI-only pixel baselines are skipped locally and remain awaiting review.
 - `./.venv/bin/pytest -c backend/pytest.ini --no-migrations`
   `backend/tests/test_pos_enterprise_dispensing.py::test_payment_orchestration_refuses_mpesa_reference_without_provider_confirmation`
   `backend/tests/test_pos_dispensing_controls.py::test_replayed_payment_does_not_charge_twice`
@@ -49,6 +49,13 @@ must not be interpreted as a production certification.
   `backend/tests/test_pos_label_reprint.py -q` — **36 passed** (2026-07-28).
 - `./.venv/bin/python backend/manage.py makemigrations --check --dry-run` and
   `./.venv/bin/python backend/manage.py check` — passed (2026-07-28).
+- `./.venv/bin/pytest -c backend/pytest.ini --no-migrations`
+  `backend/tests/test_pos_clinical_screening.py`
+  `backend/tests/test_pos_clinical_authority.py`
+  `backend/tests/test_pos_enterprise_dispensing.py`
+  `backend/tests/test_pos_dispensing_controls.py`
+  `backend/tests/test_pos_printing.py`
+  `backend/tests/test_pos_label_reprint.py -q` — **114 passed** (2026-07-28).
 
 The first backend test attempt against `/Users/sidneykibet/venv` was not used
 as evidence because that virtual environment runs Django 4.2.11, while this
@@ -59,7 +66,7 @@ repository requires the Django 5.1 API. The repository `.venv` runs Django
 
 | # | Control | Status | Evidence / release implication |
 |---:|---|---|---|
-| 1 | Native POS product scope defined | Partial | Clinical dispensing, an initial native retail basket and simulator-scoped receipt queue are implemented; register controls, physical print and Sync Centre remain. |
+| 1 | Native POS product scope defined | Partial | Clinical dispensing, an initial native retail basket, simulator-scoped receipt queue and native Sync Centre are implemented; register controls and physical print remain. |
 | 2 | Shared design tokens | Implemented | Shared tokens are used by Windows and Android. |
 | 3 | Windows authenticated session | Implemented | Secure Electron session and sign-out flow exist. |
 | 4 | Android authenticated session | Implemented | Keystore-backed session is required. |
@@ -70,7 +77,7 @@ repository requires the Django 5.1 API. The repository `.venv` runs Django
 | 9 | Persistent shift context | Implemented | Read-only active-shift status is shown. |
 | 10 | Persistent business-date context | Implemented | Read from the authoritative business-day API. |
 | 11 | Connectivity indicator | Partial | API failure is shown; no device network telemetry adapter exists. |
-| 12 | Sync indicator | Partial | Latest recorded register synchronisation is shown; no Sync Centre exists. |
+| 12 | Sync indicator | Partial | Native Sync Centre groups operational, clinical, durable-action and print status with server refresh; retail remains online-only. |
 | 13 | Printer indicator | Partial | Native Print Centre shows a durable per-device/branch queue; device health and physical transport adapters remain absent. |
 | 14 | Operational notifications | Partial | Unresolved operational context is visible; no notification centre exists. |
 | 15 | Lock POS action | Absent | No workstation lock UI is implemented. |
@@ -79,8 +86,8 @@ repository requires the Django 5.1 API. The repository `.venv` runs Django
 | 18 | Pre-sale register enforcement | Partial | New retail and clinical payment service actions resolve device, register, session, shift and business day server-side; legacy operational paths remain to be migrated. |
 | 19 | Branch assignment enforcement | Implemented | Retail and clinical payment actions reject tenant, branch, device and session mismatches on the server. |
 | 20 | Previous Z verification | Blocked | Native app does not consume or enforce Z closure. |
-| 21 | Windows 1366×768 validation | Not validated | No full-screen visual test at mandated resolution. |
-| 22 | Windows 1920×1080 validation | Not validated | No full-screen visual test at mandated resolution. |
+| 21 | Windows 1366×768 validation | Partial | Deterministic component scenarios have structural/no-clipping coverage at the smaller `1024×768` till profile; no full workflow capture exists. |
+| 22 | Windows 1920×1080 validation | Partial | Deterministic component scenarios have structural/no-clipping coverage at `1280×900`; no full workflow capture exists. |
 | 23 | Android tablet layout validation | Not validated | No device or emulator validation was performed. |
 | 24 | Desktop keyboard workflow | Partial | Existing keyboard helpers are tested; no full POS key map exists. |
 | 25 | Barcode scanner workflow | Partial | Windows and Android accept scan input and resolve active tenant barcode mappings; physical scanner validation remains outstanding. |
@@ -117,9 +124,9 @@ repository requires the Django 5.1 API. The repository `.venv` runs Django
 | 56 | Cash movement workflow | Absent | Native POS does not expose cash in/out controls. |
 | 57 | Shift handover | Absent | Native POS does not expose handover controls. |
 | 58 | Audit timeline | Partial | Backend events exist; no complete native audit timeline exists. |
-| 59 | Offline action durability | Implemented | Secure durable action journal is tested on both native clients. |
+| 59 | Offline action durability | Implemented | Secure durable action journal restores interrupted consequential actions as reconciliation-required and is exposed in both native Sync Centres. |
 | 60 | Safe offline dispensing | Blocked | Offline mode cannot authoritatively resolve clinical/cash-control state. |
-| 61 | Sync conflict resolution | Absent | No Sync Centre or conflict-resolution workflow exists. |
+| 61 | Sync conflict resolution | Partial | Native Sync Centres query immutable payment/supply facts by the original idempotency key and never blindly resend. Clinical/retail conflict workflows remain incomplete. |
 | 62 | Role-aware navigation | Partial | Server capability checks protect actions; native navigation is not role-complete. |
 | 63 | Accessibility validation | Partial | Component-level accessibility labels exist; full screen-reader and contrast validation is outstanding. |
 | 64 | Physical hardware certification | Not validated | Printer, cash drawer, scanner, Android device and Windows/MSIX host unavailable. |
@@ -136,8 +143,8 @@ Full production certification requires all of the following:
    declarations, movements, X reports, Z closure and handover flows.
 4. Build retail catalogue, assortment, pricing, barcode and stock
    workflows backed by the current tenant’s authoritative APIs.
-5. Implement physical device adapters and the Sync Centre, then validate
-   printer, drawer and scanner behaviour.
+5. Implement physical device adapters, then validate printer, drawer and
+   scanner behaviour.
 6. Run end-to-end workflow, accessibility and visual validation on the mandated
    Windows and Android device profiles.
 7. Complete retail-medicine screening, remaining clinical invalidation
@@ -204,9 +211,9 @@ This makes a changed medicine, patient, prescription or quantity fail closed.
 Quantity hashing is canonicalised, so `30` and `30.0000` represent the same
 clinical context across native clients and persisted dispensing lines.
 
-This pass is extended by the governed override and durable print increment
-below. Sync Centre, restart evidence, visual certification and hardware
-certification remain outstanding. The decision remains exactly
+This pass is extended by the governed override, durable print, Sync Centre and
+recovery/visual increments below. Full workflow visual certification and
+hardware certification remain outstanding. The decision remains exactly
 `POS_UI_UX_BLOCKED`.
 
 ## Governed Override and Durable Print Increment (2026-07-28)
@@ -229,9 +236,41 @@ a reprint creates a separately numbered copy with a required reason.
 The Windows and Android Print Centres exercise those controls only through an
 explicit deterministic simulator. They visibly state that no physical spooler,
 ESC/POS, Bluetooth or network printer was used. The new tests provide service
-and queue evidence, not physical-print certification. Sync Centre, restart
-recovery, visual/accessibility evidence and hardware evidence remain required.
-The decision remains exactly `POS_UI_UX_BLOCKED`.
+and queue evidence, not physical-print certification. Complete
+visual/accessibility and hardware evidence remain required. The decision remains
+exactly `POS_UI_UX_BLOCKED`.
+
+## Native Sync Centre Increment (2026-07-28)
+
+Windows and Android now provide a Sync Centre that groups clinical authority,
+operational register state, the branch/device print queue, retail limits and
+the encrypted local action journal. Refresh reads authoritative endpoints; it
+does not advertise an unsupported one-click “sync all” action.
+
+An interrupted payment, collection or supply remains blocked until the operator
+opens a modal-confirmed recovery query. The server looks up the exact original
+idempotency key in immutable settlement or supply facts. A confirmed fact marks
+the journal entry confirmed. An absent fact returns the entry to pending for its
+original workflow; Sync Centre never resends, deletes or invents a transaction.
+
+This does not complete offline retail, clinical-offline decision upload,
+automated conflict resolution, full device restart testing, visual certification
+or hardware certification. The decision remains exactly `POS_UI_UX_BLOCKED`.
+
+## Recovery and Visual Quality Increment (2026-07-28)
+
+The durable journal is tested to convert interrupted consequential work to
+`NEEDS_RECONCILIATION`, preserve its original idempotency key across restart,
+confirm it only when the authoritative record exists, and otherwise retain it
+as pending without sending a second request. Payment and collection lookup
+tests exercise their distinct immutable settlement and supply records.
+
+The Windows visual CI harness now includes deterministic Print Centre and Sync
+Centre risk scenarios. Local runs verify non-collapsed, unclipped layouts at
+both configured till viewports; CI remains the sole authority for reviewed
+pixel baselines. Native screen-reader validation, end-to-end device restart
+validation and physical device evidence remain incomplete. The decision remains
+exactly `POS_UI_UX_BLOCKED`.
 
 ## World-Class UI/UX Design Certification
 
@@ -266,7 +305,7 @@ The decision remains exactly `POS_UI_UX_BLOCKED`.
 ### Evidence still required
 
 This is not a full world-class design certification. Retail medicine screening,
-physical printing, Sync Centre, responsive device validation, an end-to-end
-visual suite for the required screens, screen-reader validation and physical
-hardware evidence remain outstanding. The release decision remains exactly
-`POS_UI_UX_BLOCKED`.
+physical printing, complete offline clinical/retail reconciliation, responsive
+device validation, an end-to-end visual suite for the required screens,
+screen-reader validation and physical hardware evidence remain outstanding.
+The release decision remains exactly `POS_UI_UX_BLOCKED`.

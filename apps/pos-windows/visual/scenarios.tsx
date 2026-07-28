@@ -15,11 +15,29 @@ import { ClinicalRail } from '../src/components/tibatrace/ClinicalRail.js';
 import { PatientSafetyBanner } from '../src/components/tibatrace/PatientSafetyBanner.js';
 import type { PatientSummary } from '../src/components/tibatrace/PatientSafetyBanner.js';
 import { PaymentPanel } from '../src/components/tibatrace/PaymentPanel.js';
+import { PrintCentre } from '../src/components/tibatrace/PrintCentre.js';
+import { SyncCentre } from '../src/components/tibatrace/SyncCentre.js';
 import { BlockingReason, StatusBadge } from '../src/components/tibatrace/StatusBadge.js';
 import { WorkflowRibbon } from '../src/components/tibatrace/WorkflowRibbon.js';
 import type { ClinicalStatus } from '@dawatrace/shared/design-system/index.js';
 import type { StageView } from '@dawatrace/shared/design-system/index.js';
+import type { OfflineAction } from '@dawatrace/shared/dispensing/index.js';
 import type { ReactNode } from 'react';
+
+const visualFetch: typeof fetch = async () => new Response(null, { status: 503 });
+const recoveryEntry: OfflineAction = {
+  id: 'journal-action-1',
+  type: 'PAYMENT',
+  episodeId: 'episode-8c30d0c0',
+  idempotencyKey: 'payment:episode-8c30d0c0:attempt-42',
+  payload: {},
+  state: 'NEEDS_RECONCILIATION',
+  queuedAt: '2026-07-28T09:30:00.000Z',
+  sentAt: '2026-07-28T09:30:01.000Z',
+  resolvedAt: '2026-07-28T09:30:02.000Z',
+  failureReason: 'The application restarted while this payment was in flight. Its outcome is unknown until the server is queried.',
+  attempts: 1,
+};
 
 export interface Scenario {
   readonly id: string;
@@ -563,6 +581,59 @@ export const SCENARIOS: readonly Scenario[] = [
         blockedReason=""
         busy={false}
         onTakePayment={() => undefined}
+      />
+    ),
+  },
+  {
+    id: 'print-centre-retry-required',
+    title: 'Print Centre — simulator retry required',
+    rationale:
+      'A retry-required receipt must show both its immutable document identity and the transport failure without resembling a settled physical print.',
+    width: 1024,
+    render: () => (
+      <PrintCentre
+        apiFetch={visualFetch}
+        deviceId="VISUAL-TILL-01"
+        autoRefresh={false}
+        initialJobs={[{
+          id: 'job-1',
+          document_number: 'RCP-DISP-2026-001-AB12CD34',
+          document_type: 'PRESCRIPTION_RECEIPT',
+          printer: '',
+          transport: 'SIMULATOR',
+          status: 'RETRY_REQUIRED',
+          copy_classification: 'ORIGINAL',
+          copy_number: 1,
+          reprint_reason: '',
+          requested_at: '2026-07-28T09:15:00.000Z',
+          attempt_count: 1,
+          failure_code: 'SIMULATED_TRANSPORT_FAILURE',
+          failure_message: 'Deterministic simulator recorded a retryable transport failure.',
+          printed_at: null,
+          cancellation_reason: '',
+        }]}
+      />
+    ),
+  },
+  {
+    id: 'sync-centre-reconciliation',
+    title: 'Sync Centre — unknown payment recovery',
+    rationale:
+      'An interrupted payment must make the blocked state, the exact recovery action and the no-blind-retry boundary readable at a glance.',
+    width: 1024,
+    render: () => (
+      <SyncCentre
+        apiFetch={visualFetch}
+        deviceId="VISUAL-TILL-01"
+        journal={null}
+        onOpenPrint={() => undefined}
+        autoRefresh={false}
+        initialSnapshot={{
+          entries: [recoveryEntry],
+          runtime: { readiness: 'READY', notices: [] },
+          clinicalConnected: true,
+          printCounts: { queued: 1, retryRequired: 1 },
+        }}
       />
     ),
   },

@@ -47,8 +47,9 @@ import { DispensingScreen } from './screens/DispensingScreen';
 import { PaymentScreen } from './screens/PaymentScreen';
 import { PrintCentreScreen } from './screens/PrintCentreScreen';
 import { RetailScreen } from './screens/RetailScreen';
+import { SyncCentreScreen } from './screens/SyncCentreScreen';
 
-type WorkspaceScreen = 'queue' | 'episode' | 'clinical-review' | 'payment' | 'counselling' | 'collection' | 'retail' | 'print';
+type WorkspaceScreen = 'queue' | 'episode' | 'clinical-review' | 'payment' | 'counselling' | 'collection' | 'retail' | 'print' | 'sync';
 
 interface ClinicalScreeningOutcome {
   readonly summary: AndroidClinicalSummary;
@@ -281,6 +282,9 @@ function PosWorkspace({ onLogout }: { readonly onLogout: () => Promise<void> }) 
         <Pressable accessibilityRole="button" onPress={() => setScreen('print')} style={styles.secondary}>
           <Text style={styles.secondaryLabel}>Print Centre</Text>
         </Pressable>
+        <Pressable accessibilityRole="button" onPress={() => setScreen('sync')} style={styles.secondary}>
+          <Text style={styles.secondaryLabel}>Sync Centre</Text>
+        </Pressable>
         <Pressable accessibilityRole="button" onPress={() => void onLogout()} style={styles.secondary}>
           <Text style={styles.secondaryLabel}>Sign out</Text>
         </Pressable>
@@ -503,6 +507,14 @@ function PosWorkspace({ onLogout }: { readonly onLogout: () => Promise<void> }) 
             deviceId={deviceId}
           />
         ) : null}
+        {screen === 'sync' ? (
+          <SyncCentreScreen
+            apiFetch={runtime.session.fetch.bind(runtime.session) as typeof fetch}
+            deviceId={deviceId}
+            journal={journal}
+            onOpenPrint={() => setScreen('print')}
+          />
+        ) : null}
       </View>
 
       {screen !== 'queue' ? (
@@ -522,6 +534,7 @@ function PosWorkspace({ onLogout }: { readonly onLogout: () => Promise<void> }) 
           <NavButton label="Collection" onPress={() => setScreen('collection')} />
           <NavButton label="Retail" onPress={() => setScreen('retail')} />
           <NavButton label="Print" onPress={() => setScreen('print')} />
+          <NavButton label="Sync" onPress={() => setScreen('sync')} />
         </ScrollView>
       ) : null}
     </View>

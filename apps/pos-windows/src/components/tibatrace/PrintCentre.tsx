@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 type PrintStatus = 'QUEUED' | 'RENDERED' | 'SENDING' | 'PRINTED' | 'FAILED' | 'RETRY_REQUIRED' | 'CANCELLED';
 type PrintActionKind = 'simulate' | 'retry' | 'reprint' | 'cancel';
 
-interface PosPrintJob {
+export interface PosPrintJob {
   readonly id: string;
   readonly document_number: string;
   readonly document_type: string;
@@ -27,8 +27,14 @@ interface PrintAction {
   readonly job: PosPrintJob;
 }
 
-export function PrintCentre({ apiFetch, deviceId }: { readonly apiFetch: typeof fetch; readonly deviceId: string }) {
-  const [jobs, setJobs] = useState<readonly PosPrintJob[]>([]);
+export function PrintCentre({ apiFetch, deviceId, initialJobs = [], autoRefresh = true }: {
+  readonly apiFetch: typeof fetch;
+  readonly deviceId: string;
+  readonly initialJobs?: readonly PosPrintJob[];
+  /** Used only by deterministic visual scenarios; production always refreshes. */
+  readonly autoRefresh?: boolean;
+}) {
+  const [jobs, setJobs] = useState<readonly PosPrintJob[]>(initialJobs);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -61,8 +67,8 @@ export function PrintCentre({ apiFetch, deviceId }: { readonly apiFetch: typeof 
   }, [deviceId, request]);
 
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    if (autoRefresh) void refresh();
+  }, [autoRefresh, refresh]);
 
   const runAction = async () => {
     if (!activeAction) return;

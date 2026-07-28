@@ -246,6 +246,7 @@ export function usePosWorkflow(
     confirmCollection,
     recordCounselling,
     transition,
+    journal,
   };
 }
 

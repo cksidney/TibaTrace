@@ -10,6 +10,7 @@ import { PaymentPanel } from './components/tibatrace/PaymentPanel.js';
 import { PrintCentre } from './components/tibatrace/PrintCentre.js';
 import { PrescriptionWorkspace } from './components/tibatrace/PrescriptionWorkspace.js';
 import { RetailWorkspace } from './components/tibatrace/RetailWorkspace.js';
+import { SyncCentre } from './components/tibatrace/SyncCentre.js';
 import type { PatientSummary } from './components/tibatrace/PatientSafetyBanner.js';
 import { BlockingReason } from './components/tibatrace/StatusBadge.js';
 import { WorkflowRibbon } from './components/tibatrace/WorkflowRibbon.js';
@@ -85,8 +86,8 @@ function OperationsConsole({
   readonly apiFetch: typeof fetch;
   readonly onLogout: () => Promise<void>;
 }) {
-  const [workspace, setWorkspace] = useState<'clinical' | 'retail' | 'print'>('clinical');
-  const { state, refreshQueue, select, refresh, takePayment, confirmCollection, recordCounselling } =
+  const [workspace, setWorkspace] = useState<'clinical' | 'retail' | 'print' | 'sync'>('clinical');
+  const { state, refreshQueue, select, refresh, takePayment, confirmCollection, recordCounselling, journal } =
     usePosWorkflow('/api/pos/dispensing', apiFetch, runtime.offline, session.deviceId);
   // Was `useState<ClinicalSummary | null>(null)` with no setter, so the rail
   // rendered "No clinical result" for every episode and the screening endpoint
@@ -264,6 +265,8 @@ function OperationsConsole({
         <RetailWorkspace apiFetch={apiFetch} deviceId={session.deviceId} />
       ) : workspace === 'print' ? (
         <PrintCentre apiFetch={apiFetch} deviceId={session.deviceId} />
+      ) : workspace === 'sync' ? (
+        <SyncCentre apiFetch={apiFetch} deviceId={session.deviceId} journal={journal} onOpenPrint={() => setWorkspace('print')} />
       ) : <>
       <PatientSafetyBanner patient={patient} />
       <WorkflowRibbon stages={stages} />
@@ -382,8 +385,8 @@ function Header({
 }: {
   readonly busy: boolean;
   readonly operator: string;
-  readonly workspace: 'clinical' | 'retail' | 'print';
-  readonly onWorkspaceChange: (workspace: 'clinical' | 'retail' | 'print') => void;
+  readonly workspace: 'clinical' | 'retail' | 'print' | 'sync';
+  readonly onWorkspaceChange: (workspace: 'clinical' | 'retail' | 'print' | 'sync') => void;
   readonly onLogout: () => Promise<void>;
 }) {
   return (
@@ -420,7 +423,7 @@ function Header({
         </div>
       </div>
       <div style={{ display: 'flex', gap: 4 }}>
-        {(['clinical', 'retail', 'print'] as const).map((option) => (
+        {(['clinical', 'retail', 'print', 'sync'] as const).map((option) => (
           <button
             key={option}
             type="button"
@@ -437,7 +440,7 @@ function Header({
               textTransform: 'capitalize',
             }}
           >
-            {option === 'print' ? 'Print Centre' : option}
+            {option === 'print' ? 'Print Centre' : option === 'sync' ? 'Sync Centre' : option}
           </button>
         ))}
       </div>

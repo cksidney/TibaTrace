@@ -22,6 +22,7 @@ from apps.prescription.models import (
     DispensingCheck,
     DispensingEpisode,
     DispensingLine,
+    MedicineSupply,
     PatientCounselling,
     PosShiftRecord,
     Prescription,
@@ -516,6 +517,48 @@ class PosPaymentOrchestrationService:
         if order is None:
             return None
         return Decimal(str(order.total))
+
+
+class PosActionReconciliationService:
+    """Answer a recovery query using immutable server facts, never screen state."""
+
+    @staticmethod
+    def reconcile(*, episode, action_type, idempotency_key, actor):
+        _require_capability(actor, episode.tenant_id, "dispensing.read")
+        key = str(idempotency_key or "").strip()
+        if not key:
+            raise ValidationError({"idempotency_key": "Idempotency key is required."})
+
+        if action_type == "PAYMENT":
+            settlement = PaymentSettlement.all_objects.filter(
+                tenant_id=episode.tenant_id,
+                payment_tender__payment_intent__dispensing_episode=episode,
+                idempotency_key=PosPaymentOrchestrationService._key(
+                    PosPaymentOrchestrationService._SETTLEMENT_KEY_PREFIX,
+                    key,
+                ),
+            ).first()
+            return {
+                "action_type": action_type,
+                "idempotency_key": key,
+                "applied": bool(settlement),
+                "authoritative_reference": str(settlement.id) if settlement else "",
+            }
+
+        if action_type in {"COLLECTION", "SUPPLY"}:
+            supply = MedicineSupply.all_objects.filter(
+                tenant_id=episode.tenant_id,
+                episode=episode,
+                idempotency_key=key,
+            ).first()
+            return {
+                "action_type": action_type,
+                "idempotency_key": key,
+                "applied": bool(supply),
+                "authoritative_reference": str(supply.id) if supply else "",
+            }
+
+        raise ValidationError({"action_type": "This action type cannot be reconciled."})
 
 
 class PosPartialRepeatService:

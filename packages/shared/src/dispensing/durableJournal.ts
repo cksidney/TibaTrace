@@ -5,6 +5,7 @@ import {
   markSent,
   prune,
   recoverAfterRestart,
+  resolveReconciliation,
   summariseQueue,
 } from './offlineQueue.js';
 import type {
@@ -38,6 +39,11 @@ export class DurableActionJournal {
 
   get summary(): QueueSummary {
     return summariseQueue(this.actions);
+  }
+
+  /** Immutable view for the native Sync Centre; callers cannot mutate storage. */
+  get entries(): readonly OfflineAction[] {
+    return this.actions;
   }
 
   async initialise(): Promise<QueueSummary> {
@@ -92,6 +98,23 @@ export class DurableActionJournal {
       await this.persist(recoverAfterRestart(this.actions));
       throw cause;
     }
+  }
+
+  /**
+   * Resolve one unknown consequential action after the server looked up its
+   * original idempotency key. This method deliberately cannot dispatch or
+   * discard the action: an absent authoritative record becomes PENDING and
+   * may be retried only through its original workflow.
+   */
+  async reconcile(id: string, applied: boolean): Promise<QueueSummary> {
+    if (!this.ready) throw new Error('The durable action journal is not ready.');
+    const entry = this.actions.find((candidate) => candidate.id === id);
+    if (!entry) throw new Error('The durable action was not found in this device journal.');
+    if (entry.state !== 'NEEDS_RECONCILIATION') {
+      throw new Error('Only an unknown consequential action can be reconciled.');
+    }
+    await this.persist(resolveReconciliation(this.actions, id, applied));
+    return this.summary;
   }
 
   private async persist(actions: readonly OfflineAction[]): Promise<void> {

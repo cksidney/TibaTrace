@@ -28,6 +28,7 @@ from apps.prescription.models import (
 from apps.prescription.payment_models import PaymentSettlement, PaymentTender
 from apps.prescription.pos_dispensing_api.serializers import PosDispensingEpisodeSerializer
 from apps.prescription.pos_dispensing_services import (
+    PosActionReconciliationService,
     PosCollectionService,
     PosCounsellingService,
     PosDispensingQueueService,
@@ -132,6 +133,70 @@ def test_replayed_collection_does_not_issue_stock_twice(domain):
     )
     assert issues.count() == 1
     assert sum(e.quantity_delta for e in issues) == Decimal("-30.0000")
+
+
+def test_reconciliation_uses_the_original_idempotency_fact(domain):
+    data = domain
+    episode = data["episode"]
+    make_clinically_ready(data)
+    PosDispensingQueueService.transition_state(
+        episode=episode, new_status="CHECKING", actor=data["pharmacist"]
+    )
+    episode.refresh_from_db()
+    PosDispensingQueueService.transition_state(
+        episode=episode, new_status="READY_FOR_PAYMENT", actor=data["pharmacist"]
+    )
+    episode.refresh_from_db()
+    PosPaymentOrchestrationService.process_payment(
+        episode=episode,
+        tender_type="CASH",
+        paid_amount=Decimal("500.00"),
+        cashier=data["cashier"],
+        idempotency_key="RECOVERY-PAYMENT-1",
+        device_id=data["device_id"],
+    )
+
+    applied = PosActionReconciliationService.reconcile(
+        episode=episode,
+        action_type="PAYMENT",
+        idempotency_key="RECOVERY-PAYMENT-1",
+        actor=data["cashier"],
+    )
+    absent = PosActionReconciliationService.reconcile(
+        episode=episode,
+        action_type="PAYMENT",
+        idempotency_key="RECOVERY-PAYMENT-OTHER",
+        actor=data["cashier"],
+    )
+
+    assert applied["applied"] is True
+    assert applied["authoritative_reference"]
+    assert absent["applied"] is False
+
+
+def test_reconciliation_finds_collection_by_its_original_supply_key(domain):
+    data = domain
+    episode = data["episode"]
+    make_clinically_ready(data)
+    episode.status = "READY_FOR_SUPPLY"
+    episode.payment_state = "PAID"
+    episode.save(update_fields=["status", "payment_state", "updated_at"])
+    PosCollectionService.confirm_collection(
+        episode=episode,
+        collector_name="John Doe",
+        actor=data["pharmacist"],
+        idempotency_key="RECOVERY-COLLECTION-1",
+    )
+
+    result = PosActionReconciliationService.reconcile(
+        episode=episode,
+        action_type="COLLECTION",
+        idempotency_key="RECOVERY-COLLECTION-1",
+        actor=data["cashier"],
+    )
+
+    assert result["applied"] is True
+    assert result["authoritative_reference"]
 
 
 def test_replayed_payment_does_not_charge_twice(domain):

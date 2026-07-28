@@ -69,4 +69,29 @@ describe('DurableActionJournal', () => {
     expect(store.actions[0]?.state).toBe('NEEDS_RECONCILIATION');
     expect(journal.summary.needsReconciliation).toBe(1);
   });
+
+  it('resolves an unknown action only after an authoritative lookup result', async () => {
+    const store = new MemoryStore();
+    const journal = new DurableActionJournal(store);
+    await journal.initialise();
+    await journal.run(payment, async () => ({ kind: 'unknown' as const }));
+    const entry = journal.entries[0];
+    expect(entry?.state).toBe('NEEDS_RECONCILIATION');
+
+    await journal.reconcile(entry!.id, true);
+    expect(journal.entries[0]?.state).toBe('CONFIRMED');
+  });
+
+  it('returns an absent authoritative action to pending without resending it', async () => {
+    const store = new MemoryStore();
+    const journal = new DurableActionJournal(store);
+    await journal.initialise();
+    await journal.run(payment, async () => ({ kind: 'unknown' as const }));
+    const entry = journal.entries[0];
+
+    await journal.reconcile(entry!.id, false);
+    expect(journal.entries[0]?.state).toBe('PENDING');
+    expect(journal.entries[0]?.attempts).toBe(1);
+    expect(journal.canProceed(payment.episodeId)).toBe(true);
+  });
 });

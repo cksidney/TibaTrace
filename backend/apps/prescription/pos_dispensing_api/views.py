@@ -13,6 +13,7 @@ from apps.prescription.models import (
 )
 from apps.prescription.pos_printing_models import PosPrintJob
 from apps.prescription.pos_dispensing_api.serializers import (
+    ActionReconciliationRequestSerializer,
     BatchVerificationRequestSerializer,
     CollectionConfirmRequestSerializer,
     ControlledVerifyRequestSerializer,
@@ -33,6 +34,7 @@ from apps.prescription.pos_dispensing_api.serializers import (
 )
 from apps.prescription.pos_dispensing_services import (
     PosBatchVerificationService,
+    PosActionReconciliationService,
     PosCollectionService,
     PosControlledMedicineService,
     PosCounsellingService,
@@ -235,6 +237,22 @@ class PosDispensingViewSet(viewsets.ReadOnlyModelViewSet):
             })
         except ValidationError as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=["post"], url_path="reconcile-action")
+    def reconcile_action(self, request, pk=None):
+        episode = self.get_object()
+        serializer = ActionReconciliationRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            result = PosActionReconciliationService.reconcile(
+                episode=episode,
+                action_type=serializer.validated_data["action_type"],
+                idempotency_key=serializer.validated_data["idempotency_key"],
+                actor=request.user,
+            )
+            return Response(result)
+        except ValidationError as error:
+            return Response({"error": str(error)}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class PosShiftViewSet(viewsets.ReadOnlyModelViewSet):

@@ -341,6 +341,11 @@ class CollectionConfirmRequestSerializer(serializers.Serializer):
     idempotency_key = serializers.CharField(max_length=255)
 
 
+class ActionReconciliationRequestSerializer(serializers.Serializer):
+    action_type = serializers.ChoiceField(choices=["PAYMENT", "COLLECTION", "SUPPLY"])
+    idempotency_key = serializers.CharField(max_length=255)
+
+
 class ShiftStartSerializer(serializers.Serializer):
     shift_number = serializers.CharField(max_length=64)
     controlled_start_count = serializers.IntegerField(default=0)
