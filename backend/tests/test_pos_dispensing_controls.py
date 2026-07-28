@@ -24,6 +24,8 @@ from apps.prescription.models import (
     MedicineSupply,
     PrescriptionItem,
 )
+from apps.prescription.payment_models import PaymentSettlement, PaymentTender
+from apps.prescription.pos_dispensing_api.serializers import PosDispensingEpisodeSerializer
 from apps.prescription.pos_dispensing_services import (
     PosCollectionService,
     PosCounsellingService,
@@ -139,10 +141,45 @@ def test_replayed_payment_does_not_charge_twice(domain):
     assert first["replayed"] is False
     assert replay["replayed"] is True
     episode.refresh_from_db()
-    assert episode.paid_amount == Decimal("500.00")
+    assert episode.paid_amount == Decimal("150.00")
     assert episode.payment_register_session_id == data["register_session"].id
     assert episode.payment_operator_shift_id == data["operator_shift"].id
     assert episode.payment_device_id == data["device_id"]
+    tender = PaymentTender.all_objects.get(payment_intent__dispensing_episode=episode)
+    assert tender.register_session_id == data["register_session"].id
+    assert tender.operator_shift_id == data["operator_shift"].id
+    assert tender.cash_received == Decimal("500.00")
+    assert tender.change_due == Decimal("350.00")
+    assert PaymentSettlement.all_objects.filter(payment_tender=tender).count() == 1
+    payload = PosDispensingEpisodeSerializer(episode).data
+    assert payload["amount_due"] == "150.00"
+    assert payload["amount_settled"] == "150.00"
+    assert payload["amount_remaining"] == "0"
+
+
+def test_payment_is_refused_without_authoritative_pricing(domain):
+    data = domain
+    episode = data["episode"]
+    make_clinically_ready(data)
+    PosDispensingQueueService.transition_state(
+        episode=episode, new_status="CHECKING", actor=data["pharmacist"]
+    )
+    episode.refresh_from_db()
+    PosDispensingQueueService.transition_state(
+        episode=episode, new_status="READY_FOR_PAYMENT", actor=data["pharmacist"]
+    )
+    episode.sales_order = None
+    episode.save(update_fields=["sales_order", "updated_at"])
+
+    with pytest.raises(ValidationError, match="authoritative priced sales order"):
+        PosPaymentOrchestrationService.process_payment(
+            episode=episode,
+            tender_type="CASH",
+            paid_amount=Decimal("150.00"),
+            cashier=data["cashier"],
+            idempotency_key="PAY-NO-PRICE",
+            device_id=data["device_id"],
+        )
 
 
 def test_payment_is_refused_without_an_assigned_device(domain):

@@ -6,6 +6,7 @@ from django.core.exceptions import ValidationError
 from django.utils import timezone
 
 from apps.identity.models import Role, User, UserRole
+from apps.customers.models import Customer
 from apps.inventory.models import InventoryBatch, InventoryLedgerEntry, InventoryLocation, InventoryReservation
 from apps.inventory.services import InventoryLedgerService
 from apps.medicines.models import (
@@ -20,6 +21,7 @@ from apps.organizations.models import Location, Organization
 from apps.patients.models import Patient
 from apps.pos_shift.models import BusinessDay, OperatorShift, PosRegister, RegisterSession
 from apps.practitioners.models import Practitioner
+from apps.sales.models import SalesOrder
 from apps.prescription.models import (
     DispensingAllocation,
     DispensingCheck,
@@ -96,6 +98,22 @@ def setup_domain(db):
         sex="MALE",
         date_of_birth=date(1990, 1, 1),
     )
+    customer = Customer.all_objects.create(
+        tenant=tenant,
+        customer_number="PAT-001-CUSTOMER",
+        legal_name="John Doe",
+        customer_type=Customer.CustomerType.INDIVIDUAL,
+        status=Customer.Status.ACTIVE,
+    )
+    sales_order = SalesOrder.all_objects.create(
+        tenant=tenant,
+        branch=branch,
+        customer=customer,
+        order_number="SO-DISP-1001",
+        subtotal=Decimal("150.00"),
+        total=Decimal("150.00"),
+        status=SalesOrder.Status.APPROVED,
+    )
 
     practitioner = Practitioner.all_objects.create(
         tenant=tenant,
@@ -171,6 +189,7 @@ def setup_domain(db):
         pharmacy_location=wh,
         pharmacist=pharmacist,
         status="PREPARING",
+        sales_order=sales_order,
         idempotency_key="IDEMP-1001",
     )
 
@@ -237,6 +256,7 @@ def setup_domain(db):
         "operator_shift": operator_shift,
         "device_id": "POS-TEST-01",
         "patient": patient,
+        "sales_order": sales_order,
         "practitioner": practitioner,
         "sku": sku,
         "batch": batch,
@@ -434,7 +454,7 @@ def test_batch_verification_rejects_mismatched_expiry(setup_domain):
     assert "does not match batch record" in res["reason"]
 
 
-def test_payment_orchestration_links_payment_without_inventory_deduction(domain):
+def test_payment_orchestration_refuses_mpesa_reference_without_provider_confirmation(domain):
     data = domain
     make_clinically_ready(data)
     episode = data["episode"]
@@ -447,25 +467,22 @@ def test_payment_orchestration_links_payment_without_inventory_deduction(domain)
     )
     episode.refresh_from_db()
 
-    res = PosPaymentOrchestrationService.process_payment(
-        episode=episode,
-        tender_type="MPESA",
-        paid_amount=Decimal("150.00"),
-        payment_reference="MPESA-REF-999",
-        cashier=data["cashier"],
-        idempotency_key="PAY-KEY-1",
-        device_id=data["device_id"],
-    )
+    with pytest.raises(ValidationError, match="initiated and confirmed"):
+        PosPaymentOrchestrationService.process_payment(
+            episode=episode,
+            tender_type="MPESA",
+            paid_amount=Decimal("150.00"),
+            payment_reference="MPESA-REF-999",
+            cashier=data["cashier"],
+            idempotency_key="PAY-KEY-1",
+            device_id=data["device_id"],
+        )
 
-    assert res["success"]
-    assert res["payment_state"] == "PAID"
     episode.refresh_from_db()
-    assert episode.status == "PAID"
-    assert episode.paid_amount == Decimal("150.00")
-    # One canonical field now carries settlement.
-    assert episode.payment_state == "PAID"
+    assert episode.status == "READY_FOR_PAYMENT"
+    assert episode.payment_state != "PAID"
 
-    # Payment must not deduct stock: only the RECEIPT and RESERVATION exist.
+    # A provider reference is not proof of payment and must not deduct stock.
     assert not InventoryLedgerEntry.all_objects.filter(
         tenant=data["tenant"], entry_type=InventoryLedgerEntry.EntryType.ISSUE
     ).exists()

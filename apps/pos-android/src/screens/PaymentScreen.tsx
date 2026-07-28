@@ -48,12 +48,20 @@ export function PaymentScreen({
 }) {
   const [tender, setTender] = useState<PaymentTenderType | 'SPLIT'>('CASH');
   const [amount, setAmount] = useState(amountDue ?? '');
+  const [reference, setReference] = useState('');
   const [submitted, setSubmitted] = useState(false);
 
   const priced = amountDue !== null && amountSettled !== null;
   const remaining = priced ? Number(amountDue) - Number(amountSettled) : null;
   const selected = TENDER_OPTIONS.find((option) => option.type === tender);
-  const enabled = priced && canTakePayment && !busy && !submitted && (selected?.available ?? false);
+  const cardReferenceRequired = tender === 'CARD';
+  const enabled =
+    priced &&
+    canTakePayment &&
+    !busy &&
+    !submitted &&
+    (selected?.available ?? false) &&
+    (!cardReferenceRequired || reference.trim().length > 0);
 
   return (
     <ScrollView style={styles.scroll} contentContainerStyle={styles.root}>
@@ -125,6 +133,26 @@ export function PaymentScreen({
         style={styles.input}
       />
 
+      {cardReferenceRequired ? (
+        <>
+          <Text style={styles.label}>Card approval reference</Text>
+          <TextInput
+            value={reference}
+            onChangeText={setReference}
+            autoCapitalize="characters"
+            accessibilityLabel="Card approval reference"
+            accessibilityHint="Enter the approval reference shown by the card terminal."
+            style={styles.input}
+          />
+          {!reference.trim() ? (
+            <Notice
+              status="ACTION_REQUIRED"
+              message="Enter the approval reference from the card terminal before confirming payment."
+            />
+          ) : null}
+        </>
+      ) : null}
+
       <Pressable
         accessibilityRole="button"
         accessibilityState={{ disabled: !enabled }}
@@ -132,7 +160,7 @@ export function PaymentScreen({
         onPress={() => {
           // Latches so a second tap cannot become a second charge.
           setSubmitted(true);
-          onTakePayment(tender as PaymentTenderType, amount, '');
+          onTakePayment(tender as PaymentTenderType, amount, reference.trim());
         }}
         style={[styles.primary, !enabled && styles.primaryDisabled]}
       >

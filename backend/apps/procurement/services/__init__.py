@@ -15,6 +15,7 @@ from .procurement_service import ProcurementService
 from .quality_service import QualityService
 from .receiving_service import GoodsReceivingService, ReceivingService
 from .returns_service import SupplierReturnService
+from .sourcing_service import SourcingService
 from .supplier_agreement_service import SupplierProductAgreementService
 from .supplier_governance_service import SupplierGovernanceService, SupplierNotQualified
 from .three_way_match_service import ProcurementMatchingService, ThreeWayMatchService
@@ -42,6 +43,7 @@ __all__ = [
     "ReceivingInspectionService",
     "ReceivingService",
     "SupplierGovernanceService",
+    "SourcingService",
     "SupplierNotQualified",
     "SupplierProductAgreementService",
     "SupplierQualificationService",

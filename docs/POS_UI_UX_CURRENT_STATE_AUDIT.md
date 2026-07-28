@@ -188,10 +188,14 @@ be proven. It never guesses from the first register in a tenant. Operator-shift
 matching now uses the stable operator UUID exposed by the tenant-scoped API,
 not a mutable username.
 
-This is operational visibility, not cash-control enforcement. Payment and
-supply endpoints do not yet bind a dispensing episode to `RegisterSession`.
-The new UI therefore does **not** claim to authorise a sale, and full POS
-certification remains blocked by the risks in Sections 6–9.
+This is operational visibility, not full cash-control certification. The
+legacy native dispensing cash/card command now resolves and records the active
+`RegisterSession` and accountable `OperatorShift` on the payment tender before
+an immutable settlement can be created. It also rejects an unpriced episode and
+projects the episode's payment state from the ledger rather than writing it
+directly. M-PESA reconciliation, native split tender, receipt printing, Sync
+Centre and hardware evidence remain outstanding, so full POS certification is
+still blocked by the risks in Sections 6–9.
 
 ## 11. Clinical Decision Support and Drug Interaction Banner
 

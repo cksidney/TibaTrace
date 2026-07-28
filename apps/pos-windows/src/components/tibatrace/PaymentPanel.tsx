@@ -177,7 +177,7 @@ export function PaymentPanel({
   const selected = TENDER_OPTIONS.find((option) => option.type === tender);
   const priced = amountDue !== null && amountSettled !== null;
   const remaining = remainingAmount(amountDue, amountSettled);
-  const action = paymentActionState({
+  const baseAction = paymentActionState({
     priced,
     remaining,
     keyedAmount: amount,
@@ -186,6 +186,10 @@ export function PaymentPanel({
     busy,
     submitted,
   });
+  const action =
+    tender === 'CARD' && !reference.trim()
+      ? { enabled: false, reason: 'Enter the approval reference from the card terminal.' }
+      : baseAction;
 
   return (
     <section style={{ display: 'flex', flexDirection: 'column', gap: spacing.lg }}>

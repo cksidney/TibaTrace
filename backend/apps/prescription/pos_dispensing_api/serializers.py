@@ -38,10 +38,11 @@ class PosDispensingLineSerializer(serializers.ModelSerializer):
 class PosDispensingEpisodeSerializer(serializers.ModelSerializer):
     lines = PosDispensingLineSerializer(many=True, read_only=True)
 
-    # Money owed and money taken come from the active PaymentIntent, which is
-    # the authoritative ledger. The episode's own paid_amount is a convenience
-    # mirror and must never be presented to an operator as the amount due --
-    # a till that shows the wrong figure takes the wrong money.
+    # Money owed and money taken come from the latest PaymentIntent, which is
+    # the authoritative ledger. It must remain visible after settlement too:
+    # querying only active intents made a confirmed payment look unpriced on
+    # the next native-client refresh. The episode's own paid_amount is a
+    # convenience mirror and must never be presented as the amount due.
     amount_due = serializers.SerializerMethodField()
     amount_settled = serializers.SerializerMethodField()
     amount_remaining = serializers.SerializerMethodField()
@@ -50,17 +51,15 @@ class PosDispensingEpisodeSerializer(serializers.ModelSerializer):
     def _intent(self, episode):
         from apps.prescription.payment_models import PaymentIntent
 
-        cached = getattr(episode, "_active_intent", None)
+        cached = getattr(episode, "_payment_intent", None)
         if cached is None:
             cached = (
-                PaymentIntent.all_objects.filter(
-                    dispensing_episode=episode, status__in=PaymentIntent.ACTIVE_STATUSES
-                )
+                PaymentIntent.all_objects.filter(dispensing_episode=episode)
                 .order_by("-created_at")
                 .first()
             )
             # Cache the miss too, so a null result does not re-query per field.
-            episode._active_intent = cached or False
+            episode._payment_intent = cached or False
         return cached or None
 
     def get_amount_due(self, episode):

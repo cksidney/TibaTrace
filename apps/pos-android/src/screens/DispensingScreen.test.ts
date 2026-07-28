@@ -136,7 +136,7 @@ describe('android payment parity with windows', () => {
       'CASH:true',
       'CARD:true',
       'MPESA:false',
-      'SPLIT:true',
+      'SPLIT:false',
     ]);
   });
 });

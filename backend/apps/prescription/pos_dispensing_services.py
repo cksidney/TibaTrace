@@ -12,6 +12,12 @@ from apps.inventory.models import InventoryBalance, InventoryBatch
 from apps.medicines.models import CommercialSKU
 from apps.pos_shift.authority import RegisterAuthorityService
 from apps.practitioners.models import Practitioner
+from apps.prescription.payment_models import PaymentSettlement
+from apps.prescription.payment_services import (
+    PaymentIntentService,
+    PaymentSettlementService,
+    PaymentTenderService,
+)
 from apps.prescription.models import (
     DispensingCheck,
     DispensingEpisode,
@@ -219,6 +225,19 @@ class PosBatchVerificationService:
 
 
 class PosPaymentOrchestrationService:
+    """Compatibility adapter for the native dispensing payment command.
+
+    The native clients still post one cash/card command to this endpoint.  It
+    must therefore translate that command into payment-intent, tender and
+    immutable-settlement facts; it must never mutate the episode's payment
+    state as proof that money arrived.  Provider tenders deliberately stay out
+    of this shortcut because their request acknowledgement is not settlement.
+    """
+
+    _INTENT_KEY_PREFIX = "pos-dispensing:intent:"
+    _TENDER_KEY_PREFIX = "pos-dispensing:tender:"
+    _SETTLEMENT_KEY_PREFIX = "pos-dispensing:settlement:"
+
     @staticmethod
     @transaction.atomic
     def process_payment(
@@ -241,17 +260,19 @@ class PosPaymentOrchestrationService:
             pk=episode.pk, tenant_id=episode.tenant_id
         )
 
-        # Replay of the same payment attempt is a no-op, not a second payment.
-        if episode.payment_idempotency_key == idempotency_key:
-            return {
-                "success": True,
-                "episode_id": str(episode.id),
-                "payment_state": episode.payment_state,
-                "payment_reference": episode.payment_reference,
-                "tender_type": episode.tender_type,
-                "paid_amount": str(episode.paid_amount),
-                "replayed": True,
-            }
+        settlement_key = PosPaymentOrchestrationService._key(
+            PosPaymentOrchestrationService._SETTLEMENT_KEY_PREFIX, idempotency_key
+        )
+        existing_settlement = PaymentSettlement.all_objects.filter(
+            tenant_id=episode.tenant_id, idempotency_key=settlement_key
+        ).first()
+        # A replay returns the original settlement fact even if the register or
+        # shift has since closed. Re-validating current authority here would
+        # turn a safe retry into an ambiguous outcome after a network failure.
+        if existing_settlement:
+            return PosPaymentOrchestrationService._response(
+                episode=episode, settlement=existing_settlement, replayed=True
+            )
 
         if episode.payment_state == "PAID":
             raise ValidationError("Episode has already been paid.")
@@ -267,6 +288,14 @@ class PosPaymentOrchestrationService:
                 f"(current status: {episode.status})"
             )
 
+        if tender_type == "MPESA":
+            raise ValidationError(
+                "M-PESA must be initiated and confirmed through the payment-intent workflow; "
+                "a reference cannot mark an episode paid."
+            )
+        if tender_type not in {"CASH", "CARD"}:
+            raise ValidationError(f"Unsupported direct-settlement tender type: {tender_type}")
+
         authority = RegisterAuthorityService.resolve_for_transaction(
             tenant=episode.tenant,
             branch=episode.branch,
@@ -274,22 +303,87 @@ class PosPaymentOrchestrationService:
             device_id=device_id,
         )
 
+        expected = PosPaymentOrchestrationService.amount_due(episode=episode)
+        if expected is None:
+            raise ValidationError(
+                "Payment cannot start until an authoritative priced sales order is linked to the episode."
+            )
+        if expected <= 0:
+            raise ValidationError(
+                "Zero patient-payable episodes must complete through the governed zero-balance workflow."
+            )
+
         amount = Decimal(str(paid_amount))
         if amount <= 0:
             raise ValidationError("Paid amount must be greater than zero.")
-
-        expected = PosPaymentOrchestrationService.amount_due(episode=episode)
-        if expected is not None and amount < expected:
+        if amount < expected:
             raise ValidationError(
                 f"Paid amount {amount} is less than the amount due {expected}."
             )
+        if tender_type == "CARD" and amount != expected:
+            raise ValidationError(
+                "A card confirmation must equal the server-derived amount due; "
+                "cash change is not available for card tenders."
+            )
+        if tender_type == "CARD" and not str(payment_reference).strip():
+            raise ValidationError("A card approval reference is required.")
 
-        # Payment records commercial settlement only. It never touches inventory;
-        # stock moves solely on confirmed physical supply.
-        episode.payment_state = "PAID"
-        episode.payment_reference = payment_reference or f"PAY-{idempotency_key[:24].upper()}"
+        intent = PaymentIntentService.create(
+            episode=episode,
+            amount_due=expected,
+            actor=cashier,
+            idempotency_key=PosPaymentOrchestrationService._key(
+                PosPaymentOrchestrationService._INTENT_KEY_PREFIX, idempotency_key
+            ),
+            device_id=device_id,
+            register_id=authority.register.code,
+        )
+        tender = PaymentTenderService.allocate(
+            intent=intent,
+            tender_type=tender_type,
+            allocated_amount=expected,
+            actor=cashier,
+            idempotency_key=PosPaymentOrchestrationService._key(
+                PosPaymentOrchestrationService._TENDER_KEY_PREFIX, idempotency_key
+            ),
+            provider="MANUAL",
+            register_id=authority.register.code,
+            register_session=authority.session,
+            operator_shift=authority.operator_shift,
+        )
+        if tender_type == "CASH":
+            settlement = PaymentSettlementService.settle_cash(
+                tender=tender,
+                cash_received=amount,
+                actor=cashier,
+                idempotency_key=settlement_key,
+                register_id=authority.register.code,
+            )
+        else:
+            settlement = PaymentSettlementService.confirm_card(
+                tender=tender,
+                approval_reference=str(payment_reference).strip(),
+                approved_amount=expected,
+                actor=cashier,
+                idempotency_key=settlement_key,
+            )
+
+        episode.refresh_from_db()
+        if episode.payment_state != "PAID":
+            raise ValidationError("Payment settlement did not clear the outstanding balance.")
+
+        # These historical fields remain as a read-only compatibility mirror
+        # for existing clients. The ledger settlement above is the financial
+        # authority, and payment_state is projected there rather than written
+        # by this adapter.
+        reference = (
+            str(payment_reference).strip()
+            or settlement.provider_reference
+            or f"CASH-{settlement.id.hex[:12].upper()}"
+        )
+        episode.payment_reference = reference
         episode.tender_type = tender_type
-        episode.paid_amount = amount
+        episode.paid_amount = settlement.amount
         episode.payment_idempotency_key = idempotency_key
         episode.payment_register_session = authority.session
         episode.payment_operator_shift = authority.operator_shift
@@ -297,7 +391,6 @@ class PosPaymentOrchestrationService:
         episode.status = "PAID"
         episode.save(
             update_fields=[
-                "payment_state",
                 "payment_reference",
                 "tender_type",
                 "paid_amount",
@@ -314,11 +407,14 @@ class PosPaymentOrchestrationService:
             tenant_id=str(episode.tenant_id),
             aggregate_type="DispensingEpisode",
             aggregate_id=str(episode.id),
-            event_type="DISPENSING_PAYMENT_PROCESSED",
+            event_type="DISPENSING_PAYMENT_SETTLED",
             payload={
                 "tender_type": tender_type,
-                "paid_amount": str(amount),
+                "settled_amount": str(settlement.amount),
                 "payment_reference": episode.payment_reference,
+                "payment_intent_id": str(intent.id),
+                "payment_tender_id": str(tender.id),
+                "payment_settlement_id": str(settlement.id),
                 "cashier_id": str(cashier.id) if cashier else None,
                 "register_session_id": str(authority.session.id),
                 "operator_shift_id": str(authority.operator_shift.id),
@@ -326,14 +422,27 @@ class PosPaymentOrchestrationService:
             },
         )
 
+        return PosPaymentOrchestrationService._response(
+            episode=episode, settlement=settlement, replayed=False
+        )
+
+    @staticmethod
+    def _key(prefix, idempotency_key):
+        return f"{prefix}{idempotency_key}"
+
+    @staticmethod
+    def _response(*, episode, settlement, replayed):
+        tender = settlement.payment_tender
         return {
             "success": True,
             "episode_id": str(episode.id),
-            "payment_state": "PAID",
-            "payment_reference": episode.payment_reference,
-            "tender_type": tender_type,
-            "paid_amount": str(episode.paid_amount),
-            "replayed": False,
+            "payment_state": episode.payment_state,
+            "payment_reference": episode.payment_reference
+            or settlement.provider_reference
+            or f"CASH-{settlement.id.hex[:12].upper()}",
+            "tender_type": tender.tender_type,
+            "paid_amount": str(settlement.amount),
+            "replayed": replayed,
         }
 
     @staticmethod

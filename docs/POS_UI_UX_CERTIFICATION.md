@@ -32,6 +32,11 @@ certification.
 - `npm run visual --workspace=@dawatrace/pos-windows` — local structural
   checks pass at `1280×900` and `1024×768`; CI-only pixel baselines are skipped
   locally and remain awaiting review.
+- `./.venv/bin/pytest -c backend/pytest.ini --no-migrations`
+  `backend/tests/test_pos_enterprise_dispensing.py::test_payment_orchestration_refuses_mpesa_reference_without_provider_confirmation`
+  `backend/tests/test_pos_dispensing_controls.py::test_replayed_payment_does_not_charge_twice`
+  `backend/tests/test_pos_dispensing_controls.py::test_payment_is_refused_without_authoritative_pricing`
+  `backend/tests/test_pos_payment_ledger.py -q` — **30 passed** (2026-07-28).
 
 The first backend test attempt against `/Users/sidneykibet/venv` was not used
 as evidence because that virtual environment runs Django 4.2.11, while this
@@ -130,6 +135,25 @@ Full production certification requires all of the following:
 
 Until those conditions are met, this code should be released only as a
 controlled clinical-dispensing pilot, not as a complete pharmacy POS system.
+
+## Settlement runtime closure increment (2026-07-28)
+
+The legacy native dispensing payment command no longer directly changes an
+episode's payment state. Cash and manual card commands now create an
+idempotent payment intent, tender and immutable settlement, bind the tender to
+the server-resolved register session and operator shift, and project the
+episode payment state from the ledger. The compatibility mirror is updated only
+after that projection confirms full settlement. Episode refreshes retain the
+latest settled intent so confirmed due, settled and remaining values do not
+disappear after payment.
+
+The native M-PESA and split-tender affordances remain disabled. M-PESA requires
+provider-confirmed settlement and recovery, while split tender requires the
+native authoritative allocation editor. Android now requires a manual card
+approval reference before it can submit a card payment. This closes a direct
+mutation path; it does not close the remaining payment, printing, Sync Centre,
+clinical, visual or hardware requirements. The decision remains exactly
+`POS_UI_UX_BLOCKED`.
 
 ## Clinical Decision Support and Drug Interaction Banner
 

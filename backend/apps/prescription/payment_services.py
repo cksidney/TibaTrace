@@ -233,6 +233,8 @@ class PaymentTenderService:
         provider="MANUAL",
         register_id="",
         shift=None,
+        register_session=None,
+        operator_shift=None,
     ):
         """Allocate part of the intent to a payment method."""
         _require_capability(actor, intent.tenant_id, "pos.payment.tender.allocate")
@@ -270,6 +272,8 @@ class PaymentTenderService:
             payment_intent=intent,
             tender_type=tender_type,
             provider=provider,
+            register_session=register_session,
+            operator_shift=operator_shift,
             allocated_amount=amount,
             register_id=register_id,
             shift=shift,
