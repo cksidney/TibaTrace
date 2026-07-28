@@ -272,6 +272,15 @@ pixel baselines. Native screen-reader validation, end-to-end device restart
 validation and physical device evidence remain incomplete. The decision remains
 exactly `POS_UI_UX_BLOCKED`.
 
+## Physical Validation Environment Check (2026-07-28)
+
+No Android device was returned by `adb devices -l`, and the local validation
+host has no configured printer destination. A Windows/MSIX host, physical
+printer, scanner and cash drawer were also not available in this environment.
+No physical action was sent, and simulator results were not treated as device
+evidence. Follow `docs/POS_PHYSICAL_VALIDATION_RUNBOOK.md` when the required
+hardware is connected. The decision remains exactly `POS_UI_UX_BLOCKED`.
+
 ## World-Class UI/UX Design Certification
 
 ### Verified design pass
