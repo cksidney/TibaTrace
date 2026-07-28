@@ -1,3 +1,5 @@
+import { resolveFetcher } from './fetcher.js';
+
 export interface PosSessionTokens {
   readonly access: string;
   readonly refresh: string;
@@ -49,7 +51,7 @@ export class PosApiSession {
   constructor(options: PosApiSessionOptions) {
     this.baseUrl = options.baseUrl.replace(/\/+$/, '');
     this.storage = options.storage;
-    this.fetcher = options.fetcher ?? fetch;
+    this.fetcher = resolveFetcher(options.fetcher);
   }
 
   get current(): PosSessionTokens | null {

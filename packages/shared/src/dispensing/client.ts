@@ -1,3 +1,4 @@
+import { resolveFetcher } from '../auth/fetcher.js';
 import { classifyError, PosApiError } from './errors.js';
 import {
   DispensingEpisodeDTO,
@@ -48,7 +49,7 @@ export class PosDispensingClient {
     this.baseUrl = baseUrl;
     this.token = token;
     this.timeoutMs = timeoutMs;
-    this.fetcher = options.fetcher ?? fetch;
+    this.fetcher = resolveFetcher(options.fetcher);
     this.tenantId = options.tenantId ?? '';
   }
 

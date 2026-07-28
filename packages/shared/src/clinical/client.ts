@@ -5,6 +5,8 @@
  * Platform-neutral — used by both Windows and Android POS clients.
  */
 
+import { resolveFetcher } from '../auth/fetcher.js';
+
 import type {
   PosClinicalScreeningRequest,
   PosClinicalScreeningResult,
@@ -206,7 +208,7 @@ async function apiGet<T>(
   );
 
   try {
-    const response = await (config.fetcher ?? fetch)(url, {
+    const response = await resolveFetcher(config.fetcher)(url, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${config.authToken}`,
@@ -255,7 +257,7 @@ async function apiPost<T>(
   );
 
   try {
-    const response = await (config.fetcher ?? fetch)(url, {
+    const response = await resolveFetcher(config.fetcher)(url, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${config.authToken}`,

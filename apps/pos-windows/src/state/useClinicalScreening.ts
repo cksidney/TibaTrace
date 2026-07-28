@@ -4,6 +4,7 @@ import {
   readScreeningResult,
 } from '@dawatrace/shared/clinical/index.js';
 import type { ScreeningResult } from '@dawatrace/shared/clinical/index.js';
+import { resolveFetcher } from '@dawatrace/shared/auth/fetcher.js';
 import { useCallback, useEffect, useState } from 'react';
 
 import type { ClinicalSummary } from '../components/tibatrace/ClinicalRail.js';
@@ -105,7 +106,7 @@ export function useClinicalScreening(
 
   const deviceId = options.deviceId ?? 'POS-WINDOWS';
   const baseUrl = options.baseUrl ?? '';
-  const fetcher = options.fetcher ?? fetch;
+  const fetcher = resolveFetcher(options.fetcher);
 
   const refresh = useCallback(async () => {
     if (!episode) {
