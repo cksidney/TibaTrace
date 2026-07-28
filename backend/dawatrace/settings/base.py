@@ -223,6 +223,11 @@ CELERY_TASK_EAGER_PROPAGATES = True
 CELERY_BEAT_SCHEDULE = {}
 CELERY_TASK_ROUTES = {"apps.*": {"queue": "dawatrace-clinical"}}
 
+#: The product version, in one place. The POS shell renders this rather than a
+#: hardcoded badge -- it read "ENTERPRISE DISPENSING v2.5" on the busiest screen
+#: in the product while every app in the repository was 0.1.0-alpha.1.
+DAWATRACE_VERSION = "0.1.0-alpha.1"
+
 FHIR_VERSION = "4.0.1"
 FHIR_IMPLEMENTATION_NAME = "DawaTrace FHIR Gateway"
 FHIR_PUBLIC_BASE_URL = env("DAWATRACE_FHIR_PUBLIC_BASE_URL", "http://localhost:8000/api/fhir/r4/")

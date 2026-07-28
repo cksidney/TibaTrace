@@ -20,7 +20,7 @@
       </div>
       <div class="brand-title">
         <h1>TibaTrace POS</h1>
-        <span class="badge-version">ENTERPRISE DISPENSING v2.5</span>
+        <span class="badge-version">Dispensing terminal v{{ product_version }}</span>
       </div>
     </div>
 
@@ -200,7 +200,7 @@
             <div class="cds-header">
               <span class="cds-status-icon" id="cds-icon">○</span>
               <strong id="cds-status-title">CDS Clinical Screening: NOT SCREENED</strong>
-              <span style="margin-left: auto; font-size: 0.75rem; text-decoration: underline; cursor: pointer;">View Details &amp; Overrides &rarr;</span>
+              <span style="margin-left: auto; font-size: 13px; text-decoration: underline; cursor: pointer;">View Details &amp; Overrides &rarr;</span>
             </div>
             <div class="cds-details" id="cds-details-text">
               This prescription has not been screened for interactions, duplicate therapy or allergies.
@@ -319,11 +319,11 @@
       <div class="modal-body">
         <div class="payment-summary">
           <div>
-            <span style="font-size: 0.8rem; color: #94a3b8;">Total Amount Payable:</span><br>
+            <span style="font-size: 13px; color: #94a3b8;">Total Amount Payable:</span><br>
             <strong id="pay-total-amount">KES 150.00</strong>
           </div>
           <div style="text-align: right;">
-            <span style="font-size: 0.8rem; color: #94a3b8;">Payment Gate Status:</span><br>
+            <span style="font-size: 13px; color: #94a3b8;">Payment Gate Status:</span><br>
             <span class="payment-tag" id="modal-pay-gate-status">PENDING</span>
           </div>
         </div>
@@ -345,7 +345,7 @@
           </div>
           <div class="change-box" style="background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.3); padding: 10px 14px; border-radius: 8px; margin-bottom: 14px;">
             <span>Change Due:</span>
-            <strong id="change-due-display" style="font-size: 1.1rem; color: #818cf8; font-family: monospace;">KES 50.00</strong>
+            <strong id="change-due-display" style="font-size: 18px; color: #818cf8; font-family: monospace;">KES 50.00</strong>
           </div>
         </div>
 
@@ -379,7 +379,7 @@
       </div>
       <div class="modal-body">
         <div class="format-picker" style="display: flex; gap: 12px; align-items: center; margin-bottom: 16px;">
-          <label style="font-size: 0.85rem; color: #94a3b8;">Label Preset Format:</label>
+          <label style="font-size: 13px; color: #94a3b8;">Label Preset Format:</label>
           <select id="label-format-select" class="form-control" style="width: auto; flex: 1;" onchange="renderLabelPreview()">
             <option value="70x40" selected>Standard Pharmacy Label (70x40mm)</option>
             <option value="58x40">Compact Thermal Label (58x40mm)</option>
@@ -458,7 +458,7 @@
 
         <!-- Controlled Medicine Dual Witness Section -->
         <div id="controlled-witness-box" style="display: block; background: rgba(139, 92, 246, 0.1); border: 1px solid rgba(139, 92, 246, 0.3); padding: 12px; border-radius: 8px; margin-top: 14px;">
-          <strong style="color: #a78bfa; font-size: 0.85rem;">🔒 Schedule II Controlled Drug Dual-Witness:</strong>
+          <strong style="color: #a78bfa; font-size: 13px;">🔒 Schedule II Controlled Drug Dual-Witness:</strong>
           <div class="form-group" style="margin-top: 8px; margin-bottom: 0;">
             <label style="color: #c4b5fd;">Second Pharmacist / Nurse Witness Username:</label>
             <input type="text" id="witness-username-input" class="form-control" value="witness_rph">
@@ -515,7 +515,7 @@
         <div class="cds-findings-list">
           <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); padding: 12px; border-radius: 8px; margin-bottom: 12px;">
             <strong style="color: #fbbf24;">⚠️ MODERATE: Penicillin Class History Alert</strong>
-            <p style="font-size: 0.8rem; color: #cbd5e1; margin-top: 4px;">Patient allergy profile notes mild rash history on Amoxicillin in 2022.</p>
+            <p style="font-size: 13px; color: #cbd5e1; margin-top: 4px;">Patient allergy profile notes mild rash history on Amoxicillin in 2022.</p>
           </div>
         </div>
 
@@ -541,12 +541,12 @@
       <div class="modal-body">
         <div class="payment-summary" style="background: rgba(99, 102, 241, 0.1); border-color: rgba(99, 102, 241, 0.3);">
           <div>
-            <span style="font-size: 0.8rem; color: #94a3b8;">Active Shift #:</span><br>
+            <span style="font-size: 13px; color: #94a3b8;">Active Shift #:</span><br>
             <strong style="color: #818cf8;" id="modal-shift-num">DEMO-SHIFT-01</strong>
           </div>
           <div style="text-align: right;">
-            <span style="font-size: 0.8rem; color: #94a3b8;">Cashier / Pharmacist:</span><br>
-            <strong style="font-size: 0.95rem; color: #f8fafc;">Demo Cashier / Demo RPh</strong>
+            <span style="font-size: 13px; color: #94a3b8;">Cashier / Pharmacist:</span><br>
+            <strong style="font-size: 16px; color: #f8fafc;">Demo Cashier / Demo RPh</strong>
           </div>
         </div>
 

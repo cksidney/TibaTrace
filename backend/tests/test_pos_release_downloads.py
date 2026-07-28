@@ -48,6 +48,15 @@ def user(db):
 
 
 @pytest.fixture
+def platform_admin(db):
+    return User.objects.create_user(
+        username="platform-admin",
+        password=PASSWORD,
+        is_platform_admin=True,
+    )
+
+
+@pytest.fixture
 def published(db):
     return PosRelease.objects.create(
         platform=PosRelease.Platform.ANDROID, version="0.1.0-alpha.1",
@@ -184,6 +193,24 @@ class TestDownload:
         )
         assert event.object_id == str(published.pk)
         assert event.metadata["version"] == "0.1.0-alpha.1"
+
+    def test_a_platform_admin_can_request_a_download_without_tenant_audit(
+        self, platform_admin, published
+    ):
+        from apps.audit.models import AuditEvent
+
+        with patch(
+            "apps.platform.release_views.signed_download_url",
+            return_value="https://minio.example.test/signed",
+        ):
+            response = signed_in(platform_admin).post(
+                f"/api/hq/pos-releases/{published.pk}/download/"
+            )
+
+        assert response.status_code == 200
+        assert not AuditEvent.all_objects.filter(
+            action="POS_RELEASE_DOWNLOADED", actor=platform_admin
+        ).exists()
 
 
 # ─── the row itself ──────────────────────────────────────────────────────────

@@ -116,19 +116,20 @@ class PosReleaseDownloadView(APIView):
 
         from apps.audit.models import AuditEvent
 
-        AuditEvent.all_objects.create(
-            tenant_id=getattr(request.user, "tenant_id", None),
-            actor=request.user,
-            action="POS_RELEASE_DOWNLOADED",
-            model_name="PosRelease",
-            object_id=str(release.pk),
-            outcome="SUCCESS",
-            metadata={
-                "platform": release.platform,
-                "version": release.version,
-                "sha256": release.sha256,
-            },
-        )
+        if tenant_id := getattr(request.user, "tenant_id", None):
+            AuditEvent.all_objects.create(
+                tenant_id=tenant_id,
+                actor=request.user,
+                action="POS_RELEASE_DOWNLOADED",
+                model_name="PosRelease",
+                object_id=str(release.pk),
+                outcome="SUCCESS",
+                metadata={
+                    "platform": release.platform,
+                    "version": release.version,
+                    "sha256": release.sha256,
+                },
+            )
 
         return Response(
             {

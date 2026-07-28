@@ -28,7 +28,10 @@ def pos_terminal_view(request):
     return render(
         request,
         "pos/pos.html",
-        {"demo_tools_enabled": bool(settings.DEBUG)},
+        {
+            "demo_tools_enabled": bool(settings.DEBUG),
+            "product_version": settings.DAWATRACE_VERSION,
+        },
     )
 
 

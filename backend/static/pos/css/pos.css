@@ -136,14 +136,14 @@ body {
 }
 
 .brand-title h1 {
-  font-size: 1.15rem;
+  font-size: 18px;
   font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--text-primary);
 }
 
 .badge-version {
-  font-size: 0.65rem;
+  font-size: 12px;
   font-weight: 700;
   padding: 2px 6px;
   border-radius: 4px;
@@ -167,7 +167,7 @@ body {
   border: 1px solid var(--border-color);
   padding: 6px 12px;
   border-radius: 20px;
-  font-size: 0.82rem;
+  font-size: 13px;
   color: var(--text-secondary);
 }
 
@@ -192,7 +192,7 @@ body {
   display: flex;
   align-items: center;
   gap: 16px;
-  font-size: 0.75rem;
+  font-size: 13px;
   color: var(--text-muted);
 }
 
@@ -203,7 +203,7 @@ body {
 }
 
 .tel-label {
-  font-size: 0.62rem;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.05em;
 }
@@ -249,7 +249,7 @@ body {
 }
 
 .kpi-icon {
-  font-size: 1.4rem;
+  font-size: 22px;
   width: 38px;
   height: 38px;
   border-radius: var(--radius-sm);
@@ -265,13 +265,13 @@ body {
 }
 
 .kpi-label {
-  font-size: 0.72rem;
+  font-size: 13px;
   color: var(--text-muted);
   font-weight: 500;
 }
 
 .kpi-value {
-  font-size: 1.25rem;
+  font-size: 22px;
   font-weight: 700;
   font-family: 'JetBrains Mono', monospace;
   color: var(--text-primary);
@@ -306,7 +306,7 @@ body {
 }
 
 .panel-header h2 {
-  font-size: 0.95rem;
+  font-size: 16px;
   font-weight: 600;
 }
 
@@ -315,7 +315,7 @@ body {
   border: none;
   color: var(--text-secondary);
   cursor: pointer;
-  font-size: 1rem;
+  font-size: 16px;
 }
 
 .queue-search {
@@ -329,7 +329,7 @@ body {
   border: 1px solid var(--border-color);
   background: var(--bg-input);
   color: var(--text-primary);
-  font-size: 0.82rem;
+  font-size: 13px;
 }
 
 .filter-tabs {
@@ -341,7 +341,7 @@ body {
 
 .tab-btn {
   padding: 4px 10px;
-  font-size: 0.75rem;
+  font-size: 13px;
   border-radius: 12px;
   border: 1px solid var(--border-color);
   background: var(--bg-input);
@@ -395,13 +395,13 @@ body {
 
 .q-disp-no {
   font-family: 'JetBrains Mono', monospace;
-  font-size: 0.85rem;
+  font-size: 13px;
   font-weight: 600;
   color: var(--primary-emerald);
 }
 
 .q-status-badge {
-  font-size: 0.65rem;
+  font-size: 12px;
   font-weight: 700;
   padding: 2px 8px;
   border-radius: 10px;
@@ -410,12 +410,12 @@ body {
 
 .q-patient {
   font-weight: 600;
-  font-size: 0.9rem;
+  font-size: 15px;
   margin-bottom: 4px;
 }
 
 .q-meta {
-  font-size: 0.75rem;
+  font-size: 13px;
   color: var(--text-muted);
   display: flex;
   justify-content: space-between;
@@ -446,13 +446,13 @@ body {
 }
 
 .episode-title-group h2 {
-  font-size: 1.1rem;
+  font-size: 18px;
   font-weight: 700;
   font-family: 'JetBrains Mono', monospace;
 }
 
 .status-badge {
-  font-size: 0.75rem;
+  font-size: 13px;
   font-weight: 700;
   padding: 4px 10px;
   border-radius: 12px;
@@ -476,7 +476,7 @@ body {
 }
 
 .empty-icon {
-  font-size: 3rem;
+  font-size: 48px;
   margin-bottom: 12px;
 }
 
@@ -505,7 +505,7 @@ body {
 }
 
 .insurance-benefit-pill {
-  font-size: 0.75rem;
+  font-size: 13px;
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   padding: 4px 8px;
@@ -521,7 +521,7 @@ body {
 }
 
 .card-label {
-  font-size: 0.65rem;
+  font-size: 12px;
   font-weight: 700;
   color: var(--text-muted);
   letter-spacing: 0.05em;
@@ -529,20 +529,20 @@ body {
 }
 
 .card-main-val {
-  font-size: 1.05rem;
+  font-size: 18px;
   font-weight: 700;
   margin-bottom: 4px;
 }
 
 .card-sub-info {
-  font-size: 0.78rem;
+  font-size: 13px;
   color: var(--text-secondary);
   margin-bottom: 8px;
 }
 
 .allergy-tag, .payment-tag {
   display: inline-block;
-  font-size: 0.72rem;
+  font-size: 13px;
   font-weight: 600;
   padding: 2px 8px;
   border-radius: 4px;
@@ -582,12 +582,12 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 0.88rem;
+  font-size: 15px;
   margin-bottom: 4px;
 }
 
 .cds-details {
-  font-size: 0.78rem;
+  font-size: 13px;
   opacity: 0.9;
 }
 
@@ -605,7 +605,7 @@ body {
   width: 100%;
   border-collapse: collapse;
   text-align: left;
-  font-size: 0.82rem;
+  font-size: 13px;
 }
 
 .dispensing-table th {
@@ -641,7 +641,7 @@ body {
 /* Buttons System */
 .btn {
   padding: 8px 16px;
-  font-size: 0.82rem;
+  font-size: 13px;
   font-weight: 600;
   border-radius: var(--radius-sm);
   border: 1px solid transparent;
@@ -654,7 +654,7 @@ body {
 
 .btn-sm {
   padding: 5px 10px;
-  font-size: 0.75rem;
+  font-size: 13px;
 }
 
 .btn-primary {
@@ -753,14 +753,14 @@ body {
 }
 
 .modal-header h3 {
-  font-size: 1.05rem;
+  font-size: 18px;
 }
 
 .close-btn {
   background: none;
   border: none;
   color: var(--text-muted);
-  font-size: 1.5rem;
+  font-size: 24px;
   cursor: pointer;
 }
 
@@ -783,7 +783,7 @@ body {
 
 .form-group label {
   display: block;
-  font-size: 0.78rem;
+  font-size: 13px;
   color: var(--text-secondary);
   margin-bottom: 6px;
   font-weight: 500;
@@ -796,7 +796,7 @@ body {
   border: 1px solid var(--border-color);
   background: var(--bg-input);
   color: var(--text-primary);
-  font-size: 0.85rem;
+  font-size: 13px;
 }
 .form-control:focus {
   outline: none;
@@ -815,7 +815,7 @@ body {
 }
 
 .payment-summary strong {
-  font-size: 1.3rem;
+  font-size: 22px;
   font-family: 'JetBrains Mono', monospace;
   color: var(--primary-emerald);
 }
@@ -824,7 +824,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  font-size: 0.85rem;
+  font-size: 13px;
 }
 
 .notice-box {
@@ -833,7 +833,7 @@ body {
   color: var(--accent-amber);
   padding: 10px 14px;
   border-radius: var(--radius-sm);
-  font-size: 0.78rem;
+  font-size: 13px;
   margin-bottom: 16px;
 }
 
@@ -863,7 +863,7 @@ body {
   padding: 12px 18px;
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-card);
-  font-size: 0.85rem;
+  font-size: 13px;
   color: var(--text-primary);
   display: flex;
   align-items: center;
