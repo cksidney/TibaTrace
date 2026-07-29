@@ -16,7 +16,7 @@ import pytest
 from rest_framework.test import APIClient
 
 from apps.identity.models import User
-from apps.inventory.models import InventoryBatch, InventoryLocation
+from apps.inventory.models import InventoryBatch, InventoryLocation, InventoryReservation
 from apps.medicines.models import (
     ClinicalMedicinalProduct,
     CommercialSKU,
@@ -73,7 +73,25 @@ def build(slug, batch_number):
         manufacturer_batch_number=batch_number,
         expiry_date=date.today() + timedelta(days=200),
     )
-    return {"tenant": tenant, "user": user, "location": location, "batch": batch}
+    reservation = InventoryReservation.all_objects.create(
+        tenant=tenant,
+        branch=branch,
+        source_location=location,
+        sku=sku,
+        batch=batch,
+        requested_quantity="2.0000",
+        allocated_quantity="1.0000",
+        unit="tablet",
+        purpose="API scope test",
+        idempotency_key=f"reservation-{slug}",
+    )
+    return {
+        "tenant": tenant,
+        "user": user,
+        "location": location,
+        "batch": batch,
+        "reservation": reservation,
+    }
 
 
 @pytest.fixture
@@ -104,7 +122,12 @@ def rows(response):
 
 class TestReachable:
     @pytest.mark.parametrize(
-        "path", ["/api/inventory/locations/", "/api/inventory/batches/"]
+        "path",
+        [
+            "/api/inventory/locations/",
+            "/api/inventory/batches/",
+            "/api/inventory/reservations/",
+        ],
     )
     def test_a_collection_returns_the_tenants_rows(self, nairobi, path):
         response = client_for(nairobi).get(path)
@@ -113,6 +136,22 @@ class TestReachable:
             f"{path} is empty for a tenant that has rows. The class-attribute "
             "queryset was frozen empty at import, when no tenant context exists."
         )
+
+    def test_collections_include_hq_display_fields(self, nairobi):
+        client = client_for(nairobi)
+
+        location = rows(client.get("/api/inventory/locations/"))[0]
+        assert location["location_code"] == "LOC-nrb"
+        assert location["branch_name"] == "Branch"
+        assert "cold_chain_capability" in location
+
+        batch = rows(client.get("/api/inventory/batches/"))[0]
+        assert batch["sku_code"] == "SKU-nrb"
+
+        reservation = rows(client.get("/api/inventory/reservations/"))[0]
+        assert reservation["sku_code"] == "SKU-nrb"
+        assert reservation["location_name"] == "Main store"
+        assert reservation["batch_number"] == "BATCH-NRB-1"
 
 
 class TestIsolation:

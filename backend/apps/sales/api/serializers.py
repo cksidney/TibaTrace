@@ -290,12 +290,15 @@ class SalesOrderSerializer(serializers.ModelSerializer):
 
 
 class SalesOrderHoldSerializer(serializers.ModelSerializer):
+    sales_order_number = serializers.CharField(source="sales_order.order_number", read_only=True)
+
     class Meta:
         model = SalesOrderHold
         fields = [
             "id",
             "tenant",
             "sales_order",
+            "sales_order_number",
             "hold_type",
             "reason",
             "placed_by",
@@ -360,6 +363,9 @@ class PickingWaveSerializer(serializers.ModelSerializer):
 
 
 class PickingTaskSerializer(serializers.ModelSerializer):
+    sales_order_number = serializers.CharField(source="sales_order.order_number", read_only=True)
+    sku_code = serializers.CharField(source="sku.sku_code", read_only=True)
+
     class Meta:
         model = PickingTask
         fields = [
@@ -367,10 +373,12 @@ class PickingTaskSerializer(serializers.ModelSerializer):
             "tenant",
             "picking_wave",
             "sales_order",
+            "sales_order_number",
             "sales_order_line",
             "allocation",
             "source_location",
             "sku",
+            "sku_code",
             "batch",
             "requested_quantity",
             "picked_quantity",
@@ -387,6 +395,8 @@ class PickingTaskSerializer(serializers.ModelSerializer):
 
 
 class PackingSessionSerializer(serializers.ModelSerializer):
+    sales_order_number = serializers.CharField(source="sales_order.order_number", read_only=True)
+
     class Meta:
         model = PackingSession
         fields = [
@@ -395,6 +405,7 @@ class PackingSessionSerializer(serializers.ModelSerializer):
             "branch",
             "session_number",
             "sales_order",
+            "sales_order_number",
             "status",
             "packer",
             "verifier",
@@ -425,6 +436,7 @@ class PackageLineSerializer(serializers.ModelSerializer):
 
 class PackageSerializer(serializers.ModelSerializer):
     lines = PackageLineSerializer(many=True, read_only=True)
+    sales_order_number = serializers.CharField(source="sales_order.order_number", read_only=True)
 
     class Meta:
         model = Package
@@ -434,6 +446,7 @@ class PackageSerializer(serializers.ModelSerializer):
             "packing_session",
             "package_number",
             "sales_order",
+            "sales_order_number",
             "delivery_address",
             "temperature_zone",
             "package_type",
@@ -541,6 +554,7 @@ class DeliveryLineSerializer(serializers.ModelSerializer):
 class DeliveryRecordSerializer(serializers.ModelSerializer):
     lines = DeliveryLineSerializer(many=True, read_only=True)
     customer_name = serializers.CharField(source="customer.legal_name", read_only=True)
+    dispatch_number = serializers.CharField(source="dispatch_order.dispatch_number", read_only=True)
 
     class Meta:
         model = DeliveryRecord
@@ -548,6 +562,7 @@ class DeliveryRecordSerializer(serializers.ModelSerializer):
             "id",
             "tenant",
             "dispatch_order",
+            "dispatch_number",
             "customer",
             "delivery_address",
             "status",
@@ -599,6 +614,7 @@ class SalesReturnLineSerializer(serializers.ModelSerializer):
 class SalesReturnAuthorizationSerializer(serializers.ModelSerializer):
     lines = SalesReturnLineSerializer(many=True, read_only=True)
     customer_name = serializers.CharField(source="customer.legal_name", read_only=True)
+    sales_order_number = serializers.CharField(source="sales_order.order_number", read_only=True)
 
     class Meta:
         model = SalesReturnAuthorization
@@ -607,6 +623,7 @@ class SalesReturnAuthorizationSerializer(serializers.ModelSerializer):
             "tenant",
             "return_number",
             "sales_order",
+            "sales_order_number",
             "customer",
             "status",
             "reason",

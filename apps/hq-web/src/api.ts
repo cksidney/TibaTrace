@@ -1161,6 +1161,23 @@ export interface BusinessDayItem {
 export const loadPosRegisters = (signal?: AbortSignal) =>
   getCollection<PosRegisterItem>('/api/pos/shift/registers/', signal);
 
+export interface PosDeviceHealthItem {
+  readonly id: string;
+  readonly device_id: string;
+  readonly device_type: string;
+  readonly status: 'OK' | 'WARNING' | 'ERROR' | 'OFFLINE';
+  readonly printer_paper_level: string;
+  readonly scanner_connected: boolean;
+  readonly cash_drawer_open: boolean;
+  readonly network_latency_ms: number;
+  readonly battery_level_pct: number | null;
+  readonly storage_used_pct: number;
+  readonly last_heartbeat: string;
+}
+
+export const loadPosDeviceHealth = (signal?: AbortSignal) =>
+  getCollection<PosDeviceHealthItem>('/api/pos/dispensing/devices/', signal);
+
 export const loadCashMovements = (signal?: AbortSignal) =>
   getCollection<CashMovementItem>('/api/pos/shift/cash-movements/', signal);
 
@@ -1693,6 +1710,46 @@ export async function updateGovernmentCatalogueSelection(
 
 export type SystemHealth = 'checking' | 'live' | 'degraded' | 'unreachable';
 
+export interface EndpointHeartbeat {
+  readonly checkedAt: string;
+  readonly endpoint: string;
+  readonly latencyMs: number;
+  readonly status: 'ONLINE' | 'DEGRADED' | 'OFFLINE';
+  readonly statusCode: number | null;
+}
+
+export async function probeEndpointHeartbeat(
+  endpoint: string,
+  signal?: AbortSignal,
+): Promise<EndpointHeartbeat> {
+  const startedAt = Date.now();
+  const request: RequestInit = {
+    credentials: 'include',
+    headers: { Accept: 'application/json', ...tenantHeaders() },
+  };
+  if (signal) request.signal = signal;
+
+  try {
+    const response = await fetch(endpoint, request);
+    return {
+      checkedAt: new Date().toISOString(),
+      endpoint,
+      latencyMs: Math.max(Date.now() - startedAt, 0),
+      status: response.ok ? 'ONLINE' : 'DEGRADED',
+      statusCode: response.status,
+    };
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    return {
+      checkedAt: new Date().toISOString(),
+      endpoint,
+      latencyMs: Math.max(Date.now() - startedAt, 0),
+      status: 'OFFLINE',
+      statusCode: null,
+    };
+  }
+}
+
 /**
  * Ask the backend whether it is well.
  *
@@ -2090,3 +2147,180 @@ export const CLAIM_STATES = {
   ],
   payment: ['UNPAID', 'PARTIALLY_PAID', 'PAID'],
 } as const;
+
+/* ── inventory subsystem ─────────────────────────────────────────────────── */
+
+export interface HQInventoryLocationItem {
+  readonly id: string;
+  readonly location_code: string;
+  readonly name: string;
+  readonly location_type: string;
+  readonly status: string;
+  readonly branch_name?: string;
+  readonly cold_chain_capability?: boolean;
+  readonly controlled_drug_capability?: boolean;
+  readonly quarantine_capability?: boolean;
+  readonly returns_capability?: boolean;
+}
+
+export interface HQInventoryBalanceItem {
+  readonly id: string;
+  readonly sku_code?: string;
+  readonly sku_name?: string;
+  readonly location_name?: string;
+  readonly batch_number?: string;
+  readonly on_hand: string;
+  readonly reserved: string;
+  readonly quarantined: string;
+  readonly damaged: string;
+  readonly expired: string;
+  readonly available: string;
+  readonly quality_status?: string;
+  readonly expiry_status?: string;
+}
+
+export interface HQInventoryLedgerItem {
+  readonly id: string;
+  readonly entry_type: string;
+  readonly sku_code?: string;
+  readonly location_name?: string;
+  readonly batch_number?: string;
+  readonly quantity_delta: string;
+  readonly base_quantity_delta: string;
+  readonly unit: string;
+  readonly source_document_type: string;
+  readonly source_document_id: string;
+  readonly transaction_timestamp: string;
+  readonly reason_code?: string;
+  readonly notes?: string;
+}
+
+export interface HQInventoryBatchItem {
+  readonly id: string;
+  readonly sku_code?: string;
+  readonly manufacturer_batch_number: string;
+  readonly manufacture_date: string | null;
+  readonly expiry_date: string;
+  readonly quality_status: string;
+  readonly recall_status: string;
+}
+
+export interface HQInventoryReservationItem {
+  readonly id: string;
+  readonly sku_code?: string;
+  readonly location_name?: string;
+  readonly batch_number?: string | null;
+  readonly requested_quantity: string;
+  readonly allocated_quantity: string;
+  readonly status: string;
+  readonly created_at: string;
+}
+
+export const loadInventoryLocations = (signal?: AbortSignal) =>
+  getCollection<HQInventoryLocationItem>('/api/inventory/locations/', signal);
+
+export const loadInventoryBalances = (signal?: AbortSignal) =>
+  getCollection<HQInventoryBalanceItem>('/api/inventory/balances/', signal);
+
+export const loadInventoryLedger = (signal?: AbortSignal) =>
+  getCollection<HQInventoryLedgerItem>('/api/inventory/ledger/', signal);
+
+export const loadInventoryBatches = (signal?: AbortSignal) =>
+  getCollection<HQInventoryBatchItem>('/api/inventory/batches/', signal);
+
+export const loadInventoryReservations = (signal?: AbortSignal) =>
+  getCollection<HQInventoryReservationItem>('/api/inventory/reservations/', signal);
+
+/* ── sales & fulfilment subsystem ────────────────────────────────────────── */
+
+export interface HQQuotationItem {
+  readonly id: string;
+  readonly quotation_number: string;
+  readonly customer_name?: string;
+  readonly total: Money;
+  readonly currency: string;
+  readonly status: string;
+  readonly issue_date: string;
+  readonly valid_until: string | null;
+}
+
+export interface HQPickingWaveItem {
+  readonly id: string;
+  readonly wave_number: string;
+  readonly status: string;
+  readonly created_at: string;
+}
+
+export interface HQPickingTaskItem {
+  readonly id: string;
+  readonly sales_order_number?: string;
+  readonly sku_code?: string;
+  readonly requested_quantity: string;
+  readonly picked_quantity: string;
+  readonly status: string;
+}
+
+export interface HQPackingSessionItem {
+  readonly id: string;
+  readonly session_number: string;
+  readonly sales_order_number?: string;
+  readonly status: string;
+}
+
+export interface HQPackageItem {
+  readonly id: string;
+  readonly package_number: string;
+  readonly sales_order_number?: string;
+  readonly temperature_zone: string;
+  readonly status: string;
+}
+
+export interface HQDeliveryRecordItem {
+  readonly id: string;
+  readonly dispatch_number?: string;
+  readonly recipient_name?: string;
+  readonly status: string;
+  readonly delivered_at: string | null;
+}
+
+export interface HQSalesReturnItem {
+  readonly id: string;
+  readonly return_number: string;
+  readonly sales_order_number?: string;
+  readonly customer_name?: string;
+  readonly status: string;
+  readonly reason?: string;
+}
+
+export interface HQSalesOrderHoldItem {
+  readonly id: string;
+  readonly sales_order_number?: string;
+  readonly hold_type: string;
+  readonly reason: string;
+  readonly is_active: boolean;
+  readonly placed_at: string;
+}
+
+export const loadQuotations = (signal?: AbortSignal) =>
+  getCollection<HQQuotationItem>('/api/sales/quotations/', signal);
+
+export const loadPickingWaves = (signal?: AbortSignal) =>
+  getCollection<HQPickingWaveItem>('/api/sales/picking-waves/', signal);
+
+export const loadPickingTasks = (signal?: AbortSignal) =>
+  getCollection<HQPickingTaskItem>('/api/sales/picking-tasks/', signal);
+
+export const loadPackingSessions = (signal?: AbortSignal) =>
+  getCollection<HQPackingSessionItem>('/api/sales/packing-sessions/', signal);
+
+export const loadPackages = (signal?: AbortSignal) =>
+  getCollection<HQPackageItem>('/api/sales/packages/', signal);
+
+export const loadDeliveryRecords = (signal?: AbortSignal) =>
+  getCollection<HQDeliveryRecordItem>('/api/sales/deliveries/', signal);
+
+export const loadSalesReturns = (signal?: AbortSignal) =>
+  getCollection<HQSalesReturnItem>('/api/sales/returns/', signal);
+
+export const loadSalesOrderHolds = (signal?: AbortSignal) =>
+  getCollection<HQSalesOrderHoldItem>('/api/sales/order-holds/', signal);

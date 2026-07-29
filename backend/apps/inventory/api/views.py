@@ -97,6 +97,6 @@ class InventoryReservationViewSet(TenantScopedQuerysetMixin, viewsets.ReadOnlyMo
     API endpoint for viewing inventory reservations.
     """
     model = InventoryReservation
-    select_related = ['sku', 'location']
+    select_related = ['sku', 'source_location', 'batch']
     serializer_class = InventoryReservationSerializer
     permission_classes = [permissions.IsAuthenticated]

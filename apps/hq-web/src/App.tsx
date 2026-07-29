@@ -22,6 +22,7 @@ import {
   loadRejections,
   loadCoverages,
   loadCustomers,
+  loadPosDeviceHealth,
   loadPosRegisters,
   loadCashMovements,
   loadCashDeclarations,
@@ -52,6 +53,7 @@ import {
   requestPosDownload,
   loadPosReleases,
   loadSystemHealth,
+  probeEndpointHeartbeat,
   loadTenantSkus,
   readSession,
   SignInError,
@@ -60,6 +62,19 @@ import {
   transitionPriceBookVersion,
   updateGovernmentCatalogueSelection,
   varianceNeedsExplanation,
+  loadInventoryLocations,
+  loadInventoryBalances,
+  loadInventoryLedger,
+  loadInventoryBatches,
+  loadInventoryReservations,
+  loadQuotations,
+  loadPickingWaves,
+  loadPickingTasks,
+  loadPackingSessions,
+  loadPackages,
+  loadDeliveryRecords,
+  loadSalesReturns,
+  loadSalesOrderHolds,
 } from './api.js';
 import type {
   ActiveSubstanceSummary,
@@ -81,10 +96,25 @@ import type {
   ClaimRejection,
   InsuranceCoverage,
   CustomerItem,
+  EndpointHeartbeat,
+  PosDeviceHealthItem,
   PosRegisterItem,
   CashMovementItem,
   CashDeclarationItem,
   BusinessDayItem,
+  HQInventoryLocationItem,
+  HQInventoryBalanceItem,
+  HQInventoryLedgerItem,
+  HQInventoryBatchItem,
+  HQInventoryReservationItem,
+  HQQuotationItem,
+  HQPickingWaveItem,
+  HQPickingTaskItem,
+  HQPackingSessionItem,
+  HQPackageItem,
+  HQDeliveryRecordItem,
+  HQSalesReturnItem,
+  HQSalesOrderHoldItem,
   ManufacturedProductSummary,
   ManufacturerSummary,
   PriceBookSummary,
@@ -114,6 +144,7 @@ type WorkspaceView =
   | 'network'
   | 'people'
   | 'catalogue'
+  | 'inventory'
   | 'operations'
   | 'commerce'
   | 'pricing'
@@ -135,7 +166,8 @@ const navigation: readonly NavigationItem[] = [
   { key: 'network', label: 'Pharmacy network', caption: 'Tenants and locations', icon: 'network' },
   { key: 'people', label: 'People & customers', caption: 'Care and commercial records', icon: 'patients' },
   { key: 'catalogue', label: 'Medicine catalogue', caption: 'SKUs and product governance', icon: 'clinical' },
-  { key: 'operations', label: 'Inventory & procurement', caption: 'Stock and supply', icon: 'inventory' },
+  { key: 'inventory', label: 'Inventory Control', caption: 'Balances, ledger & FEFO', icon: 'inventory' },
+  { key: 'operations', label: 'Procurement & Supply', caption: 'Purchase orders & GRN', icon: 'store' },
   { key: 'commerce', label: 'Sales & fulfilment', caption: 'Orders through delivery', icon: 'store' },
   { key: 'pricing', label: 'Pricing', caption: 'Branch price books', icon: 'database' },
   { key: 'cash', label: 'Cash control', caption: 'Shifts, tills and variances', icon: 'building' },
@@ -166,10 +198,15 @@ const viewMeta: Record<WorkspaceView, { readonly eyebrow: string; readonly title
     title: 'Medicine catalogue',
     description: 'Inspect commercial SKUs, governed substances and manufacturer coverage used throughout stock, pricing and dispensing.',
   },
+  inventory: {
+    eyebrow: 'Stock & Ledger Governance',
+    title: 'Inventory Control & Stock Ledger',
+    description: 'Track real-time stock balances, double-entry append-only ledger audit trails, lot batch expiries, location capabilities, and FEFO reservations.',
+  },
   operations: {
     eyebrow: 'Supply operations',
-    title: 'Inventory & procurement',
-    description: 'Track stock readiness, quality holds and active dispensing demand before it affects patient care.',
+    title: 'Procurement & Supply Chain',
+    description: 'Track purchase requisitions, POs, goods receipt notes, supplier qualifications, and 3-way invoice matching.',
   },
   commerce: {
     eyebrow: 'Order operations',
@@ -547,6 +584,7 @@ function Dashboard({
           {activeView === 'network' ? <NetworkView csrfToken={csrfToken} onChanged={onRefresh} overview={overview} /> : null}
           {activeView === 'people' ? <PeopleView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} /> : null}
           {activeView === 'catalogue' ? <CatalogueView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} overview={overview} /> : null}
+          {activeView === 'inventory' ? <InventoryView /> : null}
           {activeView === 'operations' ? <OperationsView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} overview={overview} /> : null}
           {activeView === 'commerce' ? <CommerceView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} /> : null}
           {activeView === 'pricing' ? <PricingView csrfToken={csrfToken} tenantId={overview.tenant_id} /> : null}
@@ -733,7 +771,665 @@ function OverviewView({ overview, onNavigate }: { readonly overview: HQOverview;
           </div>
         </article>
       </section>
+
+      <HeartbeatsTelemetryPanel />
     </>
+  );
+}
+
+interface HeartbeatNode {
+  readonly id: string;
+  readonly name: string;
+  readonly type: 'SERVICE' | 'DEVICE';
+  readonly category: string;
+  readonly endpointOrHardware: string;
+  readonly status: 'ONLINE' | 'DEGRADED' | 'STANDBY' | 'OFFLINE';
+  readonly latencyMs: number | null;
+  readonly observation: string;
+  readonly lastPingSec: number;
+}
+
+const HEARTBEAT_ENDPOINTS = [
+  {
+    id: 'srv-001',
+    name: 'API Gateway & Core Router',
+    category: 'Core Infrastructure',
+    endpoint: '/api/health/',
+  },
+  {
+    id: 'srv-002',
+    name: 'Kenya eTCD Master Catalogue',
+    category: 'Medicines Master',
+    endpoint: '/api/medicines/government-catalogue/?page_size=1',
+  },
+  {
+    id: 'srv-003',
+    name: 'Pricing & Resolution Engine',
+    category: 'Commercial Pricing',
+    endpoint: '/api/pricing/books/?page_size=1',
+  },
+  {
+    id: 'srv-004',
+    name: 'POS Shift & Cash Control',
+    category: 'Till Custody',
+    endpoint: '/api/pos/shift/registers/?page_size=1',
+  },
+  {
+    id: 'srv-005',
+    name: 'Insurance Claims Relay',
+    category: 'Third-party Adjudication',
+    endpoint: '/api/insurance/claims/?page_size=1',
+  },
+] as const;
+
+const HEARTBEAT_POLL_MS = 60_000;
+const DEVICE_OFFLINE_AFTER_MS = 5 * 60_000;
+
+function HeartbeatsTelemetryPanel() {
+  const [nodesFilter, setNodesFilter] = useState<'ALL' | 'SERVICES' | 'DEVICES'>('ALL');
+  const [serviceHeartbeats, setServiceHeartbeats] = useState<readonly EndpointHeartbeat[]>([]);
+  const [deviceHealth, setDeviceHealth] = useState<readonly PosDeviceHealthItem[]>([]);
+  const [posRegisters, setPosRegisters] = useState<readonly PosRegisterItem[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<number | null>(null);
+  const [clock, setClock] = useState(() => Date.now());
+  const [telemetryError, setTelemetryError] = useState('');
+
+  const fetchHeartbeats = useCallback(async (signal?: AbortSignal) => {
+    setRefreshing(true);
+    const [services, devices, registers] = await Promise.allSettled([
+      Promise.all(HEARTBEAT_ENDPOINTS.map(({ endpoint }) => probeEndpointHeartbeat(endpoint, signal))),
+      loadPosDeviceHealth(signal),
+      loadPosRegisters(signal),
+    ]);
+
+    if (signal?.aborted) return;
+    if (services.status === 'fulfilled') setServiceHeartbeats(services.value);
+    if (devices.status === 'fulfilled') setDeviceHealth(devices.value);
+    if (registers.status === 'fulfilled') setPosRegisters(registers.value);
+
+    const failedSources = [
+      services.status === 'rejected' ? 'service endpoints' : '',
+      devices.status === 'rejected' ? 'POS device telemetry' : '',
+      registers.status === 'rejected' ? 'register directory' : '',
+    ].filter(Boolean);
+    setTelemetryError(failedSources.length > 0 ? `Could not refresh ${failedSources.join(', ')}.` : '');
+    setLastRefreshedAt(Date.now());
+    setClock(Date.now());
+    setRefreshing(false);
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetchHeartbeats(controller.signal);
+    const clockInterval = window.setInterval(() => setClock(Date.now()), 1000);
+    const pollInterval = window.setInterval(() => void fetchHeartbeats(controller.signal), HEARTBEAT_POLL_MS);
+    return () => {
+      controller.abort();
+      window.clearInterval(clockInterval);
+      window.clearInterval(pollInterval);
+    };
+  }, [fetchHeartbeats]);
+
+  const serviceNodes: readonly HeartbeatNode[] = serviceHeartbeats.map((heartbeat, index) => {
+    const endpoint = HEARTBEAT_ENDPOINTS[index];
+    return {
+      id: endpoint?.id ?? heartbeat.endpoint,
+      name: endpoint?.name ?? heartbeat.endpoint,
+      type: 'SERVICE',
+      category: endpoint?.category ?? 'Application Service',
+      endpointOrHardware: heartbeat.endpoint,
+      status: heartbeat.status,
+      latencyMs: heartbeat.latencyMs,
+      observation: heartbeat.statusCode === null ? 'No HTTP response' : `HTTP ${heartbeat.statusCode}`,
+      lastPingSec: secondsSince(heartbeat.checkedAt, clock),
+    };
+  });
+
+  const registersByDevice = new Map(
+    posRegisters.filter((register) => register.device_id).map((register) => [register.device_id, register]),
+  );
+  const deviceNodes: readonly HeartbeatNode[] = deviceHealth.map((device) => {
+    const register = registersByDevice.get(device.device_id);
+    const heartbeatAt = Date.parse(device.last_heartbeat);
+    const isStale = !Number.isFinite(heartbeatAt) || clock - heartbeatAt > DEVICE_OFFLINE_AFTER_MS;
+    const status = isStale || device.status === 'OFFLINE'
+      ? 'OFFLINE'
+      : device.status === 'OK'
+        ? register?.state === 'LOCKED' ? 'STANDBY' : 'ONLINE'
+        : 'DEGRADED';
+    const peripheralState = [
+      `Printer ${displayName(device.printer_paper_level)}`,
+      device.scanner_connected ? 'Scanner connected' : 'Scanner disconnected',
+    ].join(' · ');
+    return {
+      id: device.id,
+      name: register ? `${register.code} (${register.name})` : device.device_id,
+      type: 'DEVICE',
+      category: displayName(device.device_type),
+      endpointOrHardware: device.device_id,
+      status,
+      latencyMs: device.network_latency_ms,
+      observation: peripheralState,
+      lastPingSec: secondsSince(device.last_heartbeat, clock),
+    };
+  });
+
+  const allNodes = [...serviceNodes, ...deviceNodes];
+  const filteredNodes = nodesFilter === 'SERVICES'
+    ? serviceNodes
+    : nodesFilter === 'DEVICES'
+    ? deviceNodes
+    : allNodes;
+
+  const onlineCount = allNodes.filter((n) => n.status === 'ONLINE').length;
+  const standbyCount = allNodes.filter((n) => n.status === 'STANDBY').length;
+  const degradedCount = allNodes.filter((n) => n.status === 'DEGRADED' || n.status === 'OFFLINE').length;
+  const lastRefreshedSec = lastRefreshedAt === null ? null : Math.max(Math.floor((clock - lastRefreshedAt) / 1000), 0);
+
+  return (
+    <article className="panel heartbeats-panel" style={{ marginTop: '24px' }}>
+      <PanelHeader
+        eyebrow="Live Telemetry"
+        title="Devices & Services Heartbeats"
+        actionLabel={refreshing ? 'Ping Telemetry…' : 'Ping Telemetry'}
+        onAction={() => void fetchHeartbeats()}
+      />
+
+      {telemetryError ? <p className="inline-alert" role="alert"><Icon name="alert" /> {telemetryError}</p> : null}
+
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', marginBottom: '18px' }}>
+        <div className="segmented" role="tablist">
+          <button
+            className={nodesFilter === 'ALL' ? 'segmented-option is-active' : 'segmented-option'}
+            onClick={() => setNodesFilter('ALL')}
+            type="button"
+          >
+            All Nodes ({allNodes.length})
+          </button>
+          <button
+            className={nodesFilter === 'SERVICES' ? 'segmented-option is-active' : 'segmented-option'}
+            onClick={() => setNodesFilter('SERVICES')}
+            type="button"
+          >
+            Services ({serviceNodes.length})
+          </button>
+          <button
+            className={nodesFilter === 'DEVICES' ? 'segmented-option is-active' : 'segmented-option'}
+            onClick={() => setNodesFilter('DEVICES')}
+            type="button"
+          >
+            POS Hardware ({deviceNodes.length})
+          </button>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', fontSize: '0.8125rem' }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--teal-500)', fontWeight: 600 }}>
+            <span className="status-dot" style={{ background: '#10b981', boxShadow: '0 0 10px #10b981' }} />
+            {onlineCount} Online
+          </span>
+          {standbyCount > 0 ? (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#f59e0b', fontWeight: 600 }}>
+              <span className="status-dot" style={{ background: '#f59e0b', boxShadow: '0 0 10px #f59e0b' }} />
+              {standbyCount} Standby
+            </span>
+          ) : null}
+          {degradedCount > 0 ? (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--red-500)', fontWeight: 600 }}>
+              <span className="status-dot" style={{ background: 'var(--red-500)' }} />
+              {degradedCount} Needs attention
+            </span>
+          ) : null}
+          <span style={{ color: 'var(--muted)', fontSize: '0.78rem' }}>
+            {lastRefreshedSec === null ? 'Waiting for first sample' : `Sampled ${lastRefreshedSec}s ago`}
+          </span>
+        </div>
+      </div>
+
+      <div className="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Node / Service Name</th>
+              <th>Type</th>
+              <th>Category / Subsystem</th>
+              <th>Endpoint / Hardware ID</th>
+              <th>Heartbeat Status</th>
+              <th>Latency</th>
+              <th>Observation</th>
+              <th>Last Ping</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredNodes.map((node) => (
+              <tr key={node.id}>
+                <td>
+                  <strong style={{ fontSize: '0.9rem' }}>{node.name}</strong>
+                </td>
+                <td>
+                  <span className={`reference-badge ${node.type === 'SERVICE' ? 'is-selected' : ''}`} style={{ fontSize: '0.72rem' }}>
+                    {node.type}
+                  </span>
+                </td>
+                <td><small>{node.category}</small></td>
+                <td><code>{node.endpointOrHardware}</code></td>
+                <td>
+                  <span
+                    className={`status-badge ${
+                      node.status === 'ONLINE'
+                        ? 'status-active'
+                        : node.status === 'STANDBY'
+                        ? 'status-warning'
+                        : 'status-suspended'
+                    }`}
+                    style={{ fontSize: '0.75rem' }}
+                  >
+                    <i />
+                    {node.status}
+                  </span>
+                </td>
+                <td><small style={{ fontWeight: 600, color: 'var(--ink)' }}>{node.latencyMs === null ? '—' : `${node.latencyMs} ms`}</small></td>
+                <td><small>{node.observation}</small></td>
+                <td><small>{node.lastPingSec}s ago</small></td>
+              </tr>
+            ))}
+            {!refreshing && filteredNodes.length === 0 ? (
+              <tr>
+                <td colSpan={8}>
+                  <EmptyState
+                    detail={nodesFilter === 'DEVICES' ? 'No POS device has submitted telemetry for this tenant.' : 'No heartbeat samples are available.'}
+                    icon="activity"
+                    title="No telemetry recorded"
+                  />
+                </td>
+              </tr>
+            ) : null}
+          </tbody>
+        </table>
+      </div>
+    </article>
+  );
+}
+
+function InventoryView() {
+  const [tab, setTab] = useState<'balances' | 'ledger' | 'batches' | 'locations' | 'reservations'>('balances');
+  const [balances, setBalances] = useState<readonly HQInventoryBalanceItem[] | null>(null);
+  const [ledger, setLedger] = useState<readonly HQInventoryLedgerItem[] | null>(null);
+  const [batches, setBatches] = useState<readonly HQInventoryBatchItem[] | null>(null);
+  const [locations, setLocations] = useState<readonly HQInventoryLocationItem[] | null>(null);
+  const [reservations, setReservations] = useState<readonly HQInventoryReservationItem[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setLoading(true);
+    setFailed(false);
+    Promise.all([
+      loadInventoryBalances(controller.signal),
+      loadInventoryLedger(controller.signal),
+      loadInventoryBatches(controller.signal),
+      loadInventoryLocations(controller.signal),
+      loadInventoryReservations(controller.signal),
+    ])
+      .then(([b, l, bt, loc, r]) => {
+        setBalances(b);
+        setLedger(l);
+        setBatches(bt);
+        setLocations(loc);
+        setReservations(r);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setFailed(true);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+    return () => controller.abort();
+  }, []);
+
+  if (loading) {
+    return (
+      <article className="panel">
+        <PanelHeader eyebrow="Inventory Control" title="Stock & Ledger Governance" />
+        <p className="panel-note">Loading authoritative inventory balances and ledger entries…</p>
+      </article>
+    );
+  }
+
+  if (failed) {
+    return (
+      <article className="panel">
+        <PanelHeader eyebrow="Inventory Control" title="Stock & Ledger Governance" />
+        <div className="inline-alert" role="status">
+          <Icon name="alert" /> Could not load inventory control records. Verify tenant workspace session.
+        </div>
+      </article>
+    );
+  }
+
+  return (
+    <article className="panel inventory-workspace">
+      <PanelHeader eyebrow="Stock & Ledger Governance" title="Inventory Control & Stock Ledger" />
+
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', marginBottom: '20px' }}>
+        <div className="segmented" role="tablist">
+          <button
+            className={tab === 'balances' ? 'segmented-option is-active' : 'segmented-option'}
+            onClick={() => setTab('balances')}
+            type="button"
+          >
+            📦 Stock Balances ({balances?.length ?? 0})
+          </button>
+          <button
+            className={tab === 'ledger' ? 'segmented-option is-active' : 'segmented-option'}
+            onClick={() => setTab('ledger')}
+            type="button"
+          >
+            📜 Inventory Ledger ({ledger?.length ?? 0})
+          </button>
+          <button
+            className={tab === 'batches' ? 'segmented-option is-active' : 'segmented-option'}
+            onClick={() => setTab('batches')}
+            type="button"
+          >
+            🏷️ Batches & Expiries ({batches?.length ?? 0})
+          </button>
+          <button
+            className={tab === 'locations' ? 'segmented-option is-active' : 'segmented-option'}
+            onClick={() => setTab('locations')}
+            type="button"
+          >
+            🏢 Locations & Vaults ({locations?.length ?? 0})
+          </button>
+          <button
+            className={tab === 'reservations' ? 'segmented-option is-active' : 'segmented-option'}
+            onClick={() => setTab('reservations')}
+            type="button"
+          >
+            🔐 Stock Reservations ({reservations?.length ?? 0})
+          </button>
+        </div>
+      </div>
+
+      {tab === 'balances' && (
+        <>
+          <p className="panel-note">
+            Real-time projected inventory quantities per location, SKU, and lot batch. Available stock enforces strict allocation rules.
+          </p>
+          {balances && balances.length > 0 ? (
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>SKU / Product</th>
+                    <th>Location</th>
+                    <th>Batch Lot</th>
+                    <th>On Hand</th>
+                    <th>Reserved</th>
+                    <th>Quarantined</th>
+                    <th>Damaged</th>
+                    <th>Expired</th>
+                    <th>Available Quantity</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {balances.map((b) => (
+                    <tr key={b.id}>
+                      <td>
+                        <strong>{b.sku_name || b.sku_code || 'SKU Item'}</strong>
+                        {b.sku_code ? <small className="row-detail"><code>{b.sku_code}</code></small> : null}
+                      </td>
+                      <td><small>{b.location_name || 'Main Location'}</small></td>
+                      <td><code>{b.batch_number || '—'}</code></td>
+                      <td><strong>{b.on_hand}</strong></td>
+                      <td><small style={{ color: 'var(--amber-700)' }}>{b.reserved}</small></td>
+                      <td><small style={{ color: b.quarantined !== '0' ? '#f59e0b' : 'var(--muted)' }}>{b.quarantined}</small></td>
+                      <td><small style={{ color: b.damaged !== '0' ? '#ef4444' : 'var(--muted)' }}>{b.damaged}</small></td>
+                      <td><small style={{ color: b.expired !== '0' ? '#ef4444' : 'var(--muted)' }}>{b.expired}</small></td>
+                      <td>
+                        <strong style={{ color: 'var(--teal-500)', fontSize: '0.95rem' }}>{b.available}</strong>
+                      </td>
+                      <td>
+                        <span className={`status-badge ${b.quality_status === 'RELEASED' || !b.quality_status ? 'status-active' : 'status-warning'}`}>
+                          <i />
+                          {b.quality_status || 'RELEASED'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <EmptyState
+              icon="inventory"
+              title="No stock balances found"
+              detail="Stock balances appear here automatically as goods receipts and inventory entries are posted."
+            />
+          )}
+        </>
+      )}
+
+      {tab === 'ledger' && (
+        <>
+          <p className="panel-note">
+            Immutable, append-only inventory transaction ledger. Every stock movement, receipt, issue, or transfer produces an auditable entry.
+          </p>
+          {ledger && ledger.length > 0 ? (
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Timestamp</th>
+                    <th>Entry Type</th>
+                    <th>SKU Code</th>
+                    <th>Location</th>
+                    <th>Batch Lot</th>
+                    <th>Quantity Delta</th>
+                    <th>Base Delta</th>
+                    <th>Source Document</th>
+                    <th>Reason / Notes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ledger.map((l) => (
+                    <tr key={l.id}>
+                      <td><small>{formatDate(l.transaction_timestamp)}</small></td>
+                      <td>
+                        <span className="reference-badge is-selected" style={{ fontSize: '0.72rem' }}>
+                          {l.entry_type}
+                        </span>
+                      </td>
+                      <td><code>{l.sku_code || '—'}</code></td>
+                      <td><small>{l.location_name || 'Main Location'}</small></td>
+                      <td><code>{l.batch_number || '—'}</code></td>
+                      <td>
+                        <strong style={{ color: parseFloat(l.quantity_delta) >= 0 ? 'var(--teal-500)' : '#ef4444' }}>
+                          {parseFloat(l.quantity_delta) >= 0 ? `+${l.quantity_delta}` : l.quantity_delta} {l.unit}
+                        </strong>
+                      </td>
+                      <td><small>{l.base_quantity_delta}</small></td>
+                      <td>
+                        <small><code>{l.source_document_type}</code> #{l.source_document_id.slice(0, 8)}</small>
+                      </td>
+                      <td><small>{l.reason_code || l.notes || '—'}</small></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <EmptyState
+              icon="database"
+              title="No ledger entries found"
+              detail="Immutable inventory ledger audit logs will appear here when inventory transactions occur."
+            />
+          )}
+        </>
+      )}
+
+      {tab === 'batches' && (
+        <>
+          <p className="panel-note">
+            Manufacturer batch lot tracking, quality disposition status, and FEFO expiry management.
+          </p>
+          {batches && batches.length > 0 ? (
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Manufacturer Batch #</th>
+                    <th>SKU Code</th>
+                    <th>Manufacture Date</th>
+                    <th>Expiry Date</th>
+                    <th>Quality Status</th>
+                    <th>Recall Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {batches.map((bt) => (
+                    <tr key={bt.id}>
+                      <td><strong><code>{bt.manufacturer_batch_number}</code></strong></td>
+                      <td><code>{bt.sku_code || '—'}</code></td>
+                      <td><small>{bt.manufacture_date ? formatDate(bt.manufacture_date) : '—'}</small></td>
+                      <td>
+                        <strong style={{ color: 'var(--teal-500)' }}>{formatDate(bt.expiry_date)}</strong>
+                      </td>
+                      <td>
+                        <span className={`status-badge ${bt.quality_status === 'RELEASED' ? 'status-active' : 'status-warning'}`}>
+                          <i />
+                          {bt.quality_status}
+                        </span>
+                      </td>
+                      <td>
+                        <span className={`reference-badge ${bt.recall_status === 'NONE' ? '' : 'is-selected'}`}>
+                          {bt.recall_status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <EmptyState
+              icon="store"
+              title="No lot batches found"
+              detail="Lot batches and expiry dates are registered automatically during goods receipt inspection."
+            />
+          )}
+        </>
+      )}
+
+      {tab === 'locations' && (
+        <>
+          <p className="panel-note">
+            Physical and logical inventory locations, zone classifications, and storage capabilities.
+          </p>
+          {locations && locations.length > 0 ? (
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Location Code</th>
+                    <th>Name</th>
+                    <th>Type</th>
+                    <th>Branch</th>
+                    <th>Capabilities</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {locations.map((loc) => (
+                    <tr key={loc.id}>
+                      <td><strong><code>{loc.location_code}</code></strong></td>
+                      <td><strong>{loc.name}</strong></td>
+                      <td>
+                        <span className="reference-badge" style={{ fontSize: '0.72rem' }}>
+                          {loc.location_type}
+                        </span>
+                      </td>
+                      <td><small>{loc.branch_name || 'Main Branch'}</small></td>
+                      <td>
+                        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                          {loc.cold_chain_capability ? <span className="positive-chip" style={{ fontSize: '0.65rem' }}>Cold Chain</span> : null}
+                          {loc.controlled_drug_capability ? <span className="positive-chip" style={{ fontSize: '0.65rem', background: 'rgba(168, 85, 247, 0.16)', color: '#a855f7' }}>Vault</span> : null}
+                          {loc.quarantine_capability ? <span className="positive-chip" style={{ fontSize: '0.65rem', background: 'rgba(245, 158, 11, 0.16)', color: '#f59e0b' }}>Quarantine</span> : null}
+                          {!loc.cold_chain_capability && !loc.controlled_drug_capability && !loc.quarantine_capability ? <small>Standard</small> : null}
+                        </div>
+                      </td>
+                      <td>
+                        <span className={`status-badge ${loc.status === 'ACTIVE' ? 'status-active' : 'status-warning'}`}>
+                          <i />
+                          {loc.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <EmptyState
+              icon="building"
+              title="No locations configured"
+              detail="Storage locations and pharmacy dispensaries appear here."
+            />
+          )}
+        </>
+      )}
+
+      {tab === 'reservations' && (
+        <>
+          <p className="panel-note">
+            Active stock reservations locking quantities for sales orders, preauthorisations, or clinical dispensing.
+          </p>
+          {reservations && reservations.length > 0 ? (
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Reservation # / ID</th>
+                    <th>SKU Code</th>
+                    <th>Location</th>
+                    <th>Requested Qty</th>
+                    <th>Allocated Qty</th>
+                    <th>Status</th>
+                    <th>Created At</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reservations.map((r) => (
+                    <tr key={r.id}>
+                      <td><strong><code>{r.id.slice(0, 8)}</code></strong></td>
+                      <td><code>{r.sku_code || '—'}</code></td>
+                      <td><small>{r.location_name || 'Main Location'}</small></td>
+                      <td><small>{r.requested_quantity}</small></td>
+                      <td><strong style={{ color: 'var(--teal-500)' }}>{r.allocated_quantity}</strong></td>
+                      <td>
+                        <span className={`status-badge ${r.status === 'ALLOCATED' || r.status === 'FULFILLED' ? 'status-active' : 'status-warning'}`}>
+                          <i />
+                          {r.status}
+                        </span>
+                      </td>
+                      <td><small>{formatDate(r.created_at)}</small></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <EmptyState
+              icon="check"
+              title="No active reservations"
+              detail="Stock reservations appear here when orders or dispensing requests lock available inventory."
+            />
+          )}
+        </>
+      )}
+    </article>
   );
 }
 
@@ -1222,31 +1918,45 @@ function TenantPricingView({
 
               {selectedVersion ? (
                 <div style={{ borderTop: '1px solid var(--line)', paddingTop: '12px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
                     <small className="muted-cell">
                       Version v{selectedVersion.version_number} Entries ({selectedVersion.status}) — Effective: {selectedVersion.effective_from} to {selectedVersion.effective_to || 'Indefinite'}
                     </small>
-                    {['DRAFT', 'UNDER_REVIEW', 'APPROVED'].includes(selectedVersion.status) ? (
+                    <div style={{ display: 'flex', gap: '8px' }}>
                       <button
-                        className="primary-button"
+                        className="secondary-button"
                         onClick={() => {
-                          const action = selectedVersion.status === 'DRAFT'
-                            ? 'submit'
-                            : selectedVersion.status === 'UNDER_REVIEW'
-                              ? 'approve'
-                              : 'publish';
-                          setVersionAction({ action, version: selectedVersion });
-                          setVersionActionError('');
+                          setPriceDraftError('');
+                          setPriceDraftOpen(true);
                         }}
+                        style={{ padding: '4px 10px', fontSize: '0.78rem' }}
                         type="button"
                       >
-                        {selectedVersion.status === 'DRAFT'
-                          ? 'Submit for review'
-                          : selectedVersion.status === 'UNDER_REVIEW'
-                            ? 'Approve version'
-                            : 'Publish version'}
+                        <Icon name="database" /> + Add SKU Price Entry
                       </button>
-                    ) : null}
+                      {['DRAFT', 'UNDER_REVIEW', 'APPROVED'].includes(selectedVersion.status) ? (
+                        <button
+                          className="primary-button"
+                          onClick={() => {
+                            const action = selectedVersion.status === 'DRAFT'
+                              ? 'submit'
+                              : selectedVersion.status === 'UNDER_REVIEW'
+                                ? 'approve'
+                                : 'publish';
+                            setVersionAction({ action, version: selectedVersion });
+                            setVersionActionError('');
+                          }}
+                          style={{ padding: '4px 10px', fontSize: '0.78rem' }}
+                          type="button"
+                        >
+                          {selectedVersion.status === 'DRAFT'
+                            ? 'Submit for review'
+                            : selectedVersion.status === 'UNDER_REVIEW'
+                              ? 'Approve version'
+                              : 'Publish version'}
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
                   {!entries ? (
                     <p className="muted-cell">Loading SKU price entries…</p>
@@ -1263,6 +1973,7 @@ function TenantPricingView({
                             <th>Max Qty</th>
                             <th>Floor Price</th>
                             <th>Tax</th>
+                            <th>Action</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1278,6 +1989,23 @@ function TenantPricingView({
                                   : <span className="muted-cell">None</span>}
                               </td>
                               <td>{entry.tax_inclusive ? 'Inclusive' : 'Exclusive'}</td>
+                              <td>
+                                <button
+                                  className="secondary-button"
+                                  onClick={() => {
+                                    setPriceDraftSku(entry.sku_code);
+                                    setPriceDraftAmount(entry.unit_price);
+                                    setPriceDraftFloor(entry.minimum_allowed_price || '');
+                                    setPriceDraftTaxInclusive(entry.tax_inclusive);
+                                    setPriceDraftError('');
+                                    setPriceDraftOpen(true);
+                                  }}
+                                  style={{ padding: '2px 8px', fontSize: '0.75rem' }}
+                                  type="button"
+                                >
+                                  Edit price
+                                </button>
+                              </td>
                             </tr>
                           ))}
                         </tbody>
@@ -4016,6 +4744,40 @@ function CommerceView({
   failed,
   onWorkspaceChanged,
 }: BusinessViewProps) {
+  const [tab, setTab] = useState<'orders' | 'quotations' | 'picking' | 'packing' | 'dispatches' | 'deliveries' | 'returns' | 'holds'>('orders');
+  const [quotations, setQuotations] = useState<readonly HQQuotationItem[] | null>(null);
+  const [pickingWaves, setPickingWaves] = useState<readonly HQPickingWaveItem[] | null>(null);
+  const [pickingTasks, setPickingTasks] = useState<readonly HQPickingTaskItem[] | null>(null);
+  const [packingSessions, setPackingSessions] = useState<readonly HQPackingSessionItem[] | null>(null);
+  const [packages, setPackages] = useState<readonly HQPackageItem[] | null>(null);
+  const [deliveries, setDeliveries] = useState<readonly HQDeliveryRecordItem[] | null>(null);
+  const [returns, setReturns] = useState<readonly HQSalesReturnItem[] | null>(null);
+  const [holds, setHolds] = useState<readonly HQSalesOrderHoldItem[] | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    Promise.all([
+      loadQuotations(controller.signal).catch(() => null),
+      loadPickingWaves(controller.signal).catch(() => null),
+      loadPickingTasks(controller.signal).catch(() => null),
+      loadPackingSessions(controller.signal).catch(() => null),
+      loadPackages(controller.signal).catch(() => null),
+      loadDeliveryRecords(controller.signal).catch(() => null),
+      loadSalesReturns(controller.signal).catch(() => null),
+      loadSalesOrderHolds(controller.signal).catch(() => null),
+    ]).then(([q, pw, pt, ps, pkg, del, ret, h]) => {
+      setQuotations(q);
+      setPickingWaves(pw);
+      setPickingTasks(pt);
+      setPackingSessions(ps);
+      setPackages(pkg);
+      setDeliveries(del);
+      setReturns(ret);
+      setHolds(h);
+    });
+    return () => controller.abort();
+  }, []);
+
   if (failed) return <WorkspaceSectionError domain="sales and fulfilment" />;
   if (!data) return <WorkspaceSectionLoading domain="sales and fulfilment" />;
 
@@ -4031,56 +4793,231 @@ function CommerceView({
 
       <BusinessWorkbench csrfToken={csrfToken} data={data} domain="commerce" onChanged={onWorkspaceChanged} />
 
-      <section className="content-grid content-grid-primary">
-        <article className="panel">
-          <PanelHeader eyebrow="Order book" title="Recent sales orders" actionHref="#commerce" actionLabel="Manage orders" />
-          {orders.length ? (
-            <div className="table-scroll">
-              <table>
-                <thead><tr><th>Order</th><th>Customer</th><th>Date</th><th>Priority</th><th>Total</th><th>Status</th></tr></thead>
-                <tbody>
-                  {orders.map((order) => (
-                    <tr key={order.id}>
-                      <td><code>{order.order_number}</code></td>
-                      <td><strong>{order.customer_name}</strong></td>
-                      <td><span className="muted-cell">{formatDate(order.order_date)}</span></td>
-                      <td><small>{order.priority ? `Priority ${order.priority}` : 'Standard'}</small></td>
-                      <td><strong>{formatMoney(order.total, order.currency)}</strong></td>
-                      <td><StatusBadge value={order.status} /></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : <EmptyState icon="store" title="No sales orders" detail="Approved customer demand will appear here as orders enter fulfilment." />}
-        </article>
+      <article className="panel" style={{ marginTop: '24px' }}>
+        <PanelHeader eyebrow="Fulfilment Execution Desk" title="Order-to-Delivery Operations Workbench" />
 
-        <article className="panel">
-          <PanelHeader eyebrow="Outbound logistics" title="Recent dispatches" actionHref="#commerce" actionLabel="Manage dispatches" />
-          {dispatches.length ? (
-            <div className="table-scroll">
-              <table>
-                <thead><tr><th>Dispatch</th><th>Customer</th><th>Carrier</th><th>Dispatch date</th><th>Expected</th><th>Status</th></tr></thead>
-                <tbody>
-                  {dispatches.map((dispatch) => (
-                    <tr key={dispatch.id}>
-                      <td><code>{dispatch.dispatch_number}</code></td>
-                      <td><strong>{dispatch.customer_name}</strong></td>
-                      <td><small>{dispatch.carrier || 'Internal fleet'}</small></td>
-                      <td><span className="muted-cell">{formatDate(dispatch.dispatch_date)}</span></td>
-                      <td><span className="muted-cell">{formatDate(dispatch.expected_delivery_date)}</span></td>
-                      <td><StatusBadge value={dispatch.status} /></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : <EmptyState icon="inventory" title="No dispatches" detail="Packed orders will appear here when released to outbound logistics." />}
-        </article>
-      </section>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', marginBottom: '20px' }}>
+          <div className="segmented" role="tablist">
+            <button className={tab === 'orders' ? 'segmented-option is-active' : 'segmented-option'} onClick={() => setTab('orders')} type="button">
+              🛒 Orders ({orders.length})
+            </button>
+            <button className={tab === 'quotations' ? 'segmented-option is-active' : 'segmented-option'} onClick={() => setTab('quotations')} type="button">
+              📄 Quotations ({quotations?.length ?? counts.quotations})
+            </button>
+            <button className={tab === 'picking' ? 'segmented-option is-active' : 'segmented-option'} onClick={() => setTab('picking')} type="button">
+              📦 Picking ({pickingTasks?.length ?? 0})
+            </button>
+            <button className={tab === 'packing' ? 'segmented-option is-active' : 'segmented-option'} onClick={() => setTab('packing')} type="button">
+              🎁 Packing & Seals ({packages?.length ?? 0})
+            </button>
+            <button className={tab === 'dispatches' ? 'segmented-option is-active' : 'segmented-option'} onClick={() => setTab('dispatches')} type="button">
+              🚚 Dispatches ({dispatches.length})
+            </button>
+            <button className={tab === 'deliveries' ? 'segmented-option is-active' : 'segmented-option'} onClick={() => setTab('deliveries')} type="button">
+              📋 Deliveries ({deliveries?.length ?? counts.deliveries})
+            </button>
+            <button className={tab === 'returns' ? 'segmented-option is-active' : 'segmented-option'} onClick={() => setTab('returns')} type="button">
+              🔄 Returns ({returns?.length ?? counts.returns})
+            </button>
+            <button className={tab === 'holds' ? 'segmented-option is-active' : 'segmented-option'} onClick={() => setTab('holds')} type="button">
+              ⛔ Holds ({holds?.length ?? 0})
+            </button>
+          </div>
+        </div>
 
-      <article className="panel workflow-panel">
-        <PanelHeader eyebrow="Order-to-delivery" title="Fulfilment workspaces" />
+        {tab === 'orders' && (
+          <div className="table-scroll">
+            <table>
+              <thead><tr><th>Order #</th><th>Customer</th><th>Date</th><th>Priority</th><th>Total</th><th>Status</th></tr></thead>
+              <tbody>
+                {orders.map((order) => (
+                  <tr key={order.id}>
+                    <td><code>{order.order_number}</code></td>
+                    <td><strong>{order.customer_name}</strong></td>
+                    <td><span className="muted-cell">{formatDate(order.order_date)}</span></td>
+                    <td><small>{order.priority ? `Priority ${order.priority}` : 'Standard'}</small></td>
+                    <td><strong>{formatMoney(order.total, order.currency)}</strong></td>
+                    <td><StatusBadge value={order.status} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {tab === 'quotations' && (
+          <>
+            <p className="panel-note">Customer commercial quotations, price agreements, and validity dates.</p>
+            {quotations && quotations.length > 0 ? (
+              <div className="table-scroll">
+                <table>
+                  <thead><tr><th>Quotation #</th><th>Customer</th><th>Issue Date</th><th>Valid Until</th><th>Total Amount</th><th>Status</th></tr></thead>
+                  <tbody>
+                    {quotations.map((q) => (
+                      <tr key={q.id}>
+                        <td><code>{q.quotation_number}</code></td>
+                        <td><strong>{q.customer_name || 'Commercial Customer'}</strong></td>
+                        <td><small>{formatDate(q.issue_date)}</small></td>
+                        <td><small>{q.valid_until ? formatDate(q.valid_until) : 'Ongoing'}</small></td>
+                        <td><strong>{formatMoney(q.total, q.currency)}</strong></td>
+                        <td><StatusBadge value={q.status} /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : <EmptyState icon="docs" title="No quotations" detail="Commercial quotations appear here as price offers are drafted." />}
+          </>
+        )}
+
+        {tab === 'picking' && (
+          <>
+            <p className="panel-note">
+              Warehouse picking tasks, FEFO batch allocations, and short-pick exceptions. {pickingWaves ? `(${pickingWaves.length} active waves)` : ''}
+            </p>
+            {pickingTasks && pickingTasks.length > 0 ? (
+              <div className="table-scroll">
+                <table>
+                  <thead><tr><th>Task ID</th><th>Sales Order</th><th>SKU Code</th><th>Requested Qty</th><th>Picked Qty</th><th>Status</th></tr></thead>
+                  <tbody>
+                    {pickingTasks.map((pt) => (
+                      <tr key={pt.id}>
+                        <td><code>{pt.id.slice(0, 8)}</code></td>
+                        <td><code>{pt.sales_order_number || 'Order'}</code></td>
+                        <td><code>{pt.sku_code || '—'}</code></td>
+                        <td><small>{pt.requested_quantity}</small></td>
+                        <td><strong style={{ color: 'var(--teal-500)' }}>{pt.picked_quantity}</strong></td>
+                        <td><StatusBadge value={pt.status} /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : <EmptyState icon="inventory" title="No picking tasks" detail="Warehouse picking tasks appear when sales orders enter picking waves." />}
+          </>
+        )}
+
+        {tab === 'packing' && (
+          <>
+            <p className="panel-note">
+              Verified packages, barcode verification, temperature zones, and tamper seals. {packingSessions ? `(${packingSessions.length} packing sessions)` : ''}
+            </p>
+            {packages && packages.length > 0 ? (
+              <div className="table-scroll">
+                <table>
+                  <thead><tr><th>Package #</th><th>Sales Order</th><th>Temp Zone</th><th>Status</th></tr></thead>
+                  <tbody>
+                    {packages.map((pkg) => (
+                      <tr key={pkg.id}>
+                        <td><code>{pkg.package_number}</code></td>
+                        <td><code>{pkg.sales_order_number || 'Order'}</code></td>
+                        <td><span className="positive-chip" style={{ fontSize: '0.68rem' }}>{pkg.temperature_zone}</span></td>
+                        <td><StatusBadge value={pkg.status} /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : <EmptyState icon="store" title="No packages verified" detail="Packages appear here when picking tasks are verified into shipping containers." />}
+          </>
+        )}
+
+        {tab === 'dispatches' && (
+          <div className="table-scroll">
+            <table>
+              <thead><tr><th>Dispatch #</th><th>Customer</th><th>Carrier</th><th>Dispatch Date</th><th>Expected Delivery</th><th>Status</th></tr></thead>
+              <tbody>
+                {dispatches.map((d) => (
+                  <tr key={d.id}>
+                    <td><code>{d.dispatch_number}</code></td>
+                    <td><strong>{d.customer_name}</strong></td>
+                    <td><small>{d.carrier || 'Internal fleet'}</small></td>
+                    <td><span className="muted-cell">{formatDate(d.dispatch_date)}</span></td>
+                    <td><span className="muted-cell">{formatDate(d.expected_delivery_date)}</span></td>
+                    <td><StatusBadge value={d.status} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {tab === 'deliveries' && (
+          <>
+            <p className="panel-note">Proof of delivery (POD) records, recipient signatures, GPS coordinates, and temperature evidence.</p>
+            {deliveries && deliveries.length > 0 ? (
+              <div className="table-scroll">
+                <table>
+                  <thead><tr><th>Record ID</th><th>Dispatch #</th><th>Recipient</th><th>Delivered Timestamp</th><th>Status</th></tr></thead>
+                  <tbody>
+                    {deliveries.map((del) => (
+                      <tr key={del.id}>
+                        <td><code>{del.id.slice(0, 8)}</code></td>
+                        <td><code>{del.dispatch_number || 'Dispatch'}</code></td>
+                        <td><strong>{del.recipient_name || 'Customer Recipient'}</strong></td>
+                        <td><small>{del.delivered_at ? formatDate(del.delivered_at) : 'En route'}</small></td>
+                        <td><StatusBadge value={del.status} /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : <EmptyState icon="check" title="No delivery records" detail="Proof of delivery records appear when dispatches reach customer destinations." />}
+          </>
+        )}
+
+        {tab === 'returns' && (
+          <>
+            <p className="panel-note">Customer return authorizations (RMA), cold chain evidence checks, and quality dispositions.</p>
+            {returns && returns.length > 0 ? (
+              <div className="table-scroll">
+                <table>
+                  <thead><tr><th>RMA Return #</th><th>Sales Order</th><th>Customer</th><th>Reason</th><th>Status</th></tr></thead>
+                  <tbody>
+                    {returns.map((ret) => (
+                      <tr key={ret.id}>
+                        <td><code>{ret.return_number}</code></td>
+                        <td><code>{ret.sales_order_number || 'Order'}</code></td>
+                        <td><strong>{ret.customer_name || 'Customer'}</strong></td>
+                        <td><small>{ret.reason || 'Customer return'}</small></td>
+                        <td><StatusBadge value={ret.status} /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : <EmptyState icon="refresh" title="No return authorizations" detail="Customer RMA return requests appear here when logged." />}
+          </>
+        )}
+
+        {tab === 'holds' && (
+          <>
+            <p className="panel-note">Active order holds (Credit hold, Compliance review, Recall hold, Quality hold).</p>
+            {holds && holds.length > 0 ? (
+              <div className="table-scroll">
+                <table>
+                  <thead><tr><th>Hold ID</th><th>Sales Order</th><th>Hold Type</th><th>Reason</th><th>Placed Date</th><th>Status</th></tr></thead>
+                  <tbody>
+                    {holds.map((h) => (
+                      <tr key={h.id}>
+                        <td><code>{h.id.slice(0, 8)}</code></td>
+                        <td><code>{h.sales_order_number || 'Order'}</code></td>
+                        <td><span className="status-badge status-warning"><i /> {h.hold_type}</span></td>
+                        <td><small>{h.reason}</small></td>
+                        <td><small>{formatDate(h.placed_at)}</small></td>
+                        <td>{h.is_active ? <span className="status-badge status-suspended"><i /> ACTIVE HOLD</span> : <small>RELEASED</small>}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : <EmptyState icon="check" title="No order holds active" detail="Order holds will appear here if compliance or credit checks block an order." />}
+          </>
+        )}
+      </article>
+
+      <article className="panel workflow-panel" style={{ marginTop: '24px' }}>
+        <PanelHeader eyebrow="Order-to-delivery" title="Fulfilment Workspaces & Steps" />
         <div className="workflow-grid">
           <WorkflowLink href="#commerce" icon="docs" step="01" title="Quotations" detail="Price and approve customer demand." />
           <WorkflowLink href="#commerce" icon="store" step="02" title="Sales orders" detail="Control holds, allocation and approval." />
@@ -5650,6 +6587,12 @@ function formatDateTime(value: string | null) {
     month: 'short',
     year: 'numeric',
   }).format(date);
+}
+
+function secondsSince(value: string, now: number) {
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return 0;
+  return Math.max(Math.floor((now - timestamp) / 1000), 0);
 }
 
 function formatBytes(value: number) {

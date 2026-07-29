@@ -13,6 +13,8 @@ import {
   loadHQWorkspace,
   loadInsurers,
   loadPosRegisters,
+  loadPosDeviceHealth,
+  probeEndpointHeartbeat,
   setHQTenantContext,
   startCashExceptionReview,
   updateGovernmentCatalogueSelection,
@@ -66,6 +68,48 @@ describe('loadSystemHealth', () => {
     // somebody to check the network instead of the server.
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('not json', { status: 200 })));
     await expect(loadSystemHealth()).resolves.toBe('degraded');
+  });
+});
+
+describe('heartbeat telemetry', () => {
+  it('loads recorded POS device health from the authoritative endpoint', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify([]), {
+        headers: { 'Content-Type': 'application/json' },
+        status: 200,
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    setHQTenantContext('tenant-123');
+
+    await loadPosDeviceHealth();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/pos/dispensing/devices/',
+      expect.objectContaining({
+        headers: expect.objectContaining({ 'X-Tenant-ID': 'tenant-123' }),
+      }),
+    );
+  });
+
+  it('reports measured endpoint status instead of assuming online', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('', { status: 503 })));
+
+    await expect(probeEndpointHeartbeat('/api/pricing/books/')).resolves.toMatchObject({
+      endpoint: '/api/pricing/books/',
+      status: 'DEGRADED',
+      statusCode: 503,
+    });
+  });
+
+  it('reports an endpoint offline when no response arrives', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('network')));
+
+    await expect(probeEndpointHeartbeat('/api/health/')).resolves.toMatchObject({
+      endpoint: '/api/health/',
+      status: 'OFFLINE',
+      statusCode: null,
+    });
   });
 });
 
