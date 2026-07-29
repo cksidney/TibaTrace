@@ -518,13 +518,21 @@ svg {
   top: 0;
   display: grid;
   min-height: 76px;
-  grid-template-columns: minmax(170px, 0.7fr) minmax(280px, 1.2fr) minmax(400px, 1fr);
+  grid-template-columns: minmax(170px, 0.7fr) minmax(320px, 1.2fr) auto;
   align-items: center;
-  gap: 26px;
+  gap: 20px;
   padding: 0 34px;
   border-bottom: 1px solid rgba(215, 223, 233, 0.92);
   background: var(--panel);
   backdrop-filter: blur(16px);
+}
+
+.topbar-platform {
+  grid-template-columns:
+    minmax(140px, 0.55fr)
+    minmax(220px, 0.8fr)
+    minmax(240px, 1fr)
+    auto;
 }
 
 .mobile-menu {
@@ -570,6 +578,7 @@ svg {
 
 .search-trigger {
   display: flex;
+  min-width: 0;
   min-height: 40px;
   align-items: center;
   gap: 10px;
@@ -621,6 +630,7 @@ kbd {
 
 .topbar-actions {
   display: flex;
+  min-width: 0;
   align-items: center;
   justify-content: flex-end;
   gap: 7px;
@@ -4467,19 +4477,50 @@ tbody tr:hover {
   }
 }
 
-@media (max-width: 1260px) {
+@media (max-width: 1500px) {
   .topbar {
-    grid-template-columns: minmax(150px, 0.6fr) minmax(240px, 1fr) minmax(290px, 0.9fr);
-    gap: 18px;
-    padding: 0 25px;
+    gap: 14px;
+    padding-right: 24px;
+    padding-left: 24px;
   }
 
-  .user-trigger {
-    min-width: 158px;
+  .topbar-platform {
+    grid-template-columns:
+      minmax(120px, 0.55fr)
+      minmax(190px, 0.9fr)
+      minmax(160px, 1fr)
+      auto;
   }
 
   .health-status {
     display: none;
+  }
+
+  .user-trigger {
+    min-width: 44px;
+    grid-template-columns: 34px;
+    padding: 4px;
+  }
+
+  .user-trigger div,
+  .user-trigger > svg {
+    display: none;
+  }
+}
+
+@media (max-width: 1260px) {
+  .topbar {
+    grid-template-columns: minmax(130px, 0.6fr) minmax(220px, 1fr) auto;
+    gap: 18px;
+    padding: 0 25px;
+  }
+
+  .topbar-platform {
+    grid-template-columns:
+      minmax(110px, 0.5fr)
+      minmax(180px, 0.85fr)
+      minmax(150px, 1fr)
+      auto;
   }
 
   .workspace > main {
@@ -4507,15 +4548,12 @@ tbody tr:hover {
     grid-template-columns: minmax(130px, 0.5fr) minmax(220px, 1fr) auto;
   }
 
-  .user-trigger {
-    min-width: 44px;
-    grid-template-columns: 34px;
-    padding: 4px;
-  }
-
-  .user-trigger div,
-  .user-trigger > svg {
-    display: none;
+  .topbar-platform {
+    grid-template-columns:
+      minmax(100px, 0.5fr)
+      minmax(170px, 0.8fr)
+      minmax(130px, 1fr)
+      auto;
   }
 
   .metric-grid {
@@ -4573,6 +4611,15 @@ tbody tr:hover {
     padding: 0 17px;
   }
 
+  .topbar-platform {
+    grid-template-columns:
+      40px
+      minmax(95px, 0.4fr)
+      minmax(170px, 0.8fr)
+      minmax(130px, 1fr)
+      auto;
+  }
+
   .workspace > main {
     padding: 32px 17px 50px;
   }
@@ -4599,7 +4646,15 @@ tbody tr:hover {
     grid-template-columns: 40px minmax(0, 1fr) auto;
   }
 
+  .topbar-platform {
+    grid-template-columns: 40px minmax(150px, 1fr) minmax(80px, 0.6fr) auto;
+  }
+
   .workspace-identity {
+    display: none;
+  }
+
+  .workspace-switcher > span {
     display: none;
   }
 
@@ -4842,6 +4897,10 @@ tbody tr:hover {
 @media (max-width: 420px) {
   .topbar {
     padding: 0 11px;
+  }
+
+  .topbar-platform {
+    grid-template-columns: 40px minmax(0, 1fr) 40px auto;
   }
 
   .search-trigger span {

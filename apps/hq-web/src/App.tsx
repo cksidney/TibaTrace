@@ -436,7 +436,7 @@ function Dashboard({
       <Sidebar activeView={activeView} mobileOpen={mobileNavOpen} onNavigate={closeTransientUi} overview={overview} />
 
       <div className="workspace">
-        <header className="topbar">
+        <header className={`topbar${isPlatformAdmin ? ' topbar-platform' : ''}`}>
           <button className="icon-button mobile-menu" aria-label="Open navigation" onClick={() => setMobileNavOpen(true)} type="button">
             <Icon name="menu" />
           </button>
@@ -497,6 +497,7 @@ function Dashboard({
             <div className="popover-anchor">
               <button
                 className="user-trigger"
+                aria-label={`${displayName(overview.user_name)} account menu, ${isPlatformAdmin ? 'platform administrator' : 'tenant operator'}`}
                 aria-expanded={userMenuOpen}
                 onClick={() => {
                   setUserMenuOpen((open) => !open);
