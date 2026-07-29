@@ -5,10 +5,12 @@ import {
   activateCustomer,
   approveCustomer,
   approveCashMovement,
+  approveStockTransfer,
   beginCustomerReview,
   CLAIM_STATES,
   createCustomer,
   createInsurer,
+  createStockTransfer,
   decidePriceOverride,
   HQApiError,
   executeHQBusinessAction,
@@ -74,6 +76,7 @@ import {
   loadInventoryLedger,
   loadInventoryBatches,
   loadInventoryReservations,
+  loadStockTransfers,
   loadQuotations,
   loadPickingWaves,
   loadPickingTasks,
@@ -82,6 +85,8 @@ import {
   loadDeliveryRecords,
   loadSalesReturns,
   loadSalesOrderHolds,
+  dispatchStockTransfer,
+  receiveStockTransfer,
 } from './api.js';
 import type {
   ActiveSubstanceSummary,
@@ -114,6 +119,9 @@ import type {
   HQInventoryLedgerItem,
   HQInventoryBatchItem,
   HQInventoryReservationItem,
+  HQStockTransfer,
+  HQStockTransferDraft,
+  HQStockTransferReceipt,
   HQQuotationItem,
   HQPickingWaveItem,
   HQPickingTaskItem,
@@ -591,10 +599,10 @@ function Dashboard({
           {activeView === 'network' ? <NetworkView csrfToken={csrfToken} onChanged={onRefresh} overview={overview} /> : null}
           {activeView === 'people' ? <PeopleView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} /> : null}
           {activeView === 'catalogue' ? <CatalogueView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} overview={overview} /> : null}
-          {activeView === 'inventory' ? <InventoryView /> : null}
+          {activeView === 'inventory' ? <InventoryView csrfToken={csrfToken} overview={overview} /> : null}
           {activeView === 'operations' ? <OperationsView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} overview={overview} /> : null}
           {activeView === 'commerce' ? <CommerceView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} /> : null}
-          {activeView === 'pricing' ? <PricingView csrfToken={csrfToken} tenantId={overview.tenant_id} /> : null}
+          {activeView === 'pricing' ? <PricingView csrfToken={csrfToken} overview={overview} /> : null}
           {activeView === 'cash' ? <CashControlView csrfToken={csrfToken} tenantId={overview.tenant_id} /> : null}
           {activeView === 'insurance' ? <InsuranceView csrfToken={csrfToken} /> : null}
           {activeView === 'clinical' ? <ClinicalView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} overview={overview} /> : null}
@@ -1058,42 +1066,84 @@ function HeartbeatsTelemetryPanel() {
   );
 }
 
-function InventoryView() {
-  const [tab, setTab] = useState<'balances' | 'ledger' | 'batches' | 'locations' | 'reservations'>('balances');
+type InventoryTab = 'balances' | 'ledger' | 'batches' | 'locations' | 'reservations' | 'transfers';
+
+type StockTransferDialogMode =
+  | { readonly kind: 'create' }
+  | { readonly kind: 'approve'; readonly transfer: HQStockTransfer }
+  | { readonly kind: 'dispatch'; readonly transfer: HQStockTransfer }
+  | { readonly kind: 'receive'; readonly transfer: HQStockTransfer }
+  | null;
+
+function InventoryView({
+  csrfToken,
+  overview,
+}: {
+  readonly csrfToken: string;
+  readonly overview: HQOverview;
+}) {
+  const selectableTenants = useMemo(
+    () => overview.network_items.filter((item) => item.status === 'ACTIVE'),
+    [overview.network_items],
+  );
+  const [tenantId, setTenantId] = useState(
+    overview.tenant_id || selectableTenants[0]?.id || '',
+  );
+  const [tab, setTab] = useState<InventoryTab>('balances');
   const [balances, setBalances] = useState<readonly HQInventoryBalanceItem[] | null>(null);
   const [ledger, setLedger] = useState<readonly HQInventoryLedgerItem[] | null>(null);
   const [batches, setBatches] = useState<readonly HQInventoryBatchItem[] | null>(null);
   const [locations, setLocations] = useState<readonly HQInventoryLocationItem[] | null>(null);
   const [reservations, setReservations] = useState<readonly HQInventoryReservationItem[] | null>(null);
+  const [transfers, setTransfers] = useState<readonly HQStockTransfer[] | null>(null);
+  const [dialog, setDialog] = useState<StockTransferDialogMode>(null);
+  const [notice, setNotice] = useState('');
   const [failed, setFailed] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const controller = new AbortController();
+    const nextTenantId = overview.tenant_id
+      || (selectableTenants.some((tenant) => tenant.id === tenantId)
+        ? tenantId
+        : selectableTenants[0]?.id || '');
+    if (nextTenantId !== tenantId) setTenantId(nextTenantId);
+  }, [overview.tenant_id, selectableTenants, tenantId]);
+
+  const reload = useCallback(async (signal?: AbortSignal) => {
+    if (!tenantId) return;
     setLoading(true);
     setFailed(false);
-    Promise.all([
-      loadInventoryBalances(controller.signal),
-      loadInventoryLedger(controller.signal),
-      loadInventoryBatches(controller.signal),
-      loadInventoryLocations(controller.signal),
-      loadInventoryReservations(controller.signal),
-    ])
-      .then(([b, l, bt, loc, r]) => {
-        setBalances(b);
-        setLedger(l);
-        setBatches(bt);
-        setLocations(loc);
-        setReservations(r);
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) setFailed(true);
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
-      });
+    try {
+      const [b, l, bt, loc, r, t] = await Promise.all([
+        loadInventoryBalances(tenantId, signal),
+        loadInventoryLedger(tenantId, signal),
+        loadInventoryBatches(tenantId, signal),
+        loadInventoryLocations(tenantId, signal),
+        loadInventoryReservations(tenantId, signal),
+        loadStockTransfers(tenantId, signal),
+      ]);
+      setBalances(b);
+      setLedger(l);
+      setBatches(bt);
+      setLocations(loc);
+      setReservations(r);
+      setTransfers(t);
+    } catch {
+      if (!signal?.aborted) setFailed(true);
+    } finally {
+      if (!signal?.aborted) setLoading(false);
+    }
+  }, [tenantId]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void reload(controller.signal);
     return () => controller.abort();
-  }, []);
+  }, [reload]);
+
+  if (!tenantId) {
+    return <TenantWorkspaceRequired domain="inventory control" />;
+  }
 
   if (loading) {
     return (
@@ -1116,11 +1166,30 @@ function InventoryView() {
   }
 
   return (
-    <article className="panel inventory-workspace">
-      <PanelHeader eyebrow="Stock & Ledger Governance" title="Inventory Control & Stock Ledger" />
+    <>
+      {overview.is_platform_overview ? (
+        <section className="procurement-scope panel">
+          <div>
+            <p className="eyebrow">Tenant stock authority</p>
+            <h2>Inventory operating workspace</h2>
+            <span>Balances, custody locations, reservations, and inter-branch transfers remain isolated to one pharmacy tenant.</span>
+          </div>
+          <label>
+            <span>Operating tenant</span>
+            <select onChange={(event) => setTenantId(event.target.value)} value={tenantId}>
+              {selectableTenants.map((tenant) => (
+                <option key={tenant.id} value={tenant.id}>{tenant.name}</option>
+              ))}
+            </select>
+          </label>
+        </section>
+      ) : null}
+      {notice ? <div className="procurement-notice" role="status"><Icon name="check" /> {notice}</div> : null}
+      <article className="panel inventory-workspace">
+        <PanelHeader eyebrow="Stock & Ledger Governance" title="Inventory Control & Stock Ledger" />
 
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', marginBottom: '20px' }}>
-        <div className="segmented" role="tablist">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', marginBottom: '20px' }}>
+          <div className="segmented" role="tablist">
           <button
             className={tab === 'balances' ? 'segmented-option is-active' : 'segmented-option'}
             onClick={() => setTab('balances')}
@@ -1156,8 +1225,15 @@ function InventoryView() {
           >
             🔐 Stock Reservations ({reservations?.length ?? 0})
           </button>
+          <button
+            className={tab === 'transfers' ? 'segmented-option is-active' : 'segmented-option'}
+            onClick={() => setTab('transfers')}
+            type="button"
+          >
+            ↔ Stock Transfers ({transfers?.length ?? 0})
+          </button>
+          </div>
         </div>
-      </div>
 
       {tab === 'balances' && (
         <>
@@ -1436,7 +1512,528 @@ function InventoryView() {
           )}
         </>
       )}
-    </article>
+
+        {tab === 'transfers' ? (
+          <StockTransfersTab
+            balances={balances ?? []}
+            locations={locations ?? []}
+            onDialog={setDialog}
+            transfers={transfers ?? []}
+          />
+        ) : null}
+      </article>
+      {dialog ? (
+        <StockTransferDialog
+          balances={balances ?? []}
+          csrfToken={csrfToken}
+          dialog={dialog}
+          locations={locations ?? []}
+          onClose={() => setDialog(null)}
+          onSaved={async (message) => {
+            setDialog(null);
+            setNotice(message);
+            await reload();
+          }}
+          tenantId={tenantId}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function StockTransfersTab({
+  balances,
+  locations,
+  onDialog,
+  transfers,
+}: {
+  readonly balances: readonly HQInventoryBalanceItem[];
+  readonly locations: readonly HQInventoryLocationItem[];
+  readonly onDialog: (dialog: StockTransferDialogMode) => void;
+  readonly transfers: readonly HQStockTransfer[];
+}) {
+  const activeTransfers = transfers.filter((transfer) => !['RECEIVED', 'CLOSED', 'CANCELLED', 'REJECTED'].includes(transfer.status));
+  const inTransit = transfers.filter((transfer) => ['DISPATCHED', 'IN_TRANSIT', 'PARTIALLY_RECEIVED'].includes(transfer.status));
+  const canCreate = locations.filter((location) => location.status === 'ACTIVE').length >= 2
+    && balances.some((balance) => Number(balance.available) > 0);
+
+  return (
+    <>
+      <div className="stock-transfer-heading">
+        <div>
+          <p className="eyebrow">Inter-branch custody</p>
+          <h2>Stock transfer register</h2>
+          <p className="panel-note">
+            Request stock, approve independently, dispatch by FEFO batch, and acknowledge receipt into the destination ledger.
+          </p>
+        </div>
+        <button
+          className="primary-button"
+          disabled={!canCreate}
+          onClick={() => onDialog({ kind: 'create' })}
+          type="button"
+        >
+          <Icon name="inventory" />
+          New transfer request
+        </button>
+      </div>
+
+      <section className="metric-grid network-metrics" aria-label="Stock transfer totals">
+        <SummaryCard icon="docs" label="Total transfers" value={transfers.length} detail="Complete custody history" />
+        <SummaryCard icon="alert" label="Open workflow" value={activeTransfers.length} detail="Awaiting approval, movement, or receipt" tone="amber" />
+        <SummaryCard icon="activity" label="In transit" value={inTransit.length} detail="Stock outside branch custody" tone="rose" />
+        <SummaryCard icon="check" label="Received" value={transfers.filter((transfer) => transfer.status === 'RECEIVED').length} detail="Destination acknowledged" tone="teal" />
+      </section>
+
+      {!canCreate ? (
+        <div className="inline-alert" role="status">
+          <Icon name="alert" />
+          Configure at least two active inventory locations and release stock before creating a transfer.
+        </div>
+      ) : null}
+
+      {transfers.length === 0 ? (
+        <EmptyState
+          detail="Create the first governed stock movement between active inventory locations."
+          icon="inventory"
+          title="No stock transfers"
+        />
+      ) : (
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Transfer</th>
+                <th>Route</th>
+                <th>Lines</th>
+                <th>Requested by</th>
+                <th>Status</th>
+                <th>Movement</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {transfers.map((transfer) => (
+                <tr key={transfer.id}>
+                  <td>
+                    <strong><code>{transfer.transfer_number}</code></strong>
+                    <small className="row-detail">{transfer.document_reference || formatDate(transfer.created_at)}</small>
+                  </td>
+                  <td>
+                    <strong>{transfer.source_location_name}</strong>
+                    <small className="row-detail">to {transfer.destination_location_name}</small>
+                  </td>
+                  <td>
+                    <strong>{transfer.lines.length}</strong>
+                    <small className="row-detail">
+                      {transfer.lines.map((line) => `${line.sku_code} · ${line.requested_quantity} ${line.unit}`).join(', ')}
+                    </small>
+                  </td>
+                  <td><small>{transfer.requested_by_username || 'System'}</small></td>
+                  <td><StatusBadge value={transfer.status} /></td>
+                  <td>
+                    <small>
+                      {transfer.dispatch_timestamp ? `Dispatched ${formatDate(transfer.dispatch_timestamp)}` : 'Not dispatched'}
+                    </small>
+                    {transfer.receipt_timestamp ? <small className="row-detail">Received {formatDate(transfer.receipt_timestamp)}</small> : null}
+                  </td>
+                  <td>
+                    {transfer.status === 'SUBMITTED' ? (
+                      <button className="secondary-button" onClick={() => onDialog({ kind: 'approve', transfer })} type="button">
+                        Approve
+                      </button>
+                    ) : null}
+                    {transfer.status === 'APPROVED' ? (
+                      <button className="primary-button" onClick={() => onDialog({ kind: 'dispatch', transfer })} type="button">
+                        Dispatch
+                      </button>
+                    ) : null}
+                    {['DISPATCHED', 'IN_TRANSIT', 'PARTIALLY_RECEIVED'].includes(transfer.status) ? (
+                      <button className="primary-button" onClick={() => onDialog({ kind: 'receive', transfer })} type="button">
+                        Receive
+                      </button>
+                    ) : null}
+                    {['RECEIVED', 'CLOSED', 'CANCELLED', 'REJECTED'].includes(transfer.status) ? (
+                      <span className="muted-cell">No action due</span>
+                    ) : null}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  );
+}
+
+interface StockTransferDraftLine {
+  readonly key: string;
+  readonly sku: string;
+  readonly quantity: string;
+}
+
+interface StockTransferReceiptDraftLine {
+  readonly key: string;
+  readonly lineId: string;
+  readonly skuCode: string;
+  readonly batchId: string;
+  readonly batchNumber: string;
+  readonly remaining: string;
+  readonly quantity: string;
+  readonly damaged: string;
+  readonly discrepancyReason: string;
+}
+
+function newTransferReference(prefix: string): string {
+  const token = globalThis.crypto?.randomUUID?.().replace(/-/g, '').slice(0, 10).toUpperCase()
+    ?? Date.now().toString(36).toUpperCase();
+  return `${prefix}-${token}`;
+}
+
+function StockTransferDialog({
+  balances,
+  csrfToken,
+  dialog,
+  locations,
+  onClose,
+  onSaved,
+  tenantId,
+}: {
+  readonly balances: readonly HQInventoryBalanceItem[];
+  readonly csrfToken: string;
+  readonly dialog: Exclude<StockTransferDialogMode, null>;
+  readonly locations: readonly HQInventoryLocationItem[];
+  readonly onClose: () => void;
+  readonly onSaved: (message: string) => Promise<void>;
+  readonly tenantId: string;
+}) {
+  const activeLocations = locations.filter((location) => location.status === 'ACTIVE');
+  const initialSource = activeLocations.find((location) => balances.some(
+    (balance) => balance.location === location.id && Number(balance.available) > 0,
+  ))?.id ?? activeLocations[0]?.id ?? '';
+  const [transferNumber, setTransferNumber] = useState(() => newTransferReference('TRF'));
+  const [sourceLocation, setSourceLocation] = useState(initialSource);
+  const [destinationLocation, setDestinationLocation] = useState(
+    activeLocations.find((location) => location.id !== initialSource)?.id ?? '',
+  );
+  const [reason, setReason] = useState('');
+  const [documentReference, setDocumentReference] = useState('');
+  const [draftLines, setDraftLines] = useState<readonly StockTransferDraftLine[]>([
+    { key: newTransferReference('LINE'), quantity: '', sku: '' },
+  ]);
+  const [receiptLines, setReceiptLines] = useState<readonly StockTransferReceiptDraftLine[]>(() => (
+    dialog.kind === 'receive'
+      ? dialog.transfer.lines.flatMap((line) => line.dispatch_allocations
+        .filter((allocation) => Number(allocation.remaining_quantity) > 0)
+        .map((allocation) => ({
+          batchId: allocation.batch_id,
+          batchNumber: allocation.batch_number,
+          damaged: '0',
+          discrepancyReason: '',
+          key: `${line.id}:${allocation.batch_id}`,
+          lineId: line.id,
+          quantity: allocation.remaining_quantity,
+          remaining: allocation.remaining_quantity,
+          skuCode: line.sku_code,
+        })))
+      : []
+  ));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const availableSkus = useMemo(() => {
+    const bySku = new Map<string, { available: number; code: string; name: string }>();
+    balances
+      .filter((balance) => balance.location === sourceLocation && Number(balance.available) > 0)
+      .forEach((balance) => {
+        const current = bySku.get(balance.sku);
+        bySku.set(balance.sku, {
+          available: (current?.available ?? 0) + Number(balance.available),
+          code: balance.sku_code || balance.sku,
+          name: balance.sku_name || balance.sku_code || 'Stock item',
+        });
+      });
+    return [...bySku.entries()].map(([id, value]) => ({ id, ...value }));
+  }, [balances, sourceLocation]);
+
+  const updateDraftLine = (key: string, values: Partial<StockTransferDraftLine>) => {
+    setDraftLines((current) => current.map((line) => (
+      line.key === key ? { ...line, ...values } : line
+    )));
+  };
+
+  const updateReceiptLine = (key: string, values: Partial<StockTransferReceiptDraftLine>) => {
+    setReceiptLines((current) => current.map((line) => (
+      line.key === key ? { ...line, ...values } : line
+    )));
+  };
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      if (dialog.kind === 'create') {
+        const payload: HQStockTransferDraft = {
+          destination_location: destinationLocation,
+          document_reference: documentReference.trim(),
+          lines: draftLines.map((line) => ({ quantity: line.quantity, sku: line.sku })),
+          reason: reason.trim(),
+          source_location: sourceLocation,
+          transfer_number: transferNumber.trim(),
+        };
+        await createStockTransfer(payload, tenantId, csrfToken);
+        await onSaved(`Transfer ${transferNumber} submitted for independent approval.`);
+        return;
+      }
+      if (dialog.kind === 'approve') {
+        await approveStockTransfer(dialog.transfer.id, tenantId, csrfToken);
+        await onSaved(`Transfer ${dialog.transfer.transfer_number} approved.`);
+        return;
+      }
+      if (dialog.kind === 'dispatch') {
+        await dispatchStockTransfer(dialog.transfer.id, tenantId, csrfToken);
+        await onSaved(`Transfer ${dialog.transfer.transfer_number} dispatched by FEFO allocation.`);
+        return;
+      }
+      const payload: HQStockTransferReceipt = {
+        idempotency_key: newTransferReference('RCV'),
+        lines: receiptLines
+          .filter((line) => Number(line.quantity) + Number(line.damaged) > 0)
+          .map((line) => ({
+            batch_id: line.batchId,
+            damaged: line.damaged || '0',
+            discrepancy_reason: line.discrepancyReason.trim(),
+            line_id: line.lineId,
+            quantity: line.quantity || '0',
+          })),
+      };
+      await receiveStockTransfer(dialog.transfer.id, payload, tenantId, csrfToken);
+      await onSaved(`Receipt recorded for transfer ${dialog.transfer.transfer_number}.`);
+    } catch (reasonCaught) {
+      setError(reasonCaught instanceof Error ? reasonCaught.message : 'The stock transfer action failed.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const title = dialog.kind === 'create'
+    ? 'Create stock transfer'
+    : dialog.kind === 'approve'
+      ? 'Approve stock transfer'
+      : dialog.kind === 'dispatch'
+        ? 'Dispatch stock transfer'
+        : 'Receive stock transfer';
+  const transfer = dialog.kind === 'create' ? null : dialog.transfer;
+  const submitLabel = dialog.kind === 'create'
+    ? 'Submit transfer'
+    : dialog.kind === 'approve'
+      ? 'Approve transfer'
+      : dialog.kind === 'dispatch'
+        ? 'Allocate & dispatch'
+        : 'Post receipt';
+  const receiptInvalid = dialog.kind === 'receive' && (
+    receiptLines.length === 0
+    || receiptLines.every((line) => Number(line.quantity) + Number(line.damaged) <= 0)
+    || receiptLines.some((line) => {
+      const recorded = Number(line.quantity) + Number(line.damaged);
+      const remaining = Number(line.remaining);
+      return recorded > remaining
+        || ((recorded < remaining || Number(line.damaged) > 0) && !line.discrepancyReason.trim());
+    })
+  );
+
+  return (
+    <div className="business-dialog-backdrop" role="presentation">
+      <section aria-labelledby="stock-transfer-dialog-title" aria-modal="true" className="business-dialog stock-transfer-dialog" role="dialog">
+        <header>
+          <div>
+            <p className="eyebrow">Inter-branch custody workflow</p>
+            <h2 id="stock-transfer-dialog-title">{title}</h2>
+          </div>
+          <button aria-label="Close dialog" disabled={busy} onClick={onClose} type="button">
+            <Icon name="close" />
+          </button>
+        </header>
+        {transfer ? (
+          <div className="business-dialog-record">
+            <div>
+              <code>{transfer.transfer_number}</code>
+              <strong>{transfer.source_location_name} → {transfer.destination_location_name}</strong>
+              <small>{transfer.lines.length} stock line{transfer.lines.length === 1 ? '' : 's'} · {titleCase(transfer.status)}</small>
+            </div>
+          </div>
+        ) : null}
+        <p className="business-dialog-confirm">
+          <Icon name={dialog.kind === 'dispatch' ? 'alert' : 'shield'} />
+          {dialog.kind === 'create'
+            ? 'Submission records the requester and routes the movement for independent approval.'
+            : dialog.kind === 'approve'
+              ? 'The requester cannot approve their own transfer. Your identity is retained in the custody trail.'
+              : dialog.kind === 'dispatch'
+                ? 'Dispatch allocates released stock by earliest expiry and posts immutable TRANSFER_OUT ledger entries.'
+                : 'Receipt posts accepted stock to destination custody and damaged stock to its controlled holding location.'}
+        </p>
+        <form onSubmit={(event) => void submit(event)}>
+          {dialog.kind === 'create' ? (
+            <>
+              <div className="stock-transfer-form-grid">
+                <label className="business-field">
+                  <span>Transfer number</span>
+                  <input maxLength={100} onChange={(event) => setTransferNumber(event.target.value)} required value={transferNumber} />
+                </label>
+                <label className="business-field">
+                  <span>Request reference</span>
+                  <input maxLength={255} onChange={(event) => setDocumentReference(event.target.value)} placeholder="Optional requisition or memo" value={documentReference} />
+                </label>
+                <label className="business-field">
+                  <span>Source location</span>
+                  <select
+                    onChange={(event) => {
+                      const nextSource = event.target.value;
+                      setSourceLocation(nextSource);
+                      if (destinationLocation === nextSource) {
+                        setDestinationLocation(activeLocations.find((location) => location.id !== nextSource)?.id ?? '');
+                      }
+                      setDraftLines([{ key: newTransferReference('LINE'), quantity: '', sku: '' }]);
+                    }}
+                    required
+                    value={sourceLocation}
+                  >
+                    {activeLocations.map((location) => (
+                      <option key={location.id} value={location.id}>{location.branch_name} · {location.name}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="business-field">
+                  <span>Destination location</span>
+                  <select onChange={(event) => setDestinationLocation(event.target.value)} required value={destinationLocation}>
+                    {activeLocations.filter((location) => location.id !== sourceLocation).map((location) => (
+                      <option key={location.id} value={location.id}>{location.branch_name} · {location.name}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <label className="business-field">
+                <span>Transfer reason</span>
+                <textarea onChange={(event) => setReason(event.target.value)} placeholder="Why stock is moving and who requested the rebalance" required rows={3} value={reason} />
+              </label>
+              <div className="stock-transfer-lines">
+                <div className="stock-transfer-lines-heading">
+                  <strong>Stock lines</strong>
+                  <button
+                    className="secondary-button"
+                    disabled={draftLines.length >= availableSkus.length}
+                    onClick={() => setDraftLines((current) => [
+                      ...current,
+                      { key: newTransferReference('LINE'), quantity: '', sku: '' },
+                    ])}
+                    type="button"
+                  >
+                    Add line
+                  </button>
+                </div>
+                {draftLines.map((line, index) => {
+                  const selectedSku = availableSkus.find((sku) => sku.id === line.sku);
+                  return (
+                    <div className="stock-transfer-line" key={line.key}>
+                      <label className="business-field">
+                        <span>SKU {index + 1}</span>
+                        <select onChange={(event) => updateDraftLine(line.key, { sku: event.target.value })} required value={line.sku}>
+                          <option value="">Select released stock</option>
+                          {availableSkus.map((sku) => (
+                            <option
+                              disabled={draftLines.some((candidate) => candidate.key !== line.key && candidate.sku === sku.id)}
+                              key={sku.id}
+                              value={sku.id}
+                            >
+                              {sku.code} · {sku.name} · {sku.available} available
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="business-field">
+                        <span>Quantity {selectedSku ? <b>Max {selectedSku.available}</b> : null}</span>
+                        <input
+                          max={selectedSku?.available}
+                          min="0.0001"
+                          onChange={(event) => updateDraftLine(line.key, { quantity: event.target.value })}
+                          required
+                          step="0.0001"
+                          type="number"
+                          value={line.quantity}
+                        />
+                      </label>
+                      <button
+                        aria-label={`Remove stock line ${index + 1}`}
+                        className="danger-link"
+                        disabled={draftLines.length === 1}
+                        onClick={() => setDraftLines((current) => current.filter((candidate) => candidate.key !== line.key))}
+                        type="button"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          ) : null}
+          {dialog.kind === 'receive' ? (
+            <div className="stock-transfer-lines">
+              {receiptLines.length === 0 ? (
+                <div className="inline-alert" role="status"><Icon name="check" /> No dispatched quantity remains to receive.</div>
+              ) : receiptLines.map((line) => (
+                <div className="stock-transfer-receipt-line" key={line.key}>
+                  <div>
+                    <strong>{line.skuCode}</strong>
+                    <small>Batch {line.batchNumber} · {line.remaining} remaining</small>
+                  </div>
+                  <label className="business-field">
+                    <span>Accepted</span>
+                    <input
+                      max={line.remaining}
+                      min="0"
+                      onChange={(event) => updateReceiptLine(line.key, { quantity: event.target.value })}
+                      step="0.0001"
+                      type="number"
+                      value={line.quantity}
+                    />
+                  </label>
+                  <label className="business-field">
+                    <span>Damaged</span>
+                    <input
+                      max={line.remaining}
+                      min="0"
+                      onChange={(event) => updateReceiptLine(line.key, { damaged: event.target.value })}
+                      step="0.0001"
+                      type="number"
+                      value={line.damaged}
+                    />
+                  </label>
+                  <label className="business-field">
+                    <span>Discrepancy note</span>
+                    <input onChange={(event) => updateReceiptLine(line.key, { discrepancyReason: event.target.value })} placeholder="Required when quantities differ" value={line.discrepancyReason} />
+                  </label>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {error ? <p className="business-dialog-error" role="alert"><Icon name="alert" /> {error}</p> : null}
+          <footer>
+            <button className="secondary-button" disabled={busy} onClick={onClose} type="button">Cancel</button>
+            <button
+              className="primary-button"
+              disabled={busy || receiptInvalid}
+              type="submit"
+            >
+              {busy ? 'Recording…' : submitLabel}
+            </button>
+          </footer>
+        </form>
+      </section>
+    </div>
   );
 }
 
@@ -1468,15 +2065,52 @@ function OperationsView({
 
 function PricingView({
   csrfToken,
-  tenantId,
+  overview,
 }: {
   readonly csrfToken: string;
-  readonly tenantId: string;
+  readonly overview: HQOverview;
 }) {
+  const selectableTenants = useMemo(
+    () => overview.network_items.filter((item) => item.status === 'ACTIVE'),
+    [overview.network_items],
+  );
+  const [tenantId, setTenantId] = useState(
+    overview.tenant_id || selectableTenants[0]?.id || '',
+  );
+
+  useEffect(() => {
+    const nextTenantId = overview.tenant_id
+      || (selectableTenants.some((tenant) => tenant.id === tenantId)
+        ? tenantId
+        : selectableTenants[0]?.id || '');
+    if (nextTenantId !== tenantId) setTenantId(nextTenantId);
+  }, [overview.tenant_id, selectableTenants, tenantId]);
+
   if (!tenantId) {
     return <TenantWorkspaceRequired domain="pricing control" />;
   }
-  return <TenantPricingView csrfToken={csrfToken} tenantId={tenantId} />;
+  return (
+    <>
+      {overview.is_platform_overview ? (
+        <section className="procurement-scope panel">
+          <div>
+            <p className="eyebrow">Tenant pricing authority</p>
+            <h2>Commercial pricing workspace</h2>
+            <span>Prepare, review, publish, assign, and test one tenant's prices without combining pharmacy records.</span>
+          </div>
+          <label>
+            <span>Operating tenant</span>
+            <select onChange={(event) => setTenantId(event.target.value)} value={tenantId}>
+              {selectableTenants.map((tenant) => (
+                <option key={tenant.id} value={tenant.id}>{tenant.name}</option>
+              ))}
+            </select>
+          </label>
+        </section>
+      ) : null}
+      <TenantPricingView csrfToken={csrfToken} tenantId={tenantId} />
+    </>
+  );
 }
 
 function TenantPricingView({

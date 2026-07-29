@@ -7,6 +7,8 @@ import {
   beginCustomerReview,
   createCustomer,
   createInsurer,
+  createStockTransfer,
+  dispatchStockTransfer,
   loadSystemHealth,
   HQApiError,
   executeHQBusinessAction,
@@ -17,10 +19,12 @@ import {
   loadHQOverview,
   loadHQWorkspace,
   loadInsurers,
+  loadStockTransfers,
   loadPosRegisters,
   loadPosDeviceHealth,
   probeEndpointHeartbeat,
   reactivateCustomer,
+  receiveStockTransfer,
   setHQTenantContext,
   startCashExceptionReview,
   suspendCustomer,
@@ -376,6 +380,71 @@ describe('cash control routes', () => {
         method: 'POST',
       }),
     );
+  });
+});
+
+describe('stock transfer routes', () => {
+  it('loads transfers for the explicitly selected inventory tenant', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify([]), {
+        headers: { 'Content-Type': 'application/json' },
+        status: 200,
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await loadStockTransfers('tenant-stock');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/inventory/transfers/',
+      expect.objectContaining({
+        headers: expect.objectContaining({ 'X-Tenant-ID': 'tenant-stock' }),
+      }),
+    );
+  });
+
+  it('routes transfer request, dispatch, and receipt through governed actions', async () => {
+    const fetchMock = vi.fn().mockImplementation(async () =>
+      new Response(JSON.stringify({ id: 'transfer-1', status: 'SUBMITTED' }), {
+        headers: { 'Content-Type': 'application/json' },
+        status: 200,
+      }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await createStockTransfer({
+      destination_location: 'destination-1',
+      document_reference: 'REQ-001',
+      lines: [{ quantity: '2.0000', sku: 'sku-1' }],
+      reason: 'Branch rebalance',
+      source_location: 'source-1',
+      transfer_number: 'TRF-001',
+    }, 'tenant-stock', 'csrf-stock');
+    await dispatchStockTransfer('transfer-1', 'tenant-stock', 'csrf-stock');
+    await receiveStockTransfer('transfer-1', {
+      idempotency_key: 'receipt-1',
+      lines: [{
+        batch_id: 'batch-1',
+        damaged: '0',
+        discrepancy_reason: '',
+        line_id: 'line-1',
+        quantity: '2.0000',
+      }],
+    }, 'tenant-stock', 'csrf-stock');
+
+    expect(fetchMock.mock.calls.map(([path]) => path)).toEqual([
+      '/api/inventory/transfers/',
+      '/api/inventory/transfers/transfer-1/dispatch/',
+      '/api/inventory/transfers/transfer-1/receive/',
+    ]);
+    for (const [, request] of fetchMock.mock.calls) {
+      expect(request).toEqual(expect.objectContaining({
+        headers: expect.objectContaining({
+          'X-CSRFToken': 'csrf-stock',
+          'X-Tenant-ID': 'tenant-stock',
+        }),
+        method: 'POST',
+      }));
+    }
   });
 });
 

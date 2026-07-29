@@ -1764,12 +1764,97 @@ kbd {
   outline-offset: 1px;
 }
 
+.stock-transfer-heading,
+.stock-transfer-lines-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.stock-transfer-heading {
+  margin-bottom: 18px;
+}
+
+.stock-transfer-heading h2,
+.stock-transfer-heading p {
+  margin-top: 0;
+}
+
+.stock-transfer-heading .panel-note {
+  margin-bottom: 0;
+}
+
+.stock-transfer-dialog {
+  width: min(920px, 100%);
+}
+
+.stock-transfer-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.stock-transfer-lines {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--canvas);
+}
+
+.stock-transfer-lines-heading {
+  align-items: center;
+}
+
+.stock-transfer-line,
+.stock-transfer-receipt-line {
+  display: grid;
+  align-items: end;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.stock-transfer-line {
+  grid-template-columns: minmax(220px, 2fr) minmax(150px, 1fr) auto;
+}
+
+.stock-transfer-receipt-line {
+  grid-template-columns: minmax(150px, 1.2fr) minmax(110px, 0.7fr) minmax(110px, 0.7fr) minmax(190px, 1.5fr);
+}
+
+.stock-transfer-receipt-line > div {
+  display: grid;
+  align-self: center;
+  gap: 4px;
+}
+
+.stock-transfer-receipt-line > div small {
+  color: var(--muted);
+}
+
 @media (max-width: 900px) {
   /* The four labels do not fit a phone. Scroll the group rather than let it
      stretch the panel and force the whole page sideways. */
   .segmented {
     max-width: 100%;
     overflow-x: auto;
+  }
+
+  .stock-transfer-form-grid,
+  .stock-transfer-line,
+  .stock-transfer-receipt-line {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .stock-transfer-heading,
+  .stock-transfer-lines-heading {
+    align-items: stretch;
+    flex-direction: column;
   }
 }
 

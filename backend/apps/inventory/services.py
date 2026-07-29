@@ -3,13 +3,14 @@ from decimal import Decimal
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import Sum
+from django.db.models import F, Sum
 from django.utils import timezone
 
 from apps.inventory.models import (
     InventoryBalance,
     InventoryBatch,
     InventoryLedgerEntry,
+    InventoryLocation,
     InventoryReservation,
     StocktakeCount,
     StocktakeSession,
@@ -547,11 +548,39 @@ class InventoryReservationService:
 class StockTransferService:
     @staticmethod
     @transaction.atomic
-    def request_transfer(*, tenant, transfer_number, source_branch, dest_branch, source_location, dest_location, requested_by, lines_data):
+    def request_transfer(
+        *,
+        tenant,
+        transfer_number,
+        source_branch,
+        dest_branch,
+        source_location,
+        dest_location,
+        requested_by,
+        lines_data,
+        reason="",
+        document_reference="",
+    ):
         if source_location.branch != source_branch or dest_location.branch != dest_branch:
             raise ValidationError("Locations must belong to their respective branches.")
-            
-        transfer = StockTransfer.objects.create(
+        if source_location == dest_location:
+            raise ValidationError("Destination must differ from the source location.")
+        if (
+            source_location.status != InventoryLocation.Status.ACTIVE
+            or dest_location.status != InventoryLocation.Status.ACTIVE
+        ):
+            raise ValidationError("Stock transfers require active inventory locations.")
+        if not lines_data:
+            raise ValidationError("A stock transfer requires at least one line.")
+        if StockTransfer.all_objects.filter(
+            tenant=tenant,
+            transfer_number=transfer_number,
+        ).exists():
+            raise ValidationError(
+                {"transfer_number": "This transfer number already exists."}
+            )
+
+        transfer = StockTransfer.all_objects.create(
             tenant=tenant,
             transfer_number=transfer_number,
             source_branch=source_branch,
@@ -560,41 +589,69 @@ class StockTransferService:
             destination_location=dest_location,
             requested_by=requested_by,
             status=StockTransfer.Status.SUBMITTED,
+            reason=reason,
+            document_reference=document_reference,
         )
-        
+
         for line in lines_data:
             sku = line["sku"]
             qty = line["quantity"]
-            StockTransferLine.objects.create(
+            StockTransferLine.all_objects.create(
                 tenant=tenant,
                 transfer=transfer,
                 sku=sku,
                 requested_quantity=qty,
                 unit=sku.package_definition.unit_of_measure,
             )
-            
-        emit_event(tenant_id=str(tenant.pk), aggregate_type="StockTransfer", aggregate_id=str(transfer.pk), event_type="StockTransferCreated", payload={"transfer_number": transfer_number})
+
+        emit_event(
+            tenant_id=str(tenant.pk),
+            aggregate_type="StockTransfer",
+            aggregate_id=str(transfer.pk),
+            event_type="StockTransferCreated",
+            payload={"transfer_number": transfer_number},
+        )
         return transfer
 
     @staticmethod
     @transaction.atomic
     def approve_transfer(*, transfer, approver):
+        transfer = StockTransfer.all_objects.select_for_update().get(
+            tenant=transfer.tenant,
+            pk=transfer.pk,
+        )
         if transfer.status != StockTransfer.Status.SUBMITTED:
             raise ValidationError("Only submitted transfers can be approved.")
+        if transfer.requested_by_id and transfer.requested_by_id == approver.pk:
+            raise ValidationError(
+                "The requester cannot approve their own stock transfer."
+            )
         transfer.status = StockTransfer.Status.APPROVED
         transfer.approved_by = approver
-        transfer.save()
-        emit_event(tenant_id=str(transfer.tenant.pk), aggregate_type="StockTransfer", aggregate_id=str(transfer.pk), event_type="StockTransferApproved", payload={})
+        transfer.save(update_fields=["status", "approved_by", "updated_at"])
+        emit_event(
+            tenant_id=str(transfer.tenant.pk),
+            aggregate_type="StockTransfer",
+            aggregate_id=str(transfer.pk),
+            event_type="StockTransferApproved",
+            payload={},
+        )
         return transfer
-        
+
     @staticmethod
     @transaction.atomic
     def allocate_and_dispatch(*, transfer, dispatcher):
+        transfer = StockTransfer.all_objects.select_for_update().get(
+            tenant=transfer.tenant,
+            pk=transfer.pk,
+        )
         if transfer.status != StockTransfer.Status.APPROVED:
             raise ValidationError("Only approved transfers can be dispatched.")
-            
+
         # Allocate FEFO and dispatch
-        for line in StockTransferLine.all_objects.filter(transfer=transfer):
+        for line in StockTransferLine.all_objects.select_for_update().filter(
+            transfer=transfer
+        ):
             allocations = FEFOAllocationService.allocate_stock(
                 tenant=transfer.tenant,
                 branch=transfer.source_branch,
@@ -625,31 +682,125 @@ class StockTransferService:
                 )
                 line.allocated_quantity += qty
                 line.dispatched_quantity += qty
-            line.save()
-            
+            line.save(
+                update_fields=[
+                    "allocated_quantity",
+                    "dispatched_quantity",
+                    "updated_at",
+                ]
+            )
+
         transfer.status = StockTransfer.Status.DISPATCHED
         transfer.dispatched_by = dispatcher
         transfer.dispatch_timestamp = timezone.now()
-        transfer.save()
-        
-        emit_event(tenant_id=str(transfer.tenant.pk), aggregate_type="StockTransfer", aggregate_id=str(transfer.pk), event_type="StockTransferDispatched", payload={})
+        transfer.save(
+            update_fields=[
+                "status",
+                "dispatched_by",
+                "dispatch_timestamp",
+                "updated_at",
+            ]
+        )
+
+        emit_event(
+            tenant_id=str(transfer.tenant.pk),
+            aggregate_type="StockTransfer",
+            aggregate_id=str(transfer.pk),
+            event_type="StockTransferDispatched",
+            payload={},
+        )
         return transfer
-        
+
     @staticmethod
     @transaction.atomic
-    def receive_transfer(*, transfer, receiver, received_lines_data):
-        if transfer.status not in [StockTransfer.Status.DISPATCHED, StockTransfer.Status.IN_TRANSIT, StockTransfer.Status.PARTIALLY_RECEIVED]:
+    def receive_transfer(
+        *,
+        transfer,
+        receiver,
+        received_lines_data,
+        idempotency_key,
+    ):
+        transfer = StockTransfer.all_objects.select_for_update().get(
+            tenant=transfer.tenant,
+            pk=transfer.pk,
+        )
+        receipt_prefix = f"transfer-receive-{idempotency_key}-"
+        if InventoryLedgerEntry.all_objects.filter(
+            tenant=transfer.tenant,
+            idempotency_key__startswith=receipt_prefix,
+        ).exists():
+            return transfer
+        if transfer.status not in [
+            StockTransfer.Status.DISPATCHED,
+            StockTransfer.Status.IN_TRANSIT,
+            StockTransfer.Status.PARTIALLY_RECEIVED,
+        ]:
             raise ValidationError("Transfer is not in a receivable state.")
-            
-        # receive_lines_data: list of dicts: {"line_id": str, "batch_id": str, "quantity": decimal, "damaged": decimal}
-        # In a real implementation, we map this directly against dispatched ledger lines.
-        # For simplicity, we assume received_lines_data perfectly maps to what was dispatched.
+
+        damaged_location = None
         for data in received_lines_data:
-            line = StockTransferLine.all_objects.get(tenant=transfer.tenant, transfer=transfer, pk=data["line_id"])
-            batch = InventoryBatch.all_objects.get(tenant=transfer.tenant, pk=data["batch_id"])
+            try:
+                line = StockTransferLine.all_objects.select_for_update().get(
+                    tenant=transfer.tenant,
+                    transfer=transfer,
+                    pk=data["line_id"],
+                )
+            except StockTransferLine.DoesNotExist as exc:
+                raise ValidationError(
+                    "A receipt line is outside the selected transfer."
+                ) from exc
+            try:
+                batch = InventoryBatch.all_objects.get(
+                    tenant=transfer.tenant,
+                    sku=line.sku,
+                    pk=data["batch_id"],
+                )
+            except InventoryBatch.DoesNotExist as exc:
+                raise ValidationError(
+                    "A received batch is outside the transfer line SKU."
+                ) from exc
+
             qty = data["quantity"]
-            damaged = data.get("damaged", 0)
-            
+            damaged = data.get("damaged", Decimal("0"))
+            dispatched_for_batch = -(
+                InventoryLedgerEntry.all_objects.filter(
+                    tenant=transfer.tenant,
+                    source_document_type="STOCK_TRANSFER",
+                    source_document_id=str(transfer.pk),
+                    source_line_id=str(line.pk),
+                    inventory_batch=batch,
+                    entry_type=InventoryLedgerEntry.EntryType.TRANSFER_OUT,
+                ).aggregate(total=Sum("base_quantity_delta"))["total"]
+                or Decimal("0")
+            )
+            already_received_for_batch = (
+                InventoryLedgerEntry.all_objects.filter(
+                    tenant=transfer.tenant,
+                    source_document_type="STOCK_TRANSFER",
+                    source_document_id=str(transfer.pk),
+                    source_line_id=str(line.pk),
+                    inventory_batch=batch,
+                    entry_type=InventoryLedgerEntry.EntryType.TRANSFER_IN,
+                ).aggregate(total=Sum("base_quantity_delta"))["total"]
+                or Decimal("0")
+            )
+            if dispatched_for_batch <= 0:
+                raise ValidationError(
+                    f"Batch {batch.manufacturer_batch_number} was not dispatched for this transfer line."
+                )
+            remaining_for_batch = dispatched_for_batch - already_received_for_batch
+            if qty + damaged > remaining_for_batch:
+                raise ValidationError(
+                    f"Receipt exceeds the remaining dispatched quantity for batch {batch.manufacturer_batch_number}."
+                )
+            if (
+                (qty + damaged < remaining_for_batch or damaged > 0)
+                and not data.get("discrepancy_reason", "").strip()
+            ):
+                raise ValidationError(
+                    "Partial or damaged receipts require a discrepancy reason."
+                )
+
             if qty > 0:
                 InventoryLedgerService.post_entry(
                     tenant=transfer.tenant,
@@ -665,24 +816,95 @@ class StockTransferService:
                     source_document_type="STOCK_TRANSFER",
                     source_document_id=str(transfer.pk),
                     source_line_id=str(line.pk),
-                    idempotency_key=f"receive-{transfer.pk}-{line.pk}-{batch.pk}-{uuid.uuid4()}",
+                    idempotency_key=f"{receipt_prefix}{line.pk}-{batch.pk}-accepted",
                     actor=receiver,
                     reason_code="TRANSFER_RECEIPT",
                 )
                 line.received_quantity += qty
-                
+
             if damaged > 0:
-                # Post direct to a damaged location if available, or just record it and leave it in transit/loss
-                pass
-                
-            line.save()
-            
-        transfer.status = StockTransfer.Status.RECEIVED
+                if damaged_location is None:
+                    damaged_location = (
+                        InventoryLocation.all_objects.select_related("branch")
+                        .filter(
+                            tenant=transfer.tenant,
+                            branch=transfer.destination_branch,
+                            damaged_goods_capability=True,
+                            status=InventoryLocation.Status.ACTIVE,
+                        )
+                        .first()
+                    )
+                if damaged_location is None:
+                    raise ValidationError(
+                        "The destination branch has no active damaged-goods custody location."
+                    )
+                InventoryLedgerService.post_entry(
+                    tenant=transfer.tenant,
+                    branch=transfer.destination_branch,
+                    location=damaged_location,
+                    sku=line.sku,
+                    inventory_batch=batch,
+                    entry_type=InventoryLedgerEntry.EntryType.TRANSFER_IN,
+                    quantity_delta=damaged,
+                    unit=line.unit,
+                    base_quantity_delta=damaged,
+                    effective_timestamp=timezone.now(),
+                    source_document_type="STOCK_TRANSFER",
+                    source_document_id=str(transfer.pk),
+                    source_line_id=str(line.pk),
+                    idempotency_key=f"{receipt_prefix}{line.pk}-{batch.pk}-damaged",
+                    actor=receiver,
+                    reason_code="TRANSFER_DAMAGE_RECEIPT",
+                    notes=data.get("discrepancy_reason", ""),
+                )
+                line.damaged_quantity += damaged
+            if data.get("discrepancy_reason"):
+                line.discrepancy_reason = data["discrepancy_reason"]
+            line.save(
+                update_fields=[
+                    "received_quantity",
+                    "damaged_quantity",
+                    "discrepancy_reason",
+                    "updated_at",
+                ]
+            )
+
+        remaining = StockTransferLine.all_objects.filter(
+            tenant=transfer.tenant,
+            transfer=transfer,
+        ).filter(
+            dispatched_quantity__gt=(
+                F("received_quantity") + F("damaged_quantity")
+            )
+        )
+        transfer.status = (
+            StockTransfer.Status.PARTIALLY_RECEIVED
+            if remaining.exists()
+            else StockTransfer.Status.RECEIVED
+        )
         transfer.received_by = receiver
-        transfer.receipt_timestamp = timezone.now()
-        transfer.save()
-        
-        emit_event(tenant_id=str(transfer.tenant.pk), aggregate_type="StockTransfer", aggregate_id=str(transfer.pk), event_type="StockTransferReceived", payload={})
+        if transfer.status == StockTransfer.Status.RECEIVED:
+            transfer.receipt_timestamp = timezone.now()
+        transfer.save(
+            update_fields=[
+                "status",
+                "received_by",
+                "receipt_timestamp",
+                "updated_at",
+            ]
+        )
+
+        emit_event(
+            tenant_id=str(transfer.tenant.pk),
+            aggregate_type="StockTransfer",
+            aggregate_id=str(transfer.pk),
+            event_type=(
+                "StockTransferReceived"
+                if transfer.status == StockTransfer.Status.RECEIVED
+                else "StockTransferPartiallyReceived"
+            ),
+            payload={},
+        )
         return transfer
 
 class InventoryAdjustmentService:

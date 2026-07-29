@@ -2241,6 +2241,7 @@ export const CLAIM_STATES = {
 /* ── inventory subsystem ─────────────────────────────────────────────────── */
 
 export interface HQInventoryLocationItem {
+  readonly branch: string;
   readonly id: string;
   readonly location_code: string;
   readonly name: string;
@@ -2254,7 +2255,10 @@ export interface HQInventoryLocationItem {
 }
 
 export interface HQInventoryBalanceItem {
+  readonly inventory_batch?: string | null;
   readonly id: string;
+  readonly location: string;
+  readonly sku: string;
   readonly sku_code?: string;
   readonly sku_name?: string;
   readonly location_name?: string;
@@ -2270,6 +2274,7 @@ export interface HQInventoryBalanceItem {
 }
 
 export interface HQInventoryLedgerItem {
+  readonly inventory_batch?: string | null;
   readonly id: string;
   readonly entry_type: string;
   readonly sku_code?: string;
@@ -2280,6 +2285,7 @@ export interface HQInventoryLedgerItem {
   readonly unit: string;
   readonly source_document_type: string;
   readonly source_document_id: string;
+  readonly source_line_id?: string | null;
   readonly transaction_timestamp: string;
   readonly reason_code?: string;
   readonly notes?: string;
@@ -2287,6 +2293,7 @@ export interface HQInventoryLedgerItem {
 
 export interface HQInventoryBatchItem {
   readonly id: string;
+  readonly sku: string;
   readonly sku_code?: string;
   readonly manufacturer_batch_number: string;
   readonly manufacture_date: string | null;
@@ -2306,20 +2313,147 @@ export interface HQInventoryReservationItem {
   readonly created_at: string;
 }
 
-export const loadInventoryLocations = (signal?: AbortSignal) =>
-  getCollection<HQInventoryLocationItem>('/api/inventory/locations/', signal);
+export interface HQStockTransferAllocation {
+  readonly batch_id: string;
+  readonly batch_number: string;
+  readonly dispatched_quantity: string;
+  readonly received_quantity: string;
+  readonly damaged_quantity: string;
+  readonly remaining_quantity: string;
+}
 
-export const loadInventoryBalances = (signal?: AbortSignal) =>
-  getCollection<HQInventoryBalanceItem>('/api/inventory/balances/', signal);
+export interface HQStockTransferLine {
+  readonly id: string;
+  readonly sku: string;
+  readonly sku_code: string;
+  readonly sku_name: string;
+  readonly batch: string | null;
+  readonly batch_number: string | null;
+  readonly requested_quantity: string;
+  readonly allocated_quantity: string;
+  readonly dispatched_quantity: string;
+  readonly received_quantity: string;
+  readonly rejected_quantity: string;
+  readonly damaged_quantity: string;
+  readonly unit: string;
+  readonly discrepancy_reason: string;
+  readonly dispatch_allocations: readonly HQStockTransferAllocation[];
+}
 
-export const loadInventoryLedger = (signal?: AbortSignal) =>
-  getCollection<HQInventoryLedgerItem>('/api/inventory/ledger/', signal);
+export interface HQStockTransfer {
+  readonly id: string;
+  readonly transfer_number: string;
+  readonly source_branch: string;
+  readonly source_branch_name: string;
+  readonly destination_branch: string;
+  readonly destination_branch_name: string;
+  readonly source_location: string;
+  readonly source_location_name: string;
+  readonly destination_location: string;
+  readonly destination_location_name: string;
+  readonly status: string;
+  readonly requested_by_username: string | null;
+  readonly approved_by_username: string | null;
+  readonly dispatched_by_username: string | null;
+  readonly received_by_username: string | null;
+  readonly dispatch_timestamp: string | null;
+  readonly receipt_timestamp: string | null;
+  readonly reason: string;
+  readonly document_reference: string;
+  readonly lines: readonly HQStockTransferLine[];
+  readonly created_at: string;
+  readonly updated_at: string;
+}
 
-export const loadInventoryBatches = (signal?: AbortSignal) =>
-  getCollection<HQInventoryBatchItem>('/api/inventory/batches/', signal);
+export interface HQStockTransferDraft {
+  readonly transfer_number: string;
+  readonly source_location: string;
+  readonly destination_location: string;
+  readonly reason: string;
+  readonly document_reference: string;
+  readonly lines: readonly {
+    readonly sku: string;
+    readonly quantity: string;
+  }[];
+}
 
-export const loadInventoryReservations = (signal?: AbortSignal) =>
-  getCollection<HQInventoryReservationItem>('/api/inventory/reservations/', signal);
+export interface HQStockTransferReceipt {
+  readonly idempotency_key: string;
+  readonly lines: readonly {
+    readonly line_id: string;
+    readonly batch_id: string;
+    readonly quantity: string;
+    readonly damaged: string;
+    readonly discrepancy_reason: string;
+  }[];
+}
+
+export const loadInventoryLocations = (tenantId: string, signal?: AbortSignal) =>
+  getTenantCollection<HQInventoryLocationItem>('/api/inventory/locations/', tenantId, signal);
+
+export const loadInventoryBalances = (tenantId: string, signal?: AbortSignal) =>
+  getTenantCollection<HQInventoryBalanceItem>('/api/inventory/balances/', tenantId, signal);
+
+export const loadInventoryLedger = (tenantId: string, signal?: AbortSignal) =>
+  getTenantCollection<HQInventoryLedgerItem>('/api/inventory/ledger/', tenantId, signal);
+
+export const loadInventoryBatches = (tenantId: string, signal?: AbortSignal) =>
+  getTenantCollection<HQInventoryBatchItem>('/api/inventory/batches/', tenantId, signal);
+
+export const loadInventoryReservations = (tenantId: string, signal?: AbortSignal) =>
+  getTenantCollection<HQInventoryReservationItem>('/api/inventory/reservations/', tenantId, signal);
+
+export const loadStockTransfers = (tenantId: string, signal?: AbortSignal) =>
+  getTenantCollection<HQStockTransfer>('/api/inventory/transfers/', tenantId, signal);
+
+export const createStockTransfer = (
+  payload: HQStockTransferDraft,
+  tenantId: string,
+  csrfToken: string,
+) => mutateJson<HQStockTransfer>(
+  '/api/inventory/transfers/',
+  'POST',
+  payload,
+  csrfToken,
+  tenantId,
+);
+
+export const approveStockTransfer = (
+  transferId: string,
+  tenantId: string,
+  csrfToken: string,
+) => mutateJson<HQStockTransfer>(
+  `/api/inventory/transfers/${transferId}/approve/`,
+  'POST',
+  {},
+  csrfToken,
+  tenantId,
+);
+
+export const dispatchStockTransfer = (
+  transferId: string,
+  tenantId: string,
+  csrfToken: string,
+) => mutateJson<HQStockTransfer>(
+  `/api/inventory/transfers/${transferId}/dispatch/`,
+  'POST',
+  {},
+  csrfToken,
+  tenantId,
+);
+
+export const receiveStockTransfer = (
+  transferId: string,
+  payload: HQStockTransferReceipt,
+  tenantId: string,
+  csrfToken: string,
+) => mutateJson<HQStockTransfer>(
+  `/api/inventory/transfers/${transferId}/receive/`,
+  'POST',
+  payload,
+  csrfToken,
+  tenantId,
+);
 
 /* ── sales & fulfilment subsystem ────────────────────────────────────────── */
 
