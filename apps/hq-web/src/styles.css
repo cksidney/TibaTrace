@@ -25,9 +25,9 @@
   --muted-2: #64748b;
   --line: rgba(255, 255, 255, 0.09);
   --line-soft: rgba(255, 255, 255, 0.05);
-  --panel: #0d1527;
-  --canvas: #060913;
-  --shadow: 0 16px 40px rgba(0, 0, 0, 0.65);
+  --panel: rgba(13, 21, 39, 0.85);
+  --canvas: radial-gradient(circle at 50% -20%, #0d1e38 0%, #060913 85%) fixed;
+  --shadow: 0 20px 50px rgba(0, 0, 0, 0.55), 0 0 25px rgba(16, 185, 129, 0.05);
   --glow-emerald: 0 0 24px rgba(16, 185, 129, 0.28);
   --glow-cyan: 0 0 24px rgba(6, 182, 212, 0.25);
   font-family: Inter, "Avenir Next", Avenir, "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
@@ -57,13 +57,13 @@
   --cyan-700: #0891b2;
   --cyan-100: #cffafe;
   --ink: #0f172a;
-  --muted: #64748b;
-  --muted-2: #94a3b8;
-  --line: #e2e8f0;
-  --line-soft: #f1f5f9;
+  --muted: #475569;
+  --muted-2: #64748b;
+  --line: #cbd5e1;
+  --line-soft: #e2e8f0;
   --panel: #ffffff;
-  --canvas: #f8fafc;
-  --shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+  --canvas: linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%) fixed;
+  --shadow: 0 10px 30px rgba(15, 23, 42, 0.08), 0 2px 8px rgba(15, 23, 42, 0.04);
   --glow-emerald: 0 0 20px rgba(13, 148, 136, 0.18);
   --glow-cyan: 0 0 20px rgba(8, 145, 178, 0.18);
 }
@@ -90,6 +90,71 @@ input,
 select,
 textarea {
   font: inherit;
+}
+
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2334d399' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 14px 14px;
+  padding: 8px 34px 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background-color: var(--navy-900);
+  color: var(--ink);
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+  min-width: 120px;
+}
+
+[data-theme="light"] select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%230d9488' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-color: #ffffff;
+  border-color: #cbd5e1;
+  color: #0f172a;
+}
+
+select:hover {
+  border-color: var(--teal-500);
+}
+
+select:focus {
+  outline: none;
+  border-color: var(--teal-500);
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.25);
+}
+
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+  padding: 12px 18px;
+  margin-bottom: 22px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+[data-theme="light"] .filter-row {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+}
+
+.filter-row label {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 /* The UA default for <small> is 0.83em of its parent, which put an unstyled one
@@ -1213,16 +1278,20 @@ kbd {
 }
 
 .panel {
-  /* Grid and flex items default to min-width: auto, so a panel could not shrink
-     below the min-content width of the table inside it. The .table-scroll's
-     overflow-x never engaged; the panel just pushed the page wider instead --
-     573px on a 390px viewport. */
   min-width: 0;
-  padding: 22px;
+  padding: 24px;
   border: 1px solid var(--line);
-  border-radius: 13px;
+  border-radius: 16px;
   background: var(--panel);
   box-shadow: var(--shadow);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+}
+
+.panel:hover {
+  border-color: rgba(16, 185, 129, 0.22);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.5), 0 0 20px rgba(16, 185, 129, 0.08);
 }
 
 .panel-header {
@@ -1233,10 +1302,29 @@ kbd {
   margin-bottom: 20px;
 }
 
+.panel-header p.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 6px;
+  background: rgba(16, 185, 129, 0.12);
+  color: var(--teal-500);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+[data-theme="light"] .panel-header p.eyebrow {
+  background: rgba(13, 148, 136, 0.12);
+  color: var(--teal-700);
+}
+
 .panel-header h2 {
   margin: 0;
   color: var(--ink);
-  font-size: 1rem;
+  font-size: 1.05rem;
   letter-spacing: -0.03em;
 }
 
@@ -3311,33 +3399,53 @@ tbody tr:hover {
 
 .empty-state {
   display: grid;
-  min-height: 250px;
+  min-height: 200px;
   place-items: center;
   align-content: center;
-  padding: 35px;
+  padding: 36px 24px;
+  margin: 12px 0;
+  border-radius: 14px;
+  border: 1px dashed var(--line);
+  background: rgba(255, 255, 255, 0.015);
   text-align: center;
+}
+
+[data-theme="light"] .empty-state {
+  background: #f8fafc;
+  border-color: #cbd5e1;
 }
 
 .empty-state > span {
   display: grid;
-  width: 46px;
-  height: 46px;
-  margin-bottom: 13px;
+  width: 52px;
+  height: 52px;
+  margin-bottom: 14px;
   place-items: center;
-  border-radius: 12px;
+  border-radius: 16px;
+  color: var(--teal-500);
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.18), rgba(59, 130, 246, 0.14));
+  box-shadow: 0 0 24px rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+[data-theme="light"] .empty-state > span {
   color: var(--teal-700);
-  background: var(--teal-100);
+  background: linear-gradient(135deg, rgba(13, 148, 136, 0.14), rgba(37, 99, 235, 0.1));
+  border-color: rgba(13, 148, 136, 0.25);
+  box-shadow: 0 4px 14px rgba(13, 148, 136, 0.12);
 }
 
 .empty-state strong {
-  font-size: 1.0625rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--ink);
 }
 
 .empty-state p {
-  max-width: 390px;
-  margin: 7px 0 0;
+  max-width: 420px;
+  margin: 8px 0 0;
   color: var(--muted);
-  font-size: 0.875rem;
+  font-size: 0.85rem;
   line-height: 1.5;
 }
 
