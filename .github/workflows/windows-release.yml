@@ -303,7 +303,7 @@ jobs:
         if: steps.export.outputs.cert_sha256 != ''
         shell: pwsh
         run: |
-          $release = 'apps/pos-windows/release'
+          $release = (Resolve-Path 'apps/pos-windows/release').Path
           $stage = Join-Path $env:RUNNER_TEMP 'managed-install'
           if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
           New-Item -ItemType Directory -Path $stage | Out-Null
