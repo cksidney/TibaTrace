@@ -1,7 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  activateCustomer,
+  approveCustomer,
   approveCashMovement,
+  beginCustomerReview,
+  createCustomer,
+  createInsurer,
   loadSystemHealth,
   HQApiError,
   executeHQBusinessAction,
@@ -15,8 +20,10 @@ import {
   loadPosRegisters,
   loadPosDeviceHealth,
   probeEndpointHeartbeat,
+  reactivateCustomer,
   setHQTenantContext,
   startCashExceptionReview,
+  suspendCustomer,
   updateGovernmentCatalogueSelection,
   varianceNeedsExplanation,
 } from './api.js';
@@ -110,6 +117,84 @@ describe('heartbeat telemetry', () => {
       status: 'OFFLINE',
       statusCode: null,
     });
+  });
+});
+
+describe('tenant-scoped directory writes', () => {
+  it('sends tenant and CSRF context when creating an insurer', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ id: 'insurer-1' }), {
+        headers: { 'Content-Type': 'application/json' },
+        status: 201,
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    setHQTenantContext('tenant-123');
+
+    await createInsurer({
+      code: 'SHA-KE',
+      name: 'Social Health Authority Kenya',
+      insurer_type: 'PUBLIC',
+      integration_adapter: 'SHA',
+      environment: 'SANDBOX',
+    }, 'csrf-123');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/insurance/insurers/',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          'X-CSRFToken': 'csrf-123',
+          'X-Tenant-ID': 'tenant-123',
+        }),
+        method: 'POST',
+      }),
+    );
+  });
+
+  it('sends tenant context for customer creation and governance actions', async () => {
+    const fetchMock = vi.fn().mockImplementation(async () =>
+      new Response(JSON.stringify({ id: 'customer-1', status: 'UNDER_REVIEW' }), {
+        headers: { 'Content-Type': 'application/json' },
+        status: 201,
+      }));
+    vi.stubGlobal('fetch', fetchMock);
+    setHQTenantContext('tenant-123');
+
+    await createCustomer({
+      customer_number: 'CUST-001',
+      legal_name: 'Nairobi Health Chemists Ltd',
+      customer_type: 'PHARMACY',
+    }, 'csrf-123');
+    await beginCustomerReview('customer/1', 'Documents received', 'csrf-123');
+    await approveCustomer('customer/1', 'Governance review passed', 'csrf-123');
+    await activateCustomer('customer/1', 'Commercial account enabled', 'csrf-123');
+    await suspendCustomer('customer/1', 'Licence expired', 'csrf-123');
+    await reactivateCustomer('customer/1', 'Licence restored', 'csrf-123');
+
+    for (const [, request] of fetchMock.mock.calls) {
+      expect(request).toEqual(expect.objectContaining({
+        headers: expect.objectContaining({
+          'X-CSRFToken': 'csrf-123',
+          'X-Tenant-ID': 'tenant-123',
+        }),
+        method: 'POST',
+      }));
+    }
+    expect(fetchMock.mock.calls[1]?.[0]).toBe(
+      '/api/customers/customers/customer%2F1/begin-review/',
+    );
+    expect(fetchMock.mock.calls[2]?.[0]).toBe(
+      '/api/customers/customers/customer%2F1/approve/',
+    );
+    expect(fetchMock.mock.calls[3]?.[0]).toBe(
+      '/api/customers/customers/customer%2F1/activate/',
+    );
+    expect(fetchMock.mock.calls[4]?.[0]).toBe(
+      '/api/customers/customers/customer%2F1/suspend/',
+    );
+    expect(fetchMock.mock.calls[5]?.[0]).toBe(
+      '/api/customers/customers/customer%2F1/reactivate/',
+    );
   });
 });
 

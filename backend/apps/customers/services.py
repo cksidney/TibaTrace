@@ -33,6 +33,25 @@ class CustomerGovernanceService:
 
     @staticmethod
     @transaction.atomic
+    def begin_review_customer(*, customer, actor=None, reason=""):
+        if customer.status != Customer.Status.PROSPECTIVE:
+            raise ValidationError("Customer must be PROSPECTIVE to begin review.")
+        customer.status = Customer.Status.UNDER_REVIEW
+        customer.save(update_fields=["status", "updated_at"])
+        emit_event(
+            tenant_id=customer.tenant_id,
+            aggregate_type="Customer",
+            aggregate_id=customer.id,
+            event_type="CustomerReviewStarted",
+            payload={
+                "reason": reason,
+                "actor_id": str(actor.id) if actor else None,
+            },
+        )
+        return customer
+
+    @staticmethod
+    @transaction.atomic
     def approve_customer(*, customer, approver, reason=""):
         if customer.status != Customer.Status.UNDER_REVIEW:
             raise ValidationError("Customer must be UNDER_REVIEW to be approved.")
@@ -51,9 +70,9 @@ class CustomerGovernanceService:
 
     @staticmethod
     @transaction.atomic
-    def activate_customer(*, customer):
-        if customer.status not in [Customer.Status.APPROVED, Customer.Status.SUSPENDED]:
-            raise ValidationError("Customer must be APPROVED or SUSPENDED to be activated.")
+    def activate_customer(*, customer, actor=None, reason=""):
+        if customer.status != Customer.Status.APPROVED:
+            raise ValidationError("Customer must be APPROVED to be activated.")
         customer.status = Customer.Status.ACTIVE
         customer.save(update_fields=["status", "updated_at"])
         emit_event(
@@ -61,13 +80,16 @@ class CustomerGovernanceService:
             aggregate_type="Customer",
             aggregate_id=customer.id,
             event_type="CustomerActivated",
-            payload={},
+            payload={
+                "reason": reason,
+                "actor_id": str(actor.id) if actor else None,
+            },
         )
         return customer
 
     @staticmethod
     @transaction.atomic
-    def suspend_customer(*, customer, reason):
+    def suspend_customer(*, customer, reason, actor=None):
         if customer.status != Customer.Status.ACTIVE:
             raise ValidationError("Customer must be ACTIVE to be suspended.")
         customer.status = Customer.Status.SUSPENDED
@@ -77,7 +99,10 @@ class CustomerGovernanceService:
             aggregate_type="Customer",
             aggregate_id=customer.id,
             event_type="CustomerSuspended",
-            payload={"reason": reason},
+            payload={
+                "reason": reason,
+                "actor_id": str(actor.id) if actor else None,
+            },
         )
         return customer
 
@@ -97,7 +122,7 @@ class CustomerGovernanceService:
 
     @staticmethod
     @transaction.atomic
-    def reactivate_customer(*, customer, reason):
+    def reactivate_customer(*, customer, reason, actor=None):
         if customer.status != Customer.Status.SUSPENDED:
             raise ValidationError("Customer must be SUSPENDED to be reactivated.")
         customer.status = Customer.Status.ACTIVE
@@ -107,7 +132,10 @@ class CustomerGovernanceService:
             aggregate_type="Customer",
             aggregate_id=customer.id,
             event_type="CustomerReactivated",
-            payload={"reason": reason},
+            payload={
+                "reason": reason,
+                "actor_id": str(actor.id) if actor else None,
+            },
         )
         return customer
 

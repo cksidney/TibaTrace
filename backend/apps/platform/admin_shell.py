@@ -1119,7 +1119,24 @@ def _action_field(
 
 
 def _customer_actions(customer):
-    if customer.status in {"PROSPECTIVE", "UNDER_REVIEW"}:
+    if customer.status == "PROSPECTIVE":
+        return [
+            _business_action(
+                "begin-customer-review",
+                "Begin customer review",
+                f"/api/customers/customers/{customer.id}/begin-review/",
+                fields=[
+                    _action_field(
+                        "reason",
+                        "Review initiation note",
+                        "textarea",
+                        required=True,
+                    )
+                ],
+                confirm="Move this prospective customer into formal governance review.",
+            )
+        ]
+    if customer.status == "UNDER_REVIEW":
         return [
             _business_action(
                 "approve-customer",
@@ -1130,14 +1147,30 @@ def _customer_actions(customer):
                         "reason",
                         "Approval note",
                         "textarea",
+                        required=True,
                     )
                 ],
-                confirm=(
-                    "Approval enables commercial transactions for this customer."
-                ),
+                confirm="Approval confirms governance review; activation is a separate decision.",
             )
         ]
-    if customer.status in {"APPROVED", "ACTIVE"}:
+    if customer.status == "APPROVED":
+        return [
+            _business_action(
+                "activate-customer",
+                "Activate customer",
+                f"/api/customers/customers/{customer.id}/activate/",
+                fields=[
+                    _action_field(
+                        "reason",
+                        "Activation note",
+                        "textarea",
+                        required=True,
+                    )
+                ],
+                confirm="Activation enables this approved customer to pass active commercial policy checks.",
+            )
+        ]
+    if customer.status == "ACTIVE":
         return [
             _business_action(
                 "suspend-customer",
@@ -1155,6 +1188,23 @@ def _customer_actions(customer):
                     "Suspension blocks new commercial transactions until reviewed."
                 ),
                 tone="danger",
+            )
+        ]
+    if customer.status == "SUSPENDED":
+        return [
+            _business_action(
+                "reactivate-customer",
+                "Reactivate customer",
+                f"/api/customers/customers/{customer.id}/reactivate/",
+                fields=[
+                    _action_field(
+                        "reason",
+                        "Reactivation reason",
+                        "textarea",
+                        required=True,
+                    )
+                ],
+                confirm="Reactivation restores this customer to active commercial policy checks.",
             )
         ]
     return []

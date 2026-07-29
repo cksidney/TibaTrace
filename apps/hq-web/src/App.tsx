@@ -2,8 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { CSSProperties, FormEvent } from 'react';
 
 import {
+  activateCustomer,
+  approveCustomer,
   approveCashMovement,
+  beginCustomerReview,
   CLAIM_STATES,
+  createCustomer,
+  createInsurer,
   decidePriceOverride,
   HQApiError,
   executeHQBusinessAction,
@@ -56,9 +61,11 @@ import {
   probeEndpointHeartbeat,
   loadTenantSkus,
   readSession,
+  reactivateCustomer,
   SignInError,
   signIn,
   signOut,
+  suspendCustomer,
   transitionPriceBookVersion,
   updateGovernmentCatalogueSelection,
   varianceNeedsExplanation,
@@ -589,7 +596,7 @@ function Dashboard({
           {activeView === 'commerce' ? <CommerceView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} /> : null}
           {activeView === 'pricing' ? <PricingView csrfToken={csrfToken} tenantId={overview.tenant_id} /> : null}
           {activeView === 'cash' ? <CashControlView csrfToken={csrfToken} tenantId={overview.tenant_id} /> : null}
-          {activeView === 'insurance' ? <InsuranceView /> : null}
+          {activeView === 'insurance' ? <InsuranceView csrfToken={csrfToken} /> : null}
           {activeView === 'clinical' ? <ClinicalView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} overview={overview} /> : null}
           {activeView === 'governance' ? <GovernanceView data={workspaceData} failed={workspaceFailed} /> : null}
           {activeView === 'access' ? <AccessView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} overview={overview} /> : null}
@@ -3494,7 +3501,7 @@ function ClaimsRegister() {
   );
 }
 
-function InsuranceView() {
+function InsuranceView({ csrfToken }: { readonly csrfToken: string }) {
   const [insurers, setInsurers] = useState<readonly Insurer[] | null>(null);
   const [unpaid, setUnpaid] = useState<readonly InsuranceClaim[] | null>(null);
   const [awaiting, setAwaiting] = useState<readonly InsuranceClaim[] | null>(null);
@@ -3503,6 +3510,23 @@ function InsuranceView() {
   const [rejections, setRejections] = useState<readonly ClaimRejection[] | null>(null);
   const [coverages, setCoverages] = useState<readonly InsuranceCoverage[] | null>(null);
   const [failed, setFailed] = useState(false);
+
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [code, setCode] = useState('');
+  const [name, setName] = useState('');
+  const [insurerType, setInsurerType] = useState('PUBLIC');
+  const [adapter, setAdapter] = useState('SHA');
+  const [env, setEnv] = useState('SANDBOX');
+  const [createBusy, setCreateBusy] = useState(false);
+  const [createError, setCreateError] = useState('');
+
+  const fetchInsurers = useCallback((signal?: AbortSignal) => {
+    loadInsurers(signal)
+      .then(setInsurers)
+      .catch(() => {
+        if (!signal?.aborted) setFailed(true);
+      });
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -3530,6 +3554,36 @@ function InsuranceView() {
     return () => controller.abort();
   }, []);
 
+  const handleCreateInsurer = async (e: FormEvent) => {
+    e.preventDefault();
+    setCreateBusy(true);
+    setCreateError('');
+    try {
+      await createInsurer(
+        {
+          code: code.trim(),
+          name: name.trim(),
+          insurer_type: insurerType,
+          integration_adapter: adapter,
+          environment: env,
+          status: 'ACTIVE',
+        },
+        csrfToken,
+      );
+      setCreateModalOpen(false);
+      setCode('');
+      setName('');
+      setInsurerType('PUBLIC');
+      setAdapter('SHA');
+      setEnv('SANDBOX');
+      fetchInsurers();
+    } catch (err: unknown) {
+      setCreateError(err instanceof Error ? err.message : 'Could not configure insurer integration.');
+    } finally {
+      setCreateBusy(false);
+    }
+  };
+
   if (failed) return <Unavailable />;
   if (!insurers || !unpaid || !awaiting || !attention) {
     return <p className="muted-cell">Loading insurance data…</p>;
@@ -3551,7 +3605,20 @@ function InsuranceView() {
 
       <section className="content-grid content-grid-primary">
         <article className="panel">
-          <PanelHeader eyebrow="Insurer integrations" title="Configured insurers" actionHref="#insurance" actionLabel="Open insurance workspace" />
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+            <PanelHeader eyebrow="Insurer integrations" title="Configured insurers" actionHref="#insurance" actionLabel="Open insurance workspace" />
+            <button
+              className="primary-button"
+              onClick={() => {
+                setCreateError('');
+                setCreateModalOpen(true);
+              }}
+              type="button"
+            >
+              <Icon name="insurance" /> + Configure Insurer Integration
+            </button>
+          </div>
+
           {insurers.length === 0 ? (
             <EmptyState icon="insurance" title="No insurers configured" detail="Add an insurer integration before submitting claims." />
           ) : (
@@ -3781,6 +3848,114 @@ function InsuranceView() {
       ) : null}
 
       <ClaimsRegister />
+
+      {createModalOpen ? (
+        <div className="business-dialog-backdrop" role="presentation">
+          <section aria-labelledby="create-insurer-title" aria-modal="true" className="business-dialog" role="dialog">
+            <header>
+              <div>
+                <p className="eyebrow">Insurance & Claims Integration</p>
+                <h2 id="create-insurer-title">Configure Insurer Integration</h2>
+              </div>
+              <button
+                aria-label="Close dialog"
+                disabled={createBusy}
+                onClick={() => setCreateModalOpen(false)}
+                type="button"
+              >
+                <Icon name="close" />
+              </button>
+            </header>
+            <form onSubmit={(e) => void handleCreateInsurer(e)}>
+              {createError ? <p className="business-dialog-error" role="alert"><Icon name="alert" /> {createError}</p> : null}
+
+              <div className="tenant-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <label className="business-field">
+                  <span>Insurer Code</span>
+                  <input
+                    onChange={(e) => setCode(e.target.value)}
+                    placeholder="e.g. SHA-KE"
+                    required
+                    type="text"
+                    value={code}
+                  />
+                </label>
+                <label className="business-field">
+                  <span>Insurer Name</span>
+                  <input
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="e.g. Social Health Authority (SHA) Kenya"
+                    required
+                    type="text"
+                    value={name}
+                  />
+                </label>
+              </div>
+
+              <div className="tenant-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginTop: '12px' }}>
+                <label className="business-field">
+                  <span>Insurer Type</span>
+                  <select
+                    onChange={(e) => setInsurerType(e.target.value)}
+                    value={insurerType}
+                  >
+                    <option value="PUBLIC">Public Health Financing Scheme</option>
+                    <option value="PRIVATE">Private Medical Insurer</option>
+                    <option value="EMPLOYER">Employer-Funded Scheme</option>
+                    <option value="TPA">Third-Party Administrator</option>
+                    <option value="COMMUNITY">Community Mutual Fund</option>
+                  </select>
+                </label>
+                <label className="business-field">
+                  <span>Integration Adapter</span>
+                  <select
+                    onChange={(e) => setAdapter(e.target.value)}
+                    value={adapter}
+                  >
+                    <option value="SHA">Social Health Authority (SHA) Kenya API</option>
+                    <option value="PRIVATE_REST">Generic Private Insurer REST API</option>
+                    <option value="BATCH_FILE">SFTP / Batch File Export</option>
+                    <option value="MANUAL_PORTAL">Manual Web Portal Submission</option>
+                  </select>
+                </label>
+                <label className="business-field">
+                  <span>Target Environment</span>
+                  <select
+                    onChange={(e) => setEnv(e.target.value)}
+                    value={env}
+                  >
+                    <option value="SANDBOX">Sandbox / Test Environment</option>
+                    <option value="PRODUCTION">Production Environment</option>
+                  </select>
+                </label>
+              </div>
+
+              <p className="business-dialog-confirm" style={{ marginTop: '16px' }}>
+                <Icon name="shield" />
+                This stores the insurer configuration. The readiness column confirms whether a transaction adapter is installed; endpoints and credentials are provisioned separately.
+              </p>
+
+              <footer style={{ marginTop: '20px', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                <button
+                  className="secondary-button"
+                  disabled={createBusy}
+                  onClick={() => setCreateModalOpen(false)}
+                  type="button"
+                >
+                  Cancel
+                </button>
+                <button
+                  className="primary-button"
+                  disabled={createBusy || !name.trim() || !code.trim()}
+                  type="submit"
+                >
+                  {createBusy ? 'Saving Integration…' : 'Configure Integration'}
+                </button>
+              </footer>
+            </form>
+          </section>
+        </div>
+      ) : null}
     </>
   );
 }
@@ -3794,6 +3969,26 @@ function PeopleView({
   const [counterparties, setCounterparties] = useState<readonly CustomerItem[] | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [custNumber, setCustNumber] = useState('');
+  const [legalName, setLegalName] = useState('');
+  const [tradingName, setTradingName] = useState('');
+  const [custType, setCustType] = useState('PHARMACY');
+  const [regNumber, setRegNumber] = useState('');
+  const [taxNumber, setTaxNumber] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [riskClass, setRiskClass] = useState('MEDIUM');
+  const [controlledEligible, setControlledEligible] = useState(false);
+  const [coldChainCapable, setColdChainCapable] = useState(false);
+  const [createBusy, setCreateBusy] = useState(false);
+  const [createError, setCreateError] = useState('');
+  const [pendingAction, setPendingAction] = useState<{
+    readonly action: 'activate' | 'approve' | 'begin-review' | 'reactivate' | 'suspend';
+    readonly customer: CustomerItem;
+  } | null>(null);
+  const [actionReason, setActionReason] = useState('');
+  const [actionError, setActionError] = useState('');
 
   const fetchCounterparties = useCallback((signal?: AbortSignal) => {
     loadCustomers(signal)
@@ -3809,43 +4004,70 @@ function PeopleView({
     return () => controller.abort();
   }, [fetchCounterparties]);
 
-  const handleApproveCustomer = async (id: string) => {
-    setBusyId(id);
+  const handleCustomerAction = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!pendingAction) return;
+    setBusyId(pendingAction.customer.id);
+    setActionError('');
     try {
-      const response = await fetch(`/api/customers/customers/${id}/approve/`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRFToken': csrfToken,
-        },
-        body: JSON.stringify({ reason: 'Approved by HQ operations' }),
-      });
-      if (response.ok) {
-        fetchCounterparties();
-        await onWorkspaceChanged();
-      }
+      const mutate = {
+        activate: activateCustomer,
+        approve: approveCustomer,
+        'begin-review': beginCustomerReview,
+        reactivate: reactivateCustomer,
+        suspend: suspendCustomer,
+      }[pendingAction.action];
+      await mutate(pendingAction.customer.id, actionReason.trim(), csrfToken);
+      setPendingAction(null);
+      setActionReason('');
+      fetchCounterparties();
+      await onWorkspaceChanged();
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : 'Could not complete the customer action.');
     } finally {
       setBusyId(null);
     }
   };
 
-  const handleSuspendCustomer = async (id: string) => {
-    setBusyId(id);
+  const handleCreateCustomer = async (e: FormEvent) => {
+    e.preventDefault();
+    setCreateBusy(true);
+    setCreateError('');
     try {
-      const response = await fetch(`/api/customers/customers/${id}/suspend/`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRFToken': csrfToken,
+      await createCustomer(
+        {
+          customer_number: custNumber.trim(),
+          legal_name: legalName.trim(),
+          trading_name: tradingName.trim() || undefined,
+          customer_type: custType,
+          registration_number: regNumber.trim() || undefined,
+          tax_number: taxNumber.trim() || undefined,
+          contact_email: email.trim() || undefined,
+          contact_phone: phone.trim() || undefined,
+          risk_classification: riskClass,
+          controlled_medicine_eligible: controlledEligible,
+          cold_chain_capable: coldChainCapable,
         },
-        body: JSON.stringify({ reason: 'Suspended by HQ operations' }),
-      });
-      if (response.ok) {
-        fetchCounterparties();
-        await onWorkspaceChanged();
-      }
+        csrfToken,
+      );
+      setCreateModalOpen(false);
+      setCustNumber('');
+      setLegalName('');
+      setTradingName('');
+      setRegNumber('');
+      setTaxNumber('');
+      setEmail('');
+      setPhone('');
+      setCustType('PHARMACY');
+      setRiskClass('MEDIUM');
+      setControlledEligible(false);
+      setColdChainCapable(false);
+      fetchCounterparties();
+      await onWorkspaceChanged();
+    } catch (err: unknown) {
+      setCreateError(err instanceof Error ? err.message : 'Could not create customer counterparty.');
     } finally {
-      setBusyId(null);
+      setCreateBusy(false);
     }
   };
 
@@ -3912,9 +4134,21 @@ function PeopleView({
         </article>
       </section>
 
-      {/* Commercial Counterparty Customer Governance */}
       <article className="panel" style={{ marginTop: '24px' }}>
-        <PanelHeader eyebrow="Commercial Counterparties" title="Customer Governance Directory" />
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+          <PanelHeader eyebrow="Commercial Counterparties" title="Customer Governance Directory" />
+          <button
+            className="primary-button"
+            onClick={() => {
+              setCreateError('');
+              setCreateModalOpen(true);
+            }}
+            type="button"
+          >
+            <Icon name="building" /> + Register Commercial Customer
+          </button>
+        </div>
+
         {loadError ? (
           <div className="inline-alert" role="alert"><Icon name="alert" /> Commercial customer counterparty records could not be loaded.</div>
         ) : counterparties === null ? (
@@ -3960,26 +4194,79 @@ function PeopleView({
                     </td>
                     <td>
                       <div style={{ display: 'flex', gap: '6px' }}>
-                        {c.status === 'UNDER_REVIEW' || c.status === 'PROSPECTIVE' ? (
+                        {c.status === 'PROSPECTIVE' ? (
                           <button
                             className="segmented-option is-active"
                             disabled={busyId === c.id}
-                            onClick={() => handleApproveCustomer(c.id)}
+                            onClick={() => {
+                              setActionError('');
+                              setActionReason('');
+                              setPendingAction({ action: 'begin-review', customer: c });
+                            }}
+                            style={{ padding: '2px 8px', fontSize: '0.75rem' }}
+                            type="button"
+                          >
+                            Start Review
+                          </button>
+                        ) : null}
+                        {c.status === 'UNDER_REVIEW' ? (
+                          <button
+                            className="segmented-option is-active"
+                            disabled={busyId === c.id}
+                            onClick={() => {
+                              setActionError('');
+                              setActionReason('');
+                              setPendingAction({ action: 'approve', customer: c });
+                            }}
                             style={{ padding: '2px 8px', fontSize: '0.75rem' }}
                             type="button"
                           >
                             Approve
                           </button>
                         ) : null}
-                        {c.status === 'ACTIVE' || c.status === 'APPROVED' ? (
+                        {c.status === 'APPROVED' ? (
+                          <button
+                            className="segmented-option is-active"
+                            disabled={busyId === c.id}
+                            onClick={() => {
+                              setActionError('');
+                              setActionReason('');
+                              setPendingAction({ action: 'activate', customer: c });
+                            }}
+                            style={{ padding: '2px 8px', fontSize: '0.75rem' }}
+                            type="button"
+                          >
+                            Activate
+                          </button>
+                        ) : null}
+                        {c.status === 'ACTIVE' ? (
                           <button
                             className="segmented-option"
                             disabled={busyId === c.id}
-                            onClick={() => handleSuspendCustomer(c.id)}
+                            onClick={() => {
+                              setActionError('');
+                              setActionReason('');
+                              setPendingAction({ action: 'suspend', customer: c });
+                            }}
                             style={{ padding: '2px 8px', fontSize: '0.75rem', color: '#f43f5e' }}
                             type="button"
                           >
                             Suspend
+                          </button>
+                        ) : null}
+                        {c.status === 'SUSPENDED' ? (
+                          <button
+                            className="segmented-option is-active"
+                            disabled={busyId === c.id}
+                            onClick={() => {
+                              setActionError('');
+                              setActionReason('');
+                              setPendingAction({ action: 'reactivate', customer: c });
+                            }}
+                            style={{ padding: '2px 8px', fontSize: '0.75rem' }}
+                            type="button"
+                          >
+                            Reactivate
                           </button>
                         ) : null}
                       </div>
@@ -3991,6 +4278,254 @@ function PeopleView({
           </div>
         )}
       </article>
+
+      {createModalOpen ? (
+        <div className="business-dialog-backdrop" role="presentation">
+          <section aria-labelledby="create-customer-title" aria-modal="true" className="business-dialog" role="dialog">
+            <header>
+              <div>
+                <p className="eyebrow">Counterparty Governance</p>
+                <h2 id="create-customer-title">Register Commercial Customer</h2>
+              </div>
+              <button
+                aria-label="Close dialog"
+                disabled={createBusy}
+                onClick={() => setCreateModalOpen(false)}
+                type="button"
+              >
+                <Icon name="close" />
+              </button>
+            </header>
+            <form onSubmit={(e) => void handleCreateCustomer(e)}>
+              {createError ? <p className="business-dialog-error" role="alert"><Icon name="alert" /> {createError}</p> : null}
+
+              <div className="tenant-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <label className="business-field">
+                  <span>Customer Number</span>
+                  <input
+                    onChange={(e) => setCustNumber(e.target.value)}
+                    required
+                    type="text"
+                    value={custNumber}
+                  />
+                </label>
+                <label className="business-field">
+                  <span>Customer Type</span>
+                  <select
+                    onChange={(e) => setCustType(e.target.value)}
+                    value={custType}
+                  >
+                    <option value="PHARMACY">Retail Pharmacy</option>
+                    <option value="HOSPITAL">Hospital</option>
+                    <option value="CLINIC">Clinic / Medical Centre</option>
+                    <option value="WHOLESALER">Wholesaler</option>
+                    <option value="DISTRIBUTOR">Distributor</option>
+                    <option value="CORPORATE">Corporate Account</option>
+                    <option value="INSURER">Insurer Account</option>
+                    <option value="INDIVIDUAL">Individual Account</option>
+                  </select>
+                </label>
+              </div>
+
+              <div className="tenant-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '12px' }}>
+                <label className="business-field">
+                  <span>Legal Name</span>
+                  <input
+                    onChange={(e) => setLegalName(e.target.value)}
+                    placeholder="e.g. Nairobi Health Chemists Ltd"
+                    required
+                    type="text"
+                    value={legalName}
+                  />
+                </label>
+                <label className="business-field">
+                  <span>Trading Name</span>
+                  <input
+                    onChange={(e) => setTradingName(e.target.value)}
+                    placeholder="e.g. HealthCare Pharmacy"
+                    type="text"
+                    value={tradingName}
+                  />
+                </label>
+              </div>
+
+              <div className="tenant-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginTop: '12px' }}>
+                <label className="business-field">
+                  <span>Reg Number</span>
+                  <input
+                    onChange={(e) => setRegNumber(e.target.value)}
+                    placeholder="e.g. CPR/2026/102"
+                    type="text"
+                    value={regNumber}
+                  />
+                </label>
+                <label className="business-field">
+                  <span>KRA Tax PIN</span>
+                  <input
+                    onChange={(e) => setTaxNumber(e.target.value)}
+                    placeholder="e.g. P051234567Z"
+                    type="text"
+                    value={taxNumber}
+                  />
+                </label>
+                <label className="business-field">
+                  <span>Risk Rating</span>
+                  <select
+                    onChange={(e) => setRiskClass(e.target.value)}
+                    value={riskClass}
+                  >
+                    <option value="LOW">Low Risk</option>
+                    <option value="MEDIUM">Medium Risk</option>
+                    <option value="HIGH">High Risk</option>
+                    <option value="CRITICAL">Critical Risk</option>
+                  </select>
+                </label>
+              </div>
+
+              <div className="tenant-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '12px' }}>
+                <label className="business-field">
+                  <span>Contact Email</span>
+                  <input
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="contact@pharmacy.co.ke"
+                    type="email"
+                    value={email}
+                  />
+                </label>
+                <label className="business-field">
+                  <span>Contact Phone</span>
+                  <input
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="+254 700 000 000"
+                    type="text"
+                    value={phone}
+                  />
+                </label>
+              </div>
+
+              <div style={{ display: 'flex', gap: '16px', marginTop: '16px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem' }}>
+                  <input
+                    checked={controlledEligible}
+                    onChange={(e) => setControlledEligible(e.target.checked)}
+                    type="checkbox"
+                  />
+                  <span>Controlled Substance Eligible</span>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem' }}>
+                  <input
+                    checked={coldChainCapable}
+                    onChange={(e) => setColdChainCapable(e.target.checked)}
+                    type="checkbox"
+                  />
+                  <span>Cold Chain Capable</span>
+                </label>
+              </div>
+
+              <footer style={{ marginTop: '20px', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                <button
+                  className="secondary-button"
+                  disabled={createBusy}
+                  onClick={() => setCreateModalOpen(false)}
+                  type="button"
+                >
+                  Cancel
+                </button>
+                <button
+                  className="primary-button"
+                  disabled={createBusy || !legalName.trim() || !custNumber.trim()}
+                  type="submit"
+                >
+                  {createBusy ? 'Registering…' : 'Register Customer'}
+                </button>
+              </footer>
+            </form>
+          </section>
+        </div>
+      ) : null}
+
+      {pendingAction ? (
+        <div className="business-dialog-backdrop" role="presentation">
+          <section aria-labelledby="customer-action-title" aria-modal="true" className="business-dialog" role="dialog">
+            <header>
+              <div>
+                <p className="eyebrow">Customer Governance</p>
+                <h2 id="customer-action-title">
+                  {{
+                    activate: 'Activate Customer',
+                    approve: 'Approve Customer',
+                    'begin-review': 'Begin Customer Review',
+                    reactivate: 'Reactivate Customer',
+                    suspend: 'Suspend Customer',
+                  }[pendingAction.action]}
+                </h2>
+              </div>
+              <button
+                aria-label="Close dialog"
+                disabled={busyId === pendingAction.customer.id}
+                onClick={() => setPendingAction(null)}
+                type="button"
+              >
+                <Icon name="close" />
+              </button>
+            </header>
+            <form onSubmit={(e) => void handleCustomerAction(e)}>
+              <div className="business-dialog-record">
+                <div>
+                  <code>{pendingAction.customer.customer_number}</code>
+                  <strong>{pendingAction.customer.legal_name}</strong>
+                </div>
+              </div>
+              <p className="business-dialog-confirm">
+                <Icon name={pendingAction.action === 'suspend' ? 'alert' : 'shield'} />
+                {{
+                  activate: 'Activation enables this approved customer to pass active commercial policy checks.',
+                  approve: 'Approval confirms that the customer has passed the tenant governance review.',
+                  'begin-review': 'This moves the prospective customer into formal tenant governance review.',
+                  reactivate: 'Reactivation restores this customer to active commercial policy checks.',
+                  suspend: 'Suspension immediately prevents this customer from passing active customer policy checks.',
+                }[pendingAction.action]}
+              </p>
+              <label className="business-field">
+                <span>Reason</span>
+                <textarea
+                  onChange={(e) => setActionReason(e.target.value)}
+                  placeholder="Record the business reason for this decision"
+                  required
+                  rows={3}
+                  value={actionReason}
+                />
+              </label>
+              {actionError ? <p className="business-dialog-error" role="alert"><Icon name="alert" /> {actionError}</p> : null}
+              <footer>
+                <button
+                  className="secondary-button"
+                  disabled={busyId === pendingAction.customer.id}
+                  onClick={() => setPendingAction(null)}
+                  type="button"
+                >
+                  Cancel
+                </button>
+                <button
+                  className="primary-button"
+                  disabled={busyId === pendingAction.customer.id || !actionReason.trim()}
+                  type="submit"
+                >
+                  {busyId === pendingAction.customer.id
+                    ? 'Applying…'
+                    : {
+                        activate: 'Confirm Activation',
+                        approve: 'Confirm Approval',
+                        'begin-review': 'Begin Review',
+                        reactivate: 'Confirm Reactivation',
+                        suspend: 'Confirm Suspension',
+                      }[pendingAction.action]}
+                </button>
+              </footer>
+            </form>
+          </section>
+        </div>
+      ) : null}
     </>
   );
 }

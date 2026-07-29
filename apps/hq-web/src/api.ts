@@ -1002,6 +1002,21 @@ export interface Insurer {
 export const loadInsurers = (signal?: AbortSignal) =>
   getCollection<Insurer>('/api/insurance/insurers/', signal);
 
+export interface CreateInsurerInput {
+  readonly code: string;
+  readonly name: string;
+  readonly insurer_type?: string | undefined;
+  readonly integration_adapter: string;
+  readonly environment: string;
+  readonly status?: string | undefined;
+}
+
+export const createInsurer = (
+  input: CreateInsurerInput,
+  csrfToken: string,
+): Promise<Insurer> =>
+  mutateJson<Insurer>('/api/insurance/insurers/', 'POST', input, csrfToken);
+
 /** Claims the insurer agreed to pay and has not paid. The money owed. */
 export const loadApprovedUnpaidClaims = (signal?: AbortSignal) =>
   getCollection<InsuranceClaim>('/api/insurance/claims/approved-unpaid/', signal);
@@ -1103,6 +1118,81 @@ export interface CustomerItem {
 
 export const loadCustomers = (signal?: AbortSignal) =>
   getCollection<CustomerItem>('/api/customers/customers/', signal);
+
+export interface CreateCustomerInput {
+  readonly customer_number: string;
+  readonly legal_name: string;
+  readonly trading_name?: string | undefined;
+  readonly customer_type: string;
+  readonly registration_number?: string | undefined;
+  readonly tax_number?: string | undefined;
+  readonly contact_email?: string | undefined;
+  readonly contact_phone?: string | undefined;
+  readonly risk_classification?: string | undefined;
+  readonly controlled_medicine_eligible?: boolean | undefined;
+  readonly cold_chain_capable?: boolean | undefined;
+}
+
+export const createCustomer = (
+  input: CreateCustomerInput,
+  csrfToken: string,
+): Promise<CustomerItem> =>
+  mutateJson<CustomerItem>('/api/customers/customers/', 'POST', input, csrfToken);
+
+export const approveCustomer = (
+  id: string,
+  reason: string,
+  csrfToken: string,
+) => mutateJson<{ readonly status: string }>(
+  `/api/customers/customers/${encodeURIComponent(id)}/approve/`,
+  'POST',
+  { reason },
+  csrfToken,
+);
+
+export const beginCustomerReview = (
+  id: string,
+  reason: string,
+  csrfToken: string,
+) => mutateJson<{ readonly status: string }>(
+  `/api/customers/customers/${encodeURIComponent(id)}/begin-review/`,
+  'POST',
+  { reason },
+  csrfToken,
+);
+
+export const activateCustomer = (
+  id: string,
+  reason: string,
+  csrfToken: string,
+) => mutateJson<{ readonly status: string }>(
+  `/api/customers/customers/${encodeURIComponent(id)}/activate/`,
+  'POST',
+  { reason },
+  csrfToken,
+);
+
+export const suspendCustomer = (
+  id: string,
+  reason: string,
+  csrfToken: string,
+) => mutateJson<{ readonly status: string }>(
+  `/api/customers/customers/${encodeURIComponent(id)}/suspend/`,
+  'POST',
+  { reason },
+  csrfToken,
+);
+
+export const reactivateCustomer = (
+  id: string,
+  reason: string,
+  csrfToken: string,
+) => mutateJson<{ readonly status: string }>(
+  `/api/customers/customers/${encodeURIComponent(id)}/reactivate/`,
+  'POST',
+  { reason },
+  csrfToken,
+);
 
 /* ── till & cash custody control ───────────────────────────────────────────── */
 

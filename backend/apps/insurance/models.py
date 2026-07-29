@@ -454,7 +454,7 @@ class PrescriptionClaim(TenantConsistencyMixin, TimestampedModel):
     insurer = models.ForeignKey(Insurer, on_delete=models.PROTECT, related_name="+")
     scheme = models.ForeignKey(InsurerScheme, on_delete=models.PROTECT, related_name="+")
     preauthorisation = models.ForeignKey(PrescriptionPreauthorisation, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
-    
+
     submission_state = models.CharField(max_length=32, choices=SubmissionState.choices, default=SubmissionState.DRAFT, db_index=True)
     adjudication_state = models.CharField(max_length=32, choices=AdjudicationState.choices, default=AdjudicationState.PENDING, db_index=True)
     payment_state = models.CharField(max_length=32, choices=PaymentState.choices, default=PaymentState.UNPAID, db_index=True)

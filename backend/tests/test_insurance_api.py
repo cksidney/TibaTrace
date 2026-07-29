@@ -4,8 +4,9 @@ Two things this must not do: leak another tenant's claims, and offer a second
 route to claim state that skips the services enforcing authority, idempotency
 and the transport/adjudication separation.
 
-The read-only constraint is not a limitation to be relaxed later. It is what
-keeps the workbench a view rather than a bypass.
+The claim-state read-only constraint is not a limitation to be relaxed later.
+It keeps the workbench a view rather than a bypass; insurer registration is a
+separate tenant-scoped configuration path.
 """
 from decimal import Decimal
 
@@ -124,6 +125,86 @@ class TestIsolation:
         response = api.get("/api/insurance/insurers/")
         assert response.status_code == 200
         assert rows(response) == []
+
+
+class TestInsurerRegistration:
+    def payload(self, code=" sha-ke "):
+        return {
+            "code": code,
+            "name": "Social Health Authority Kenya",
+            "insurer_type": "PUBLIC",
+            "integration_adapter": "SHA",
+            "environment": "SANDBOX",
+            "status": "ACTIVE",
+        }
+
+    def test_creates_an_insurer_for_the_authenticated_tenant(self, client, tenant):
+        response = client.post("/api/insurance/insurers/", self.payload(), format="json")
+
+        assert response.status_code == 201
+        insurer = Insurer.all_objects.get(code="SHA-KE")
+        assert insurer.tenant == tenant
+        assert response.json()["adapter_registered"] is False
+
+    def test_platform_admin_can_create_inside_the_selected_tenant(self, other_tenant):
+        platform_user = User.objects.create_user(
+            username="insurance-platform-admin",
+            password="pw",
+            is_platform_admin=True,
+        )
+        api = APIClient()
+        api.force_authenticate(user=platform_user)
+
+        response = api.post(
+            "/api/insurance/insurers/",
+            self.payload(),
+            format="json",
+            HTTP_X_TENANT_ID=str(other_tenant.pk),
+        )
+
+        assert response.status_code == 201
+        assert Insurer.all_objects.get(code="SHA-KE").tenant == other_tenant
+
+    def test_platform_admin_must_select_a_tenant(self, db):
+        platform_user = User.objects.create_user(
+            username="unscoped-insurance-admin",
+            password="pw",
+            is_platform_admin=True,
+        )
+        api = APIClient()
+        api.force_authenticate(user=platform_user)
+
+        response = api.post("/api/insurance/insurers/", self.payload(), format="json")
+
+        assert response.status_code == 400
+        assert "tenant" in response.json()
+
+    def test_tenant_user_cannot_select_another_tenant(self, client, other_tenant):
+        response = client.post(
+            "/api/insurance/insurers/",
+            self.payload(),
+            format="json",
+            HTTP_X_TENANT_ID=str(other_tenant.pk),
+        )
+
+        assert response.status_code == 403
+        assert not Insurer.all_objects.filter(code="SHA-KE").exists()
+
+    def test_duplicate_insurer_code_is_a_validation_error(self, client):
+        assert client.post(
+            "/api/insurance/insurers/",
+            self.payload(),
+            format="json",
+        ).status_code == 201
+
+        duplicate = client.post(
+            "/api/insurance/insurers/",
+            self.payload(),
+            format="json",
+        )
+
+        assert duplicate.status_code == 400
+        assert "code" in duplicate.json()
 
 
 # ─── what the workbench shows ────────────────────────────────────────────────

@@ -1,23 +1,24 @@
-"""Insurance claims workbench, read-only.
+"""Insurance claims workbench and insurer registry.
 
 Every endpoint here answers a question somebody has to act on: which claims are
 approved but unpaid, which were rejected and can be resubmitted, which
 remittance lines name no claim we hold.
 
-Writes are deliberately absent. Claim state moves through services that enforce
+Claim-state writes are deliberately absent. Insurer registration is the only
+generic create path; claim state still moves through services that enforce
 authority, idempotency and the separation between transport acceptance,
-adjudication and payment. A writable viewset would be a second route to those
-same columns with none of that, which is precisely the bypass this repository
-has already had to close on the dispensing side.
+adjudication and payment.
 
 Every queryset is filtered by the requesting user's tenant. Filtering in a base
 class rather than per-view means a new endpoint cannot leak by omission.
 """
 from __future__ import annotations
 
+from django.db import IntegrityError
 from django.db.models import Q
-from rest_framework import permissions, viewsets
+from rest_framework import mixins, permissions, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 
 from apps.insurance.models import (
@@ -49,12 +50,25 @@ class TenantScopedReadOnly(viewsets.ReadOnlyModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
     model = None
 
-    def get_queryset(self):
+    def tenant_id(self):
         tenant_id = getattr(self.request, "tenant_id", None) or getattr(
             getattr(self.request, "tenant", None), "pk", None
         )
         if tenant_id is None:
             tenant_id = getattr(self.request.user, "tenant_id", None)
+        user_tenant_id = getattr(self.request.user, "tenant_id", None)
+        if (
+            tenant_id
+            and user_tenant_id
+            and str(tenant_id) != str(user_tenant_id)
+            and not self.request.user.is_platform_admin
+            and not self.request.user.is_superuser
+        ):
+            raise PermissionDenied("Requested tenant is outside the authenticated identity.")
+        return tenant_id
+
+    def get_queryset(self):
+        tenant_id = self.tenant_id()
         if tenant_id is None:
             # No tenant, no rows. An unscoped read is how one pharmacy sees
             # another's claims.
@@ -62,9 +76,20 @@ class TenantScopedReadOnly(viewsets.ReadOnlyModelViewSet):
         return self.model.all_objects.filter(tenant_id=tenant_id)
 
 
-class InsurerViewSet(TenantScopedReadOnly):
+class InsurerViewSet(mixins.CreateModelMixin, TenantScopedReadOnly):
     model = Insurer
     serializer_class = InsurerSerializer
+
+    def perform_create(self, serializer):
+        tenant_id = self.tenant_id()
+        if tenant_id is None:
+            raise ValidationError({"tenant": "Select a tenant before configuring an insurer."})
+        try:
+            serializer.save(tenant_id=tenant_id)
+        except IntegrityError as error:
+            raise ValidationError(
+                {"code": "This insurer code already exists for the selected tenant."}
+            ) from error
 
 
 class CoverageViewSet(TenantScopedReadOnly):

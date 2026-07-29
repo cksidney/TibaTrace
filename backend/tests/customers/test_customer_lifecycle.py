@@ -42,6 +42,24 @@ class TestCustomerLifecycle:
 
         # Test creation emits event implicitly handled if exceptions aren't raised
 
+    def test_begin_review_customer(self, tenant_a, test_user):
+        customer = CustomerGovernanceService.create_customer(
+            tenant=tenant_a,
+            customer_number="CUST-PROSPECT",
+            legal_name="Prospective Customer",
+            customer_type="RETAIL",
+            created_by=test_user,
+            status=Customer.Status.PROSPECTIVE,
+        )
+
+        customer = CustomerGovernanceService.begin_review_customer(
+            customer=customer,
+            actor=test_user,
+            reason="Documents received",
+        )
+
+        assert customer.status == Customer.Status.UNDER_REVIEW
+
     def test_approve_customer(self, new_customer, test_user):
         customer = CustomerGovernanceService.approve_customer(
             customer=new_customer, approver=test_user, reason="Verified docs"
@@ -62,7 +80,7 @@ class TestCustomerLifecycle:
         assert customer.status == Customer.Status.ACTIVE
 
     def test_activate_customer_invalid_status(self, new_customer):
-        with pytest.raises(ValidationError, match="Customer must be APPROVED or SUSPENDED to be activated."):
+        with pytest.raises(ValidationError, match="Customer must be APPROVED to be activated."):
             CustomerGovernanceService.activate_customer(customer=new_customer)
 
     def test_suspend_customer(self, new_customer, test_user):

@@ -95,7 +95,7 @@ def test_platform_admin_can_load_all_hq_workspace_domains(client):
     customer_item = modules["customers"]["records"][0]
     assert customer_item["id"] == str(customer.id)
     assert customer_item["tenant_id"] == str(tenant.id)
-    assert customer_item["actions"][0]["key"] == "approve-customer"
+    assert customer_item["actions"][0]["key"] == "begin-customer-review"
 
 
 @pytest.mark.django_db

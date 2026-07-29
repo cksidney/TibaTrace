@@ -1,11 +1,8 @@
-"""Read serialisers for the insurance workbench.
+"""Insurance registry and read-workbench serialisers.
 
-Read-only by design. Every state transition on a claim -- submission,
-adjudication, remittance, reversal -- runs through a service that enforces
-authority, idempotency and the transport/adjudication separation. A writable
-viewset would be a second path to those columns that skips all of it, which is
-the exact shape of the POS dispensing bypass this repository has already had to
-close once.
+Insurer configuration is writable. Claim, remittance, and coverage state is
+read-only by design: every transition runs through a service that enforces
+authority, idempotency, and the transport/adjudication separation.
 
 Membership numbers are masked. A claims list is a screen people leave open on a
 shared desk, and the full number is an identifier for the member's whole
@@ -53,6 +50,18 @@ class InsurerSerializer(serializers.ModelSerializer):
         from apps.insurance.adapters.base import ADAPTERS
 
         return insurer.integration_adapter in ADAPTERS
+
+    def validate_code(self, value):
+        code = value.strip().upper()
+        if not code:
+            raise serializers.ValidationError("Insurer code is required.")
+        return code
+
+    def validate_name(self, value):
+        name = value.strip()
+        if not name:
+            raise serializers.ValidationError("Insurer name is required.")
+        return name
 
 
 class CoverageSerializer(serializers.ModelSerializer):
