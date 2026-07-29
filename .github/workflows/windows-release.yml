@@ -28,7 +28,7 @@ on:
       - "pos-windows-v*"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -339,7 +339,7 @@ jobs:
           $lines | Out-File -Encoding ascii SHA256SUMS.txt
           Get-Content SHA256SUMS.txt
 
-          $zip = Join-Path $env:RUNNER_TEMP 'TibaTrace-POS-Managed-Install-1.0.0.zip'
+          $zip = Join-Path $release 'TibaTrace-POS-Managed-Install-1.0.0.zip'
           if (Test-Path $zip) { Remove-Item $zip -Force }
           # CreateFromDirectory rather than Compress-Archive: the installer is
           # ~100 MB and Compress-Archive is pathologically slow at that size.
@@ -451,3 +451,17 @@ jobs:
             apps/pos-windows/release/release-manifest.json
           retention-days: 90
           if-no-files-found: error
+
+      - name: Publish signed tenant download assets
+        if: startsWith(github.ref, 'refs/tags/') && success()
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          make_latest: false
+          files: |
+            apps/pos-windows/release/TibaTrace-POS-Managed-Install-1.0.0.zip
+            apps/pos-windows/release/TibaTrace-POS-Setup-1.0.0.exe
+            apps/pos-windows/release/tibatrace-windows-signing.cer
+            apps/pos-windows/release/SHA256SUMS.txt
+            apps/pos-windows/release/release-manifest.json
+          fail_on_unmatched_files: true

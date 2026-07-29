@@ -8,7 +8,6 @@ from django.db import models
 
 from apps.core.models import StrictTenantManager, TenantConsistencyMixin, TimestampedModel
 
-
 MONEY = {"max_digits": 15, "decimal_places": 2}
 QUANTITY = {"max_digits": 15, "decimal_places": 4}
 

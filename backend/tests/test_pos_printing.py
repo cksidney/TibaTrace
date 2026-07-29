@@ -1,9 +1,10 @@
 """Durable receipt document and print-job regression tests."""
+# ruff: noqa: F811
+
 from decimal import Decimal
 
 import pytest
 from django.core.exceptions import PermissionDenied, ValidationError
-
 from tests.test_pos_enterprise_dispensing import (  # noqa: F401
     domain,
     make_clinically_ready,
@@ -16,7 +17,6 @@ from apps.prescription.pos_dispensing_services import (
 )
 from apps.prescription.pos_printing_models import PosPrintDocument, PosPrintJob
 from apps.prescription.pos_printing_services import PosPrintJobService
-
 
 pytestmark = pytest.mark.django_db
 

@@ -65,7 +65,10 @@ class PriceBookVersionSerializer(serializers.ModelSerializer):
         ]
 
     def get_entry_count(self, version) -> int:
-        return version.entries.count()
+        return PriceBookEntry.all_objects.filter(
+            tenant_id=version.tenant_id,
+            version=version,
+        ).count()
 
 
 class PriceBookEntrySerializer(serializers.ModelSerializer):

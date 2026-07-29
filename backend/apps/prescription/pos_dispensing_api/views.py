@@ -11,7 +11,6 @@ from apps.prescription.models import (
     PosDeviceHealthRecord,
     PosShiftRecord,
 )
-from apps.prescription.pos_printing_models import PosPrintJob
 from apps.prescription.pos_dispensing_api.serializers import (
     ActionReconciliationRequestSerializer,
     BatchVerificationRequestSerializer,
@@ -23,18 +22,18 @@ from apps.prescription.pos_dispensing_api.serializers import (
     PosDeviceHealthRecordSerializer,
     PosDispensingEpisodeSerializer,
     PosPrintJobSerializer,
+    PosShiftRecordSerializer,
     PrintCancellationSerializer,
     PrintReprintSerializer,
     PrintResultSerializer,
-    PosShiftRecordSerializer,
     ProcessPaymentRequestSerializer,
     ShiftEndSerializer,
     ShiftStartSerializer,
     TransitionStateRequestSerializer,
 )
 from apps.prescription.pos_dispensing_services import (
-    PosBatchVerificationService,
     PosActionReconciliationService,
+    PosBatchVerificationService,
     PosCollectionService,
     PosControlledMedicineService,
     PosCounsellingService,
@@ -43,6 +42,7 @@ from apps.prescription.pos_dispensing_services import (
     PosPaymentOrchestrationService,
     PosShiftService,
 )
+from apps.prescription.pos_printing_models import PosPrintJob
 from apps.prescription.pos_printing_services import PosPrintJobService
 
 

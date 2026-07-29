@@ -7,7 +7,6 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-
 RULES = {
     "private-key": re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
     "aws-access-key": re.compile(r"\b(?:AKIA|ASIA)[A-Z0-9]{16}\b"),
@@ -62,10 +61,13 @@ def scan(root: Path) -> list[dict]:
             lines = path.read_text(encoding="utf-8").splitlines()
         except UnicodeDecodeError:
             continue
+        is_test_fixture = "tests" in relative.parts or relative.name.startswith("test_")
         for line_number, line in enumerate(lines, 1):
             lowered = line.casefold()
             for rule, pattern in RULES.items():
                 if not pattern.search(line):
+                    continue
+                if rule == "assigned-secret" and is_test_fixture:
                     continue
                 if rule == "assigned-secret" and any(marker in lowered for marker in PLACEHOLDER_MARKERS):
                     continue

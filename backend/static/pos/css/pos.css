@@ -10,11 +10,11 @@
 
 /* Dark Theme Variables */
 body.dark-theme {
-  --bg-dark: #0b0f19;
-  --bg-card: #131b2e;
-  --bg-card-hover: #1a243d;
-  --bg-input: #1a253b;
-  --border-color: #23314d;
+  --bg-dark: #060913;
+  --bg-card: #0d1527;
+  --bg-card-hover: #131d33;
+  --bg-input: #152038;
+  --border-color: rgba(255, 255, 255, 0.09);
   --border-focus: #10b981;
   
   --text-primary: #f8fafc;
@@ -22,35 +22,35 @@ body.dark-theme {
   --text-muted: #64748b;
   
   --primary-emerald: #10b981;
-  --primary-emerald-glow: rgba(16, 185, 129, 0.25);
+  --primary-emerald-glow: rgba(16, 185, 129, 0.28);
   --primary-hover: #059669;
   
   --accent-cyan: #06b6d4;
-  --accent-indigo: #6366f1;
+  --accent-indigo: #818cf8;
   --accent-amber: #f59e0b;
   --accent-rose: #f43f5e;
-  --accent-purple: #8b5cf6;
+  --accent-purple: #a855f7;
 
-  --shadow-card: 0 4px 20px -2px rgba(0, 0, 0, 0.5);
-  --shadow-glow: 0 0 15px rgba(16, 185, 129, 0.3);
+  --shadow-card: 0 12px 32px rgba(0, 0, 0, 0.6);
+  --shadow-glow: 0 0 20px rgba(16, 185, 129, 0.35);
 }
 
 /* Light Theme Variables */
 body.light-theme {
-  --bg-dark: #f1f5f9;
+  --bg-dark: #f8fafc;
   --bg-card: #ffffff;
-  --bg-card-hover: #f8fafc;
+  --bg-card-hover: #f1f5f9;
   --bg-input: #f8fafc;
-  --border-color: #cbd5e1;
-  --border-focus: #059669;
+  --border-color: #e2e8f0;
+  --border-focus: #0d9488;
   
   --text-primary: #0f172a;
   --text-secondary: #475569;
   --text-muted: #64748b;
   
-  --primary-emerald: #059669;
-  --primary-emerald-glow: rgba(5, 150, 105, 0.15);
-  --primary-hover: #047857;
+  --primary-emerald: #0d9488;
+  --primary-emerald-glow: rgba(13, 148, 136, 0.18);
+  --primary-hover: #0f766e;
   
   --accent-cyan: #0891b2;
   --accent-indigo: #4f46e5;
@@ -58,8 +58,8 @@ body.light-theme {
   --accent-rose: #e11d48;
   --accent-purple: #7c3aed;
 
-  --shadow-card: 0 4px 12px rgba(0, 0, 0, 0.08);
-  --shadow-glow: 0 0 12px rgba(5, 150, 105, 0.2);
+  --shadow-card: 0 10px 25px rgba(15, 23, 42, 0.05);
+  --shadow-glow: 0 0 16px rgba(13, 148, 136, 0.2);
 }
 
 * {

@@ -10,6 +10,8 @@ the fetch was recorded.
 """
 from __future__ import annotations
 
+from pathlib import PurePosixPath
+
 from drf_spectacular.utils import extend_schema
 from rest_framework import serializers, status
 from rest_framework.permissions import IsAuthenticated
@@ -26,14 +28,17 @@ from apps.platform.release_storage import (
 
 #: What a saved file is called. The storage key is an implementation detail and
 #: makes a poor filename in a downloads folder.
-FILENAME_SUFFIX = {
+DEFAULT_FILENAME_SUFFIX = {
     PosRelease.Platform.WINDOWS: "msix",
     PosRelease.Platform.ANDROID: "apk",
 }
+SUPPORTED_FILENAME_SUFFIXES = frozenset({"apk", "exe", "msix", "zip"})
 
 
 def download_filename(release: PosRelease) -> str:
-    suffix = FILENAME_SUFFIX.get(release.platform, "bin")
+    suffix = PurePosixPath(release.object_key).suffix.removeprefix(".").lower()
+    if suffix not in SUPPORTED_FILENAME_SUFFIXES:
+        suffix = DEFAULT_FILENAME_SUFFIX.get(release.platform, "bin")
     platform = release.platform.lower()
     return f"TibaTrace-POS-{platform}-{release.version}.{suffix}"
 

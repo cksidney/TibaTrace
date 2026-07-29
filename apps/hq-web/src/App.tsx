@@ -3,6 +3,7 @@ import type { CSSProperties, FormEvent } from 'react';
 
 import {
   CLAIM_STATES,
+  decidePriceOverride,
   HQApiError,
   executeHQBusinessAction,
   formatMoney,
@@ -16,19 +17,42 @@ import {
   loadHQOverview,
   loadHQWorkspace,
   loadInsurers,
+  loadRemittances,
+  loadRejections,
+  loadCoverages,
+  loadCustomers,
+  loadPosRegisters,
+  loadCashMovements,
+  loadCashDeclarations,
+  loadBusinessDays,
   loadOpenRegisterSessions,
   loadClaims,
   loadClinicalProducts,
   loadManufacturedProducts,
   loadManufacturers,
   loadPriceBooks,
+  loadPriceBookVersions,
+  loadPriceBookEntries,
+  loadPriceAssignments,
+  loadAppliedPrices,
+  loadPriceOverrides,
+  loadPriceLocks,
+  resolvePrice,
+  saveTenantPriceDraft,
+  loadRolesDetail,
+  loadUsers,
+  loadUserRoles,
+  loadServiceAccounts,
+  loadCapabilityMatrix,
   requestPosDownload,
   loadPosReleases,
   loadSystemHealth,
+  loadTenantSkus,
   readSession,
   SignInError,
   signIn,
   signOut,
+  transitionPriceBookVersion,
   updateGovernmentCatalogueSelection,
   varianceNeedsExplanation,
 } from './api.js';
@@ -43,13 +67,34 @@ import type {
   GovernmentCataloguePage,
   HQBusinessAction,
   HQOverview,
+  HQSku,
   HQWorkItem,
   HQWorkspaceData,
   InsuranceClaim,
   Insurer,
+  InsuranceRemittance,
+  ClaimRejection,
+  InsuranceCoverage,
+  CustomerItem,
+  PosRegisterItem,
+  CashMovementItem,
+  CashDeclarationItem,
+  BusinessDayItem,
   ManufacturedProductSummary,
   ManufacturerSummary,
   PriceBookSummary,
+  PriceBookVersion,
+  PriceBookEntry,
+  PriceAssignment,
+  AppliedPriceSnapshot,
+  ManualPriceOverride,
+  PriceLock,
+  PriceResolutionResult,
+  RoleDetail,
+  UserDetail,
+  UserRoleGrant,
+  ServiceAccountItem,
+  CapabilityMatrixData,
   RegisterSessionSummary,
   SessionState,
   ShiftReportSummary,
@@ -422,7 +467,7 @@ function Dashboard({
           {activeView === 'catalogue' ? <CatalogueView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} overview={overview} /> : null}
           {activeView === 'operations' ? <OperationsView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} overview={overview} /> : null}
           {activeView === 'commerce' ? <CommerceView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} /> : null}
-          {activeView === 'pricing' ? <PricingView /> : null}
+          {activeView === 'pricing' ? <PricingView csrfToken={csrfToken} /> : null}
           {activeView === 'cash' ? <CashControlView csrfToken={csrfToken} /> : null}
           {activeView === 'insurance' ? <InsuranceView /> : null}
           {activeView === 'clinical' ? <ClinicalView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} overview={overview} /> : null}
@@ -636,79 +681,557 @@ function OperationsView({
   return <ProcurementWorkspace csrfToken={csrfToken} overview={overview} />;
 }
 
-function PricingView() {
+function PricingView({ csrfToken }: { readonly csrfToken: string }) {
   const [books, setBooks] = useState<readonly PriceBookSummary[] | null>(null);
+  const [overrides, setOverrides] = useState<readonly ManualPriceOverride[] | null>(null);
+  const [locks, setLocks] = useState<readonly PriceLock[] | null>(null);
+  const [appliedPrices, setAppliedPrices] = useState<readonly AppliedPriceSnapshot[] | null>(null);
+  const [assignments, setAssignments] = useState<readonly PriceAssignment[] | null>(null);
   const [failed, setFailed] = useState(false);
+  const [busyOverrideId, setBusyOverrideId] = useState<string | null>(null);
+  const [overrideError, setOverrideError] = useState('');
+
+  // Selected state for versions and entries
+  const [selectedBook, setSelectedBook] = useState<PriceBookSummary | null>(null);
+  const [versions, setVersions] = useState<readonly PriceBookVersion[] | null>(null);
+  const [selectedVersion, setSelectedVersion] = useState<PriceBookVersion | null>(null);
+  const [entries, setEntries] = useState<readonly PriceBookEntry[] | null>(null);
+  const [versionReload, setVersionReload] = useState(0);
+  const [versionAction, setVersionAction] = useState<{
+    readonly action: 'approve' | 'publish' | 'submit';
+    readonly version: PriceBookVersion;
+  } | null>(null);
+  const [versionActionBusy, setVersionActionBusy] = useState(false);
+  const [versionActionError, setVersionActionError] = useState('');
+
+  // Simulator State
+  const [simBranch, setSimBranch] = useState('');
+  const [simSku, setSimSku] = useState('');
+  const [simQty, setSimQty] = useState('1');
+  const [simDate, setSimDate] = useState(() => new Date().toISOString().split('T')[0] ?? '');
+  const [simCurrency, setSimCurrency] = useState('KES');
+  const [resolutionResult, setResolutionResult] = useState<PriceResolutionResult | null>(null);
+  const [resolving, setResolving] = useState(false);
+  const [resolutionError, setResolutionError] = useState<string | null>(null);
+
+  const fetchOverrides = useCallback((signal?: AbortSignal) => {
+    loadPriceOverrides(false, signal)
+      .then(setOverrides)
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
-    loadPriceBooks(controller.signal)
-      .then(setBooks)
+    Promise.all([
+      loadPriceBooks(controller.signal),
+      loadPriceOverrides(false, controller.signal),
+      loadPriceLocks(controller.signal),
+      loadAppliedPrices(controller.signal),
+      loadPriceAssignments(controller.signal),
+    ])
+      .then(([b, o, l, a, ass]) => {
+        setBooks(b);
+        setOverrides(o);
+        setLocks(l);
+        setAppliedPrices(a);
+        setAssignments(ass);
+        if (b.length > 0 && !selectedBook) {
+          setSelectedBook(b[0] ?? null);
+        }
+      })
       .catch(() => {
         if (!controller.signal.aborted) setFailed(true);
       });
     return () => controller.abort();
   }, []);
 
-  if (failed) return <Unavailable />;
-  if (!books) return <p className="muted-cell">Loading price books…</p>;
+  // Fetch versions when selectedBook changes
+  useEffect(() => {
+    if (!selectedBook) return;
+    const controller = new AbortController();
+    setVersions(null);
+    setSelectedVersion(null);
+    setEntries(null);
+    loadPriceBookVersions(selectedBook.id, controller.signal)
+      .then((vList) => {
+        setVersions(vList);
+        if (vList.length > 0) {
+          setSelectedVersion(vList[0] ?? null);
+        }
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setVersions([]);
+      });
+    return () => controller.abort();
+  }, [selectedBook, versionReload]);
 
-  // A book with no live version is configured but inert: nothing can charge
-  // from it. Counted separately because it is the failure somebody discovers
-  // at a till rather than on this screen.
+  // Fetch entries when selectedVersion changes
+  useEffect(() => {
+    if (!selectedVersion) return;
+    const controller = new AbortController();
+    setEntries(null);
+    loadPriceBookEntries(selectedVersion.id, controller.signal)
+      .then(setEntries)
+      .catch(() => {
+        if (!controller.signal.aborted) setEntries([]);
+      });
+    return () => controller.abort();
+  }, [selectedVersion]);
+
+  const handleResolvePrice = async (e: FormEvent) => {
+    e.preventDefault();
+    setResolving(true);
+    setResolutionError(null);
+    setResolutionResult(null);
+    try {
+      const res = await resolvePrice({
+        branch: simBranch,
+        sku: simSku,
+        quantity: simQty,
+        service_date: simDate,
+        currency: simCurrency,
+      });
+      setResolutionResult(res);
+    } catch (err: unknown) {
+      if (err instanceof HQApiError) {
+        setResolutionError(err.message);
+      } else {
+        setResolutionError('Price resolution failed.');
+      }
+    } finally {
+      setResolving(false);
+    }
+  };
+
+  if (failed) return <Unavailable />;
+  if (!books || !overrides || !locks || !appliedPrices || !assignments) {
+    return <p className="muted-cell">Loading pricing & commercial governance data…</p>;
+  }
+
   const inert = books.filter((book) => book.live_version === null);
   const branchScoped = books.filter((book) => book.scope_type === 'BRANCH');
+  const pendingOverrides = overrides.filter((o) => o.status === 'REQUESTED');
+  const liveLocks = locks.filter((l) => l.is_live);
 
   return (
     <>
       <section className="metric-grid network-metrics" aria-label="Price book totals">
-        <SummaryCard icon="database" label="Price books" value={books.length} detail="All scopes" />
+        <SummaryCard icon="database" label="Price books" value={books.length} detail={`${inert.length} without live version`} />
         <SummaryCard
           icon="building"
-          label="Branch overrides"
-          value={branchScoped.length}
-          detail="Branches charging their own price"
+          label="Branch assignments"
+          value={assignments.length}
+          detail={`${branchScoped.length} branch price overrides`}
           tone="teal"
         />
         <SummaryCard
           icon="alert"
-          label="Without a live version"
-          value={inert.length}
-          detail="Configured, but nothing a till can charge"
-          tone={inert.length ? 'rose' : 'navy'}
+          label="Pending overrides"
+          value={pendingOverrides.length}
+          detail="Supervisor review required"
+          tone={pendingOverrides.length ? 'rose' : 'navy'}
+        />
+        <SummaryCard
+          icon="check"
+          label="Active price locks"
+          value={liveLocks.length}
+          detail="Active till basket locks"
+          tone="amber"
         />
       </section>
 
+      {/* Section 1: Interactive Price Resolution Simulator */}
       <section className="content-grid content-grid-primary">
         <article className="panel">
-          <PanelHeader eyebrow="Commercial control" title="Price books" />
+          <PanelHeader eyebrow="Simulation Sandbox" title="Live Price Resolution Engine" />
+          <form className="resolution-form" onSubmit={(e) => void handleResolvePrice(e)} style={{ display: 'grid', gap: '12px', padding: '16px 0' }}>
+            <p className="muted-cell" style={{ margin: 0 }}>
+              Test pricing rules without recording a sale. Computes active price book precedence, customer/branch scope, and tax inclusion.
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px' }}>
+              <label>
+                <small className="muted-cell">Branch ID (UUID / Code)</small>
+                <input
+                  className="search-field"
+                  onChange={(e) => setSimBranch(e.target.value)}
+                  placeholder="e.g. branch-nairobi"
+                  style={{ width: '100%', padding: '8px 12px', marginTop: '4px' }}
+                  type="text"
+                  value={simBranch}
+                />
+              </label>
+              <label>
+                <small className="muted-cell">SKU Code / ID</small>
+                <input
+                  className="search-field"
+                  onChange={(e) => setSimSku(e.target.value)}
+                  placeholder="e.g. SKU-PARA-500"
+                  style={{ width: '100%', padding: '8px 12px', marginTop: '4px' }}
+                  type="text"
+                  value={simSku}
+                />
+              </label>
+              <label>
+                <small className="muted-cell">Quantity</small>
+                <input
+                  className="search-field"
+                  onChange={(e) => setSimQty(e.target.value)}
+                  placeholder="1"
+                  style={{ width: '100%', padding: '8px 12px', marginTop: '4px' }}
+                  type="number"
+                  value={simQty}
+                />
+              </label>
+              <label>
+                <small className="muted-cell">Currency</small>
+                <select
+                  className="search-field"
+                  onChange={(e) => setSimCurrency(e.target.value)}
+                  style={{ width: '100%', padding: '8px 12px', marginTop: '4px' }}
+                  value={simCurrency}
+                >
+                  <option value="KES">KES</option>
+                  <option value="USD">USD</option>
+                  <option value="EUR">EUR</option>
+                  <option value="UGX">UGX</option>
+                  <option value="TZS">TZS</option>
+                </select>
+              </label>
+              <label>
+                <small className="muted-cell">Service Date</small>
+                <input
+                  className="search-field"
+                  onChange={(e) => setSimDate(e.target.value)}
+                  style={{ width: '100%', padding: '8px 12px', marginTop: '4px' }}
+                  type="date"
+                  value={simDate}
+                />
+              </label>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '12px', marginTop: '4px' }}>
+              <button className="primary-button" disabled={resolving} type="submit">
+                <Icon className={resolving ? 'spin' : ''} name="activity" />
+                {resolving ? 'Calculating…' : 'Calculate & Resolve Price'}
+              </button>
+            </div>
+          </form>
+
+          {resolutionError ? (
+            <div className="inline-alert" role="status" style={{ marginTop: '12px' }}>
+              <Icon name="alert" />
+              {resolutionError}
+            </div>
+          ) : null}
+
+          {resolutionResult ? (
+            <div className="resolution-result-card" style={{ marginTop: '16px', padding: '16px', borderRadius: '10px', background: 'var(--navy-900)', border: '1px solid var(--teal-500)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <span className="status-badge status-active"><i /> Price Resolved</span>
+                <strong style={{ fontSize: '1.2rem', color: 'var(--teal-500)' }}>
+                  {formatMoney(resolutionResult.unit_price, resolutionResult.currency)} / unit
+                </strong>
+              </div>
+              <p style={{ margin: '4px 0', fontSize: '0.85rem' }}>
+                <strong>Explanation:</strong> {resolutionResult.explanation}
+              </p>
+              <div style={{ display: 'flex', gap: '16px', fontSize: '0.75rem', color: 'var(--muted)', marginTop: '8px' }}>
+                <span>Source: <strong>{resolutionResult.source}</strong> ({resolutionResult.source_reference})</span>
+                <span>Tax: <strong>{resolutionResult.tax_inclusive ? 'Tax Inclusive' : 'Tax Exclusive'}</strong></span>
+                <span>Hash: <code>{resolutionResult.context_hash.slice(0, 12)}…</code></span>
+              </div>
+
+              {resolutionResult.considered && resolutionResult.considered.length > 0 ? (
+                <div style={{ marginTop: '12px', paddingTop: '8px', borderTop: '1px dashed var(--line)' }}>
+                  <small className="muted-cell">Books Considered in Precedence Order:</small>
+                  <ul style={{ margin: '4px 0 0 16px', padding: 0, fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                    {resolutionResult.considered.map((item, idx) => (
+                      <li key={idx}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </article>
+      </section>
+
+      {/* Section 2: Master Price Books & Version Explorer */}
+      <section className="content-grid content-grid-primary" style={{ marginTop: '24px' }}>
+        <article className="panel">
+          <PanelHeader eyebrow="Commercial Control" title="Price Books Directory" />
           {books.length === 0 ? (
-            <p className="muted-cell">No price books are configured for this tenant.</p>
+            <EmptyState detail="No price books are configured for this tenant." icon="database" title="No price books" />
           ) : (
             <div className="table-scroll">
               <table>
                 <thead>
                   <tr>
                     <th>Code</th>
+                    <th>Name</th>
                     <th>Scope</th>
                     <th>Type</th>
+                    <th>Priority</th>
                     <th>Currency</th>
-                    <th>Live version</th>
+                    <th>Live Version</th>
+                    <th>Action</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {books.map((book) => (
-                    <tr key={book.id}>
-                      <td><code>{book.code}</code></td>
-                      <td><small>{book.scope_type}</small></td>
-                      <td><span className="muted-cell">{book.price_type}</span></td>
-                      <td>{book.currency}</td>
+                  {books.map((book) => {
+                    const isSelected = selectedBook?.id === book.id;
+                    return (
+                      <tr key={book.id} style={isSelected ? { background: 'var(--teal-50)' } : undefined}>
+                        <td><code>{book.code}</code></td>
+                        <td><strong>{book.name}</strong></td>
+                        <td><small>{book.scope_type}</small></td>
+                        <td><span className="muted-cell">{book.price_type}</span></td>
+                        <td>{book.priority}</td>
+                        <td>{book.currency}</td>
+                        <td>
+                          {book.live_version === null ? (
+                            <span className="muted-cell">No live version</span>
+                          ) : (
+                            <span className="status-badge status-active"><i /> v{book.live_version}</span>
+                          )}
+                        </td>
+                        <td>
+                          <button
+                            className="secondary-button"
+                            onClick={() => setSelectedBook(book)}
+                            style={{ padding: '4px 8px', fontSize: '0.75rem' }}
+                            type="button"
+                          >
+                            {isSelected ? 'Viewing' : 'Inspect'}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </article>
+
+        {/* Versions & Entries Explorer */}
+        <article className="panel">
+          <PanelHeader
+            eyebrow={selectedBook ? `Book: ${selectedBook.code}` : 'Versions'}
+            title={selectedBook ? `${selectedBook.name} Versions & Entries` : 'Select a Price Book'}
+          />
+          {!selectedBook ? (
+            <EmptyState detail="Click Inspect on any price book to explore its versions and price entries." icon="docs" title="Select a Price Book" />
+          ) : !versions ? (
+            <p className="muted-cell">Loading book versions…</p>
+          ) : versions.length === 0 ? (
+            <EmptyState detail="This price book has no published or draft versions." icon="alert" title="No versions found" />
+          ) : (
+            <div style={{ display: 'grid', gap: '16px' }}>
+              <div>
+                <small className="muted-cell" style={{ display: 'block', marginBottom: '6px' }}>Version Timeline:</small>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  {versions.map((ver) => {
+                    const isVerSelected = selectedVersion?.id === ver.id;
+                    return (
+                      <button
+                        key={ver.id}
+                        onClick={() => setSelectedVersion(ver)}
+                        style={{
+                          padding: '6px 12px',
+                          borderRadius: '6px',
+                          border: isVerSelected ? '1px solid var(--teal-500)' : '1px solid var(--line)',
+                          background: isVerSelected ? 'var(--teal-100)' : 'var(--navy-900)',
+                          color: isVerSelected ? 'var(--teal-500)' : 'var(--ink)',
+                          cursor: 'pointer',
+                          fontSize: '0.78rem',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                        }}
+                        type="button"
+                      >
+                        <strong>v{ver.version_number}</strong>
+                        <span className={`status-badge status-${ver.status.toLowerCase()}`} style={{ padding: '2px 6px', fontSize: '0.65rem' }}>
+                          {ver.status}
+                        </span>
+                        <small className="muted-cell">({ver.entry_count} SKUs)</small>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {selectedVersion ? (
+                <div style={{ borderTop: '1px solid var(--line)', paddingTop: '12px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <small className="muted-cell">
+                      Version v{selectedVersion.version_number} Entries ({selectedVersion.status}) — Effective: {selectedVersion.effective_from} to {selectedVersion.effective_to || 'Indefinite'}
+                    </small>
+                    {['DRAFT', 'UNDER_REVIEW', 'APPROVED'].includes(selectedVersion.status) ? (
+                      <button
+                        className="primary-button"
+                        onClick={() => {
+                          const action = selectedVersion.status === 'DRAFT'
+                            ? 'submit'
+                            : selectedVersion.status === 'UNDER_REVIEW'
+                              ? 'approve'
+                              : 'publish';
+                          setVersionAction({ action, version: selectedVersion });
+                          setVersionActionError('');
+                        }}
+                        type="button"
+                      >
+                        {selectedVersion.status === 'DRAFT'
+                          ? 'Submit for review'
+                          : selectedVersion.status === 'UNDER_REVIEW'
+                            ? 'Approve version'
+                            : 'Publish version'}
+                      </button>
+                    ) : null}
+                  </div>
+                  {!entries ? (
+                    <p className="muted-cell">Loading SKU price entries…</p>
+                  ) : entries.length === 0 ? (
+                    <p className="muted-cell">No price entries recorded in version v{selectedVersion.version_number}.</p>
+                  ) : (
+                    <div className="table-scroll">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>SKU Code</th>
+                            <th>Unit Price</th>
+                            <th>Min Qty</th>
+                            <th>Max Qty</th>
+                            <th>Floor Price</th>
+                            <th>Tax</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {entries.map((entry) => (
+                            <tr key={entry.id}>
+                              <td><code>{entry.sku_code}</code></td>
+                              <td><strong>{formatMoney(entry.unit_price, selectedBook.currency)}</strong></td>
+                              <td>{entry.minimum_quantity}</td>
+                              <td>{entry.maximum_quantity || '—'}</td>
+                              <td>
+                                {entry.minimum_allowed_price
+                                  ? <span className="text-rose">{formatMoney(entry.minimum_allowed_price, selectedBook.currency)}</span>
+                                  : <span className="muted-cell">None</span>}
+                              </td>
+                              <td>{entry.tax_inclusive ? 'Inclusive' : 'Exclusive'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              ) : null}
+            </div>
+          )}
+        </article>
+      </section>
+
+      {/* Section 3: Manual Supervisor Overrides & Applied Price Audit */}
+      <section className="content-grid content-grid-primary" style={{ marginTop: '24px' }}>
+        <article className="panel">
+          <PanelHeader eyebrow="Supervisor Governance" title="Manual Price Overrides Audit" />
+          {overrideError ? (
+            <div className="inline-alert" role="alert"><Icon name="alert" />{overrideError}</div>
+          ) : null}
+          {overrides.length === 0 ? (
+            <EmptyState detail="No manual price override requests recorded." icon="check" title="No price overrides" />
+          ) : (
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>SKU Code</th>
+                    <th>Transaction Ref</th>
+                    <th>Resolved Price</th>
+                    <th>Override Price</th>
+                    <th>Variance</th>
+                    <th>Reason</th>
+                    <th>Requested By</th>
+                    <th>Approver</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {overrides.map((ov) => (
+                    <tr key={ov.id}>
+                      <td><code>{ov.sku_code}</code></td>
+                      <td><small>{ov.transaction_reference}</small></td>
+                      <td>{formatMoney(ov.resolved_price)}</td>
+                      <td><strong>{formatMoney(ov.override_price)}</strong></td>
                       <td>
-                        {book.live_version === null ? (
-                          <span className="muted-cell">No live version</span>
-                        ) : (
-                          <strong>v{book.live_version}</strong>
-                        )}
+                        <span className={Number(ov.difference) < 0 ? 'text-rose' : 'muted-cell'}>
+                          {formatMoney(ov.difference)}
+                        </span>
+                      </td>
+                      <td><small>{ov.reason_code}</small></td>
+                      <td><small>{ov.requested_by_username}</small></td>
+                      <td><small>{ov.approved_by_username || '—'}</small></td>
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                          <span className={`status-badge status-${ov.status.toLowerCase()}`}>
+                            <i /> {ov.status}
+                          </span>
+                          {ov.status === 'REQUESTED' ? (
+                            <>
+                              <button
+                                className="segmented-option is-active"
+                                disabled={busyOverrideId === ov.id}
+                                onClick={async () => {
+                                  setBusyOverrideId(ov.id);
+                                  setOverrideError('');
+                                  try {
+                                    await decidePriceOverride(ov.id, 'approve', csrfToken);
+                                    fetchOverrides();
+                                  } catch (reason) {
+                                    setOverrideError(
+                                      reason instanceof Error ? reason.message : 'Override approval failed.',
+                                    );
+                                  } finally {
+                                    setBusyOverrideId(null);
+                                  }
+                                }}
+                                style={{ padding: '2px 8px', fontSize: '0.72rem' }}
+                                type="button"
+                              >
+                                Approve
+                              </button>
+                              <button
+                                className="segmented-option"
+                                disabled={busyOverrideId === ov.id}
+                                onClick={async () => {
+                                  setBusyOverrideId(ov.id);
+                                  setOverrideError('');
+                                  try {
+                                    await decidePriceOverride(
+                                      ov.id,
+                                      'reject',
+                                      csrfToken,
+                                      'Rejected by supervisor',
+                                    );
+                                    fetchOverrides();
+                                  } catch (reason) {
+                                    setOverrideError(
+                                      reason instanceof Error ? reason.message : 'Override rejection failed.',
+                                    );
+                                  } finally {
+                                    setBusyOverrideId(null);
+                                  }
+                                }}
+                                style={{ padding: '2px 8px', fontSize: '0.72rem', color: '#f43f5e' }}
+                                type="button"
+                              >
+                                Reject
+                              </button>
+                            </>
+                          ) : null}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -717,7 +1240,175 @@ function PricingView() {
             </div>
           )}
         </article>
+
+        <article className="panel">
+          <PanelHeader eyebrow="Audit Trail" title="Applied Price Snapshots" />
+          {appliedPrices.length === 0 ? (
+            <EmptyState detail="No applied price snapshots recorded yet." icon="docs" title="No snapshots" />
+          ) : (
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Line Ref</th>
+                    <th>Type</th>
+                    <th>SKU Code</th>
+                    <th>Qty</th>
+                    <th>Unit Price</th>
+                    <th>Line Total</th>
+                    <th>Source</th>
+                    <th>Resolved At</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {appliedPrices.slice(0, 10).map((ap) => (
+                    <tr key={ap.id}>
+                      <td><code>{ap.line_reference}</code></td>
+                      <td><small>{ap.line_type}</small></td>
+                      <td><small>{ap.sku_code}</small></td>
+                      <td>{ap.quantity}</td>
+                      <td>{formatMoney(ap.unit_price, ap.currency)}</td>
+                      <td><strong>{formatMoney(ap.line_total, ap.currency)}</strong></td>
+                      <td><span className="muted-cell">{ap.source}</span></td>
+                      <td><small className="muted-cell">{formatTime(ap.resolved_at)}</small></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </article>
       </section>
+
+      {/* Section 4: Active Price Locks Watchlist */}
+      <article className="panel" style={{ marginTop: '24px' }}>
+        <PanelHeader eyebrow="Basket Custody" title="Active Price Locks Watchlist" />
+        {locks.length === 0 ? (
+          <EmptyState detail="No basket price locks currently active." icon="check" title="No active locks" />
+        ) : (
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Basket Reference</th>
+                  <th>Line Reference</th>
+                  <th>SKU Code</th>
+                  <th>Quantity</th>
+                  <th>Locked Price</th>
+                  <th>Status</th>
+                  <th>Live Status</th>
+                  <th>Expires At</th>
+                </tr>
+              </thead>
+              <tbody>
+                {locks.map((lock) => (
+                  <tr key={lock.id}>
+                    <td><code>{lock.basket_reference}</code></td>
+                    <td><small>{lock.line_reference}</small></td>
+                    <td><small>{lock.sku_code}</small></td>
+                    <td>{lock.quantity}</td>
+                    <td><strong>{formatMoney(lock.locked_unit_price, lock.currency)}</strong></td>
+                    <td><small>{lock.status}</small></td>
+                    <td>
+                      {lock.is_live ? (
+                        <span className="status-badge status-active"><i /> Live</span>
+                      ) : (
+                        <span className="muted-cell">Expired / Consumed</span>
+                      )}
+                    </td>
+                    <td><small className="muted-cell">{formatTime(lock.expires_at)}</small></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </article>
+      {versionAction ? (
+        <div className="business-dialog-backdrop" role="presentation">
+          <section aria-labelledby="price-version-action-title" aria-modal="true" className="business-dialog" role="dialog">
+            <header>
+              <div>
+                <p className="eyebrow">Price book governance</p>
+                <h2 id="price-version-action-title">
+                  {versionAction.action === 'submit'
+                    ? 'Submit price version for review'
+                    : versionAction.action === 'approve'
+                      ? 'Approve price version'
+                      : 'Publish price version'}
+                </h2>
+              </div>
+              <button
+                aria-label="Close dialog"
+                disabled={versionActionBusy}
+                onClick={() => setVersionAction(null)}
+                type="button"
+              >
+                <Icon name="close" />
+              </button>
+            </header>
+            <div className="business-dialog-record">
+              <div>
+                <code>{versionAction.version.price_book_code}</code>
+                <strong>Version {versionAction.version.version_number}</strong>
+              </div>
+            </div>
+            <p className="business-dialog-confirm">
+              <Icon name={versionAction.action === 'publish' ? 'alert' : 'shield'} />
+              {versionAction.action === 'submit'
+                ? 'Submission locks this draft for independent commercial review.'
+                : versionAction.action === 'approve'
+                  ? 'The preparer cannot approve their own price version. Your identity is recorded.'
+                  : 'Publishing makes these approved prices available to tills from the effective date.'}
+            </p>
+            {versionActionError ? (
+              <p className="auth-error" role="alert"><Icon name="alert" /> {versionActionError}</p>
+            ) : null}
+            <footer>
+              <button
+                className="secondary-button"
+                disabled={versionActionBusy}
+                onClick={() => setVersionAction(null)}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button
+                className="primary-button"
+                disabled={versionActionBusy}
+                onClick={async () => {
+                  setVersionActionBusy(true);
+                  setVersionActionError('');
+                  try {
+                    await transitionPriceBookVersion(
+                      versionAction.version.id,
+                      versionAction.action,
+                      csrfToken,
+                    );
+                    setVersionAction(null);
+                    setVersionReload((current) => current + 1);
+                  } catch (reason) {
+                    setVersionActionError(
+                      reason instanceof Error ? reason.message : 'Price version action failed.',
+                    );
+                  } finally {
+                    setVersionActionBusy(false);
+                  }
+                }}
+                type="button"
+              >
+                {versionActionBusy
+                  ? 'Working…'
+                  : versionAction.action === 'submit'
+                    ? 'Submit for review'
+                    : versionAction.action === 'approve'
+                      ? 'Approve version'
+                      : 'Publish prices'}
+              </button>
+            </footer>
+          </section>
+        </div>
+      ) : null}
     </>
   );
 }
@@ -856,6 +1547,10 @@ function CashControlView({ csrfToken }: { readonly csrfToken: string }) {
   const [open, setOpen] = useState<readonly RegisterSessionSummary[] | null>(null);
   const [variances, setVariances] = useState<readonly ShiftReportSummary[] | null>(null);
   const [forced, setForced] = useState<readonly ShiftReportSummary[] | null>(null);
+  const [tills, setTills] = useState<readonly PosRegisterItem[] | null>(null);
+  const [movements, setMovements] = useState<readonly CashMovementItem[] | null>(null);
+  const [declarations, setDeclarations] = useState<readonly CashDeclarationItem[] | null>(null);
+  const [businessDays, setBusinessDays] = useState<readonly BusinessDayItem[] | null>(null);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
@@ -864,11 +1559,19 @@ function CashControlView({ csrfToken }: { readonly csrfToken: string }) {
       loadOpenRegisterSessions(controller.signal),
       loadCashVariances(controller.signal),
       loadForcedClosures(controller.signal),
+      loadPosRegisters(controller.signal),
+      loadCashMovements(controller.signal),
+      loadCashDeclarations(controller.signal),
+      loadBusinessDays(controller.signal),
     ])
-      .then(([a, b, c]) => {
+      .then(([a, b, c, t, m, d, bd]) => {
         setOpen(a);
         setVariances(b);
         setForced(c);
+        setTills(t);
+        setMovements(m);
+        setDeclarations(d);
+        setBusinessDays(bd);
       })
       .catch(() => {
         if (!controller.signal.aborted) setFailed(true);
@@ -885,27 +1588,80 @@ function CashControlView({ csrfToken }: { readonly csrfToken: string }) {
     <>
       <section className="metric-grid network-metrics" aria-label="Cash control totals">
         <SummaryCard
+          detail="Physical registers configured"
           icon="building"
-          label="Tills still trading"
-          value={open.length}
-          detail="Open register sessions"
-          tone={open.length ? 'amber' : 'navy'}
+          label="Physical Tills"
+          value={tills ? tills.length : open.length}
         />
         <SummaryCard
+          detail="Open register sessions"
+          icon="activity"
+          label="Tills still trading"
+          tone={open.length ? 'amber' : 'navy'}
+          value={open.length}
+        />
+        <SummaryCard
+          detail="Z reports carrying a variance"
           icon="alert"
           label="Drawers that did not balance"
-          value={variances.length}
-          detail="Z reports carrying a variance"
           tone={variances.length ? 'rose' : 'navy'}
+          value={variances.length}
         />
         <SummaryCard
+          detail="Closed by somebody other than the operator"
           icon="shield"
           label="Forced closures"
-          value={forced.length}
-          detail="Closed by somebody other than the operator"
           tone={forced.length ? 'amber' : 'navy'}
+          value={forced.length}
         />
       </section>
+
+      {/* Till Registers Directory */}
+      <article className="panel" style={{ marginBottom: '24px' }}>
+        <PanelHeader eyebrow="Till Infrastructure" title="Physical POS Register Directory" />
+        {!tills ? (
+          <p className="muted-cell">Loading physical tills…</p>
+        ) : tills.length === 0 ? (
+          <EmptyState detail="No physical tills configured." icon="building" title="No registers" />
+        ) : (
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Code & Name</th>
+                  <th>Device ID</th>
+                  <th>Expected Float</th>
+                  <th>Last Synchronised</th>
+                  <th>State</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tills.map((till) => (
+                  <tr key={till.id}>
+                    <td>
+                      <code>{till.code}</code>
+                      <br />
+                      <strong>{till.name}</strong>
+                    </td>
+                    <td><code>{till.device_id || 'Unbound'}</code></td>
+                    <td>{formatMoney(till.expected_float, till.currency)}</td>
+                    <td>
+                      <span className="muted-cell">
+                        {till.last_synchronised_at ? formatDate(till.last_synchronised_at) : 'Never'}
+                      </span>
+                    </td>
+                    <td>
+                      <span className={`status-badge status-${till.state === 'OPEN' || till.state === 'AVAILABLE' ? 'active' : 'suspended'}`}>
+                        <i /> {titleCase(till.state)}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </article>
 
       <section className="content-grid content-grid-primary">
         <article className="panel">
@@ -927,10 +1683,6 @@ function CashControlView({ csrfToken }: { readonly csrfToken: string }) {
                 </thead>
                 <tbody>
                   {variances.map((report) => {
-                    /* Read from the report's own frozen snapshot, never
-                       recomputed. The snapshot is what was counted and signed,
-                       and a screen that recalculates can disagree with the
-                       paper the operator is holding. */
                     const variance = report.snapshot?.variance;
                     return (
                       <tr key={report.id}>
@@ -974,9 +1726,6 @@ function CashControlView({ csrfToken }: { readonly csrfToken: string }) {
                       <td><code>{report.report_number}</code></td>
                       <td>{report.register_code}</td>
                       <td>{report.generated_by_username}</td>
-                      {/* Each of these is a drawer counted by somebody who was
-                          not accountable for it, so the reason is shown rather
-                          than hidden behind a detail view. */}
                       <td><span className="muted-cell">{report.closure_reason || '—'}</span></td>
                     </tr>
                   ))}
@@ -986,6 +1735,110 @@ function CashControlView({ csrfToken }: { readonly csrfToken: string }) {
           )}
         </article>
       </section>
+
+      {/* Cash Movements & Outflow Custody */}
+      <section className="content-grid content-grid-primary" style={{ marginTop: '24px' }}>
+        <article className="panel">
+          <PanelHeader eyebrow="Custody Movements" title="Drawer Cash Inflows & Outflows" />
+          {!movements ? (
+            <p className="muted-cell">Loading cash movements…</p>
+          ) : movements.length === 0 ? (
+            <EmptyState detail="No non-sale cash movements recorded." icon="check" title="No movements" />
+          ) : (
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Movement Kind</th>
+                    <th>Amount</th>
+                    <th>Reason / Code</th>
+                    <th>Reference</th>
+                    <th>Created</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {movements.map((m) => (
+                    <tr key={m.id}>
+                      <td><strong>{titleCase(m.kind)}</strong></td>
+                      <td>
+                        <strong className={m.kind.includes('OUT') || m.kind.includes('DROP') || m.kind.includes('BANKING') ? 'text-rose' : ''}>
+                          {formatMoney(m.amount, m.currency)}
+                        </strong>
+                      </td>
+                      <td><small>{m.reason_code || m.description || '—'}</small></td>
+                      <td><code>{m.reference || '—'}</code></td>
+                      <td><span className="muted-cell">{formatDate(m.created_at)}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </article>
+
+        <article className="panel">
+          <PanelHeader eyebrow="Blind Count Audit" title="Opening & Closing Declarations" />
+          {!declarations ? (
+            <p className="muted-cell">Loading cash declarations…</p>
+          ) : declarations.length === 0 ? (
+            <EmptyState detail="No cash declarations recorded." icon="shield" title="No declarations" />
+          ) : (
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Kind</th>
+                    <th>Declared Amount</th>
+                    <th>Attempt</th>
+                    <th>Confirmed At</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {declarations.map((d) => (
+                    <tr key={d.id}>
+                      <td><span className="status-badge status-active"><i /> {d.kind}</span></td>
+                      <td><strong>{formatMoney(d.declared_amount, d.currency)}</strong></td>
+                      <td>Attempt #{d.attempt}</td>
+                      <td><span className="muted-cell">{d.confirmed_at ? formatDate(d.confirmed_at) : 'Unconfirmed'}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </article>
+      </section>
+
+      {/* Business Day Accounting Calendar */}
+      {businessDays && businessDays.length > 0 ? (
+        <article className="panel" style={{ marginTop: '24px' }}>
+          <PanelHeader eyebrow="Accounting Periods" title="Business Days Calendar" />
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Business Date</th>
+                  <th>Opened At</th>
+                  <th>Closed At</th>
+                  <th>State</th>
+                  <th>Reopen Reason</th>
+                </tr>
+              </thead>
+              <tbody>
+                {businessDays.map((bd) => (
+                  <tr key={bd.id}>
+                    <td><strong>{bd.business_date}</strong></td>
+                    <td><small>{formatDate(bd.opened_at)}</small></td>
+                    <td><small className="muted-cell">{bd.closed_at ? formatDate(bd.closed_at) : '—'}</small></td>
+                    <td><span className={`status-badge status-${bd.state === 'OPEN' ? 'active' : 'suspended'}`}><i /> {titleCase(bd.state)}</span></td>
+                    <td><small className="muted-cell">{bd.reopen_reason || '—'}</small></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </article>
+      ) : null}
       <PosDownloads csrfToken={csrfToken} />
     </>
   );
@@ -1134,6 +1987,9 @@ function InsuranceView() {
   const [unpaid, setUnpaid] = useState<readonly InsuranceClaim[] | null>(null);
   const [awaiting, setAwaiting] = useState<readonly InsuranceClaim[] | null>(null);
   const [attention, setAttention] = useState<readonly InsuranceClaim[] | null>(null);
+  const [remittances, setRemittances] = useState<readonly InsuranceRemittance[] | null>(null);
+  const [rejections, setRejections] = useState<readonly ClaimRejection[] | null>(null);
+  const [coverages, setCoverages] = useState<readonly InsuranceCoverage[] | null>(null);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
@@ -1143,17 +1999,20 @@ function InsuranceView() {
       loadApprovedUnpaidClaims(controller.signal),
       loadClaimsAwaitingDecision(controller.signal),
       loadClaimsNeedingAttention(controller.signal),
+      loadRemittances(controller.signal),
+      loadRejections(true, controller.signal),
+      loadCoverages(controller.signal),
     ])
-      .then(([a, b, c, d]) => {
+      .then(([a, b, c, d, r, rej, cov]) => {
         setInsurers(a);
         setUnpaid(b);
         setAwaiting(c);
         setAttention(d);
+        setRemittances(r);
+        setRejections(rej);
+        setCoverages(cov);
       })
       .catch(() => {
-        // Surfaced, not swallowed into zeroes. A dashboard showing "0 claims"
-        // because the request failed is believed; one saying it could not load
-        // is questioned.
         if (!controller.signal.aborted) setFailed(true);
       });
     return () => controller.abort();
@@ -1164,8 +2023,6 @@ function InsuranceView() {
     return <p className="muted-cell">Loading insurance data…</p>;
   }
 
-  // Summed from the rows themselves rather than from a separate total, so the
-  // headline and the table below it cannot disagree.
   const receivable = unpaid.reduce(
     (total, claim) => total + Number.parseFloat(claim.outstanding_amount || '0'),
     0,
@@ -1287,6 +2144,130 @@ function InsuranceView() {
         </article>
       </section>
 
+      {/* Remittances & Financial Settlement */}
+      <section className="content-grid content-grid-primary" style={{ marginTop: '24px' }}>
+        <article className="panel">
+          <PanelHeader eyebrow="Remittance Advice" title="Payment Settlements & Bank Remittances" />
+          {!remittances ? (
+            <p className="muted-cell">Loading remittance advice…</p>
+          ) : remittances.length === 0 ? (
+            <EmptyState icon="check" title="No remittances" detail="Remittance advice notices will appear as payments settle." />
+          ) : (
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Remittance #</th>
+                    <th>Insurer</th>
+                    <th>Remitted Total</th>
+                    <th>Payment Ref</th>
+                    <th>Remittance Date</th>
+                    <th>Unmatched Lines</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {remittances.map((rem) => (
+                    <tr key={rem.id}>
+                      <td><code>{rem.remittance_number}</code></td>
+                      <td><small>{rem.insurer_code}</small></td>
+                      <td><strong>{formatMoney(rem.total_remitted_amount, 'KES')}</strong></td>
+                      <td><code>{rem.payment_reference || '—'}</code></td>
+                      <td><span className="muted-cell">{formatDate(rem.remittance_date)}</span></td>
+                      <td>
+                        {rem.unmatched_lines > 0 ? (
+                          <span className="status-badge status-suspended"><i /> {rem.unmatched_lines} unmatched</span>
+                        ) : (
+                          <span className="muted-cell">0</span>
+                        )}
+                      </td>
+                      <td><span className="status-badge status-active"><i /> {titleCase(rem.status)}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </article>
+
+        <article className="panel">
+          <PanelHeader eyebrow="Claim Recovery" title="Unresolved Rejections & Exceptions" />
+          {!rejections ? (
+            <p className="muted-cell">Loading rejections watchlist…</p>
+          ) : rejections.length === 0 ? (
+            <EmptyState icon="check" title="No unresolved rejections" detail="All claim rejections have been resolved or resubmitted." />
+          ) : (
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Claim #</th>
+                    <th>Code</th>
+                    <th>Reason</th>
+                    <th>Resubmission</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rejections.map((rej) => (
+                    <tr key={rej.id}>
+                      <td><code>{rej.claim_number}</code></td>
+                      <td><code className="text-rose">{rej.rejection_code}</code></td>
+                      <td><small>{rej.reason_description}</small></td>
+                      <td>
+                        {rej.resubmission_eligible ? (
+                          <span className="status-badge status-active"><i /> Eligible</span>
+                        ) : (
+                          <span className="status-badge status-suspended"><i /> Final</span>
+                        )}
+                      </td>
+                      <td><small className="muted-cell">{rej.operator_action || 'Review claim data'}</small></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </article>
+      </section>
+
+      {/* Member Coverages Watchlist */}
+      {coverages && coverages.length > 0 ? (
+        <article className="panel" style={{ marginTop: '24px' }}>
+          <PanelHeader eyebrow="Member Eligibility" title="Active Insurance Policies & Benefit Limits" />
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Membership #</th>
+                  <th>Relationship</th>
+                  <th>Valid Range</th>
+                  <th>Remaining Limit</th>
+                  <th>Copay / Coinsurance</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {coverages.map((cov) => (
+                  <tr key={cov.id}>
+                    <td><code>{cov.membership_number}</code></td>
+                    <td><small>{titleCase(cov.relationship)}</small></td>
+                    <td><span className="muted-cell">{formatDate(cov.valid_from)} — {cov.valid_to ? formatDate(cov.valid_to) : 'Ongoing'}</span></td>
+                    <td><strong>{formatMoney(cov.remaining_limit, 'KES')}</strong></td>
+                    <td>
+                      <small>
+                        {formatMoney(cov.copay_amount, 'KES')} copay ({cov.coinsurance_percentage}% co-ins)
+                      </small>
+                    </td>
+                    <td><span className="status-badge status-active"><i /> {titleCase(cov.status)}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </article>
+      ) : null}
+
       <ClaimsRegister />
     </>
   );
@@ -1298,16 +2279,76 @@ function PeopleView({
   failed,
   onWorkspaceChanged,
 }: BusinessViewProps) {
+  const [counterparties, setCounterparties] = useState<readonly CustomerItem[] | null>(null);
+  const [loadError, setLoadError] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const fetchCounterparties = useCallback((signal?: AbortSignal) => {
+    loadCustomers(signal)
+      .then(setCounterparties)
+      .catch(() => {
+        if (!signal?.aborted) setLoadError(true);
+      });
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchCounterparties(controller.signal);
+    return () => controller.abort();
+  }, [fetchCounterparties]);
+
+  const handleApproveCustomer = async (id: string) => {
+    setBusyId(id);
+    try {
+      const response = await fetch(`/api/customers/customers/${id}/approve/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrfToken,
+        },
+        body: JSON.stringify({ reason: 'Approved by HQ operations' }),
+      });
+      if (response.ok) {
+        fetchCounterparties();
+        await onWorkspaceChanged();
+      }
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleSuspendCustomer = async (id: string) => {
+    setBusyId(id);
+    try {
+      const response = await fetch(`/api/customers/customers/${id}/suspend/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrfToken,
+        },
+        body: JSON.stringify({ reason: 'Suspended by HQ operations' }),
+      });
+      if (response.ok) {
+        fetchCounterparties();
+        await onWorkspaceChanged();
+      }
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   if (failed) return <WorkspaceSectionError domain="people and customer" />;
   if (!data) return <WorkspaceSectionLoading domain="people and customer" />;
 
-  const { counts, customers, patients, practitioners } = data.people;
+  const { counts, patients, practitioners } = data.people;
+  const activeCustomersCount = counterparties ? counterparties.filter((c) => c.status === 'ACTIVE' || c.status === 'APPROVED').length : counts.customers;
+
   return (
     <>
       <section className="metric-grid network-metrics" aria-label="People and customer totals">
         <SummaryCard icon="patients" label="Patient records" value={counts.patients} detail={`${formatNumber(counts.active_patients)} active`} />
         <SummaryCard icon="clinical" label="Practitioners" value={counts.practitioners} detail={`${formatNumber(counts.verified_practitioners)} verified`} tone="teal" />
-        <SummaryCard icon="building" label="Customers" value={counts.customers} detail={`${formatNumber(counts.active_customers)} active`} />
+        <SummaryCard icon="building" label="Counterparty Customers" value={counterparties ? counterparties.length : counts.customers} detail={`${formatNumber(activeCustomersCount)} active/approved`} />
         <SummaryCard icon="shield" label="Verification gap" value={Math.max(counts.practitioners - counts.verified_practitioners, 0)} detail="Practitioners needing review" tone={counts.practitioners === counts.verified_practitioners ? 'teal' : 'amber'} />
       </section>
 
@@ -1359,27 +2400,84 @@ function PeopleView({
         </article>
       </section>
 
-      <article className="panel">
-        <PanelHeader eyebrow="Commercial records" title="Customer directory" actionHref="#people" actionLabel="Manage customers" />
-        {customers.length ? (
+      {/* Commercial Counterparty Customer Governance */}
+      <article className="panel" style={{ marginTop: '24px' }}>
+        <PanelHeader eyebrow="Commercial Counterparties" title="Customer Governance Directory" />
+        {loadError ? (
+          <div className="inline-alert" role="alert"><Icon name="alert" /> Commercial customer counterparty records could not be loaded.</div>
+        ) : counterparties === null ? (
+          <p className="muted-cell">Loading customer counterparties…</p>
+        ) : counterparties.length === 0 ? (
+          <EmptyState icon="building" title="No commercial customers" detail="Approved pharmacy, hospital and institutional customers will appear here." />
+        ) : (
           <div className="table-scroll">
             <table>
-              <thead><tr><th>Customer</th><th>Number</th><th>Type</th><th>Status</th><th>Risk</th><th>Credit</th></tr></thead>
+              <thead>
+                <tr>
+                  <th>Legal & Trading Name</th>
+                  <th>Customer #</th>
+                  <th>Type</th>
+                  <th>Status</th>
+                  <th>Risk & Credit</th>
+                  <th>Capabilities</th>
+                  <th>Governance Actions</th>
+                </tr>
+              </thead>
               <tbody>
-                {customers.map((customer) => (
-                  <tr key={customer.id}>
-                    <td><strong>{customer.legal_name}</strong></td>
-                    <td><code>{customer.customer_number}</code></td>
-                    <td><small>{titleCase(customer.customer_type)}</small></td>
-                    <td><StatusBadge value={customer.status} /></td>
-                    <td><StatusBadge value={customer.risk_classification} /></td>
-                    <td><StatusBadge value={customer.credit_status} /></td>
+                {counterparties.map((c) => (
+                  <tr key={c.id}>
+                    <td>
+                      <strong>{c.legal_name}</strong>
+                      {c.trading_name && c.trading_name !== c.legal_name ? <small className="muted-cell"><br />{c.trading_name}</small> : null}
+                    </td>
+                    <td><code>{c.customer_number}</code></td>
+                    <td><small>{titleCase(c.customer_type)}</small></td>
+                    <td><StatusBadge value={c.status} /></td>
+                    <td>
+                      <small>
+                        Risk: <StatusBadge value={c.risk_classification} /><br />
+                        Credit: <StatusBadge value={c.credit_status} />
+                      </small>
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                        {c.controlled_medicine_eligible ? <span className="status-badge status-active" style={{ fontSize: '0.65rem' }}>Controlled Meds</span> : null}
+                        {c.cold_chain_capable ? <span className="status-badge status-teal" style={{ fontSize: '0.65rem' }}>Cold Chain</span> : null}
+                        {!c.controlled_medicine_eligible && !c.cold_chain_capable ? <span className="muted-cell">Standard</span> : null}
+                      </div>
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        {c.status === 'UNDER_REVIEW' || c.status === 'PROSPECTIVE' ? (
+                          <button
+                            className="segmented-option is-active"
+                            disabled={busyId === c.id}
+                            onClick={() => handleApproveCustomer(c.id)}
+                            style={{ padding: '2px 8px', fontSize: '0.75rem' }}
+                            type="button"
+                          >
+                            Approve
+                          </button>
+                        ) : null}
+                        {c.status === 'ACTIVE' || c.status === 'APPROVED' ? (
+                          <button
+                            className="segmented-option"
+                            disabled={busyId === c.id}
+                            onClick={() => handleSuspendCustomer(c.id)}
+                            style={{ padding: '2px 8px', fontSize: '0.75rem', color: '#f43f5e' }}
+                            type="button"
+                          >
+                            Suspend
+                          </button>
+                        ) : null}
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        ) : <EmptyState icon="building" title="No commercial customers" detail="Approved pharmacy, hospital and institutional customers will appear here." />}
+        )}
       </article>
     </>
   );
@@ -1629,11 +2727,42 @@ function GovernmentCatalogue({
     readonly selected: boolean;
   } | null>(null);
   const [reloadVersion, setReloadVersion] = useState(0);
+  const [priceModal, setPriceModal] = useState<{
+    readonly code: string;
+    readonly name: string;
+  } | null>(null);
+  const [modalUnitPrice, setModalUnitPrice] = useState('250.00');
+  const [modalMinPrice, setModalMinPrice] = useState('200.00');
+  const [modalTaxInc, setModalTaxInc] = useState(true);
+  const [tenantSkus, setTenantSkus] = useState<readonly HQSku[]>([]);
+  const [priceSkuCode, setPriceSkuCode] = useState('');
+  const [priceSubmitting, setPriceSubmitting] = useState(false);
+  const [priceSuccess, setPriceSuccess] = useState('');
+  const [priceError, setPriceError] = useState('');
 
   useEffect(() => {
     const nextTenantId = overview.tenant_id || overview.network_items[0]?.id || '';
     setTenantId((current) => current || nextTenantId);
   }, [overview.network_items, overview.tenant_id]);
+
+  useEffect(() => {
+    if (!tenantId) {
+      setTenantSkus([]);
+      return;
+    }
+    const controller = new AbortController();
+    loadTenantSkus(tenantId, controller.signal)
+      .then((skus) => {
+        setTenantSkus(skus);
+        setPriceSkuCode((current) => (
+          skus.some((sku) => sku.sku_code === current) ? current : ''
+        ));
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setTenantSkus([]);
+      });
+    return () => controller.abort();
+  }, [tenantId]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -1885,22 +3014,44 @@ function GovernmentCatalogue({
                     </td>
                     <td><small>{medicine.manufacturer_name || '—'}</small></td>
                     <td>
-                      {medicine.selected ? (
-                        catalogueMode === 'tenant' && catalogue.can_manage ? (
-                          <button
-                            className="catalogue-remove-button"
-                            disabled={mutationId === medicine.id}
-                            onClick={() => setPendingSelection({
-                              medicineId: medicine.id,
-                              productName: medicine.generic_name || medicine.brand_name || medicine.code,
-                              selected: false,
-                            })}
-                            type="button"
-                          >
-                            {mutationId === medicine.id ? 'Removing…' : 'Remove'}
-                          </button>
-                        ) : <span className="reference-badge is-selected">Selected</span>
-                      ) : catalogue.can_manage ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                        {medicine.selected ? (
+                          <>
+                            <span className="reference-badge is-selected">Selected</span>
+                            <button
+                              className="segmented-option is-active"
+                              onClick={() => {
+                                setPriceModal({
+                                  code: medicine.code,
+                                  name: medicine.generic_name || medicine.brand_name || medicine.code,
+                                });
+                                setPriceSkuCode(
+                                  tenantSkus.find((sku) => sku.sku_code === medicine.code)?.sku_code ?? '',
+                                );
+                                setPriceSuccess('');
+                                setPriceError('');
+                              }}
+                              style={{ padding: '2px 8px', fontSize: '0.72rem' }}
+                              type="button"
+                            >
+                              Create price draft
+                            </button>
+                            {catalogueMode === 'tenant' && catalogue.can_manage ? (
+                              <button
+                                className="catalogue-remove-button"
+                                disabled={mutationId === medicine.id}
+                                onClick={() => setPendingSelection({
+                                  medicineId: medicine.id,
+                                  productName: medicine.generic_name || medicine.brand_name || medicine.code,
+                                  selected: false,
+                                })}
+                                type="button"
+                              >
+                                {mutationId === medicine.id ? 'Removing…' : 'Remove'}
+                              </button>
+                            ) : null}
+                          </>
+                        ) : catalogue.can_manage ? (
                           <button
                             className="catalogue-add-button"
                             disabled={mutationId === medicine.id}
@@ -1909,11 +3060,12 @@ function GovernmentCatalogue({
                               productName: medicine.generic_name || medicine.brand_name || medicine.code,
                               selected: true,
                             })}
-                          type="button"
-                        >
-                          {mutationId === medicine.id ? 'Adding…' : 'Add to tenant'}
-                        </button>
-                      ) : <span className="reference-badge">Master only</span>}
+                            type="button"
+                          >
+                            {mutationId === medicine.id ? 'Adding…' : 'Add to tenant'}
+                          </button>
+                        ) : <span className="reference-badge">Master only</span>}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -1966,6 +3118,108 @@ function GovernmentCatalogue({
               </button>
             </footer>
           </section>
+        </div>
+      ) : null}
+      {priceModal ? (
+        <div className="business-dialog-backdrop" role="presentation">
+          <div aria-modal="true" className="business-dialog" role="dialog" style={{ maxWidth: '460px' }}>
+            <header>
+              <h2>Create Tenant Price Draft</h2>
+              <button aria-label="Close" onClick={() => setPriceModal(null)} type="button"><Icon name="close" /></button>
+            </header>
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              setPriceSubmitting(true);
+              setPriceError('');
+              setPriceSuccess('');
+              try {
+                const draft = await saveTenantPriceDraft(
+                  {
+                    sku_code: priceSkuCode,
+                    unit_price: modalUnitPrice,
+                    minimum_allowed_price: modalMinPrice || null,
+                    tax_inclusive: modalTaxInc,
+                  },
+                  tenantId,
+                  csrfToken,
+                );
+                setPriceSuccess(
+                  `Draft v${draft.version_number} saved for ${draft.sku_code}. Submit it from Pricing for independent review.`,
+                );
+              } catch (reason) {
+                setPriceError(
+                  reason instanceof Error ? reason.message : 'Could not save price draft.',
+                );
+              } finally {
+                setPriceSubmitting(false);
+              }
+            }}>
+              <p className="panel-note">
+                Prepare the retail price for <strong>{priceModal.name}</strong>. Prices remain
+                drafts until an independent approver reviews and publishes the version.
+              </p>
+              {priceError ? <p className="auth-error" role="alert"><Icon name="alert" /> {priceError}</p> : null}
+              {priceSuccess ? <p className="inline-alert" role="status"><Icon name="check" /> {priceSuccess}</p> : null}
+
+              <label className="business-field">
+                <span>Commercial SKU</span>
+                <select
+                  onChange={(event) => setPriceSkuCode(event.target.value)}
+                  required
+                  value={priceSkuCode}
+                >
+                  <option value="">Select a governed tenant SKU</option>
+                  {tenantSkus.map((sku) => (
+                    <option key={sku.id} value={sku.sku_code}>
+                      {sku.sku_code} — {sku.display_name}
+                    </option>
+                  ))}
+                </select>
+                {tenantSkus.length === 0 ? (
+                  <small>Complete product and package governance before pricing this catalogue item.</small>
+                ) : null}
+              </label>
+
+              <label className="business-field">
+                <span>Unit Selling Price (KES)</span>
+                <input
+                  onChange={(e) => setModalUnitPrice(e.target.value)}
+                  placeholder="e.g. 250.00"
+                  required
+                  type="number"
+                  step="0.01"
+                  value={modalUnitPrice}
+                />
+              </label>
+
+              <label className="business-field">
+                <span>Minimum Floor Price (KES)</span>
+                <input
+                  onChange={(e) => setModalMinPrice(e.target.value)}
+                  placeholder="e.g. 200.00"
+                  type="number"
+                  step="0.01"
+                  value={modalMinPrice}
+                />
+              </label>
+
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '12px 0', fontSize: '0.85rem' }}>
+                <input
+                  checked={modalTaxInc}
+                  onChange={(e) => setModalTaxInc(e.target.checked)}
+                  type="checkbox"
+                />
+                <span>Tax Inclusive Pricing</span>
+              </label>
+
+              <footer>
+                <button disabled={priceSubmitting} onClick={() => setPriceModal(null)} type="button">Cancel</button>
+                <button className="primary-button" disabled={priceSubmitting || !priceSkuCode} type="submit">
+                  {priceSubmitting ? 'Saving…' : 'Save Draft'}
+                </button>
+              </footer>
+            </form>
+          </div>
         </div>
       ) : null}
     </article>
@@ -2409,15 +3663,38 @@ function AccessView({
   const [forcedClosures, setForcedClosures] = useState<readonly ShiftReportSummary[] | null>(null);
   const [cashFailed, setCashFailed] = useState(false);
 
+  // Identity & Permissions Matrix State
+  const [roles, setRoles] = useState<readonly RoleDetail[] | null>(null);
+  const [users, setUsers] = useState<readonly UserDetail[] | null>(null);
+  const [userRoles, setUserRoles] = useState<readonly UserRoleGrant[] | null>(null);
+  const [matrix, setMatrix] = useState<CapabilityMatrixData | null>(null);
+  const [serviceAccounts, setServiceAccounts] = useState<readonly ServiceAccountItem[] | null>(null);
+
   useEffect(() => {
     const controller = new AbortController();
     Promise.all([
       loadOpenRegisterSessions(controller.signal),
       loadCashVariances(controller.signal),
       loadForcedClosures(controller.signal),
+      loadRolesDetail(controller.signal),
+      loadUsers(controller.signal),
+      loadUserRoles(controller.signal),
+      loadCapabilityMatrix(controller.signal),
+      loadServiceAccounts(controller.signal),
     ])
-      .then(([s, v, f]) => { setSessions(s); setVariances(v); setForcedClosures(f); })
-      .catch(() => { if (!controller.signal.aborted) setCashFailed(true); });
+      .then(([s, v, f, r, u, ur, m, sa]) => {
+        setSessions(s);
+        setVariances(v);
+        setForcedClosures(f);
+        setRoles(r);
+        setUsers(u);
+        setUserRoles(ur);
+        setMatrix(m);
+        setServiceAccounts(sa);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setCashFailed(true);
+      });
     return () => controller.abort();
   }, []);
 
@@ -2441,7 +3718,214 @@ function AccessView({
           ? <BusinessWorkbench csrfToken={csrfToken} data={data} domain="access" onChanged={onWorkspaceChanged} />
           : <WorkspaceSectionLoading domain="user access register" />}
 
-      <section className="content-grid content-grid-primary">
+      {/* Permissions & Role Matrix Workbench */}
+      <section className="content-grid content-grid-primary" style={{ marginTop: '24px' }}>
+        <article className="panel">
+          {matrix ? (
+            <PanelHeader
+              eyebrow="Role Governance"
+              title="System Roles & Capability Bundles"
+              actionLabel={`Scope: ${matrix.tenant_id || 'Platform Global'}`}
+            />
+          ) : (
+            <PanelHeader
+              eyebrow="Role Governance"
+              title="System Roles & Capability Bundles"
+            />
+          )}
+          {!roles ? (
+            <p className="muted-cell">Loading roles directory…</p>
+          ) : roles.length === 0 ? (
+            <EmptyState detail="No roles defined for this tenant." icon="shield" title="No roles" />
+          ) : (
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Role Code</th>
+                    <th>Role Name</th>
+                    <th>Capabilities Granted</th>
+                    <th>System Role</th>
+                    <th>Active Users</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {roles.map((role) => (
+                    <tr key={role.id}>
+                      <td><code>{role.code}</code></td>
+                      <td><strong>{role.name}</strong></td>
+                      <td>
+                        {role.capabilities && role.capabilities.length > 0 ? (
+                          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                            {role.capabilities.map((cap) => (
+                              <span key={cap} className="status-badge status-active" style={{ fontSize: '0.65rem', padding: '2px 6px' }}>
+                                {cap}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="muted-cell">No explicit capabilities</span>
+                        )}
+                      </td>
+                      <td>{role.is_system ? <span className="status-badge status-active"><i /> System</span> : <span className="muted-cell">Custom</span>}</td>
+                      <td><strong>{role.user_count}</strong></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </article>
+
+        <article className="panel">
+          <PanelHeader eyebrow="User Matrix" title="User Effective Capability Matrix" />
+          {!users ? (
+            <p className="muted-cell">Loading user matrix…</p>
+          ) : users.length === 0 ? (
+            <EmptyState detail="No users found for this workspace." icon="users" title="No users" />
+          ) : (
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Username</th>
+                    <th>Assigned Roles</th>
+                    <th>Admin Status</th>
+                    <th>Effective Capabilities</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {users.map((u) => (
+                    <tr key={u.id}>
+                      <td>
+                        <strong>{u.username}</strong>
+                        {u.email ? (
+                          <>
+                            <br />
+                            <small className="muted-cell">{u.email}</small>
+                          </>
+                        ) : null}
+                      </td>
+                      <td>
+                        {u.assigned_roles && u.assigned_roles.length > 0 ? (
+                          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                            {u.assigned_roles.map((r) => (
+                              <code key={r.id}>{r.code}</code>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="muted-cell">No assigned roles</span>
+                        )}
+                      </td>
+                      <td>
+                        {u.is_superuser ? (
+                          <span className="status-badge status-active"><i /> Superuser</span>
+                        ) : u.is_platform_admin ? (
+                          <span className="status-badge status-active"><i /> Platform Admin</span>
+                        ) : (
+                          <span className="muted-cell">Standard</span>
+                        )}
+                      </td>
+                      <td>
+                        {u.effective_capabilities && u.effective_capabilities.length > 0 ? (
+                          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', maxWidth: '280px' }}>
+                            {u.effective_capabilities.slice(0, 5).map((cap) => (
+                              <span key={cap} className="status-badge status-teal" style={{ fontSize: '0.65rem', padding: '2px 6px' }}>
+                                {cap}
+                              </span>
+                            ))}
+                            {u.effective_capabilities.length > 5 ? (
+                              <small className="muted-cell">+{u.effective_capabilities.length - 5} more</small>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <span className="muted-cell">None</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </article>
+      </section>
+
+      {/* Service Accounts & Machine Identities */}
+      {serviceAccounts && serviceAccounts.length > 0 ? (
+        <article className="panel" style={{ marginTop: '24px' }}>
+          <PanelHeader eyebrow="Machine Identities" title="Service Accounts & Integration Credentials" />
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Code</th>
+                  <th>Display Name</th>
+                  <th>Granted Capabilities</th>
+                  <th>Fingerprint</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {serviceAccounts.map((sa) => (
+                  <tr key={sa.id}>
+                    <td><code>{sa.code}</code></td>
+                    <td><strong>{sa.display_name}</strong></td>
+                    <td>
+                      {sa.capabilities && sa.capabilities.length > 0 ? (
+                        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                          {sa.capabilities.map((c) => (
+                            <span key={c} className="status-badge status-teal" style={{ fontSize: '0.65rem', padding: '2px 6px' }}>
+                              {c}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="muted-cell">None</span>
+                      )}
+                    </td>
+                    <td><code>{sa.credential_fingerprint ? sa.credential_fingerprint.slice(0, 12) + '…' : 'None'}</code></td>
+                    <td>{sa.is_active ? <span className="status-badge status-active"><i /> Active</span> : <span className="muted-cell">Inactive</span>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </article>
+      ) : null}
+
+      {/* User-to-Role Assignment Grants */}
+      {userRoles && userRoles.length > 0 ? (
+        <article className="panel" style={{ marginTop: '24px' }}>
+          <PanelHeader eyebrow="Audited Grants" title="Active User-to-Role Assignments" />
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>User</th>
+                  <th>Granted Role</th>
+                  <th>Role Code</th>
+                  <th>Granted At</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {userRoles.map((ur) => (
+                  <tr key={ur.id}>
+                    <td><strong>{ur.user_username}</strong></td>
+                    <td>{ur.role_name}</td>
+                    <td><code>{ur.role_code}</code></td>
+                    <td><small className="muted-cell">{formatTime(ur.created_at)}</small></td>
+                    <td>{ur.is_active ? <span className="status-badge status-active"><i /> Active Grant</span> : <span className="muted-cell">Revoked</span>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </article>
+      ) : null}
+
+      <section className="content-grid content-grid-primary" style={{ marginTop: '24px' }}>
         <article className="panel">
           <PanelHeader eyebrow="Access posture" title="Security scope" />
           <dl className="detail-list">
@@ -2462,24 +3946,14 @@ function AccessView({
         </article>
       </section>
 
-      <article className="panel workflow-panel">
-        <PanelHeader eyebrow="Identity administration" title="Access management workspaces" />
-        <div className="workflow-grid">
-          <WorkflowLink href="#access" icon="users" step="01" title="Users" detail="Accounts, status and workspace assignment." />
-          <WorkflowLink href="#access" icon="shield" step="02" title="Roles" detail="Capability bundles and system roles." />
-          <WorkflowLink href="#access" icon="security" step="03" title="Assignments" detail="Audited user-to-role grants." />
-          <WorkflowLink href="#access" icon="database" step="04" title="Service accounts" detail="Machine identities and capabilities." />
-        </div>
-      </article>
-
       {cashFailed ? (
-        <div className="inline-alert" role="status">
+        <div className="inline-alert" role="status" style={{ marginTop: '24px' }}>
           <Icon name="alert" />
           Cash and shift data could not be loaded. Financial custody data requires the POS shift API to be reachable.
         </div>
       ) : (
         <>
-          <section className="content-grid content-grid-primary">
+          <section className="content-grid content-grid-primary" style={{ marginTop: '24px' }}>
             <article className="panel">
               <PanelHeader eyebrow="Cash control" title="Open register sessions" actionHref="#cash" actionLabel="View all" />
               {sessions === null ? (
@@ -2538,7 +4012,7 @@ function AccessView({
             </article>
           </section>
 
-          <article className="panel">
+          <article className="panel" style={{ marginTop: '24px' }}>
             <PanelHeader eyebrow="Custody audit" title="Forced register closures" actionHref="#cash" actionLabel="View all" />
             {forcedClosures === null ? (
               <p className="muted-cell">Loading forced closures…</p>

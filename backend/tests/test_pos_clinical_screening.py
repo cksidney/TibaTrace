@@ -6,6 +6,7 @@ from django.core.exceptions import ValidationError
 from django.utils import timezone
 
 from apps.cds.models import ActiveIngredient, ClinicalKnowledgeRelease, ClinicalKnowledgeRule
+from apps.cds.pos_api.serializers import PosClinicalScreeningRequestSerializer
 from apps.cds.pos_screening_models import (
     PosClinicalAuditEvent,
     PosClinicalFinding,
@@ -20,7 +21,6 @@ from apps.cds.pos_screening_services import (
     PosPharmacistReviewService,
 )
 from apps.identity.models import Role, User, UserRole
-from apps.cds.pos_api.serializers import PosClinicalScreeningRequestSerializer
 from apps.medicines.models import (
     ActiveSubstance,
     ClinicalMedicinalProduct,

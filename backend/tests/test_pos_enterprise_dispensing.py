@@ -5,10 +5,10 @@ import pytest
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 
-from apps.identity.models import Role, User, UserRole
-from apps.cds.pos_screening_services import PosClinicalScreeningService
 from apps.cds.pos_screening_models import PosClinicalScreening
+from apps.cds.pos_screening_services import PosClinicalScreeningService
 from apps.customers.models import Customer
+from apps.identity.models import Role, User, UserRole
 from apps.inventory.models import InventoryBatch, InventoryLedgerEntry, InventoryLocation, InventoryReservation
 from apps.inventory.services import InventoryLedgerService
 from apps.medicines.models import (
@@ -23,7 +23,6 @@ from apps.organizations.models import Location, Organization
 from apps.patients.models import Patient
 from apps.pos_shift.models import BusinessDay, OperatorShift, PosRegister, RegisterSession
 from apps.practitioners.models import Practitioner
-from apps.sales.models import SalesOrder
 from apps.prescription.models import (
     DispensingAllocation,
     DispensingCheck,
@@ -47,6 +46,7 @@ from apps.prescription.pos_dispensing_services import (
     PosShiftService,
 )
 from apps.prescription.services.workflow import PrescriptionWorkflowService
+from apps.sales.models import SalesOrder
 from apps.tenancy.models import Tenant
 
 pytestmark = pytest.mark.django_db

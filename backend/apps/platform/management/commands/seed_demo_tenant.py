@@ -32,6 +32,7 @@ from django.core.management import call_command
 from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
+from django.utils.crypto import get_random_string
 
 from apps.identity.models import User
 from apps.medicines.models import (
@@ -67,13 +68,18 @@ class Command(BaseCommand):
             action="store_true",
             help="Also run the insurance demo seed against this tenant.",
         )
+        parser.add_argument(
+            "--password",
+            help="Password for newly created demo users. A random password is generated when omitted.",
+        )
 
     @transaction.atomic
     def handle(self, *args, **options):
         tenant = self.tenant()
         org = self.organization(tenant)
         branches = self.branches(tenant, org)
-        people = self.people(tenant)
+        demo_password = options.get("password") or get_random_string(24)
+        people, created_users = self.people(tenant, demo_password)
         skus = self.catalogue(tenant)
 
         self.pricing(tenant, branches, skus)
@@ -83,11 +89,16 @@ class Command(BaseCommand):
             call_command("seed_insurance_demo", tenant=tenant.slug)
 
         self.stdout.write(self.style.SUCCESS(f"Demo tenant '{tenant.slug}' ready."))
+        credential_note = (
+            f"  New users     : {', '.join(created_users)} (password '{demo_password}')"
+            if created_users
+            else "  Sign in as    : demo-operator / demo-supervisor (existing passwords unchanged)"
+        )
         self.stdout.write(
             "  Branches      : Eldoret (own price book), Mombasa (inherits tenant prices)\n"
             "  Pricing       : one item priced differently per branch, from one product master\n"
             "  Shift         : one closed register session with a Z report and a short drawer\n"
-            "  Sign in as    : demo-operator / demo-supervisor (password 'demo-password')"
+            f"{credential_note}"
         )
 
     # ------------------------------------------------------------------ parts
@@ -116,16 +127,18 @@ class Command(BaseCommand):
             made[key] = branch
         return made
 
-    def people(self, tenant) -> dict:
+    def people(self, tenant, password: str) -> tuple[dict, list[str]]:
         made = {}
+        created_users = []
         for key, username in (("operator", "demo-operator"), ("supervisor", "demo-supervisor")):
             user = User.objects.filter(username=username).first()
             if user is None:
                 user = User.objects.create_user(
-                    username=username, password="demo-password", tenant=tenant  # nosec B106
+                    username=username, password=password, tenant=tenant
                 )
+                created_users.append(username)
             made[key] = user
-        return made
+        return made, created_users
 
     def catalogue(self, tenant) -> dict:
         # Tenant-scoped models are looked up through all_objects. The default

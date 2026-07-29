@@ -287,6 +287,17 @@ class PriceOverrideService:
             raise ValidationError(
                 f"Only a requested override may be rejected; this one is {override.status}."
             )
+        if approver is None:
+            raise PermissionDenied("A price override requires a named approver.")
+        if override.requested_by_id == getattr(approver, "pk", None):
+            raise PermissionDenied(
+                "A price override cannot be rejected by the person who requested it."
+            )
+        if not _holds(approver, APPROVE_CAPABILITY):
+            raise PermissionDenied(
+                "Rejecting a price override requires the "
+                "pricing.manual_override.approve capability."
+            )
         override.status = ManualPriceOverride.Status.REJECTED
         override.approved_by = approver
         override.approved_at = timezone.now()

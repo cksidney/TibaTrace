@@ -12,12 +12,6 @@ from apps.inventory.models import InventoryBalance, InventoryBatch
 from apps.medicines.models import CommercialSKU
 from apps.pos_shift.authority import RegisterAuthorityService
 from apps.practitioners.models import Practitioner
-from apps.prescription.payment_models import PaymentSettlement
-from apps.prescription.payment_services import (
-    PaymentIntentService,
-    PaymentSettlementService,
-    PaymentTenderService,
-)
 from apps.prescription.models import (
     DispensingCheck,
     DispensingEpisode,
@@ -26,6 +20,12 @@ from apps.prescription.models import (
     PatientCounselling,
     PosShiftRecord,
     Prescription,
+)
+from apps.prescription.payment_models import PaymentSettlement
+from apps.prescription.payment_services import (
+    PaymentIntentService,
+    PaymentSettlementService,
+    PaymentTenderService,
 )
 from apps.prescription.services.clinical_dispensing import (
     MedicineSupplyService,

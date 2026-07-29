@@ -10,9 +10,9 @@ from rest_framework.response import Response
 from apps.customers.models import Customer
 from apps.patients.models import Patient
 from apps.pos_shift.models import PosRegister
-from apps.tenancy.models import Tenant
 from apps.pos_transactions.models import PosTransaction
 from apps.pos_transactions.services import PosRetailService
+from apps.tenancy.models import Tenant
 
 from .serializers import (
     AddLineRequestSerializer,

@@ -1,8 +1,9 @@
-"""The pricing workbench API and the resolution query.
+"""The pricing workbench API, governed lifecycle and resolution query.
 
 Two properties matter most. A price book is the one table where an unguarded
-write changes what every till charges, so nothing here writes. And a quote is
-not a sale, so asking what something costs records nothing.
+write changes what every till charges, so collections are read-only and changes
+go through a draft/review/publish lifecycle. A quote is not a sale, so asking
+what something costs records nothing.
 """
 from datetime import date, timedelta
 from decimal import Decimal
@@ -10,7 +11,7 @@ from decimal import Decimal
 import pytest
 from rest_framework.test import APIClient
 
-from apps.identity.models import User
+from apps.identity.models import Role, User, UserRole
 from apps.medicines.models import (
     ClinicalMedicinalProduct,
     CommercialSKU,
@@ -26,6 +27,11 @@ from apps.pricing.models import (
     PriceBookEntry,
     PriceBookVersion,
 )
+from apps.pricing.versioning import (
+    APPROVE_CAPABILITY,
+    MANAGE_CAPABILITY,
+    PUBLISH_CAPABILITY,
+)
 from apps.tenancy.models import Tenant
 
 TODAY = date.today()
@@ -38,6 +44,16 @@ def cash(value: str) -> Decimal:
 def rows(response):
     body = response.json()
     return body["results"] if isinstance(body, dict) and "results" in body else body
+
+
+def grant(user, *capabilities):
+    role = Role.all_objects.create(
+        tenant=user.tenant,
+        code=f"role-{user.username}-{Role.all_objects.count()}",
+        name="Pricing authority",
+        capabilities=list(capabilities),
+    )
+    UserRole.all_objects.create(tenant=user.tenant, user=user, role=role)
 
 
 @pytest.fixture
@@ -109,6 +125,131 @@ class TestReadOnly:
             "/api/pricing/overrides/some-id/", {"status": "APPROVED"}, format="json"
         )
         assert response.status_code in (403, 404, 405)
+
+
+class TestPriceDraftWorkflow:
+    def test_a_price_change_creates_a_draft_not_a_live_price(self, world):
+        grant(world["user"], MANAGE_CAPABILITY)
+        response = world["client"].post(
+            "/api/pricing/prices/set-price/",
+            {
+                "sku_code": world["sku"].sku_code,
+                "unit_price": "625.00",
+                "minimum_allowed_price": "500.00",
+                "tax_inclusive": True,
+            },
+            format="json",
+        )
+        assert response.status_code == 200
+        assert response.json()["status"] == "DRAFT"
+        version = PriceBookVersion.all_objects.get(pk=response.json()["version_id"])
+        assert version.status == PriceBookVersion.Status.DRAFT
+        assert version.created_by == world["user"]
+
+    def test_an_existing_live_price_is_never_edited(self, world):
+        grant(world["user"], MANAGE_CAPABILITY)
+        book, live = publish(world, code="DEFAULT-RETAIL", price="600.00")
+        original = PriceBookEntry.all_objects.get(version=live, sku=world["sku"])
+
+        response = world["client"].post(
+            "/api/pricing/prices/set-price/",
+            {"sku_code": world["sku"].sku_code, "unit_price": "625.00"},
+            format="json",
+        )
+
+        assert response.status_code == 200
+        original.refresh_from_db()
+        assert original.unit_price == cash("600.00")
+        draft = PriceBookVersion.all_objects.get(pk=response.json()["version_id"])
+        assert draft.price_book == book
+        assert draft.version_number == 2
+        assert PriceBookEntry.all_objects.get(
+            version=draft,
+            sku=world["sku"],
+        ).unit_price == cash("625.00")
+
+    def test_pricing_requires_an_existing_commercial_sku(self, world):
+        grant(world["user"], MANAGE_CAPABILITY)
+        response = world["client"].post(
+            "/api/pricing/prices/set-price/",
+            {"sku_code": "GOVERNMENT-MASTER-ONLY", "unit_price": "625.00"},
+            format="json",
+        )
+        assert response.status_code == 400
+        assert "commercial sku" in response.json()["detail"].lower()
+
+    def test_a_tenant_id_in_the_body_cannot_redirect_the_write(self, world):
+        grant(world["user"], MANAGE_CAPABILITY)
+        other = Tenant.objects.create(name="Other Pricing Tenant", slug="other-pricing")
+        response = world["client"].post(
+            "/api/pricing/prices/set-price/",
+            {
+                "tenant_id": str(other.pk),
+                "sku_code": world["sku"].sku_code,
+                "unit_price": "625.00",
+            },
+            format="json",
+        )
+        assert response.status_code == 200
+        assert PriceBook.all_objects.filter(
+            tenant=world["tenant"],
+            code="DEFAULT-RETAIL",
+        ).exists()
+        assert not PriceBook.all_objects.filter(tenant=other).exists()
+
+    def test_price_workflow_requires_separate_approval_then_publish(self, world):
+        grant(world["user"], MANAGE_CAPABILITY, APPROVE_CAPABILITY)
+        created = world["client"].post(
+            "/api/pricing/prices/set-price/",
+            {"sku_code": world["sku"].sku_code, "unit_price": "625.00"},
+            format="json",
+        ).json()
+        version_id = created["version_id"]
+
+        submitted = world["client"].post(
+            f"/api/pricing/versions/{version_id}/submit/",
+            {},
+            format="json",
+        )
+        assert submitted.status_code == 200
+        assert submitted.json()["status"] == PriceBookVersion.Status.UNDER_REVIEW
+        assert world["client"].post(
+            f"/api/pricing/versions/{version_id}/approve/",
+            {},
+            format="json",
+        ).status_code == 403
+
+        approver = User.objects.create_user(
+            username="pricing-approver",
+            password="pw",
+            tenant=world["tenant"],
+        )
+        grant(approver, APPROVE_CAPABILITY, PUBLISH_CAPABILITY)
+        approver_client = APIClient()
+        approver_client.force_authenticate(user=approver)
+        approved = approver_client.post(
+            f"/api/pricing/versions/{version_id}/approve/",
+            {},
+            format="json",
+        )
+        assert approved.status_code == 200
+        assert approved.json()["status"] == PriceBookVersion.Status.APPROVED
+
+        published = approver_client.post(
+            f"/api/pricing/versions/{version_id}/publish/",
+            {},
+            format="json",
+        )
+        assert published.status_code == 200
+        assert published.json()["status"] == PriceBookVersion.Status.ACTIVE
+
+    def test_price_draft_requires_management_authority(self, world):
+        response = world["client"].post(
+            "/api/pricing/prices/set-price/",
+            {"sku_code": world["sku"].sku_code, "unit_price": "625.00"},
+            format="json",
+        )
+        assert response.status_code == 403
 
 
 # ─── resolution answers, and records nothing ─────────────────────────────────

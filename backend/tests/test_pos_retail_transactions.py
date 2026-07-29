@@ -6,6 +6,7 @@ from django.core.exceptions import ValidationError
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from apps.identity.models import User
 from apps.inventory.models import BarcodeMaster, InventoryBalance, InventoryBatch, InventoryLocation
 from apps.medicines.models import (
     BranchAssortment,
@@ -20,7 +21,6 @@ from apps.pos_shift.models import BusinessDay, OperatorShift, PosRegister, Regis
 from apps.pos_transactions.models import PosTransaction, PosTransactionLine
 from apps.pricing.models import PriceAssignment, PriceBook, PriceBookEntry, PriceBookVersion
 from apps.tenancy.models import Tenant
-from apps.identity.models import User
 
 
 @pytest.fixture

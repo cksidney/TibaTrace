@@ -16,6 +16,7 @@ from rest_framework.test import APIClient
 
 from apps.identity.models import User
 from apps.platform.models import PosRelease
+from apps.platform.release_views import download_filename
 from apps.tenancy.models import Tenant
 
 PASSWORD = "release-password-long-enough"
@@ -130,6 +131,22 @@ class TestListing:
     def test_the_filename_is_meaningful_rather_than_the_storage_key(self, user, published):
         row = signed_in(user).get("/api/hq/pos-releases/").json()["releases"][0]
         assert row["download_filename"] == "TibaTrace-POS-android-0.1.0-alpha.1.apk"
+
+    def test_windows_installer_keeps_its_supported_exe_format(self):
+        release = PosRelease(
+            platform=PosRelease.Platform.WINDOWS,
+            version="1.0.0",
+            object_key="windows/1.0.0/TibaTrace-POS-Setup-1.0.0.exe",
+        )
+        assert download_filename(release) == "TibaTrace-POS-windows-1.0.0.exe"
+
+    def test_windows_managed_package_keeps_its_zip_format(self):
+        release = PosRelease(
+            platform=PosRelease.Platform.WINDOWS,
+            version="1.0.0",
+            object_key="windows/1.0.0/TibaTrace-POS-Managed-Install-1.0.0.zip",
+        )
+        assert download_filename(release) == "TibaTrace-POS-windows-1.0.0.zip"
 
     def test_the_list_says_whether_downloads_are_available(self, user, published):
         # Unconfigured storage is reported up front rather than discovered by

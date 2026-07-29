@@ -16,8 +16,8 @@ from tests.test_pos_enterprise_dispensing import (  # noqa: F401
     setup_domain,
 )
 
-from apps.identity.models import User
 from apps.cds.pos_screening_models import PosClinicalScreening
+from apps.identity.models import User
 from apps.inventory.models import InventoryLedgerEntry
 from apps.prescription.models import (
     DispensingCheck,

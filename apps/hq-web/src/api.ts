@@ -1005,6 +1005,145 @@ export const loadClaimsAwaitingDecision = (signal?: AbortSignal) =>
 export const loadClaimsNeedingAttention = (signal?: AbortSignal) =>
   getCollection<InsuranceClaim>('/api/insurance/claims/needs-attention/', signal);
 
+export interface InsuranceRemittance {
+  readonly id: string;
+  readonly remittance_number: string;
+  readonly insurer_code: string;
+  readonly total_remitted_amount: string;
+  readonly payment_reference: string;
+  readonly remittance_date: string;
+  readonly status: string;
+  readonly unmatched_lines: number;
+}
+
+export interface ClaimRejection {
+  readonly id: string;
+  readonly claim_number: string;
+  readonly rejection_code: string;
+  readonly reason_description: string;
+  readonly resubmission_eligible: boolean;
+  readonly operator_action: string;
+  readonly resolved: boolean;
+  readonly created_at: string;
+}
+
+export interface InsuranceCoverage {
+  readonly id: string;
+  readonly membership_number: string;
+  readonly relationship: string;
+  readonly valid_from: string;
+  readonly valid_to: string;
+  readonly status: string;
+  readonly remaining_limit: string;
+  readonly copay_amount: string;
+  readonly coinsurance_percentage: string;
+}
+
+export const loadRemittances = (signal?: AbortSignal) =>
+  getCollection<InsuranceRemittance>('/api/insurance/remittances/', signal);
+
+export const loadRejections = (unresolvedOnly = true, signal?: AbortSignal) =>
+  getCollection<ClaimRejection>(unresolvedOnly ? '/api/insurance/rejections/?unresolved=true' : '/api/insurance/rejections/', signal);
+
+export const loadCoverages = (signal?: AbortSignal) =>
+  getCollection<InsuranceCoverage>('/api/insurance/coverages/', signal);
+
+/* ── tenancy & counterparty customers ─────────────────────────────────────── */
+
+export interface TenantItem {
+  readonly id: string;
+  readonly name: string;
+  readonly slug: string;
+  readonly status: string;
+  readonly country_code: string;
+  readonly time_zone: string;
+  readonly suspension_reason: string;
+  readonly active_location_count: number;
+  readonly active_organization_count: number;
+  readonly active_patient_count: number;
+  readonly active_practitioner_count: number;
+  readonly active_user_count: number;
+  readonly created_at: string;
+}
+
+export interface CustomerItem {
+  readonly id: string;
+  readonly customer_number: string;
+  readonly legal_name: string;
+  readonly trading_name: string;
+  readonly customer_type: string;
+  readonly registration_number: string;
+  readonly tax_number: string;
+  readonly contact_email: string;
+  readonly contact_phone: string;
+  readonly status: string;
+  readonly risk_classification: string;
+  readonly credit_status: string;
+  readonly default_currency: string;
+  readonly payment_terms: string;
+  readonly controlled_medicine_eligible: boolean;
+  readonly cold_chain_capable: boolean;
+  readonly created_at: string;
+}
+
+export const loadCustomers = (signal?: AbortSignal) =>
+  getCollection<CustomerItem>('/api/customers/customers/', signal);
+
+/* ── till & cash custody control ───────────────────────────────────────────── */
+
+export interface PosRegisterItem {
+  readonly id: string;
+  readonly code: string;
+  readonly name: string;
+  readonly device_id: string;
+  readonly state: string;
+  readonly expected_float: string;
+  readonly currency: string;
+  readonly last_synchronised_at: string | null;
+}
+
+export interface CashMovementItem {
+  readonly id: string;
+  readonly kind: string;
+  readonly amount: string;
+  readonly currency: string;
+  readonly reason_code: string;
+  readonly description: string;
+  readonly reference: string;
+  readonly created_at: string;
+}
+
+export interface CashDeclarationItem {
+  readonly id: string;
+  readonly kind: string;
+  readonly declared_amount: string;
+  readonly currency: string;
+  readonly attempt: number;
+  readonly confirmed_at: string | null;
+  readonly reason: string;
+}
+
+export interface BusinessDayItem {
+  readonly id: string;
+  readonly business_date: string;
+  readonly state: string;
+  readonly opened_at: string;
+  readonly closed_at: string | null;
+  readonly reopen_reason: string;
+}
+
+export const loadPosRegisters = (signal?: AbortSignal) =>
+  getCollection<PosRegisterItem>('/api/pos-shift/registers/', signal);
+
+export const loadCashMovements = (signal?: AbortSignal) =>
+  getCollection<CashMovementItem>('/api/pos-shift/cash-movements/', signal);
+
+export const loadCashDeclarations = (signal?: AbortSignal) =>
+  getCollection<CashDeclarationItem>('/api/pos-shift/cash-declarations/', signal);
+
+export const loadBusinessDays = (signal?: AbortSignal) =>
+  getCollection<BusinessDayItem>('/api/pos-shift/business-days/', signal);
+
 /* ── pricing ───────────────────────────────────────────────────────────────── */
 
 export interface PriceBookSummary {
@@ -1014,13 +1153,321 @@ export interface PriceBookSummary {
   readonly currency: string;
   readonly price_type: string;
   readonly scope_type: string;
+  readonly priority: number;
+  readonly tax_inclusive: boolean;
   readonly is_active: boolean;
   /** Null when the book is configured but has nothing a till could charge. */
   readonly live_version: number | null;
 }
 
+export interface PriceBookVersion {
+  readonly id: string;
+  readonly price_book_code: string;
+  readonly version_number: number;
+  readonly status: string;
+  readonly is_published: boolean;
+  readonly effective_from: string;
+  readonly effective_to: string | null;
+  readonly approved_at: string | null;
+  readonly published_at: string | null;
+  readonly entry_count: number;
+}
+
+export interface PriceBookEntry {
+  readonly id: string;
+  readonly sku_code: string;
+  readonly version_number: number;
+  readonly unit_price: Money;
+  readonly minimum_quantity: string;
+  readonly maximum_quantity: string | null;
+  readonly minimum_allowed_price: Money | null;
+  readonly tax_inclusive: boolean;
+}
+
+export interface PriceAssignment {
+  readonly id: string;
+  readonly price_book_code: string;
+  readonly scope_type: string;
+  readonly branch: string | null;
+  readonly branch_group: string;
+  readonly region: string;
+  readonly customer_segment: string;
+  readonly priority: number;
+  readonly valid_from: string | null;
+  readonly valid_to: string | null;
+  readonly is_active: boolean;
+}
+
+export interface AppliedPriceSnapshot {
+  readonly id: string;
+  readonly line_reference: string;
+  readonly line_type: string;
+  readonly sku_code: string;
+  readonly quantity: string;
+  readonly currency: string;
+  readonly unit_price: Money;
+  readonly line_total: Money;
+  readonly discount_amount: Money;
+  readonly tax_amount: Money;
+  readonly source: string;
+  readonly source_reference: string;
+  readonly resolution_trace: readonly string[];
+  readonly context_hash: string;
+  readonly resolved_at: string;
+}
+
+export interface ManualPriceOverride {
+  readonly id: string;
+  readonly sku_code: string;
+  readonly transaction_reference: string;
+  readonly resolved_price: Money;
+  readonly override_price: Money;
+  readonly difference: string;
+  readonly reason_code: string;
+  readonly reason: string;
+  readonly status: string;
+  readonly requested_by_username: string;
+  readonly approved_by_username: string;
+  readonly approved_at: string | null;
+  readonly expires_at: string | null;
+  readonly created_at: string;
+}
+
+export interface PriceLock {
+  readonly id: string;
+  readonly basket_reference: string;
+  readonly line_reference: string;
+  readonly sku_code: string;
+  readonly locked_unit_price: Money;
+  readonly quantity: string;
+  readonly currency: string;
+  readonly source: string;
+  readonly locked_at: string;
+  readonly expires_at: string;
+  readonly status: string;
+  readonly is_live: boolean;
+  readonly invalidation_reason: string;
+}
+
+export interface PriceResolutionResult {
+  readonly unit_price: Money;
+  readonly currency: string;
+  readonly source: string;
+  readonly source_reference: string;
+  readonly tax_inclusive: boolean;
+  readonly explanation: string;
+  readonly considered: readonly string[];
+  readonly context_hash: string;
+}
+
+export interface PriceDraftResult {
+  readonly status: 'DRAFT';
+  readonly sku_code: string;
+  readonly unit_price: Money;
+  readonly minimum_allowed_price: Money | null;
+  readonly tax_inclusive: boolean;
+  readonly price_book: string;
+  readonly version_id: string;
+  readonly version_number: number;
+  readonly created: boolean;
+}
+
 export const loadPriceBooks = (signal?: AbortSignal) =>
   getCollection<PriceBookSummary>('/api/pricing/books/', signal);
+
+export const loadPriceBookVersions = (bookId?: string, signal?: AbortSignal) =>
+  getCollection<PriceBookVersion>(bookId ? `/api/pricing/versions/?price_book=${encodeURIComponent(bookId)}` : '/api/pricing/versions/', signal);
+
+export const loadPriceBookEntries = (versionId?: string, signal?: AbortSignal) =>
+  getCollection<PriceBookEntry>(versionId ? `/api/pricing/entries/?version=${encodeURIComponent(versionId)}` : '/api/pricing/entries/', signal);
+
+export const loadPriceAssignments = (signal?: AbortSignal) =>
+  getCollection<PriceAssignment>('/api/pricing/assignments/', signal);
+
+export const loadAppliedPrices = (signal?: AbortSignal) =>
+  getCollection<AppliedPriceSnapshot>('/api/pricing/applied/', signal);
+
+export const loadPriceOverrides = (pendingOnly = false, signal?: AbortSignal) =>
+  getCollection<ManualPriceOverride>(pendingOnly ? '/api/pricing/overrides/?pending=true' : '/api/pricing/overrides/', signal);
+
+export const loadPriceLocks = (signal?: AbortSignal) =>
+  getCollection<PriceLock>('/api/pricing/locks/', signal);
+
+export const loadTenantSkus = (tenantId: string, signal?: AbortSignal) =>
+  getTenantCollection<HQSku>('/api/medicines/skus/?page_size=100', tenantId, signal);
+
+export const saveTenantPriceDraft = (
+  payload: {
+    readonly sku_code: string;
+    readonly unit_price: Money;
+    readonly minimum_allowed_price: Money | null;
+    readonly tax_inclusive: boolean;
+  },
+  tenantId: string,
+  csrfToken: string,
+) => mutateJson<PriceDraftResult>(
+  '/api/pricing/prices/set-price/',
+  'POST',
+  payload,
+  csrfToken,
+  tenantId,
+);
+
+export const transitionPriceBookVersion = (
+  versionId: string,
+  action: 'approve' | 'publish' | 'submit',
+  csrfToken: string,
+) => mutateJson<PriceBookVersion>(
+  `/api/pricing/versions/${encodeURIComponent(versionId)}/${action}/`,
+  'POST',
+  {},
+  csrfToken,
+);
+
+export const decidePriceOverride = (
+  overrideId: string,
+  decision: 'approve' | 'reject',
+  csrfToken: string,
+  reason = '',
+) => mutateJson<ManualPriceOverride>(
+  `/api/pricing/overrides/${encodeURIComponent(overrideId)}/${decision}/`,
+  'POST',
+  decision === 'reject' ? { reason } : {},
+  csrfToken,
+);
+
+export async function resolvePrice(
+  params: {
+    readonly branch?: string;
+    readonly sku?: string;
+    readonly quantity?: string;
+    readonly service_date?: string;
+    readonly currency?: string;
+  },
+  signal?: AbortSignal,
+): Promise<PriceResolutionResult> {
+  const searchParams = new URLSearchParams();
+  if (params.branch) searchParams.set('branch', params.branch);
+  if (params.sku) searchParams.set('sku', params.sku);
+  if (params.quantity) searchParams.set('quantity', params.quantity);
+  if (params.service_date) searchParams.set('service_date', params.service_date);
+  if (params.currency) searchParams.set('currency', params.currency);
+
+  const request: RequestInit = {
+    credentials: 'include',
+    headers: { Accept: 'application/json' },
+  };
+  if (signal) request.signal = signal;
+
+  const response = await fetch(`/api/pricing/prices/resolve/?${searchParams.toString()}`, request);
+  if (!response.ok) {
+    const errorJson = (await response.json().catch(() => ({}))) as { detail?: string };
+    throw new HQApiError(response.status, errorJson.detail || `Price resolution failed with status ${response.status}.`);
+  }
+  return (await response.json()) as PriceResolutionResult;
+}
+
+/* ── identity & access control ─────────────────────────────────────────────── */
+
+export interface RoleDetail {
+  readonly id: string;
+  readonly code: string;
+  readonly name: string;
+  readonly capabilities: readonly string[];
+  readonly is_active: boolean;
+  readonly is_system: boolean;
+  readonly user_count: number;
+}
+
+export interface UserDetail {
+  readonly id: string;
+  readonly username: string;
+  readonly email: string;
+  readonly first_name: string;
+  readonly last_name: string;
+  readonly is_active: boolean;
+  readonly is_platform_admin: boolean;
+  readonly is_superuser: boolean;
+  readonly professional_staff_id: string;
+  readonly assigned_roles: readonly { readonly id: string; readonly code: string; readonly name: string }[];
+  readonly effective_capabilities: readonly string[];
+  readonly date_joined: string;
+}
+
+export interface UserRoleGrant {
+  readonly id: string;
+  readonly user: string;
+  readonly user_username: string;
+  readonly role: string;
+  readonly role_code: string;
+  readonly role_name: string;
+  readonly is_active: boolean;
+  readonly created_at: string;
+}
+
+export interface ServiceAccountItem {
+  readonly id: string;
+  readonly code: string;
+  readonly display_name: string;
+  readonly capabilities: readonly string[];
+  readonly is_active: boolean;
+  readonly credential_fingerprint: string;
+  readonly created_at: string;
+}
+
+export interface CapabilityMatrixData {
+  readonly tenant_id: string;
+  readonly roles: readonly {
+    readonly id: string;
+    readonly code: string;
+    readonly name: string;
+    readonly capabilities: readonly string[];
+    readonly is_system: boolean;
+    readonly assigned_users_count: number;
+  }[];
+  readonly users: readonly {
+    readonly id: string;
+    readonly username: string;
+    readonly email: string;
+    readonly is_platform_admin: boolean;
+    readonly is_superuser: boolean;
+    readonly assigned_roles: readonly string[];
+    readonly effective_capabilities: readonly string[];
+  }[];
+  readonly service_accounts: readonly {
+    readonly id: string;
+    readonly code: string;
+    readonly display_name: string;
+    readonly capabilities: readonly string[];
+    readonly fingerprint: string;
+  }[];
+}
+
+export const loadRolesDetail = (signal?: AbortSignal) =>
+  getCollection<RoleDetail>('/api/identity/roles-detail/', signal);
+
+export const loadUsers = (signal?: AbortSignal) =>
+  getCollection<UserDetail>('/api/identity/users/', signal);
+
+export const loadUserRoles = (signal?: AbortSignal) =>
+  getCollection<UserRoleGrant>('/api/identity/user-roles/', signal);
+
+export const loadServiceAccounts = (signal?: AbortSignal) =>
+  getCollection<ServiceAccountItem>('/api/identity/service-accounts/', signal);
+
+export async function loadCapabilityMatrix(signal?: AbortSignal): Promise<CapabilityMatrixData> {
+  const request: RequestInit = {
+    credentials: 'include',
+    headers: { Accept: 'application/json' },
+  };
+  if (signal) request.signal = signal;
+
+  const response = await fetch('/api/identity/matrix/', request);
+  if (!response.ok) {
+    throw new HQApiError(response.status, `Capability matrix request failed with ${response.status}.`);
+  }
+  return (await response.json()) as CapabilityMatrixData;
+}
 
 /* ── product master ────────────────────────────────────────────────────────────
 

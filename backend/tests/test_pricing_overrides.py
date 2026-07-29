@@ -167,6 +167,7 @@ class TestApprovalAuthority:
             # An increase: needs approval, but is not below the floor, so the
             # ordinary approval path is what gets exercised.
             override_price = cash("1200.00")
+            reason = ""
             approved_by = None
             approved_at = None
 
@@ -200,6 +201,19 @@ class TestApprovalAuthority:
         override = self._pending()
         with pytest.raises(PermissionDenied, match="named approver"):
             PriceOverrideService.approve(override=override, approver=None, policy=POLICY)
+
+    def test_rejection_requires_approval_authority(self, db):
+        override = self._pending()
+        with pytest.raises(PermissionDenied, match="approve capability"):
+            PriceOverrideService.reject(override=override, approver=Actor(2))
+
+    def test_the_requester_cannot_reject_their_own_request(self, db):
+        override = self._pending()
+        with pytest.raises(PermissionDenied, match="person who requested it"):
+            PriceOverrideService.reject(
+                override=override,
+                approver=Actor(1, APPROVE_CAPABILITY),
+            )
 
     def test_a_supervisor_may_approve_within_the_floor(self, db):
         override = self._pending()
