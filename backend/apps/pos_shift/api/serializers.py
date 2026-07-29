@@ -19,6 +19,7 @@ from rest_framework import serializers
 from apps.pos_shift.models import (
     BusinessDay,
     CashDeclaration,
+    CashExceptionReview,
     CashMovement,
     OperatorShift,
     PosRegister,
@@ -134,6 +135,11 @@ class RegisterSessionSerializer(serializers.ModelSerializer):
 
 
 class CashDeclarationSerializer(serializers.ModelSerializer):
+    register_session_id = serializers.UUIDField(read_only=True)
+    register_code = serializers.CharField(
+        source="register_session.register.code",
+        read_only=True,
+    )
     declared_amount = MoneyField()
     declared_by_username = serializers.CharField(source="declared_by.username", read_only=True)
     is_confirmed = serializers.BooleanField(read_only=True)
@@ -141,7 +147,8 @@ class CashDeclarationSerializer(serializers.ModelSerializer):
     class Meta:
         model = CashDeclaration
         fields = [
-            "id", "kind", "declared_amount", "currency", "denominations",
+            "id", "register_session_id", "register_code", "kind",
+            "declared_amount", "currency", "denominations",
             # The attempt number matters: a recount is a second declaration, and
             # seeing only the latest hides that the first one differed.
             "attempt", "declared_by_username", "confirmed_at", "is_confirmed", "reason",
@@ -149,6 +156,11 @@ class CashDeclarationSerializer(serializers.ModelSerializer):
 
 
 class CashMovementSerializer(serializers.ModelSerializer):
+    register_session_id = serializers.UUIDField(read_only=True)
+    register_code = serializers.CharField(
+        source="register_session.register.code",
+        read_only=True,
+    )
     amount = MoneyField()
     signed_amount = MoneyField(read_only=True)
     created_by_username = serializers.CharField(source="created_by.username", read_only=True)
@@ -157,13 +169,37 @@ class CashMovementSerializer(serializers.ModelSerializer):
     class Meta:
         model = CashMovement
         fields = [
-            "id", "kind", "amount", "signed_amount", "affects_expected_cash",
+            "id", "register_session_id", "register_code", "kind", "amount",
+            "signed_amount", "affects_expected_cash",
             "currency", "reason_code", "description", "reference",
             "created_by_username", "approved_by_username", "approved_at", "created_at",
         ]
 
     def get_approved_by_username(self, movement) -> str:
         return getattr(movement.approved_by, "username", "") or ""
+
+
+class CashExceptionReviewSerializer(serializers.ModelSerializer):
+    report_number = serializers.CharField(source="report.report_number", read_only=True)
+    opened_by_username = serializers.CharField(source="opened_by.username", read_only=True)
+    resolved_by_username = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CashExceptionReview
+        fields = [
+            "id",
+            "report_number",
+            "status",
+            "opened_by_username",
+            "opened_at",
+            "opening_note",
+            "resolved_by_username",
+            "resolved_at",
+            "resolution_note",
+        ]
+
+    def get_resolved_by_username(self, review) -> str:
+        return getattr(review.resolved_by, "username", "") or ""
 
 
 class ShiftReportSerializer(serializers.ModelSerializer):
@@ -176,6 +212,7 @@ class ShiftReportSerializer(serializers.ModelSerializer):
     )
     approved_by_username = serializers.SerializerMethodField()
     reprint_count = serializers.SerializerMethodField()
+    cash_exception_review = serializers.SerializerMethodField()
 
     class Meta:
         model = ShiftReport
@@ -186,6 +223,7 @@ class ShiftReportSerializer(serializers.ModelSerializer):
             # Verbatim. HQ reads what was counted and signed, never a
             # recomputation against today's data.
             "snapshot", "exceptions", "reprint_count",
+            "cash_exception_review",
         ]
 
     def get_approved_by_username(self, report) -> str:
@@ -193,6 +231,13 @@ class ShiftReportSerializer(serializers.ModelSerializer):
 
     def get_reprint_count(self, report) -> int:
         return report.reprints.count()
+
+    def get_cash_exception_review(self, report):
+        try:
+            review = report.cash_exception_review
+        except CashExceptionReview.DoesNotExist:
+            return None
+        return CashExceptionReviewSerializer(review).data
 
 
 class ShiftReportReprintSerializer(serializers.ModelSerializer):
@@ -243,3 +288,7 @@ class RegisterCloseRequestSerializer(ReportRequestSerializer):
         child=serializers.IntegerField(min_value=0), required=False, default=dict
     )
     reason = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class CashExceptionReviewRequestSerializer(serializers.Serializer):
+    note = serializers.CharField()

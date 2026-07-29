@@ -9,7 +9,16 @@ from django.utils import timezone
 
 from .authority import RegisterAuthorityService
 from .cash_control import money
-from .models import BusinessDay, CashDeclaration, CashMovement, OperatorShift, PosRegister, RegisterSession
+from .models import (
+    BusinessDay,
+    CashDeclaration,
+    CashExceptionReview,
+    CashMovement,
+    OperatorShift,
+    PosRegister,
+    RegisterSession,
+    ShiftReport,
+)
 from .reporting import ShiftReportService
 
 
@@ -227,6 +236,97 @@ class CashMovementService:
         movement.approved_at = timezone.now()
         movement.save(update_fields=["approved_by", "approved_at", "updated_at"])
         return movement
+
+
+class CashExceptionReviewService:
+    @staticmethod
+    def _require_exception(report: ShiftReport) -> None:
+        variance = (report.snapshot or {}).get("variance") or {}
+        if report.report_type != ShiftReport.TYPE_Z:
+            raise ValidationError("Only a final Z report can enter cash reconciliation.")
+        if (
+            report.closure_type != ShiftReport.CLOSURE_FORCED
+            and not variance.get("requires_explanation")
+        ):
+            raise ValidationError(
+                "This Z report has no variance or forced-closure exception to review."
+            )
+
+    @classmethod
+    @transaction.atomic
+    def start(cls, *, report: ShiftReport, actor, note: str) -> CashExceptionReview:
+        _require(
+            actor,
+            report.tenant_id,
+            "pos.cash.reconciliation.review",
+            ("pos.shift.manage",),
+        )
+        report = ShiftReport.all_objects.select_for_update().get(
+            tenant_id=report.tenant_id,
+            pk=report.pk,
+        )
+        cls._require_exception(report)
+        opening_note = str(note or "").strip()
+        if not opening_note:
+            raise ValidationError("An investigation opening note is required.")
+        if report.generated_by_id == getattr(actor, "pk", None):
+            raise PermissionDenied(
+                "The person who generated the Z report cannot review their own cash exception."
+            )
+        existing = CashExceptionReview.all_objects.filter(
+            tenant_id=report.tenant_id,
+            report=report,
+        ).first()
+        if existing is not None:
+            return existing
+        return CashExceptionReview.all_objects.create(
+            tenant_id=report.tenant_id,
+            report=report,
+            opened_by=actor,
+            opening_note=opening_note,
+        )
+
+    @staticmethod
+    @transaction.atomic
+    def resolve(*, review: CashExceptionReview, actor, note: str) -> CashExceptionReview:
+        _require(
+            actor,
+            review.tenant_id,
+            "pos.cash.reconciliation.resolve",
+            ("pos.shift.manage",),
+        )
+        review = (
+            CashExceptionReview.all_objects.select_for_update()
+            .select_related("report")
+            .get(tenant_id=review.tenant_id, pk=review.pk)
+        )
+        if review.status == CashExceptionReview.STATUS_RESOLVED:
+            return review
+        resolution_note = str(note or "").strip()
+        if not resolution_note:
+            raise ValidationError("A reconciliation resolution note is required.")
+        if review.opened_by_id == getattr(actor, "pk", None):
+            raise PermissionDenied(
+                "The person who opened the cash investigation cannot resolve it."
+            )
+        if review.report.generated_by_id == getattr(actor, "pk", None):
+            raise PermissionDenied(
+                "The person who generated the Z report cannot resolve their own cash exception."
+            )
+        review.status = CashExceptionReview.STATUS_RESOLVED
+        review.resolved_by = actor
+        review.resolved_at = timezone.now()
+        review.resolution_note = resolution_note
+        review.save(
+            update_fields=[
+                "status",
+                "resolved_by",
+                "resolved_at",
+                "resolution_note",
+                "updated_at",
+            ]
+        )
+        return review
 
 
 class OperatorShiftService:

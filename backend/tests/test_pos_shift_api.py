@@ -17,6 +17,7 @@ from apps.organizations.models import Location, Organization
 from apps.pos_shift.models import (
     BusinessDay,
     CashDeclaration,
+    CashExceptionReview,
     CashMovement,
     OperatorShift,
     PosRegister,
@@ -255,6 +256,8 @@ class TestWorkbenchLists:
         )
 
         assert response.status_code == 201
+        assert response.json()["register_code"] == register.code
+        assert response.json()["register_session_id"] == str(world["session"].id)
         movement = CashMovement.all_objects.get(pk=response.json()["id"])
         assert movement.register_session_id == world["session"].id
         assert movement.operator_shift_id == OperatorShift.all_objects.get(
@@ -262,6 +265,16 @@ class TestWorkbenchLists:
             register_session=world["session"],
         ).id
         assert movement.signed_amount == Decimal("-1200.00")
+
+    def test_cash_declaration_lists_its_accountable_register(self, world):
+        declaration = declare(world, "OPENING", "5000.00")
+
+        body = rows(world["client"].get("/api/pos/shift/cash-declarations/"))
+
+        served = next(row for row in body if row["id"] == str(declaration.pk))
+        assert served["register_code"] == world["register"].code
+        assert served["register_session_id"] == str(world["session"].pk)
+        assert served["declared_by_username"] == world["operator"].username
 
     def test_x_report_endpoint_does_not_close_the_register(self, world):
         operator = world["operator"]
@@ -359,6 +372,98 @@ class TestWorkbenchLists:
             session=world["session"], actor=world["operator"], declared_cash=cash("5000.00")
         )
         assert rows(world["client"].get("/api/pos/shift/reports/variances/")) == []
+
+    def test_cash_exception_review_requires_two_independent_reviewers(self, world):
+        declare(world, "OPENING", "5000.00")
+        declare(world, "CLOSING", "4900.00")
+        report = ShiftReportService.finalise_z(
+            session=world["session"],
+            actor=world["operator"],
+            declared_cash=cash("4900.00"),
+        )
+        investigator = world["supervisor"]
+        resolver = User.objects.create_user(
+            username="cash-finance",
+            password="pw",
+            tenant=world["tenant"],
+            is_superuser=True,
+        )
+        investigator.is_superuser = True
+        investigator.save(update_fields=["is_superuser"])
+        world["client"].force_authenticate(user=investigator)
+
+        started = world["client"].post(
+            f"/api/pos/shift/reports/{report.pk}/start-cash-review/",
+            {"note": "Check denomination sheet and safe-drop custody reference."},
+            format="json",
+        )
+
+        assert started.status_code == 201
+        assert started.json()["status"] == CashExceptionReview.STATUS_UNDER_REVIEW
+        same_person = world["client"].post(
+            f"/api/pos/shift/reports/{report.pk}/resolve-cash-review/",
+            {"note": "Attempted self-resolution."},
+            format="json",
+        )
+        assert same_person.status_code == 403
+
+        world["client"].force_authenticate(user=resolver)
+        resolved = world["client"].post(
+            f"/api/pos/shift/reports/{report.pk}/resolve-cash-review/",
+            {
+                "note": (
+                    "Verified KES 100 denomination-count error against sheet DC-17; "
+                    "operator coached and deposit corrected."
+                )
+            },
+            format="json",
+        )
+
+        assert resolved.status_code == 200
+        assert resolved.json()["status"] == CashExceptionReview.STATUS_RESOLVED
+        served = rows(world["client"].get("/api/pos/shift/reports/variances/"))[0]
+        assert served["cash_exception_review"]["status"] == "RESOLVED"
+        assert served["cash_exception_review"]["opened_by_username"] == investigator.username
+        assert served["cash_exception_review"]["resolved_by_username"] == resolver.username
+
+    def test_z_report_generator_cannot_review_their_own_variance(self, world):
+        declare(world, "OPENING", "5000.00")
+        declare(world, "CLOSING", "4900.00")
+        report = ShiftReportService.finalise_z(
+            session=world["session"],
+            actor=world["operator"],
+            declared_cash=cash("4900.00"),
+        )
+        world["operator"].is_superuser = True
+        world["operator"].save(update_fields=["is_superuser"])
+
+        response = world["client"].post(
+            f"/api/pos/shift/reports/{report.pk}/start-cash-review/",
+            {"note": "I reviewed my own report."},
+            format="json",
+        )
+
+        assert response.status_code == 403
+
+    def test_balanced_normal_z_cannot_enter_exception_review(self, world):
+        declare(world, "OPENING", "5000.00")
+        declare(world, "CLOSING", "5000.00")
+        report = ShiftReportService.finalise_z(
+            session=world["session"],
+            actor=world["operator"],
+            declared_cash=cash("5000.00"),
+        )
+        world["supervisor"].is_superuser = True
+        world["supervisor"].save(update_fields=["is_superuser"])
+        world["client"].force_authenticate(user=world["supervisor"])
+
+        response = world["client"].post(
+            f"/api/pos/shift/reports/{report.pk}/start-cash-review/",
+            {"note": "There is nothing exceptional here."},
+            format="json",
+        )
+
+        assert response.status_code == 400
 
     def test_unapproved_cash_movements_can_be_filtered(self, world):
         CashMovement.all_objects.create(

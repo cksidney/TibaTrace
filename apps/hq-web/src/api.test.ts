@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  approveCashMovement,
   loadSystemHealth,
   HQApiError,
   executeHQBusinessAction,
@@ -11,12 +12,16 @@ import {
   loadHQOverview,
   loadHQWorkspace,
   loadInsurers,
+  loadPosRegisters,
+  setHQTenantContext,
+  startCashExceptionReview,
   updateGovernmentCatalogueSelection,
   varianceNeedsExplanation,
 } from './api.js';
 import type { HQBusinessAction, HQWorkItem } from './api.js';
 
 afterEach(() => {
+  setHQTenantContext('');
   vi.unstubAllGlobals();
 });
 
@@ -99,6 +104,35 @@ describe('loadHQOverview', () => {
 
     await expect(loadHQOverview()).rejects.toMatchObject({ status: 403 });
   });
+
+  it('sends the selected platform-admin tenant workspace', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({
+        attention_items: [],
+        data_summary: [],
+        generated_at: '2026-07-29T09:00:00Z',
+        is_platform_overview: false,
+        metrics: [],
+        network_items: [],
+        scope_description: 'Tenant operations',
+        scope_label: 'Tenant overview',
+        tenant_id: 'tenant-123',
+        tenant_name: 'Demo Pharmacy',
+        user_name: 'HQ Admin',
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    setHQTenantContext('tenant-123');
+
+    await loadHQOverview();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/hq/overview/',
+      expect.objectContaining({
+        headers: expect.objectContaining({ 'X-Tenant-ID': 'tenant-123' }),
+      }),
+    );
+  });
 });
 
 describe('workbench collections', () => {
@@ -142,6 +176,77 @@ describe('workbench collections', () => {
     // Showing them together is how transport acceptance starts looking like a
     // debt.
     expect(called[0]).not.toBe(called[1]);
+  });
+});
+
+describe('cash control routes', () => {
+  it('loads registers from the authoritative POS shift namespace', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify([]), {
+        headers: { 'Content-Type': 'application/json' },
+        status: 200,
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    setHQTenantContext('tenant-123');
+
+    await loadPosRegisters();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/pos/shift/registers/',
+      expect.objectContaining({
+        headers: expect.objectContaining({ 'X-Tenant-ID': 'tenant-123' }),
+      }),
+    );
+  });
+
+  it('approves a movement through the POS shift route', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ id: 'movement-1' }), {
+        headers: { 'Content-Type': 'application/json' },
+        status: 200,
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    setHQTenantContext('tenant-123');
+
+    await approveCashMovement('movement-1', 'csrf-123');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/pos/shift/cash-movements/movement-1/approve/',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          'X-CSRFToken': 'csrf-123',
+          'X-Tenant-ID': 'tenant-123',
+        }),
+        method: 'POST',
+      }),
+    );
+  });
+
+  it('starts exception review through the POS shift report route', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ id: 'review-1', status: 'UNDER_REVIEW' }), {
+        headers: { 'Content-Type': 'application/json' },
+        status: 200,
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    setHQTenantContext('tenant-123');
+
+    await startCashExceptionReview('report-1', 'Investigate till variance.', 'csrf-123');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/pos/shift/reports/report-1/start-cash-review/',
+      expect.objectContaining({
+        body: JSON.stringify({ note: 'Investigate till variance.' }),
+        headers: expect.objectContaining({
+          'X-CSRFToken': 'csrf-123',
+          'X-Tenant-ID': 'tenant-123',
+        }),
+        method: 'POST',
+      }),
+    );
   });
 });
 

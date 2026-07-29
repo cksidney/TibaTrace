@@ -85,13 +85,15 @@ class PriceBookEntrySerializer(serializers.ModelSerializer):
 
 class PriceAssignmentSerializer(serializers.ModelSerializer):
     price_book_code = serializers.CharField(source="price_book.code", read_only=True)
+    branch_code = serializers.CharField(source="branch.code", read_only=True, allow_null=True)
+    branch_name = serializers.CharField(source="branch.name", read_only=True, allow_null=True)
 
     class Meta:
         model = PriceAssignment
         fields = [
             "id", "price_book_code", "scope_type", "branch", "branch_group",
-            "region", "customer_segment", "priority", "valid_from", "valid_to",
-            "is_active",
+            "branch_code", "branch_name", "region", "customer_segment",
+            "priority", "valid_from", "valid_to", "is_active",
         ]
 
 

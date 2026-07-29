@@ -5,6 +5,21 @@ export interface DashboardMetric {
   readonly accent: string;
 }
 
+let activeTenantContext = '';
+
+export function setHQTenantContext(tenantId: string): void {
+  activeTenantContext = tenantId.trim();
+}
+
+export function getHQTenantContext(): string {
+  return activeTenantContext;
+}
+
+function tenantHeaders(tenantId = ''): Record<string, string> {
+  const resolvedTenant = tenantId.trim() || activeTenantContext;
+  return resolvedTenant ? { 'X-Tenant-ID': resolvedTenant } : {};
+}
+
 export interface AttentionItem {
   readonly label: string;
   readonly value: number;
@@ -348,7 +363,7 @@ export class HQApiError extends Error {
 export async function loadHQOverview(signal?: AbortSignal): Promise<HQOverview> {
   const request: RequestInit = {
     credentials: 'include',
-    headers: { Accept: 'application/json' },
+    headers: { Accept: 'application/json', ...tenantHeaders() },
   };
   if (signal) request.signal = signal;
 
@@ -362,7 +377,7 @@ export async function loadHQOverview(signal?: AbortSignal): Promise<HQOverview> 
 export async function loadHQWorkspace(signal?: AbortSignal): Promise<HQWorkspaceData> {
   const request: RequestInit = {
     credentials: 'include',
-    headers: { Accept: 'application/json' },
+    headers: { Accept: 'application/json', ...tenantHeaders() },
   };
   if (signal) request.signal = signal;
 
@@ -379,7 +394,7 @@ export async function executeHQBusinessAction(
   csrfToken: string,
   values: Readonly<Record<string, boolean | number | string>>,
 ): Promise<unknown> {
-  const tenantHeaders = item.tenant_id ? { 'X-Tenant-ID': item.tenant_id } : {};
+  const actionTenantHeaders = tenantHeaders(item.tenant_id);
   const payload = expandActionValues(values);
   const response = await fetch(action.path, {
     body: JSON.stringify(payload),
@@ -388,7 +403,7 @@ export async function executeHQBusinessAction(
       Accept: 'application/json',
       'Content-Type': 'application/json',
       'X-CSRFToken': csrfToken,
-      ...tenantHeaders,
+      ...actionTenantHeaders,
     },
     method: action.method,
   });
@@ -475,7 +490,7 @@ export function collectionRows<T>(body: readonly T[] | Paginated<T>): readonly T
 async function getCollection<T>(path: string, signal?: AbortSignal): Promise<readonly T[]> {
   const request: RequestInit = {
     credentials: 'include',
-    headers: { Accept: 'application/json' },
+    headers: { Accept: 'application/json', ...tenantHeaders() },
   };
   if (signal) request.signal = signal;
 
@@ -498,7 +513,7 @@ async function getTenantCollection<T>(
     credentials: 'include',
     headers: {
       Accept: 'application/json',
-      'X-Tenant-ID': tenantId,
+      ...tenantHeaders(tenantId),
     },
   };
   if (signal) request.signal = signal;
@@ -523,7 +538,7 @@ async function mutateJson<T>(
       Accept: 'application/json',
       'Content-Type': 'application/json',
       'X-CSRFToken': csrfToken,
-      ...(tenantId ? { 'X-Tenant-ID': tenantId } : {}),
+      ...tenantHeaders(tenantId),
     },
     method,
   });
@@ -1104,22 +1119,33 @@ export interface PosRegisterItem {
 
 export interface CashMovementItem {
   readonly id: string;
+  readonly register_session_id: string;
+  readonly register_code: string;
   readonly kind: string;
   readonly amount: string;
+  readonly signed_amount: string;
+  readonly affects_expected_cash: boolean;
   readonly currency: string;
   readonly reason_code: string;
   readonly description: string;
   readonly reference: string;
+  readonly created_by_username: string;
+  readonly approved_by_username: string;
+  readonly approved_at: string | null;
   readonly created_at: string;
 }
 
 export interface CashDeclarationItem {
   readonly id: string;
+  readonly register_session_id: string;
+  readonly register_code: string;
   readonly kind: string;
   readonly declared_amount: string;
   readonly currency: string;
   readonly attempt: number;
+  readonly declared_by_username: string;
   readonly confirmed_at: string | null;
+  readonly is_confirmed: boolean;
   readonly reason: string;
 }
 
@@ -1133,16 +1159,26 @@ export interface BusinessDayItem {
 }
 
 export const loadPosRegisters = (signal?: AbortSignal) =>
-  getCollection<PosRegisterItem>('/api/pos-shift/registers/', signal);
+  getCollection<PosRegisterItem>('/api/pos/shift/registers/', signal);
 
 export const loadCashMovements = (signal?: AbortSignal) =>
-  getCollection<CashMovementItem>('/api/pos-shift/cash-movements/', signal);
+  getCollection<CashMovementItem>('/api/pos/shift/cash-movements/', signal);
 
 export const loadCashDeclarations = (signal?: AbortSignal) =>
-  getCollection<CashDeclarationItem>('/api/pos-shift/cash-declarations/', signal);
+  getCollection<CashDeclarationItem>('/api/pos/shift/cash-declarations/', signal);
 
 export const loadBusinessDays = (signal?: AbortSignal) =>
-  getCollection<BusinessDayItem>('/api/pos-shift/business-days/', signal);
+  getCollection<BusinessDayItem>('/api/pos/shift/business-days/', signal);
+
+export const approveCashMovement = (
+  movementId: string,
+  csrfToken: string,
+) => mutateJson<CashMovementItem>(
+  `/api/pos/shift/cash-movements/${encodeURIComponent(movementId)}/approve/`,
+  'POST',
+  {},
+  csrfToken,
+);
 
 /* ── pricing ───────────────────────────────────────────────────────────────── */
 
@@ -1189,6 +1225,8 @@ export interface PriceAssignment {
   readonly price_book_code: string;
   readonly scope_type: string;
   readonly branch: string | null;
+  readonly branch_code: string | null;
+  readonly branch_name: string | null;
   readonly branch_group: string;
   readonly region: string;
   readonly customer_segment: string;
@@ -1355,7 +1393,7 @@ export async function resolvePrice(
 
   const request: RequestInit = {
     credentials: 'include',
-    headers: { Accept: 'application/json' },
+    headers: { Accept: 'application/json', ...tenantHeaders() },
   };
   if (signal) request.signal = signal;
 
@@ -1458,7 +1496,7 @@ export const loadServiceAccounts = (signal?: AbortSignal) =>
 export async function loadCapabilityMatrix(signal?: AbortSignal): Promise<CapabilityMatrixData> {
   const request: RequestInit = {
     credentials: 'include',
-    headers: { Accept: 'application/json' },
+    headers: { Accept: 'application/json', ...tenantHeaders() },
   };
   if (signal) request.signal = signal;
 
@@ -1610,7 +1648,7 @@ export async function loadGovernmentCatalogue(
     credentials: 'include',
     headers: {
       Accept: 'application/json',
-      ...(filters.tenantId ? { 'X-Tenant-ID': filters.tenantId } : {}),
+      ...tenantHeaders(filters.tenantId),
     },
   };
   if (signal) request.signal = signal;
@@ -1783,8 +1821,21 @@ export interface ShiftReportSummary {
   readonly closure_type: string;
   readonly closure_reason: string;
   readonly reprint_count: number;
+  readonly cash_exception_review: CashExceptionReview | null;
   /** The frozen figures as counted and signed. Rendered, never recomputed. */
   readonly snapshot: ShiftReportSnapshot;
+}
+
+export interface CashExceptionReview {
+  readonly id: string;
+  readonly report_number: string;
+  readonly status: 'UNDER_REVIEW' | 'RESOLVED';
+  readonly opened_by_username: string;
+  readonly opened_at: string;
+  readonly opening_note: string;
+  readonly resolved_by_username: string;
+  readonly resolved_at: string | null;
+  readonly resolution_note: string;
 }
 
 export interface ShiftReportSnapshot {
@@ -1809,6 +1860,10 @@ export interface ShiftReportSnapshot {
 export const loadOpenRegisterSessions = (signal?: AbortSignal) =>
   getCollection<RegisterSessionSummary>('/api/pos/shift/sessions/open/', signal);
 
+/** Sessions in a closing state without an authoritative final Z report. */
+export const loadUnclosedRegisterSessions = (signal?: AbortSignal) =>
+  getCollection<RegisterSessionSummary>('/api/pos/shift/sessions/unclosed/', signal);
+
 /** Z reports whose counted cash did not match expected. */
 export const loadCashVariances = (signal?: AbortSignal) =>
   getCollection<ShiftReportSummary>('/api/pos/shift/reports/variances/', signal);
@@ -1816,6 +1871,28 @@ export const loadCashVariances = (signal?: AbortSignal) =>
 /** Closures performed by somebody other than the accountable operator. */
 export const loadForcedClosures = (signal?: AbortSignal) =>
   getCollection<ShiftReportSummary>('/api/pos/shift/reports/forced-closures/', signal);
+
+export const startCashExceptionReview = (
+  reportId: string,
+  note: string,
+  csrfToken: string,
+) => mutateJson<CashExceptionReview>(
+  `/api/pos/shift/reports/${encodeURIComponent(reportId)}/start-cash-review/`,
+  'POST',
+  { note },
+  csrfToken,
+);
+
+export const resolveCashExceptionReview = (
+  reportId: string,
+  note: string,
+  csrfToken: string,
+) => mutateJson<CashExceptionReview>(
+  `/api/pos/shift/reports/${encodeURIComponent(reportId)}/resolve-cash-review/`,
+  'POST',
+  { note },
+  csrfToken,
+);
 
 /* ── display helpers ───────────────────────────────────────────────────────── */
 

@@ -475,6 +475,61 @@ class ShiftReport(TenantConsistencyMixin, TimestampedModel):
         return super().save(*args, **kwargs)
 
 
+class CashExceptionReview(TenantConsistencyMixin, TimestampedModel):
+    """Two-person investigation of a variance or forced register closure.
+
+    The signed Z report remains immutable. Review records sit beside it so an
+    investigation can progress without rewriting what the operator counted.
+    """
+
+    tenant_relation_fields = ("report",)
+
+    STATUS_UNDER_REVIEW = "UNDER_REVIEW"
+    STATUS_RESOLVED = "RESOLVED"
+    STATUSES = [
+        (STATUS_UNDER_REVIEW, "Under review"),
+        (STATUS_RESOLVED, "Resolved"),
+    ]
+
+    tenant = models.ForeignKey(
+        "tenancy.Tenant",
+        on_delete=models.CASCADE,
+        related_name="cash_exception_reviews",
+    )
+    report = models.OneToOneField(
+        ShiftReport,
+        on_delete=models.PROTECT,
+        related_name="cash_exception_review",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=STATUSES,
+        default=STATUS_UNDER_REVIEW,
+    )
+    opened_by = models.ForeignKey(
+        "identity.User",
+        on_delete=models.PROTECT,
+        related_name="+",
+    )
+    opened_at = models.DateTimeField(default=timezone.now)
+    opening_note = models.TextField()
+    resolved_by = models.ForeignKey(
+        "identity.User",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    resolution_note = models.TextField(blank=True, default="")
+
+    objects = StrictTenantManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        ordering = ["-opened_at"]
+
+
 class ShiftReportReprint(TenantConsistencyMixin, TimestampedModel):
     """A record that a report was printed again.
 

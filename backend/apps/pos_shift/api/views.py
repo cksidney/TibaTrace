@@ -21,6 +21,7 @@ from apps.pos_shift.authority import RegisterAuthorityService
 from apps.pos_shift.models import (
     BusinessDay,
     CashDeclaration,
+    CashExceptionReview,
     CashMovement,
     OperatorShift,
     PosRegister,
@@ -29,6 +30,7 @@ from apps.pos_shift.models import (
     ShiftReportReprint,
 )
 from apps.pos_shift.operations import (
+    CashExceptionReviewService,
     CashMovementService,
     OperatorShiftService,
     RegisterOpeningService,
@@ -39,6 +41,8 @@ from apps.prescription.pos_dispensing_api.serializers import PosDeviceHealthReco
 from .serializers import (
     BusinessDaySerializer,
     CashDeclarationSerializer,
+    CashExceptionReviewRequestSerializer,
+    CashExceptionReviewSerializer,
     CashMovementRequestSerializer,
     CashMovementSerializer,
     OperatorShiftActionRequestSerializer,
@@ -358,7 +362,10 @@ class CashDeclarationViewSet(TenantScopedViewSet):
     serializer_class = CashDeclarationSerializer
 
     def get_queryset(self):
-        queryset = super().get_queryset().select_related("declared_by")
+        queryset = super().get_queryset().select_related(
+            "declared_by",
+            "register_session__register",
+        )
         session = self.request.query_params.get("session")
         if session:
             queryset = queryset.filter(register_session_id=session)
@@ -370,7 +377,11 @@ class CashMovementViewSet(TenantScopedViewSet):
     serializer_class = CashMovementSerializer
 
     def get_queryset(self):
-        queryset = super().get_queryset().select_related("created_by", "approved_by")
+        queryset = super().get_queryset().select_related(
+            "created_by",
+            "approved_by",
+            "register_session__register",
+        )
         params = self.request.query_params
         if params.get("session"):
             queryset = queryset.filter(register_session_id=params["session"])
@@ -423,7 +434,13 @@ class ShiftReportViewSet(TenantScopedViewSet):
     def get_queryset(self):
         queryset = (
             super().get_queryset()
-            .select_related("register_session__register", "business_day", "generated_by")
+            .select_related(
+                "register_session__register",
+                "business_day",
+                "generated_by",
+                "cash_exception_review__opened_by",
+                "cash_exception_review__resolved_by",
+            )
             .prefetch_related("reprints")
         )
         params = self.request.query_params
@@ -462,6 +479,41 @@ class ShiftReportViewSet(TenantScopedViewSet):
             if variance.get("requires_explanation"):
                 reports.append(report)
         return Response(self.get_serializer(reports, many=True).data)
+
+    @action(detail=True, methods=["post"], url_path="start-cash-review")
+    def start_cash_review(self, request, pk=None):
+        serializer = CashExceptionReviewRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        review = _run(
+            lambda: CashExceptionReviewService.start(
+                report=self.get_object(),
+                actor=request.user,
+                note=serializer.validated_data["note"],
+            )
+        )
+        return Response(CashExceptionReviewSerializer(review).data, status=201)
+
+    @action(detail=True, methods=["post"], url_path="resolve-cash-review")
+    def resolve_cash_review(self, request, pk=None):
+        serializer = CashExceptionReviewRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        report = self.get_object()
+        review = CashExceptionReview.all_objects.filter(
+            tenant_id=report.tenant_id,
+            report=report,
+        ).first()
+        if review is None:
+            raise DRFValidationError(
+                "Start the cash investigation before recording its resolution."
+            )
+        resolved = _run(
+            lambda: CashExceptionReviewService.resolve(
+                review=review,
+                actor=request.user,
+                note=serializer.validated_data["note"],
+            )
+        )
+        return Response(CashExceptionReviewSerializer(resolved).data)
 
 
 class ShiftReportReprintViewSet(TenantScopedViewSet):

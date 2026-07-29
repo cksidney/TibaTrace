@@ -133,7 +133,7 @@ class PriceAssignmentViewSet(TenantScopedReadOnly):
     serializer_class = PriceAssignmentSerializer
 
     def get_queryset(self):
-        queryset = super().get_queryset().select_related("price_book")
+        queryset = super().get_queryset().select_related("price_book", "branch")
         branch = self.request.query_params.get("branch")
         if branch:
             queryset = queryset.filter(branch_id=branch)

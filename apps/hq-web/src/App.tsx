@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { CSSProperties, FormEvent } from 'react';
 
 import {
+  approveCashMovement,
   CLAIM_STATES,
   decidePriceOverride,
   HQApiError,
@@ -26,6 +27,7 @@ import {
   loadCashDeclarations,
   loadBusinessDays,
   loadOpenRegisterSessions,
+  loadUnclosedRegisterSessions,
   loadClaims,
   loadClinicalProducts,
   loadManufacturedProducts,
@@ -38,7 +40,10 @@ import {
   loadPriceOverrides,
   loadPriceLocks,
   resolvePrice,
+  resolveCashExceptionReview,
   saveTenantPriceDraft,
+  setHQTenantContext,
+  startCashExceptionReview,
   loadRolesDetail,
   loadUsers,
   loadUserRoles,
@@ -206,6 +211,8 @@ const viewMeta: Record<WorkspaceView, { readonly eyebrow: string; readonly title
 export function App() {
   const [session, setSession] = useState<SessionState | null>(null);
   const [overview, setOverview] = useState<HQOverview | null>(null);
+  const [tenantOptions, setTenantOptions] = useState<HQOverview['network_items']>([]);
+  const [selectedTenantId, setSelectedTenantId] = useState('');
   const [error, setError] = useState<unknown>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshFailed, setRefreshFailed] = useState(false);
@@ -227,13 +234,35 @@ export function App() {
   useEffect(() => {
     if (!session?.authenticated) return undefined;
     const controller = new AbortController();
-    void loadHQOverview(controller.signal)
-      .then(setOverview)
+    void (async () => {
+      const user = session.user;
+      if (user?.is_platform_admin) {
+        setHQTenantContext('');
+        const platformOverview = await loadHQOverview(controller.signal);
+        setTenantOptions(platformOverview.network_items);
+        const storedTenant = sessionStorage.getItem('hq-tenant-context') ?? '';
+        const validStoredTenant = platformOverview.network_items.some(
+          (tenant) => tenant.id === storedTenant,
+        ) ? storedTenant : '';
+        setSelectedTenantId(validStoredTenant);
+        setHQTenantContext(validStoredTenant);
+        setOverview(
+          validStoredTenant
+            ? await loadHQOverview(controller.signal)
+            : platformOverview,
+        );
+        return;
+      }
+      const tenantId = user?.tenant_id ?? '';
+      setSelectedTenantId(tenantId);
+      setHQTenantContext(tenantId);
+      setOverview(await loadHQOverview(controller.signal));
+    })()
       .catch((reason: unknown) => {
         if (!controller.signal.aborted) setError(reason);
       });
     return () => controller.abort();
-  }, [session?.authenticated]);
+  }, [session?.authenticated, session?.user]);
 
   const endSession = useCallback(async () => {
     await signOut(session?.csrf_token ?? '');
@@ -241,9 +270,31 @@ export function App() {
     // who just left, and leaving it on screen while a new sign-in happens shows
     // one user another's claims.
     setOverview(null);
+    setTenantOptions([]);
+    setSelectedTenantId('');
+    setHQTenantContext('');
     setError(null);
     setSession(await readSession());
   }, [session?.csrf_token]);
+
+  const selectTenant = useCallback(async (tenantId: string) => {
+    const previousTenant = selectedTenantId;
+    setRefreshing(true);
+    setRefreshFailed(false);
+    setHQTenantContext(tenantId);
+    setSelectedTenantId(tenantId);
+    sessionStorage.setItem('hq-tenant-context', tenantId);
+    try {
+      setOverview(await loadHQOverview());
+    } catch {
+      setHQTenantContext(previousTenant);
+      setSelectedTenantId(previousTenant);
+      sessionStorage.setItem('hq-tenant-context', previousTenant);
+      setRefreshFailed(true);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [selectedTenantId]);
 
   const refresh = useCallback(async () => {
     setRefreshing(true);
@@ -275,29 +326,41 @@ export function App() {
   return (
     <Dashboard
       csrfToken={session.csrf_token}
+      isPlatformAdmin={Boolean(session.user?.is_platform_admin)}
       overview={overview}
+      onSelectTenant={selectTenant}
       onSignOut={endSession}
       onRefresh={refresh}
       refreshFailed={refreshFailed}
       refreshing={refreshing}
+      selectedTenantId={selectedTenantId}
+      tenantOptions={tenantOptions}
     />
   );
 }
 
 function Dashboard({
   csrfToken,
+  isPlatformAdmin,
   overview,
   onRefresh,
+  onSelectTenant,
   onSignOut,
   refreshFailed,
   refreshing,
+  selectedTenantId,
+  tenantOptions,
 }: {
   readonly csrfToken: string;
+  readonly isPlatformAdmin: boolean;
   readonly overview: HQOverview;
   readonly onRefresh: () => Promise<void>;
+  readonly onSelectTenant: (tenantId: string) => Promise<void>;
   readonly onSignOut: () => Promise<void>;
   readonly refreshFailed: boolean;
   readonly refreshing: boolean;
+  readonly selectedTenantId: string;
+  readonly tenantOptions: HQOverview['network_items'];
 }) {
   const [activeView, setActiveView] = useState<WorkspaceView>(() => viewFromHash());
   const [workspaceData, setWorkspaceData] = useState<HQWorkspaceData | null>(null);
@@ -381,6 +444,24 @@ function Dashboard({
             <span>{overview.scope_label}</span>
             <strong>{overview.tenant_name}</strong>
           </div>
+          {isPlatformAdmin ? (
+            <label className="workspace-switcher">
+              <span>Operating workspace</span>
+              <select
+                aria-label="Operating tenant workspace"
+                disabled={refreshing}
+                onChange={(event) => void onSelectTenant(event.target.value)}
+                value={selectedTenantId}
+              >
+                <option value="">All tenants — platform view</option>
+                {tenantOptions.map((tenant) => (
+                  <option key={tenant.id} value={tenant.id}>
+                    {tenant.name} · {titleCase(tenant.status)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
           <button className="search-trigger" onClick={() => setCommandOpen(true)} type="button">
             <Icon name="search" />
             <span>Search HQ or jump to a workspace</span>
@@ -426,7 +507,7 @@ function Dashboard({
                 <span>{initials(overview.user_name)}</span>
                 <div>
                   <strong>{displayName(overview.user_name)}</strong>
-                  <small>{overview.is_platform_overview ? 'Platform administrator' : 'Tenant operator'}</small>
+                  <small>{isPlatformAdmin ? 'Platform administrator' : 'Tenant operator'}</small>
                 </div>
                 <Icon name="chevron" />
               </button>
@@ -467,8 +548,8 @@ function Dashboard({
           {activeView === 'catalogue' ? <CatalogueView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} overview={overview} /> : null}
           {activeView === 'operations' ? <OperationsView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} overview={overview} /> : null}
           {activeView === 'commerce' ? <CommerceView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} /> : null}
-          {activeView === 'pricing' ? <PricingView csrfToken={csrfToken} /> : null}
-          {activeView === 'cash' ? <CashControlView csrfToken={csrfToken} /> : null}
+          {activeView === 'pricing' ? <PricingView csrfToken={csrfToken} tenantId={overview.tenant_id} /> : null}
+          {activeView === 'cash' ? <CashControlView csrfToken={csrfToken} tenantId={overview.tenant_id} /> : null}
           {activeView === 'insurance' ? <InsuranceView /> : null}
           {activeView === 'clinical' ? <ClinicalView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} overview={overview} /> : null}
           {activeView === 'governance' ? <GovernanceView data={workspaceData} failed={workspaceFailed} /> : null}
@@ -681,15 +762,49 @@ function OperationsView({
   return <ProcurementWorkspace csrfToken={csrfToken} overview={overview} />;
 }
 
-function PricingView({ csrfToken }: { readonly csrfToken: string }) {
+function PricingView({
+  csrfToken,
+  tenantId,
+}: {
+  readonly csrfToken: string;
+  readonly tenantId: string;
+}) {
+  if (!tenantId) {
+    return <TenantWorkspaceRequired domain="pricing control" />;
+  }
+  return <TenantPricingView csrfToken={csrfToken} tenantId={tenantId} />;
+}
+
+function TenantPricingView({
+  csrfToken,
+  tenantId,
+}: {
+  readonly csrfToken: string;
+  readonly tenantId: string;
+}) {
   const [books, setBooks] = useState<readonly PriceBookSummary[] | null>(null);
   const [overrides, setOverrides] = useState<readonly ManualPriceOverride[] | null>(null);
   const [locks, setLocks] = useState<readonly PriceLock[] | null>(null);
   const [appliedPrices, setAppliedPrices] = useState<readonly AppliedPriceSnapshot[] | null>(null);
   const [assignments, setAssignments] = useState<readonly PriceAssignment[] | null>(null);
+  const [tenantSkus, setTenantSkus] = useState<readonly HQSku[] | null>(null);
   const [failed, setFailed] = useState(false);
+  const [pricingReload, setPricingReload] = useState(0);
+  const [priceDraftOpen, setPriceDraftOpen] = useState(false);
+  const [priceDraftSku, setPriceDraftSku] = useState('');
+  const [priceDraftAmount, setPriceDraftAmount] = useState('');
+  const [priceDraftFloor, setPriceDraftFloor] = useState('');
+  const [priceDraftTaxInclusive, setPriceDraftTaxInclusive] = useState(true);
+  const [priceDraftBusy, setPriceDraftBusy] = useState(false);
+  const [priceDraftError, setPriceDraftError] = useState('');
+  const [priceNotice, setPriceNotice] = useState('');
   const [busyOverrideId, setBusyOverrideId] = useState<string | null>(null);
   const [overrideError, setOverrideError] = useState('');
+  const [overrideDecision, setOverrideDecision] = useState<{
+    readonly decision: 'approve' | 'reject';
+    readonly override: ManualPriceOverride;
+  } | null>(null);
+  const [overrideReason, setOverrideReason] = useState('');
 
   // Selected state for versions and entries
   const [selectedBook, setSelectedBook] = useState<PriceBookSummary | null>(null);
@@ -728,22 +843,25 @@ function PricingView({ csrfToken }: { readonly csrfToken: string }) {
       loadPriceLocks(controller.signal),
       loadAppliedPrices(controller.signal),
       loadPriceAssignments(controller.signal),
+      loadTenantSkus(tenantId, controller.signal),
     ])
-      .then(([b, o, l, a, ass]) => {
+      .then(([b, o, l, a, ass, skus]) => {
         setBooks(b);
         setOverrides(o);
         setLocks(l);
         setAppliedPrices(a);
         setAssignments(ass);
-        if (b.length > 0 && !selectedBook) {
-          setSelectedBook(b[0] ?? null);
-        }
+        setTenantSkus(skus);
+        setSelectedBook((current) => (
+          b.find((book) => book.id === current?.id) ?? b[0] ?? null
+        ));
+        setFailed(false);
       })
       .catch(() => {
         if (!controller.signal.aborted) setFailed(true);
       });
     return () => controller.abort();
-  }, []);
+  }, [pricingReload, tenantId]);
 
   // Fetch versions when selectedBook changes
   useEffect(() => {
@@ -804,7 +922,7 @@ function PricingView({ csrfToken }: { readonly csrfToken: string }) {
   };
 
   if (failed) return <Unavailable />;
-  if (!books || !overrides || !locks || !appliedPrices || !assignments) {
+  if (!books || !overrides || !locks || !appliedPrices || !assignments || !tenantSkus) {
     return <p className="muted-cell">Loading pricing & commercial governance data…</p>;
   }
 
@@ -815,6 +933,45 @@ function PricingView({ csrfToken }: { readonly csrfToken: string }) {
 
   return (
     <>
+      <article className="panel price-control-guide">
+        <div className="price-control-guide-head">
+          <div>
+            <p className="eyebrow">Controlled selling-price workflow</p>
+            <h2>From tenant catalogue to a price every till can charge</h2>
+            <p>
+              Prices are prepared in a draft, independently approved, then published.
+              Tills only resolve active or scheduled versions assigned to their scope.
+            </p>
+          </div>
+          <button
+            className="primary-button"
+            disabled={tenantSkus.length === 0}
+            onClick={() => {
+              setPriceDraftError('');
+              setPriceDraftOpen(true);
+            }}
+            type="button"
+          >
+            <Icon name="database" />
+            Create or update price draft
+          </button>
+        </div>
+        <div className="price-control-steps" aria-label="Price control workflow">
+          <div><span>1</span><strong>Prepare</strong><small>Select a tenant SKU and set its selling price and floor.</small></div>
+          <div><span>2</span><strong>Submit</strong><small>Lock the draft and send the complete version for review.</small></div>
+          <div><span>3</span><strong>Approve</strong><small>A different authorised person checks the version.</small></div>
+          <div><span>4</span><strong>Publish</strong><small>Make approved prices available from their effective date.</small></div>
+          <div><span>5</span><strong>Resolve</strong><small>Verify the exact branch and SKU price before tills use it.</small></div>
+        </div>
+        {tenantSkus.length === 0 ? (
+          <p className="inline-alert" role="status">
+            <Icon name="alert" />
+            No governed tenant SKU is available. Select a government catalogue item and complete its commercial SKU first.
+          </p>
+        ) : null}
+        {priceNotice ? <p className="inline-alert" role="status"><Icon name="check" /> {priceNotice}</p> : null}
+      </article>
+
       <section className="metric-grid network-metrics" aria-label="Price book totals">
         <SummaryCard icon="database" label="Price books" value={books.length} detail={`${inert.length} without live version`} />
         <SummaryCard
@@ -1133,6 +1290,57 @@ function PricingView({ csrfToken }: { readonly csrfToken: string }) {
         </article>
       </section>
 
+      <article className="panel" style={{ marginTop: '24px' }}>
+        <PanelHeader eyebrow="Resolution Scope" title="Price Book Assignments" />
+        <p className="panel-note">
+          Assignments decide which book is considered for a tenant, branch, group or customer
+          scope. Higher-priority books win only within the same scope; a true tie is refused.
+        </p>
+        {assignments.length === 0 ? (
+          <EmptyState
+            detail="Saving the first tenant retail draft creates its default tenant assignment automatically."
+            icon="building"
+            title="No price assignments"
+          />
+        ) : (
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Price Book</th>
+                  <th>Scope</th>
+                  <th>Target</th>
+                  <th>Priority</th>
+                  <th>Validity</th>
+                  <th>State</th>
+                </tr>
+              </thead>
+              <tbody>
+                {assignments.map((assignment) => {
+                  const target = assignment.branch_code
+                    ? `${assignment.branch_code} — ${assignment.branch_name ?? 'Branch'}`
+                    : assignment.branch_group || assignment.region || assignment.customer_segment || 'Whole tenant';
+                  return (
+                    <tr key={assignment.id}>
+                      <td><code>{assignment.price_book_code}</code></td>
+                      <td><strong>{titleCase(assignment.scope_type)}</strong></td>
+                      <td>{target}</td>
+                      <td>{assignment.priority}</td>
+                      <td>
+                        <small>
+                          {assignment.valid_from ?? 'Immediately'} → {assignment.valid_to ?? 'No end date'}
+                        </small>
+                      </td>
+                      <td><StatusBadge value={assignment.is_active ? 'ACTIVE' : 'INACTIVE'} /></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </article>
+
       {/* Section 3: Manual Supervisor Overrides & Applied Price Audit */}
       <section className="content-grid content-grid-primary" style={{ marginTop: '24px' }}>
         <article className="panel">
@@ -1183,19 +1391,9 @@ function PricingView({ csrfToken }: { readonly csrfToken: string }) {
                               <button
                                 className="segmented-option is-active"
                                 disabled={busyOverrideId === ov.id}
-                                onClick={async () => {
-                                  setBusyOverrideId(ov.id);
-                                  setOverrideError('');
-                                  try {
-                                    await decidePriceOverride(ov.id, 'approve', csrfToken);
-                                    fetchOverrides();
-                                  } catch (reason) {
-                                    setOverrideError(
-                                      reason instanceof Error ? reason.message : 'Override approval failed.',
-                                    );
-                                  } finally {
-                                    setBusyOverrideId(null);
-                                  }
+                                onClick={() => {
+                                  setOverrideReason('');
+                                  setOverrideDecision({ decision: 'approve', override: ov });
                                 }}
                                 style={{ padding: '2px 8px', fontSize: '0.72rem' }}
                                 type="button"
@@ -1205,24 +1403,9 @@ function PricingView({ csrfToken }: { readonly csrfToken: string }) {
                               <button
                                 className="segmented-option"
                                 disabled={busyOverrideId === ov.id}
-                                onClick={async () => {
-                                  setBusyOverrideId(ov.id);
-                                  setOverrideError('');
-                                  try {
-                                    await decidePriceOverride(
-                                      ov.id,
-                                      'reject',
-                                      csrfToken,
-                                      'Rejected by supervisor',
-                                    );
-                                    fetchOverrides();
-                                  } catch (reason) {
-                                    setOverrideError(
-                                      reason instanceof Error ? reason.message : 'Override rejection failed.',
-                                    );
-                                  } finally {
-                                    setBusyOverrideId(null);
-                                  }
+                                onClick={() => {
+                                  setOverrideReason('');
+                                  setOverrideDecision({ decision: 'reject', override: ov });
                                 }}
                                 style={{ padding: '2px 8px', fontSize: '0.72rem', color: '#f43f5e' }}
                                 type="button"
@@ -1324,6 +1507,221 @@ function PricingView({ csrfToken }: { readonly csrfToken: string }) {
           </div>
         )}
       </article>
+      {priceDraftOpen ? (
+        <div className="business-dialog-backdrop" role="presentation">
+          <section aria-labelledby="price-draft-title" aria-modal="true" className="business-dialog" role="dialog">
+            <header>
+              <div>
+                <p className="eyebrow">Prepare controlled prices</p>
+                <h2 id="price-draft-title">Create or update tenant retail draft</h2>
+              </div>
+              <button
+                aria-label="Close dialog"
+                disabled={priceDraftBusy}
+                onClick={() => setPriceDraftOpen(false)}
+                type="button"
+              >
+                <Icon name="close" />
+              </button>
+            </header>
+            <form
+              onSubmit={async (event) => {
+                event.preventDefault();
+                setPriceDraftBusy(true);
+                setPriceDraftError('');
+                try {
+                  const saved = await saveTenantPriceDraft(
+                    {
+                      sku_code: priceDraftSku,
+                      unit_price: priceDraftAmount,
+                      minimum_allowed_price: priceDraftFloor || null,
+                      tax_inclusive: priceDraftTaxInclusive,
+                    },
+                    tenantId,
+                    csrfToken,
+                  );
+                  setPriceNotice(
+                    `${saved.sku_code} saved in ${saved.price_book} draft v${saved.version_number}. `
+                    + 'Complete the draft, then submit it for independent review.',
+                  );
+                  setPriceDraftOpen(false);
+                  setPriceDraftSku('');
+                  setPriceDraftAmount('');
+                  setPriceDraftFloor('');
+                  setPricingReload((value) => value + 1);
+                } catch (reason) {
+                  setPriceDraftError(
+                    reason instanceof Error ? reason.message : 'The price draft could not be saved.',
+                  );
+                } finally {
+                  setPriceDraftBusy(false);
+                }
+              }}
+            >
+              <p className="business-dialog-confirm">
+                <Icon name="shield" />
+                This only changes the editable draft. Active till prices remain unchanged until
+                a different authorised person approves and publishes the full version.
+              </p>
+              {priceDraftError ? <p className="business-dialog-error" role="alert"><Icon name="alert" /> {priceDraftError}</p> : null}
+              <label className="business-field">
+                <span>Tenant commercial SKU</span>
+                <select
+                  onChange={(event) => setPriceDraftSku(event.target.value)}
+                  required
+                  value={priceDraftSku}
+                >
+                  <option value="">Select an eligible SKU</option>
+                  {tenantSkus.map((sku) => (
+                    <option key={sku.id} value={sku.sku_code}>
+                      {sku.sku_code} — {sku.display_name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="tenant-form-grid">
+                <label className="business-field">
+                  <span>Unit selling price (KES)</span>
+                  <input
+                    min="0"
+                    onChange={(event) => setPriceDraftAmount(event.target.value)}
+                    required
+                    step="0.01"
+                    type="number"
+                    value={priceDraftAmount}
+                  />
+                </label>
+                <label className="business-field">
+                  <span>Minimum allowed price (KES)</span>
+                  <input
+                    min="0"
+                    onChange={(event) => setPriceDraftFloor(event.target.value)}
+                    step="0.01"
+                    type="number"
+                    value={priceDraftFloor}
+                  />
+                  <small>Optional floor for supervised transaction overrides.</small>
+                </label>
+              </div>
+              <label className="business-checkbox">
+                <input
+                  checked={priceDraftTaxInclusive}
+                  onChange={(event) => setPriceDraftTaxInclusive(event.target.checked)}
+                  type="checkbox"
+                />
+                <span>Displayed selling price includes applicable tax</span>
+              </label>
+              <footer>
+                <button
+                  className="secondary-button"
+                  disabled={priceDraftBusy}
+                  onClick={() => setPriceDraftOpen(false)}
+                  type="button"
+                >
+                  Cancel
+                </button>
+                <button
+                  className="primary-button"
+                  disabled={priceDraftBusy || !priceDraftSku || !priceDraftAmount}
+                  type="submit"
+                >
+                  {priceDraftBusy ? 'Saving…' : 'Save to draft'}
+                </button>
+              </footer>
+            </form>
+          </section>
+        </div>
+      ) : null}
+      {overrideDecision ? (
+        <div className="business-dialog-backdrop" role="presentation">
+          <section aria-labelledby="override-decision-title" aria-modal="true" className="business-dialog" role="dialog">
+            <header>
+              <div>
+                <p className="eyebrow">Independent supervisor decision</p>
+                <h2 id="override-decision-title">
+                  {overrideDecision.decision === 'approve' ? 'Approve price override' : 'Reject price override'}
+                </h2>
+              </div>
+              <button
+                aria-label="Close dialog"
+                disabled={Boolean(busyOverrideId)}
+                onClick={() => setOverrideDecision(null)}
+                type="button"
+              >
+                <Icon name="close" />
+              </button>
+            </header>
+            <div className="business-dialog-record">
+              <div>
+                <code>{overrideDecision.override.transaction_reference}</code>
+                <strong>{overrideDecision.override.sku_code}</strong>
+                <small>
+                  {formatMoney(overrideDecision.override.resolved_price)} →{' '}
+                  {formatMoney(overrideDecision.override.override_price)}
+                </small>
+              </div>
+            </div>
+            <p className="business-dialog-confirm">
+              <Icon name={overrideDecision.decision === 'approve' ? 'shield' : 'alert'} />
+              The requester cannot decide their own override. Your authenticated identity and
+              decision are retained in the price audit trail.
+            </p>
+            {overrideDecision.decision === 'reject' ? (
+              <label className="business-field">
+                <span>Rejection reason</span>
+                <textarea
+                  onChange={(event) => setOverrideReason(event.target.value)}
+                  required
+                  rows={3}
+                  value={overrideReason}
+                />
+              </label>
+            ) : null}
+            {overrideError ? <p className="business-dialog-error" role="alert"><Icon name="alert" /> {overrideError}</p> : null}
+            <footer>
+              <button
+                className="secondary-button"
+                disabled={Boolean(busyOverrideId)}
+                onClick={() => setOverrideDecision(null)}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button
+                className={overrideDecision.decision === 'approve' ? 'primary-button' : 'danger-link'}
+                disabled={Boolean(busyOverrideId) || (overrideDecision.decision === 'reject' && !overrideReason.trim())}
+                onClick={async () => {
+                  setBusyOverrideId(overrideDecision.override.id);
+                  setOverrideError('');
+                  try {
+                    await decidePriceOverride(
+                      overrideDecision.override.id,
+                      overrideDecision.decision,
+                      csrfToken,
+                      overrideReason,
+                    );
+                    setOverrideDecision(null);
+                    fetchOverrides();
+                  } catch (reason) {
+                    setOverrideError(
+                      reason instanceof Error ? reason.message : 'The override decision failed.',
+                    );
+                  } finally {
+                    setBusyOverrideId(null);
+                  }
+                }}
+                type="button"
+              >
+                {busyOverrideId
+                  ? 'Recording…'
+                  : overrideDecision.decision === 'approve'
+                    ? 'Approve override'
+                    : 'Reject override'}
+              </button>
+            </footer>
+          </section>
+        </div>
+      ) : null}
       {versionAction ? (
         <div className="business-dialog-backdrop" role="presentation">
           <section aria-labelledby="price-version-action-title" aria-modal="true" className="business-dialog" role="dialog">
@@ -1387,6 +1785,7 @@ function PricingView({ csrfToken }: { readonly csrfToken: string }) {
                     );
                     setVersionAction(null);
                     setVersionReload((current) => current + 1);
+                    setPricingReload((current) => current + 1);
                   } catch (reason) {
                     setVersionActionError(
                       reason instanceof Error ? reason.message : 'Price version action failed.',
@@ -1543,8 +1942,28 @@ function PosDownloads({ csrfToken }: { readonly csrfToken: string }) {
   );
 }
 
-function CashControlView({ csrfToken }: { readonly csrfToken: string }) {
+function CashControlView({
+  csrfToken,
+  tenantId,
+}: {
+  readonly csrfToken: string;
+  readonly tenantId: string;
+}) {
+  if (!tenantId) {
+    return <TenantWorkspaceRequired domain="cash control" />;
+  }
+  return <TenantCashControlView csrfToken={csrfToken} tenantId={tenantId} />;
+}
+
+function TenantCashControlView({
+  csrfToken,
+  tenantId,
+}: {
+  readonly csrfToken: string;
+  readonly tenantId: string;
+}) {
   const [open, setOpen] = useState<readonly RegisterSessionSummary[] | null>(null);
+  const [unclosed, setUnclosed] = useState<readonly RegisterSessionSummary[] | null>(null);
   const [variances, setVariances] = useState<readonly ShiftReportSummary[] | null>(null);
   const [forced, setForced] = useState<readonly ShiftReportSummary[] | null>(null);
   const [tills, setTills] = useState<readonly PosRegisterItem[] | null>(null);
@@ -1552,11 +1971,24 @@ function CashControlView({ csrfToken }: { readonly csrfToken: string }) {
   const [declarations, setDeclarations] = useState<readonly CashDeclarationItem[] | null>(null);
   const [businessDays, setBusinessDays] = useState<readonly BusinessDayItem[] | null>(null);
   const [failed, setFailed] = useState(false);
+  const [cashReload, setCashReload] = useState(0);
+  const [movementReview, setMovementReview] = useState<CashMovementItem | null>(null);
+  const [movementBusy, setMovementBusy] = useState(false);
+  const [movementError, setMovementError] = useState('');
+  const [cashNotice, setCashNotice] = useState('');
+  const [cashReviewAction, setCashReviewAction] = useState<{
+    readonly action: 'resolve' | 'start';
+    readonly report: ShiftReportSummary;
+  } | null>(null);
+  const [cashReviewNote, setCashReviewNote] = useState('');
+  const [cashReviewBusy, setCashReviewBusy] = useState(false);
+  const [cashReviewError, setCashReviewError] = useState('');
 
   useEffect(() => {
     const controller = new AbortController();
     Promise.all([
       loadOpenRegisterSessions(controller.signal),
+      loadUnclosedRegisterSessions(controller.signal),
       loadCashVariances(controller.signal),
       loadForcedClosures(controller.signal),
       loadPosRegisters(controller.signal),
@@ -1564,28 +1996,44 @@ function CashControlView({ csrfToken }: { readonly csrfToken: string }) {
       loadCashDeclarations(controller.signal),
       loadBusinessDays(controller.signal),
     ])
-      .then(([a, b, c, t, m, d, bd]) => {
+      .then(([a, u, b, c, t, m, d, bd]) => {
         setOpen(a);
+        setUnclosed(u);
         setVariances(b);
         setForced(c);
         setTills(t);
         setMovements(m);
         setDeclarations(d);
         setBusinessDays(bd);
+        setFailed(false);
       })
       .catch(() => {
         if (!controller.signal.aborted) setFailed(true);
       });
     return () => controller.abort();
-  }, []);
+  }, [cashReload, tenantId]);
 
   if (failed) return <Unavailable />;
-  if (!open || !variances || !forced) {
+  if (!open || !unclosed || !variances || !forced || !tills || !movements || !declarations || !businessDays) {
     return <p className="muted-cell">Loading cash control data…</p>;
   }
 
+  const pendingMovements = movements.filter((movement) => movement.approved_at === null);
+
   return (
     <>
+      <article className="panel cash-control-guide">
+        <PanelHeader eyebrow="Accountable cash workflow" title="Count, trade, approve, close and reconcile" />
+        <div className="cash-control-steps" aria-label="Cash control workflow">
+          <div><span>1</span><strong>Blind opening count</strong><small>The operator counts denominations before the till opens.</small></div>
+          <div><span>2</span><strong>Controlled movements</strong><small>Safe drops, banking and cash adjustments require a reason.</small></div>
+          <div><span>3</span><strong>Independent approval</strong><small>A second authorised operator approves non-sale movements.</small></div>
+          <div><span>4</span><strong>Blind closing count</strong><small>The till creates one immutable Z report and reveals variance after count.</small></div>
+          <div><span>5</span><strong>HQ exception review</strong><small>HQ monitors variances, forced closures and sessions without a Z report.</small></div>
+        </div>
+        {cashNotice ? <p className="inline-alert" role="status"><Icon name="check" /> {cashNotice}</p> : null}
+      </article>
+
       <section className="metric-grid network-metrics" aria-label="Cash control totals">
         <SummaryCard
           detail="Physical registers configured"
@@ -1614,7 +2062,66 @@ function CashControlView({ csrfToken }: { readonly csrfToken: string }) {
           tone={forced.length ? 'amber' : 'navy'}
           value={forced.length}
         />
+        <SummaryCard
+          detail="Require a second authorised operator"
+          icon="shield"
+          label="Movements awaiting approval"
+          tone={pendingMovements.length ? 'rose' : 'teal'}
+          value={pendingMovements.length}
+        />
       </section>
+
+      {unclosed.length > 0 ? (
+        <article className="panel cash-exception-panel">
+          <PanelHeader eyebrow="Blocking Exception" title="Sessions without an authoritative Z report" />
+          <p className="inline-alert" role="alert">
+            <Icon name="alert" />
+            These sessions reached closing state without a final Z report. Investigate before
+            banking or reopening the register.
+          </p>
+          <div className="table-scroll">
+            <table>
+              <thead><tr><th>Register</th><th>Business date</th><th>Opened by</th><th>Opened</th><th>State</th></tr></thead>
+              <tbody>
+                {unclosed.map((session) => (
+                  <tr key={session.id}>
+                    <td><code>{session.register_code}</code></td>
+                    <td>{session.business_date}</td>
+                    <td>{session.opened_by_username}</td>
+                    <td><span className="muted-cell">{formatDateTime(session.opened_at)}</span></td>
+                    <td><StatusBadge value={session.state} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </article>
+      ) : null}
+
+      <article className="panel" style={{ marginBottom: '24px' }}>
+        <PanelHeader eyebrow="Live Accountability" title="Open Register Sessions" />
+        {open.length === 0 ? (
+          <EmptyState detail="No register session is currently trading." icon="check" title="All tills closed" />
+        ) : (
+          <div className="table-scroll">
+            <table>
+              <thead><tr><th>Register</th><th>Business date</th><th>Opened by</th><th>Opened</th><th>Final Z</th><th>State</th></tr></thead>
+              <tbody>
+                {open.map((session) => (
+                  <tr key={session.id}>
+                    <td><code>{session.register_code}</code></td>
+                    <td>{session.business_date}</td>
+                    <td>{session.opened_by_username}</td>
+                    <td><span className="muted-cell">{formatDateTime(session.opened_at)}</span></td>
+                    <td>{session.has_final_report ? <StatusBadge value="RECORDED" /> : <span className="muted-cell">Pending closure</span>}</td>
+                    <td><StatusBadge value={session.state} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </article>
 
       {/* Till Registers Directory */}
       <article className="panel" style={{ marginBottom: '24px' }}>
@@ -1679,6 +2186,8 @@ function CashControlView({ csrfToken }: { readonly csrfToken: string }) {
                     <th>Expected</th>
                     <th>Counted</th>
                     <th>Difference</th>
+                    <th>Reconciliation</th>
+                    <th>Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1695,6 +2204,36 @@ function CashControlView({ csrfToken }: { readonly csrfToken: string }) {
                           <strong style={{ color: 'var(--rose-600, #b3261e)' }}>
                             {formatMoney(variance?.difference)}
                           </strong>
+                        </td>
+                        <td>
+                          {report.cash_exception_review ? (
+                            <>
+                              <StatusBadge value={report.cash_exception_review.status} />
+                              <small className="row-detail">
+                                Opened by {report.cash_exception_review.opened_by_username}
+                              </small>
+                            </>
+                          ) : <StatusBadge value="UNREVIEWED" />}
+                        </td>
+                        <td>
+                          {report.cash_exception_review?.status === 'RESOLVED' ? (
+                            <span className="muted-cell">Resolved</span>
+                          ) : (
+                            <button
+                              className="secondary-button"
+                              onClick={() => {
+                                setCashReviewError('');
+                                setCashReviewNote('');
+                                setCashReviewAction({
+                                  action: report.cash_exception_review ? 'resolve' : 'start',
+                                  report,
+                                });
+                              }}
+                              type="button"
+                            >
+                              {report.cash_exception_review ? 'Resolve investigation' : 'Start investigation'}
+                            </button>
+                          )}
                         </td>
                       </tr>
                     );
@@ -1718,6 +2257,8 @@ function CashControlView({ csrfToken }: { readonly csrfToken: string }) {
                     <th>Register</th>
                     <th>Closed by</th>
                     <th>Reason</th>
+                    <th>Reconciliation</th>
+                    <th>Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1727,6 +2268,29 @@ function CashControlView({ csrfToken }: { readonly csrfToken: string }) {
                       <td>{report.register_code}</td>
                       <td>{report.generated_by_username}</td>
                       <td><span className="muted-cell">{report.closure_reason || '—'}</span></td>
+                      <td>
+                        <StatusBadge value={report.cash_exception_review?.status ?? 'UNREVIEWED'} />
+                      </td>
+                      <td>
+                        {report.cash_exception_review?.status === 'RESOLVED' ? (
+                          <span className="muted-cell">Resolved</span>
+                        ) : (
+                          <button
+                            className="secondary-button"
+                            onClick={() => {
+                              setCashReviewError('');
+                              setCashReviewNote('');
+                              setCashReviewAction({
+                                action: report.cash_exception_review ? 'resolve' : 'start',
+                                report,
+                              });
+                            }}
+                            type="button"
+                          >
+                            {report.cash_exception_review ? 'Resolve investigation' : 'Start investigation'}
+                          </button>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -1749,16 +2313,20 @@ function CashControlView({ csrfToken }: { readonly csrfToken: string }) {
               <table>
                 <thead>
                   <tr>
+                    <th>Register</th>
                     <th>Movement Kind</th>
                     <th>Amount</th>
                     <th>Reason / Code</th>
                     <th>Reference</th>
+                    <th>Custody</th>
                     <th>Created</th>
+                    <th>Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {movements.map((m) => (
                     <tr key={m.id}>
+                      <td><code>{m.register_code}</code></td>
                       <td><strong>{titleCase(m.kind)}</strong></td>
                       <td>
                         <strong className={m.kind.includes('OUT') || m.kind.includes('DROP') || m.kind.includes('BANKING') ? 'text-rose' : ''}>
@@ -1767,7 +2335,32 @@ function CashControlView({ csrfToken }: { readonly csrfToken: string }) {
                       </td>
                       <td><small>{m.reason_code || m.description || '—'}</small></td>
                       <td><code>{m.reference || '—'}</code></td>
+                      <td>
+                        <small>Recorded by {m.created_by_username}</small>
+                        <br />
+                        {m.approved_at ? (
+                          <span className="status-badge status-active"><i /> Approved by {m.approved_by_username}</span>
+                        ) : (
+                          <span className="status-badge status-warning"><i /> Awaiting approval</span>
+                        )}
+                      </td>
                       <td><span className="muted-cell">{formatDate(m.created_at)}</span></td>
+                      <td>
+                        {m.approved_at ? (
+                          <span className="muted-cell">Complete</span>
+                        ) : (
+                          <button
+                            className="secondary-button"
+                            onClick={() => {
+                              setMovementError('');
+                              setMovementReview(m);
+                            }}
+                            type="button"
+                          >
+                            Review approval
+                          </button>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -1787,18 +2380,22 @@ function CashControlView({ csrfToken }: { readonly csrfToken: string }) {
               <table>
                 <thead>
                   <tr>
+                    <th>Register</th>
                     <th>Kind</th>
                     <th>Declared Amount</th>
                     <th>Attempt</th>
+                    <th>Declared By</th>
                     <th>Confirmed At</th>
                   </tr>
                 </thead>
                 <tbody>
                   {declarations.map((d) => (
                     <tr key={d.id}>
+                      <td><code>{d.register_code}</code></td>
                       <td><span className="status-badge status-active"><i /> {d.kind}</span></td>
                       <td><strong>{formatMoney(d.declared_amount, d.currency)}</strong></td>
                       <td>Attempt #{d.attempt}</td>
+                      <td>{d.declared_by_username}</td>
                       <td><span className="muted-cell">{d.confirmed_at ? formatDate(d.confirmed_at) : 'Unconfirmed'}</span></td>
                     </tr>
                   ))}
@@ -1838,6 +2435,192 @@ function CashControlView({ csrfToken }: { readonly csrfToken: string }) {
             </table>
           </div>
         </article>
+      ) : null}
+      {cashReviewAction ? (
+        <div className="business-dialog-backdrop" role="presentation">
+          <section aria-labelledby="cash-exception-review-title" aria-modal="true" className="business-dialog" role="dialog">
+            <header>
+              <div>
+                <p className="eyebrow">Cash exception reconciliation</p>
+                <h2 id="cash-exception-review-title">
+                  {cashReviewAction.action === 'start' ? 'Start cash investigation' : 'Resolve cash investigation'}
+                </h2>
+              </div>
+              <button
+                aria-label="Close dialog"
+                disabled={cashReviewBusy}
+                onClick={() => setCashReviewAction(null)}
+                type="button"
+              >
+                <Icon name="close" />
+              </button>
+            </header>
+            <div className="business-dialog-record">
+              <div>
+                <code>{cashReviewAction.report.report_number}</code>
+                <strong>{cashReviewAction.report.register_code} · {cashReviewAction.report.business_date}</strong>
+                <small>
+                  {cashReviewAction.report.closure_type === 'FORCED'
+                    ? `Forced closure: ${cashReviewAction.report.closure_reason}`
+                    : `Variance: ${formatMoney(cashReviewAction.report.snapshot.variance?.difference)}`}
+                </small>
+              </div>
+            </div>
+            {cashReviewAction.report.cash_exception_review ? (
+              <dl className="cash-review-details">
+                <div><dt>Opened by</dt><dd>{cashReviewAction.report.cash_exception_review.opened_by_username}</dd></div>
+                <div><dt>Opening note</dt><dd>{cashReviewAction.report.cash_exception_review.opening_note}</dd></div>
+                <div><dt>Opened at</dt><dd>{formatDateTime(cashReviewAction.report.cash_exception_review.opened_at)}</dd></div>
+              </dl>
+            ) : null}
+            <label className="business-field">
+              <span>
+                {cashReviewAction.action === 'start' ? 'Investigation opening note' : 'Resolution and evidence note'}
+              </span>
+              <textarea
+                onChange={(event) => setCashReviewNote(event.target.value)}
+                placeholder={
+                  cashReviewAction.action === 'start'
+                    ? 'Describe what must be checked, who holds the drawer evidence, and the next control step.'
+                    : 'Record the verified cause, supporting reference, corrective action, and final disposition.'
+                }
+                required
+                rows={5}
+                value={cashReviewNote}
+              />
+            </label>
+            <p className="business-dialog-confirm">
+              <Icon name="shield" />
+              {cashReviewAction.action === 'start'
+                ? 'The Z-report generator cannot review their own exception.'
+                : 'The investigator who opened this review cannot also resolve it. A second authorised person must sign off.'}
+            </p>
+            {cashReviewError ? <p className="business-dialog-error" role="alert"><Icon name="alert" /> {cashReviewError}</p> : null}
+            <footer>
+              <button
+                className="secondary-button"
+                disabled={cashReviewBusy}
+                onClick={() => setCashReviewAction(null)}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button
+                className="primary-button"
+                disabled={cashReviewBusy || !cashReviewNote.trim()}
+                onClick={async () => {
+                  setCashReviewBusy(true);
+                  setCashReviewError('');
+                  try {
+                    const review = cashReviewAction.action === 'start'
+                      ? await startCashExceptionReview(
+                        cashReviewAction.report.id,
+                        cashReviewNote,
+                        csrfToken,
+                      )
+                      : await resolveCashExceptionReview(
+                        cashReviewAction.report.id,
+                        cashReviewNote,
+                        csrfToken,
+                      );
+                    setCashNotice(
+                      `${review.report_number} cash investigation is now ${titleCase(review.status)}.`,
+                    );
+                    setCashReviewAction(null);
+                    setCashReload((value) => value + 1);
+                  } catch (reason) {
+                    setCashReviewError(
+                      reason instanceof Error ? reason.message : 'The cash review action failed.',
+                    );
+                  } finally {
+                    setCashReviewBusy(false);
+                  }
+                }}
+                type="button"
+              >
+                {cashReviewBusy
+                  ? 'Recording…'
+                  : cashReviewAction.action === 'start'
+                    ? 'Start investigation'
+                    : 'Resolve investigation'}
+              </button>
+            </footer>
+          </section>
+        </div>
+      ) : null}
+      {movementReview ? (
+        <div className="business-dialog-backdrop" role="presentation">
+          <section aria-labelledby="cash-movement-approval-title" aria-modal="true" className="business-dialog" role="dialog">
+            <header>
+              <div>
+                <p className="eyebrow">Second-person cash custody</p>
+                <h2 id="cash-movement-approval-title">Approve cash movement</h2>
+              </div>
+              <button
+                aria-label="Close dialog"
+                disabled={movementBusy}
+                onClick={() => setMovementReview(null)}
+                type="button"
+              >
+                <Icon name="close" />
+              </button>
+            </header>
+            <div className="business-dialog-record">
+              <div>
+                <code>{movementReview.register_code} · {titleCase(movementReview.kind)}</code>
+                <strong>{formatMoney(movementReview.amount, movementReview.currency)}</strong>
+                <small>Recorded by {movementReview.created_by_username}</small>
+              </div>
+            </div>
+            <dl className="cash-review-details">
+              <div><dt>Reason code</dt><dd>{movementReview.reason_code}</dd></div>
+              <div><dt>Reference</dt><dd>{movementReview.reference || 'Not supplied'}</dd></div>
+              <div><dt>Description</dt><dd>{movementReview.description || 'Not supplied'}</dd></div>
+              <div><dt>Expected cash effect</dt><dd>{formatMoney(movementReview.signed_amount, movementReview.currency)}</dd></div>
+            </dl>
+            <p className="business-dialog-confirm">
+              <Icon name="shield" />
+              Approval confirms that a different authorised operator checked the physical
+              custody event. The creator cannot approve their own movement.
+            </p>
+            {movementError ? <p className="business-dialog-error" role="alert"><Icon name="alert" /> {movementError}</p> : null}
+            <footer>
+              <button
+                className="secondary-button"
+                disabled={movementBusy}
+                onClick={() => setMovementReview(null)}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button
+                className="primary-button"
+                disabled={movementBusy}
+                onClick={async () => {
+                  setMovementBusy(true);
+                  setMovementError('');
+                  try {
+                    const approved = await approveCashMovement(movementReview.id, csrfToken);
+                    setCashNotice(
+                      `${titleCase(approved.kind)} on ${approved.register_code} approved by ${approved.approved_by_username}.`,
+                    );
+                    setMovementReview(null);
+                    setCashReload((value) => value + 1);
+                  } catch (reason) {
+                    setMovementError(
+                      reason instanceof Error ? reason.message : 'The cash movement could not be approved.',
+                    );
+                  } finally {
+                    setMovementBusy(false);
+                  }
+                }}
+                type="button"
+              >
+                {movementBusy ? 'Approving…' : 'Approve movement'}
+              </button>
+            </footer>
+          </section>
+        </div>
       ) : null}
       <PosDownloads csrfToken={csrfToken} />
     </>
@@ -4179,6 +4962,18 @@ function WorkspaceSectionError({ domain }: { readonly domain: string }) {
       <Icon name="alert" />
       The {domain} workspace could not be loaded. Refresh the HQ snapshot to try again.
     </div>
+  );
+}
+
+function TenantWorkspaceRequired({ domain }: { readonly domain: string }) {
+  return (
+    <article className="panel tenant-workspace-required">
+      <EmptyState
+        detail={`Choose an operating tenant from the workspace selector before opening ${domain}. Tenant financial and operational records are never combined across pharmacies.`}
+        icon="building"
+        title="Select a tenant workspace"
+      />
+    </article>
   );
 }
 
