@@ -10,6 +10,9 @@
 Runtime assertions are tested. Evidence generated with `fhir.resources` 7.x is
 not accepted as R4 conformance evidence.
 
+**Conformance register (profiles, SMART, terminology gaps, IG decision):**
+[`FHIR_CONFORMANCE.md`](./FHIR_CONFORMANCE.md)
+
 ## Resource Registry
 
 The registry contains exactly 19 measured resource types:

@@ -48,6 +48,10 @@ Not included in Phase 2:
 - React Native 0.86
 - Electron 43
 
+**Full as-built technical reference** (UI/UX, database, security, encryption,
+customer data handling, compliance):  
+[`docs/architecture/TIBATRACE_TECHNICAL_SYSTEM_DOCUMENTATION.md`](docs/architecture/TIBATRACE_TECHNICAL_SYSTEM_DOCUMENTATION.md)
+
 DawaTrace is currently measured against HAPI R4 evidence inherited as source
 provenance. It is not declared `FHIR_PORTABLE`, Firely-compatible, or production
 ready by this phase.
