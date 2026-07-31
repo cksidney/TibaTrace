@@ -1,4 +1,5 @@
 import {
+  action,
   controlSize,
   fontSize,
   spacing,
@@ -8,8 +9,10 @@ import {
 } from '@dawatrace/shared/design-system/index.js';
 import type { PaymentState, PaymentTenderType } from '@dawatrace/shared/dispensing/index.js';
 import { TENDER_OPTIONS, paymentPermitsSupply } from '@dawatrace/shared/dispensing/index.js';
+import { formatDecimal, formatMoney } from '@dawatrace/shared/money.js';
 import { useState } from 'react';
 
+import { readableColumn } from '../components/tibatrace/layout';
 import { liveRegionFor } from '../components/tibatrace/liveRegion';
 import { ClinicalSummaryCard } from '../components/tibatrace/ClinicalSummaryCard';
 import type { AndroidClinicalSummary } from '../components/tibatrace/ClinicalSummaryCard';
@@ -64,17 +67,17 @@ export function PaymentScreen({
     (!cardReferenceRequired || reference.trim().length > 0);
 
   return (
-    <ScrollView style={styles.scroll} contentContainerStyle={styles.root}>
+    <ScrollView style={styles.scroll} contentContainerStyle={[styles.root, readableColumn]}>
       <TibaTraceBrand />
       <Text style={styles.heading}>Payment</Text>
       <ClinicalSummaryCard summary={clinical} />
 
       <View style={styles.amounts}>
-        <Amount label="Due" value={amountDue ?? 'Not priced'} />
-        <Amount label="Settled" value={amountSettled ?? '—'} />
+        <Amount label="Due" value={amountDue == null ? 'Not priced' : formatMoney(amountDue)} />
+        <Amount label="Settled" value={amountSettled == null ? '—' : formatMoney(amountSettled)} />
         <Amount
           label="Remaining"
-          value={remaining === null ? '—' : remaining.toFixed(2)}
+          value={remaining === null ? '—' : formatDecimal(remaining, 2)}
           emphasis={remaining !== null && remaining > 0}
         />
       </View>
@@ -270,7 +273,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#12854A',
+    backgroundColor: action.primary,
   },
   primaryDisabled: { backgroundColor: surface.sunken },
   primaryLabel: { color: text.inverse, fontSize: fontSize.bodyLarge, fontWeight: '600' },

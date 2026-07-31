@@ -187,22 +187,42 @@ class Command(BaseCommand):
         )
 
     def _price_book(self, tenant, *, code, scope, sku, price, branch) -> None:
-        book, created = PriceBook.all_objects.get_or_create(
+        book, _ = PriceBook.all_objects.get_or_create(
             tenant=tenant, code=code,
             defaults={"name": code, "scope_type": scope, "currency": "KES"},
         )
-        if not created:
-            return
-
-        version = PriceBookVersion.all_objects.create(
-            tenant=tenant, price_book=book, version_number=1, status="ACTIVE",
-            effective_from=TODAY - timedelta(days=30),
+        version = PriceBookVersion.all_objects.filter(
+            tenant=tenant,
+            price_book=book,
+            status=PriceBookVersion.Status.ACTIVE,
+        ).first()
+        if version is None:
+            next_version = (
+                PriceBookVersion.all_objects.filter(tenant=tenant, price_book=book)
+                .order_by("-version_number")
+                .values_list("version_number", flat=True)
+                .first()
+                or 0
+            ) + 1
+            version = PriceBookVersion.all_objects.create(
+                tenant=tenant,
+                price_book=book,
+                version_number=next_version,
+                status=PriceBookVersion.Status.ACTIVE,
+                effective_from=TODAY - timedelta(days=30),
+            )
+        PriceBookEntry.all_objects.get_or_create(
+            tenant=tenant,
+            version=version,
+            sku=sku,
+            minimum_quantity=Decimal("1"),
+            defaults={"unit_price": price},
         )
-        PriceBookEntry.all_objects.create(
-            tenant=tenant, version=version, sku=sku, unit_price=price
-        )
-        PriceAssignment.all_objects.create(
-            tenant=tenant, price_book=book, scope_type=scope, branch=branch
+        PriceAssignment.all_objects.get_or_create(
+            tenant=tenant,
+            price_book=book,
+            scope_type=scope,
+            branch=branch,
         )
 
     def shift(self, tenant, branch, people):

@@ -22,7 +22,9 @@ from apps.notifications.models import NotificationOutbox
 from apps.organizations.models import Location
 from apps.patients.models import Patient
 from apps.practitioners.models import Practitioner
-from apps.prescription.models import Prescription
+from apps.prescription.models import ClinicalSubstitution, DispensingLabel, Prescription
+from apps.pos_shift.models import RegisterSession
+from apps.pricing.models import PriceBook
 from apps.procurement.models import (
     GoodsReceipt,
     PurchaseOrder,
@@ -68,6 +70,15 @@ def build_hq_dashboard_context(user, tenant_id):
     fhir_idempotency_records = _scope(FHIRIdempotencyRecord.all_objects, tenant_id)
     locations = _scope(Location.all_objects, tenant_id)
     inventory_batches = _scope(InventoryBatch.all_objects, tenant_id)
+    purchase_orders = _scope(PurchaseOrder.all_objects, tenant_id)
+    customers = _scope(Customer.all_objects, tenant_id)
+    skus = _scope(CommercialSKU.all_objects, tenant_id)
+    sales_orders = _scope(SalesOrder.all_objects, tenant_id)
+    price_books = _scope(PriceBook.all_objects, tenant_id)
+    open_register_sessions = _scope(
+        RegisterSession.all_objects.filter(state="OPEN"),
+        tenant_id,
+    )
 
     final_prescription_statuses = {
         "CANCELLED",
@@ -82,6 +93,20 @@ def build_hq_dashboard_context(user, tenant_id):
     active_releases = clinical_releases.filter(is_active=True).count()
     active_locations = locations.filter(status="ACTIVE").count()
     active_users = _scope(User.objects.filter(is_active=True), tenant_id).count()
+    open_purchase_orders = purchase_orders.filter(
+        status__in={
+            PurchaseOrder.Status.APPROVED,
+            PurchaseOrder.Status.SENT,
+            PurchaseOrder.Status.PARTIALLY_RECEIVED,
+        }
+    ).count()
+    open_sales_orders = sales_orders.exclude(
+        status__in={"CANCELLED", "CLOSED", "COMPLETED", "DELIVERED", "FULFILLED"}
+    ).count()
+    catalogue_skus = skus.count()
+    customer_count = customers.count()
+    price_book_count = price_books.count()
+    open_tills = open_register_sessions.count()
     network_tenants = Tenant.objects.all()
     if tenant_id:
         network_tenants = network_tenants.filter(id=tenant_id)
@@ -134,6 +159,7 @@ def build_hq_dashboard_context(user, tenant_id):
             "value": Tenant.objects.filter(status=Tenant.STATUS_ACTIVE).count(),
             "detail": "Live workspaces",
             "accent": "navy",
+            "href": "#network",
         }
     elif tenant_id:
         tenant = Tenant.objects.filter(id=tenant_id).only("name").first()
@@ -145,6 +171,7 @@ def build_hq_dashboard_context(user, tenant_id):
             "value": active_locations,
             "detail": "Operating care sites",
             "accent": "navy",
+            "href": "#network",
         }
     else:
         tenant_name = "No workspace selected"
@@ -155,6 +182,7 @@ def build_hq_dashboard_context(user, tenant_id):
             "value": Tenant.objects.filter(status=Tenant.STATUS_ACTIVE).count(),
             "detail": "Available workspaces",
             "accent": "navy",
+            "href": "#network",
         }
 
     metrics = [
@@ -164,12 +192,14 @@ def build_hq_dashboard_context(user, tenant_id):
             "value": patients.count(),
             "detail": "Registered care records",
             "accent": "teal",
+            "href": "#people/patients",
         },
         {
             "label": "Open prescriptions",
             "value": open_prescriptions,
             "detail": "Not at a final outcome",
             "accent": "amber",
+            "href": "#clinical",
         },
         {
             "label": "Released stock batches",
@@ -178,6 +208,7 @@ def build_hq_dashboard_context(user, tenant_id):
             ).count(),
             "detail": "Ready for use",
             "accent": "violet",
+            "href": "#inventory",
         },
     ]
     attention_items = [
@@ -186,32 +217,63 @@ def build_hq_dashboard_context(user, tenant_id):
             "value": open_prescriptions,
             "detail": "Items remain in an active dispensing or review state.",
             "tone": "amber",
+            "href": "#clinical",
         },
         {
             "label": "Inventory quality holds",
             "value": quality_holds,
             "detail": "Batches need quality release, review, or disposition.",
             "tone": "rose",
+            "href": "#inventory",
+        },
+        {
+            "label": "Open sales orders",
+            "value": open_sales_orders,
+            "detail": "Customer orders still progressing through fulfilment.",
+            "tone": "amber",
+            "href": "#commerce/orders",
+        },
+        {
+            "label": "Tills still trading",
+            "value": open_tills,
+            "detail": "Open register sessions that need cash oversight.",
+            "tone": "amber" if open_tills else "teal",
+            "href": "#cash/sessions",
         },
         {
             "label": "Clinical knowledge releases",
             "value": active_releases,
             "detail": "Active releases are available to clinical decision support.",
             "tone": "teal",
+            "href": "#clinical",
+        },
+        {
+            "label": "Open purchase orders",
+            "value": open_purchase_orders,
+            "detail": "Approved or sent orders still need receiving work.",
+            "tone": "amber",
+            "href": "#operations",
         },
     ]
     data_summary = [
-        {"label": "Active locations", "value": active_locations},
-        {"label": "Active users", "value": active_users},
-        {"label": "Practitioners", "value": practitioners.count()},
-        {"label": "Clinical encounters", "value": encounters.count()},
-        {"label": "Conditions", "value": conditions.count()},
-        {"label": "Observations", "value": observations.count()},
-        {"label": "Inventory batches", "value": inventory_batches.count()},
-        {"label": "Active clinical releases", "value": active_releases},
-        {"label": "Code systems", "value": code_systems.count()},
-        {"label": "Value sets", "value": value_sets.count()},
-        {"label": "FHIR idempotency records", "value": fhir_idempotency_records.count()},
+        {"label": "Active locations", "value": active_locations, "href": "#network"},
+        {"label": "Active users", "value": active_users, "href": "#access"},
+        {"label": "Patients", "value": patients.count(), "href": "#people/patients"},
+        {"label": "Practitioners", "value": practitioners.count(), "href": "#people/practitioners"},
+        {"label": "Customers", "value": customer_count, "href": "#people/customers"},
+        {"label": "Commercial SKUs", "value": catalogue_skus, "href": "#catalogue/skus"},
+        {"label": "Clinical encounters", "value": encounters.count(), "href": "#clinical"},
+        {"label": "Conditions", "value": conditions.count(), "href": "#clinical"},
+        {"label": "Observations", "value": observations.count(), "href": "#clinical"},
+        {"label": "Inventory batches", "value": inventory_batches.count(), "href": "#inventory"},
+        {"label": "Open purchase orders", "value": open_purchase_orders, "href": "#operations"},
+        {"label": "Open sales orders", "value": open_sales_orders, "href": "#commerce/orders"},
+        {"label": "Price books", "value": price_book_count, "href": "#pricing/books"},
+        {"label": "Open tills", "value": open_tills, "href": "#cash/tills"},
+        {"label": "Active clinical releases", "value": active_releases, "href": "#clinical"},
+        {"label": "Code systems", "value": code_systems.count(), "href": "#clinical"},
+        {"label": "Value sets", "value": value_sets.count(), "href": "#clinical"},
+        {"label": "FHIR idempotency records", "value": fhir_idempotency_records.count(), "href": "#clinical"},
     ]
 
     return {
@@ -247,9 +309,14 @@ def build_hq_workspace_context(tenant_id):
     notifications = _scope(NotificationOutbox.all_objects, tenant_id)
     crosswalks = _scope(LegacyIdentifierCrosswalk.all_objects, tenant_id)
     encounters = _scope(ClinicalEncounter.all_objects, tenant_id)
+    conditions = _scope(ClinicalCondition.all_objects, tenant_id)
+    observations = _scope(ClinicalObservation.all_objects, tenant_id)
     clinical_releases = _catalog_scope(ClinicalKnowledgeRelease.all_objects, tenant_id)
     code_systems = _catalog_scope(FHIRCodeSystemRegistration.all_objects, tenant_id)
     value_sets = _catalog_scope(FHIRValueSetRegistration.all_objects, tenant_id)
+    substitutions = _scope(ClinicalSubstitution.all_objects, tenant_id)
+    dispensing_labels = _scope(DispensingLabel.all_objects, tenant_id)
+    fhir_idempotency = _scope(FHIRIdempotencyRecord.all_objects, tenant_id)
 
     open_order_statuses = {
         "DRAFT",
@@ -398,10 +465,15 @@ def build_hq_workspace_context(tenant_id):
         "clinical": {
             "counts": {
                 "encounters": encounters.count(),
+                "conditions": conditions.count(),
+                "observations": observations.count(),
                 "knowledge_releases": clinical_releases.count(),
                 "active_knowledge_releases": clinical_releases.filter(is_active=True).count(),
                 "code_systems": code_systems.count(),
                 "value_sets": value_sets.count(),
+                "fhir_idempotency_records": fhir_idempotency.count(),
+                "substitutions": substitutions.count(),
+                "dispensing_labels": dispensing_labels.count(),
             },
             "knowledge_releases": [
                 {
@@ -415,11 +487,11 @@ def build_hq_workspace_context(tenant_id):
                     "expires_at": release.expires_at,
                     "is_active": release.is_active,
                     "classification": release.content_classification,
-                    # Truncated: enough to compare against a published digest
-                    # without turning the row into a wall of hex.
+                    # Truncated for list view; full digest available for particulars.
                     "checksum": (release.checksum_sha256 or "")[:12],
+                    "checksum_full": release.checksum_sha256 or "",
                 }
-                for release in clinical_releases.order_by("-effective_date")[:20]
+                for release in clinical_releases.order_by("-effective_date")[:50]
             ],
             "code_systems": [
                 {
@@ -427,12 +499,20 @@ def build_hq_workspace_context(tenant_id):
                     "name": system.name,
                     "title": system.title,
                     "url": system.url,
-                    "version": system.version,
+                    "version": system.version.version if system.version_id else "",
                     "content_mode": system.content_mode,
                     "is_global": system.is_global,
                     "concept_count": len(system.concepts_json or []),
+                    "sample_concepts": [
+                        {
+                            "code": str(concept.get("code") or ""),
+                            "display": str(concept.get("display") or concept.get("code") or ""),
+                        }
+                        for concept in (system.concepts_json or [])[:8]
+                        if isinstance(concept, dict)
+                    ],
                 }
-                for system in code_systems.order_by("name")[:20]
+                for system in code_systems.select_related("version").order_by("name")[:50]
             ],
             "value_sets": [
                 {
@@ -440,36 +520,120 @@ def build_hq_workspace_context(tenant_id):
                     "name": value_set.name,
                     "title": value_set.title,
                     "url": value_set.url,
-                    "version": value_set.version,
+                    "version": value_set.version.version if value_set.version_id else "",
                     "is_global": value_set.is_global,
+                    "compose": value_set.compose_json or {},
                 }
-                for value_set in value_sets.order_by("name")[:20]
+                for value_set in value_sets.select_related("version").order_by("name")[:50]
             ],
             "encounters": [
                 {
                     "id": str(encounter.id),
-                    "patient_name": " ".join(
-                        p for p in (encounter.patient.first_name, encounter.patient.last_name) if p
-                    ).strip() or encounter.patient.patient_number
-                    if encounter.patient else None,
+                    "patient_name": (
+                        " ".join(
+                            p for p in (encounter.patient.first_name, encounter.patient.last_name) if p
+                        ).strip()
+                        or encounter.patient.patient_number
+                    )
+                    if encounter.patient
+                    else None,
+                    "patient_number": encounter.patient.patient_number if encounter.patient else "",
                     "status": encounter.status,
                     "encounter_class": encounter.encounter_class,
                     "practitioner_name": (
                         (encounter.practitioner.professional_name or "").strip()
                         or " ".join(
-                            p for p in (
+                            p
+                            for p in (
                                 encounter.practitioner.first_name,
                                 encounter.practitioner.last_name,
-                            ) if p
+                            )
+                            if p
                         ).strip()
-                    ) if encounter.practitioner else None,
+                    )
+                    if encounter.practitioner
+                    else None,
+                    "organization_name": encounter.organization.name if encounter.organization else "",
+                    "location_name": encounter.location.name if encounter.location else "",
                     "start_time": encounter.start_time,
                     "end_time": encounter.end_time,
-                    "reason_code": encounter.reason_code,
+                    "reason_code": encounter.reason_code or "",
                 }
                 for encounter in encounters.select_related(
-                    "patient", "practitioner"
-                ).order_by("-start_time")[:20]
+                    "patient", "practitioner", "organization", "location"
+                ).order_by("-start_time")[:50]
+            ],
+            "conditions": [
+                {
+                    "id": str(condition.id),
+                    "patient_name": (
+                        " ".join(
+                            p for p in (condition.patient.first_name, condition.patient.last_name) if p
+                        ).strip()
+                        or condition.patient.patient_number
+                    )
+                    if condition.patient
+                    else None,
+                    "clinical_status": condition.clinical_status,
+                    "verification_status": condition.verification_status,
+                    "category": condition.category or "",
+                    "code": condition.code,
+                    "system": condition.system or "",
+                    "display": condition.display or condition.code,
+                    "onset_date": condition.onset_date,
+                    "recorded_date": condition.recorded_date,
+                    "encounter_id": str(condition.encounter_id) if condition.encounter_id else "",
+                }
+                for condition in conditions.select_related("patient", "encounter").order_by(
+                    "-recorded_date"
+                )[:50]
+            ],
+            "observations": [
+                {
+                    "id": str(observation.id),
+                    "patient_name": (
+                        " ".join(
+                            p
+                            for p in (observation.patient.first_name, observation.patient.last_name)
+                            if p
+                        ).strip()
+                        or observation.patient.patient_number
+                    )
+                    if observation.patient
+                    else None,
+                    "status": observation.status,
+                    "category": observation.category or "",
+                    "code": observation.code,
+                    "system": observation.system or "",
+                    "display": observation.display or observation.code,
+                    "effective_time": observation.effective_time,
+                    "value_quantity": (
+                        str(observation.value_quantity) if observation.value_quantity is not None else ""
+                    ),
+                    "value_unit": observation.value_unit or "",
+                    "value_string": observation.value_string or "",
+                    "interpretation": observation.interpretation or "",
+                    "encounter_id": str(observation.encounter_id) if observation.encounter_id else "",
+                }
+                for observation in observations.select_related("patient", "encounter").order_by(
+                    "-effective_time", "-id"
+                )[:50]
+            ],
+            "fhir_idempotency_records": [
+                {
+                    "id": str(record.id),
+                    "key": record.key,
+                    "resource_type": record.resource_type,
+                    "operation": record.operation,
+                    "resource_id": str(record.resource_id) if record.resource_id else "",
+                    "state": record.state,
+                    "response_status": record.response_status,
+                    "request_hash": (record.request_hash or "")[:16],
+                    "request_hash_full": record.request_hash or "",
+                    "actor": record.actor.username if record.actor else "System",
+                    "created_at": record.created_at,
+                }
+                for record in fhir_idempotency.select_related("actor").order_by("-created_at")[:50]
             ],
         },
         "governance": {

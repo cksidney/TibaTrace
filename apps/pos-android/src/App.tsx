@@ -17,6 +17,7 @@ import type {
   JournalAction,
 } from '@dawatrace/shared/dispensing/index.js';
 import {
+  action,
   fontSize,
   spacing,
   statusPalette,
@@ -38,6 +39,7 @@ import {
 } from 'react-native';
 
 import type { AndroidClinicalSummary } from './components/tibatrace/ClinicalSummaryCard';
+import { readableColumn } from './components/tibatrace/layout';
 import { OperationalStatusStrip } from './components/tibatrace/OperationalStatusStrip';
 import { TibaTraceBrand } from './components/tibatrace/TibaTraceBrand';
 import { createAndroidPosRuntime } from './native/runtime';
@@ -308,7 +310,7 @@ function PosWorkspace({ onLogout }: { readonly onLogout: () => Promise<void> }) 
           <Text style={styles.noticeText}>{notice}</Text>
         </View>
       ) : null}
-      {busy ? <ActivityIndicator style={styles.progress} color="#12854A" /> : null}
+      {busy ? <ActivityIndicator style={styles.progress} color={action.primary} /> : null}
 
       <View style={styles.screenArea}>
         {screen === 'queue' ? (
@@ -632,7 +634,7 @@ function QueueScreen({
   readonly onSelect: (id: string) => Promise<void>;
 }) {
   return (
-    <ScrollView style={styles.screenArea} contentContainerStyle={styles.queue}>
+    <ScrollView style={styles.screenArea} contentContainerStyle={[styles.queue, readableColumn]}>
       <View style={styles.queueHeader}>
         <View>
           <Text style={styles.title}>Dispensing queue</Text>
@@ -650,12 +652,12 @@ function QueueScreen({
           style={styles.queueItem}
         >
           <View>
-            <Text style={styles.queueNumber}>{item.dispensing_number}</Text>
-            {/* The resolved name, not `patient`, which is the row's UUID.
-                This list is how an operator picks the right episode. */}
+            <Text style={styles.queueNumber}>{item.patient_name ?? 'Name not recorded'}</Text>
+            {/* Patient leads. The dispensing number alone cannot prevent a wrong
+                episode pick from a crowded queue. */}
             <Text style={styles.muted}>
-              {item.patient_name ?? 'Name not recorded'}
-              {item.patient_number ? ` · ${item.patient_number}` : ''}
+              {item.patient_number ? `${item.patient_number} · ` : ''}
+              {item.dispensing_number}
             </Text>
           </View>
           <Text style={styles.queueStatus}>{item.status.replace(/_/g, ' ')}</Text>
@@ -678,7 +680,13 @@ function NavButton({
   readonly onPress: () => void;
 }) {
   return (
-    <Pressable disabled={disabled} onPress={onPress} style={styles.navButton}>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ disabled }}
+      disabled={disabled}
+      onPress={onPress}
+      style={styles.navButton}
+    >
       <Text style={[styles.navLabel, disabled && styles.navDisabled]}>{label}</Text>
     </Pressable>
   );
@@ -698,47 +706,66 @@ function LoginScreen({
 
   return (
     <ScrollView contentContainerStyle={styles.login}>
-      <TibaTraceBrand />
-      <Text style={styles.title}>Android POS</Text>
-      <Text style={styles.muted}>Sign in with your assigned TibaTrace operator account.</Text>
-      {error ? (
-        <View style={styles.notice}>
-          <Text style={styles.noticeText}>{error}</Text>
-        </View>
-      ) : null}
-      <Text style={styles.label}>Username</Text>
-      <TextInput
-        autoCapitalize="none"
-        autoCorrect={false}
-        autoComplete="username"
-        value={username}
-        onChangeText={setUsername}
-        style={styles.input}
-      />
-      <Text style={styles.label}>Password</Text>
-      <TextInput
-        autoCapitalize="none"
-        autoCorrect={false}
-        autoComplete="current-password"
-        secureTextEntry
-        value={password}
-        onChangeText={setPassword}
-        style={styles.input}
-      />
-      <Pressable
-        disabled={busy || !username.trim() || !password}
-        onPress={() => {
-          setBusy(true);
-          setError('');
-          void onLogin(username.trim(), password)
-            .catch((cause: unknown) => setError(describe(cause)))
-            .finally(() => setBusy(false));
-        }}
-        style={[styles.primary, (busy || !username.trim() || !password) && styles.primaryDisabled]}
-      >
-        <Text style={styles.primaryLabel}>{busy ? 'Signing in…' : 'Sign in'}</Text>
-      </Pressable>
-      <Text style={styles.version}>Version {runtime.version}</Text>
+      <View style={styles.loginHero}>
+        <TibaTraceBrand />
+        <Text style={styles.loginEyebrow}>TRACE. TRUST. HEALTH.</Text>
+        <Text style={styles.loginTitle}>Safe pharmacy operations, wherever care happens.</Text>
+        <Text style={styles.loginIntro}>
+          Review prescriptions, protect clinical decisions and complete every
+          handover from one secure mobile workspace.
+        </Text>
+      </View>
+      <View style={styles.loginCard}>
+        <Text style={styles.loginCardEyebrow}>PROTECTED WORKSPACE</Text>
+        <Text style={styles.title}>Sign in to Android POS</Text>
+        <Text style={styles.muted}>Use your assigned TibaTrace operator account.</Text>
+        {error ? (
+          <View accessibilityLiveRegion="assertive" style={styles.notice}>
+            <Text style={styles.noticeText}>{error}</Text>
+          </View>
+        ) : null}
+        <Text style={styles.label}>Email or username</Text>
+        <TextInput
+          accessibilityLabel="Email or username"
+          autoCapitalize="none"
+          autoCorrect={false}
+          autoComplete="username"
+          returnKeyType="next"
+          value={username}
+          onChangeText={setUsername}
+          style={styles.input}
+        />
+        <Text style={styles.label}>Password</Text>
+        <TextInput
+          accessibilityLabel="Password"
+          autoCapitalize="none"
+          autoCorrect={false}
+          autoComplete="current-password"
+          returnKeyType="done"
+          secureTextEntry
+          value={password}
+          onChangeText={setPassword}
+          style={styles.input}
+        />
+        <Pressable
+          accessibilityRole="button"
+          disabled={busy || !username.trim() || !password}
+          onPress={() => {
+            setBusy(true);
+            setError('');
+            void onLogin(username.trim(), password)
+              .catch((cause: unknown) => setError(describe(cause)))
+              .finally(() => setBusy(false));
+          }}
+          style={[styles.primary, (busy || !username.trim() || !password) && styles.primaryDisabled]}
+        >
+          <Text style={styles.primaryLabel}>{busy ? 'Signing in…' : 'Sign in securely'}</Text>
+        </Pressable>
+        <Text style={styles.securityNote}>
+          Access is encrypted, audited and restricted to authorised pharmacy staff.
+        </Text>
+        <Text style={styles.version}>Version {runtime.version}</Text>
+      </View>
     </ScrollView>
   );
 }
@@ -747,7 +774,7 @@ function LoadingScreen({ message }: { readonly message: string }) {
   return (
     <SafeAreaView style={styles.loading}>
       <TibaTraceBrand />
-      <ActivityIndicator color="#12854A" />
+      <ActivityIndicator color={action.primary} />
       <Text style={styles.muted}>{message}</Text>
     </SafeAreaView>
   );
@@ -854,9 +881,61 @@ const styles = StyleSheet.create({
   },
   navigation: { minHeight: 58, flexDirection: 'row' },
   navButton: { minWidth: 82, alignItems: 'center', justifyContent: 'center', padding: spacing.xs },
-  navLabel: { color: '#075E37', fontSize: fontSize.caption, fontWeight: '600' },
+  navLabel: { color: action.primary, fontSize: fontSize.caption, fontWeight: '600' },
   navDisabled: { color: text.tertiary },
-  login: { flexGrow: 1, justifyContent: 'center', padding: spacing.xl, gap: spacing.md },
+  login: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    padding: spacing.xl,
+    gap: spacing.xl,
+    backgroundColor: surface.page,
+  },
+  loginHero: {
+    width: '100%',
+    maxWidth: 520,
+    alignSelf: 'center',
+    gap: spacing.md,
+  },
+  loginEyebrow: {
+    marginTop: spacing.md,
+    color: action.primary,
+    fontSize: fontSize.meta,
+    fontWeight: '700',
+    letterSpacing: 1.2,
+  },
+  loginTitle: {
+    color: text.primary,
+    fontSize: fontSize.screenTitle,
+    fontWeight: '700',
+    lineHeight: 35,
+  },
+  loginIntro: {
+    color: text.secondary,
+    fontSize: fontSize.bodyLarge,
+    lineHeight: 24,
+  },
+  loginCard: {
+    width: '100%',
+    maxWidth: 520,
+    alignSelf: 'center',
+    gap: spacing.md,
+    padding: spacing.xl,
+    borderWidth: 1,
+    borderColor: surface.border,
+    borderRadius: 18,
+    backgroundColor: surface.raised,
+    elevation: 3,
+    shadowColor: surface.inverse,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.12,
+    shadowRadius: 24,
+  },
+  loginCardEyebrow: {
+    color: action.primary,
+    fontSize: fontSize.meta,
+    fontWeight: '700',
+    letterSpacing: 1,
+  },
   label: { color: text.secondary, fontSize: fontSize.caption, textTransform: 'uppercase' },
   input: {
     minHeight: 48,
@@ -873,11 +952,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 10,
-    backgroundColor: '#12854A',
+    backgroundColor: action.primary,
     marginTop: spacing.md,
   },
   primaryDisabled: { backgroundColor: surface.sunken },
-  primaryLabel: { color: '#fff', fontSize: fontSize.bodyLarge, fontWeight: '700' },
+  primaryLabel: { color: action.primaryForeground, fontSize: fontSize.bodyLarge, fontWeight: '700' },
+  securityNote: { color: text.tertiary, fontSize: fontSize.meta, lineHeight: 18, textAlign: 'center' },
   secondary: {
     minHeight: 40,
     justifyContent: 'center',

@@ -1,4 +1,5 @@
 import {
+  action,
   controlSize,
   fontSize,
   spacing,
@@ -11,6 +12,7 @@ import type { CounsellingRecordRequest } from '@dawatrace/shared/dispensing/inde
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
+import { readableColumn } from '../components/tibatrace/layout';
 import { TibaTraceBrand } from '../components/tibatrace/TibaTraceBrand';
 
 /**
@@ -54,7 +56,7 @@ export function CounsellingScreen({
   const complete = counsellingStatus === 'COMPLETED';
 
   return (
-    <ScrollView style={styles.scroll} contentContainerStyle={styles.root}>
+    <ScrollView style={styles.scroll} contentContainerStyle={[styles.root, readableColumn]}>
       <TibaTraceBrand />
       <View style={styles.header}>
         <Text style={styles.heading}>Counselling</Text>
@@ -158,7 +160,7 @@ export function CollectionScreen({
   }
 
   return (
-    <ScrollView style={styles.scroll} contentContainerStyle={styles.root}>
+    <ScrollView style={styles.scroll} contentContainerStyle={[styles.root, readableColumn]}>
       <TibaTraceBrand />
       <Text style={styles.heading}>Collection</Text>
 
@@ -263,7 +265,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#12854A',
+    backgroundColor: action.primary,
   },
   primaryDisabled: { backgroundColor: surface.sunken },
   primaryLabel: { color: text.inverse, fontSize: fontSize.bodyLarge, fontWeight: '600' },

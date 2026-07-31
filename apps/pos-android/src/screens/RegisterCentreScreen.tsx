@@ -4,9 +4,12 @@ import {
   type PosOperationalRuntimeDTO,
   type ShiftReportDTO,
 } from '@dawatrace/shared/operational/index.js';
-import { fontSize, spacing, statusPalette, surface, text } from '@dawatrace/shared/design-system/index.js';
+import { action, fontSize, spacing, statusPalette, surface, text } from '@dawatrace/shared/design-system/index.js';
+import { formatDecimal } from '@dawatrace/shared/money.js';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+
+import { columnTrack, readableColumn } from '../components/tibatrace/layout';
 
 const DENOMINATIONS = ['1000', '500', '200', '100', '50', '20', '10', '5', '1'] as const;
 const MOVEMENT_KINDS = [
@@ -110,9 +113,9 @@ export function RegisterCentreScreen({
 
       {error ? <View accessibilityLiveRegion="assertive" style={styles.error}><Text style={styles.errorText}>{error}</Text></View> : null}
       {notice ? <View accessibilityLiveRegion="polite" style={styles.success}><Text style={styles.successText}>{notice}</Text></View> : null}
-      {busy ? <ActivityIndicator color="#12854A" /> : null}
+      {busy ? <ActivityIndicator color={action.primary} /> : null}
 
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView contentContainerStyle={[styles.scroll, readableColumn]}>
         <View style={styles.summaryGrid}>
           <Summary label="Register" value={runtime?.register?.code ?? 'Unassigned'} />
           <Summary label="State" value={runtime?.register?.state ?? 'Unavailable'} />
@@ -376,7 +379,7 @@ function denominationPayload(counts: Readonly<Record<string, string>>): Record<s
 
 function denominationTotal(counts: Readonly<Record<string, string>>): string {
   const cents = Object.entries(counts).reduce((sum, [face, count]) => sum + Math.round(Number(face) * 100) * (Number.parseInt(count || '0', 10) || 0), 0);
-  return (cents / 100).toFixed(2);
+  return formatDecimal(cents / 100, 2);
 }
 
 function closureHasExternalBlocker(runtime: PosOperationalRuntimeDTO | null): boolean {
@@ -431,14 +434,14 @@ const styles = StyleSheet.create({
   success: { padding: spacing.md, borderRadius: 8, backgroundColor: statusPalette.SAFE.surface },
   successText: { color: statusPalette.SAFE.foreground, fontSize: fontSize.body },
   summaryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  summary: { flexGrow: 1, flexBasis: '45%', gap: 3, padding: spacing.md, borderWidth: 1, borderColor: surface.border, borderRadius: 10, backgroundColor: surface.raised },
+  summary: { ...columnTrack(170), gap: 3, padding: spacing.md, borderWidth: 1, borderColor: surface.border, borderRadius: 10, backgroundColor: surface.raised },
   summaryValue: { color: text.primary, fontSize: fontSize.bodyLarge, fontWeight: '700' },
   attention: { gap: 4, padding: spacing.md, borderWidth: 1, borderColor: statusPalette.ACTION_REQUIRED.border, borderRadius: 10, backgroundColor: statusPalette.ACTION_REQUIRED.surface },
   attentionTitle: { color: statusPalette.ACTION_REQUIRED.foreground, fontSize: fontSize.caption, fontWeight: '700' },
   attentionText: { color: statusPalette.ACTION_REQUIRED.foreground, fontSize: fontSize.meta, lineHeight: 18 },
   card: { gap: spacing.md, padding: spacing.md, borderWidth: 1, borderColor: surface.border, borderRadius: 12, backgroundColor: surface.raised },
   actionGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  action: { flexGrow: 1, flexBasis: '45%', minHeight: 76, gap: 4, justifyContent: 'center', padding: spacing.md, borderWidth: 1, borderColor: '#7CCBA5', borderRadius: 10, backgroundColor: '#F0FBF5' },
+  action: { ...columnTrack(190), minHeight: 76, gap: 4, justifyContent: 'center', padding: spacing.md, borderWidth: 1, borderColor: action.selectedBorder, borderRadius: 10, backgroundColor: action.selectedSurface },
   actionTitle: { color: text.primary, fontSize: fontSize.caption, fontWeight: '700' },
   listItem: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, padding: spacing.sm, borderWidth: 1, borderColor: surface.border, borderRadius: 9, backgroundColor: surface.page },
   listCopy: { flex: 1, gap: 2 },
@@ -447,15 +450,15 @@ const styles = StyleSheet.create({
   empty: { color: text.secondary, fontSize: fontSize.body, textAlign: 'center', padding: spacing.lg },
   secondary: { minHeight: 40, justifyContent: 'center', paddingHorizontal: spacing.md, borderWidth: 1, borderColor: surface.borderStrong, borderRadius: 8, backgroundColor: surface.raised },
   secondaryLabel: { color: text.primary, fontSize: fontSize.caption, fontWeight: '700' },
-  primary: { minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.md, borderRadius: 8, backgroundColor: '#12854A' },
-  primaryLabel: { color: '#fff', fontSize: fontSize.caption, fontWeight: '700' },
+  primary: { minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.md, borderRadius: 8, backgroundColor: action.primary },
+  primaryLabel: { color: action.primaryForeground, fontSize: fontSize.caption, fontWeight: '700' },
   disabled: { opacity: 0.5, backgroundColor: surface.sunken },
   modalBackdrop: { flex: 1, justifyContent: 'center', padding: spacing.lg, backgroundColor: 'rgba(5, 18, 42, 0.56)' },
   modalCard: { maxHeight: '92%', gap: spacing.md, padding: spacing.xl, borderRadius: 14, backgroundColor: surface.raised },
   modalScroll: { gap: spacing.md },
   modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm },
   denominationGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  denomination: { flexGrow: 1, flexBasis: '28%', gap: 3 },
+  denomination: { ...columnTrack(96), gap: 3 },
   total: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: spacing.md, borderRadius: 8, backgroundColor: surface.inverse },
   totalLabel: { color: text.inverse, fontSize: fontSize.caption },
   totalValue: { color: text.inverse, fontSize: fontSize.bodyLarge, fontWeight: '700' },
@@ -465,7 +468,7 @@ const styles = StyleSheet.create({
   multiline: { minHeight: 84, textAlignVertical: 'top' },
   choiceGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
   choice: { paddingHorizontal: spacing.sm, paddingVertical: spacing.sm, borderWidth: 1, borderColor: surface.border, borderRadius: 8 },
-  choiceSelected: { borderColor: '#12854A', backgroundColor: '#F0FBF5' },
+  choiceSelected: { borderColor: action.selectedBorder, backgroundColor: action.selectedSurface },
   choiceLabel: { color: text.primary, fontSize: fontSize.meta, fontWeight: '600' },
   confirmation: { gap: spacing.xs, padding: spacing.md, borderWidth: 1, borderColor: surface.border, borderRadius: 8, backgroundColor: surface.page },
   report: { gap: spacing.sm },

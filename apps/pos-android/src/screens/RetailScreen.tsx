@@ -8,6 +8,7 @@ import {
   surface,
   text,
 } from '@dawatrace/shared/design-system/index.js';
+import { formatDecimal, formatMoney } from '@dawatrace/shared/money.js';
 import {
   PosRetailClient,
   type RetailCatalogueItemDTO,
@@ -16,6 +17,8 @@ import {
 } from '@dawatrace/shared/retail/index.js';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+
+import { readableColumn } from '../components/tibatrace/layout';
 
 interface RetailScreenProps {
   readonly apiBaseUrl: string;
@@ -88,7 +91,7 @@ export function RetailScreen({ apiBaseUrl, apiFetch, deviceId }: RetailScreenPro
       await client.scan(transaction.id, {
         device_id: deviceId,
         barcode: barcode.trim(),
-        quantity: '1.0000',
+        quantity: '1.00',
       });
       await refreshTransaction(transaction.id);
       setBarcode('');
@@ -107,7 +110,7 @@ export function RetailScreen({ apiBaseUrl, apiFetch, deviceId }: RetailScreenPro
       await client.addLine(transaction.id, {
         device_id: deviceId,
         sku_id: item.sku_id,
-        quantity: '1.0000',
+        quantity: '1.00',
       });
       await refreshTransaction(transaction.id);
     });
@@ -121,7 +124,7 @@ export function RetailScreen({ apiBaseUrl, apiFetch, deviceId }: RetailScreenPro
         await client.setQuantity(transaction.id, {
           device_id: deviceId,
           line_id: line.id,
-          quantity: next.toFixed(4),
+          quantity: formatDecimal(next, 2) || '1.00',
         });
       }
       await refreshTransaction(transaction.id);
@@ -158,7 +161,7 @@ export function RetailScreen({ apiBaseUrl, apiFetch, deviceId }: RetailScreenPro
 
   return (
     <View style={styles.root}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={[styles.content, readableColumn]} keyboardShouldPersistTaps="handled">
         <View style={styles.headingRow}>
           <View style={styles.headingCopy}>
             <Text style={styles.title}>Retail sale</Text>
@@ -394,10 +397,7 @@ function StateChip({ state }: { readonly state: string }) {
 }
 
 function money(amount: string, currency: string) {
-  return `${currency} ${Number(amount).toLocaleString('en-KE', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
+  return formatMoney(amount, currency);
 }
 
 function message(cause: unknown) {

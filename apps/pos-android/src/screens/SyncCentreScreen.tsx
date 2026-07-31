@@ -1,11 +1,21 @@
 import type { DurableActionJournal, OfflineAction } from '@dawatrace/shared/dispensing/index.js';
-import { fontSize, spacing, statusPalette, surface, text } from '@dawatrace/shared/design-system/index.js';
+import {
+  checkPosClientVersion,
+  getCachedPosClientVersion,
+  type PosClientVersionStatus,
+} from '@dawatrace/shared/operational/index.js';
+import { action, fontSize, spacing, statusPalette, surface, text } from '@dawatrace/shared/design-system/index.js';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+
+import { readableColumn } from '../components/tibatrace/layout';
+import { createAndroidPosRuntime } from '../native/runtime';
 
 interface RuntimeStatus { readonly readiness: 'READY' | 'ATTENTION' | 'UNASSIGNED'; readonly notices: readonly string[]; }
 interface PrintJobSummary { readonly status: string; }
 interface ReconciliationResult { readonly applied: boolean; readonly authoritative_reference: string; }
+
+const androidVersion = createAndroidPosRuntime().version;
 
 export function SyncCentreScreen({ apiFetch, deviceId, journal, onOpenPrint }: {
   readonly apiFetch: typeof fetch;
@@ -17,13 +27,22 @@ export function SyncCentreScreen({ apiFetch, deviceId, journal, onOpenPrint }: {
   const [runtime, setRuntime] = useState<RuntimeStatus | null>(null);
   const [clinicalConnected, setClinicalConnected] = useState<boolean | null>(null);
   const [printCounts, setPrintCounts] = useState({ queued: 0, retryRequired: 0 });
+  const [clientVersion, setClientVersion] = useState<PosClientVersionStatus | null>(getCachedPosClientVersion());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [entryToReconcile, setEntryToReconcile] = useState<OfflineAction | null>(null);
 
   const request = useCallback(async (path: string, init?: RequestInit) => {
-    const response = await apiFetch(path, { ...init, headers: { Accept: 'application/json', ...(init?.headers ?? {}) } });
+    const response = await apiFetch(path, {
+      ...init,
+      headers: {
+        Accept: 'application/json',
+        'X-POS-Client-Platform': 'ANDROID',
+        'X-POS-Client-Version': androidVersion,
+        ...(init?.headers ?? {}),
+      },
+    });
     if (response.ok) return response;
     const payload = (await response.json().catch(() => null)) as { error?: string; detail?: string } | null;
     throw new Error(payload?.error || payload?.detail || `Sync status request failed (${response.status}).`);
@@ -33,10 +52,11 @@ export function SyncCentreScreen({ apiFetch, deviceId, journal, onOpenPrint }: {
     setBusy(true);
     setError('');
     try {
-      const [runtimeResult, clinicalResult, printResult] = await Promise.allSettled([
+      const [runtimeResult, clinicalResult, printResult, versionResult] = await Promise.allSettled([
         request(`/api/pos/shift/registers/runtime/?device_id=${encodeURIComponent(deviceId)}`).then(async (response) => response.json() as Promise<RuntimeStatus>),
         request('/api/pos/clinical-screening/ruleset-version/'),
         request(`/api/pos/dispensing/print-jobs/?device_id=${encodeURIComponent(deviceId)}`).then(async (response) => response.json() as Promise<PrintJobSummary[] | { results?: PrintJobSummary[] }>),
+        checkPosClientVersion({ platform: 'ANDROID', version: androidVersion, fetcher: apiFetch }, { force: true }),
       ]);
       setRuntime(runtimeResult.status === 'fulfilled' ? runtimeResult.value : null);
       setClinicalConnected(clinicalResult.status === 'fulfilled');
@@ -44,6 +64,7 @@ export function SyncCentreScreen({ apiFetch, deviceId, journal, onOpenPrint }: {
         const jobs = Array.isArray(printResult.value) ? printResult.value : printResult.value.results ?? [];
         setPrintCounts({ queued: jobs.filter((job) => job.status === 'QUEUED' || job.status === 'RENDERED').length, retryRequired: jobs.filter((job) => job.status === 'RETRY_REQUIRED').length });
       } else setPrintCounts({ queued: 0, retryRequired: 0 });
+      if (versionResult.status === 'fulfilled') setClientVersion(versionResult.value);
       setEntries(journal?.entries ?? []);
       if (runtimeResult.status === 'rejected' && clinicalResult.status === 'rejected' && printResult.status === 'rejected') throw new Error('No authoritative sync status source is reachable.');
     } catch (cause) {
@@ -51,7 +72,7 @@ export function SyncCentreScreen({ apiFetch, deviceId, journal, onOpenPrint }: {
     } finally {
       setBusy(false);
     }
-  }, [deviceId, journal, request]);
+  }, [apiFetch, deviceId, journal, request]);
 
   useEffect(() => { void refresh(); }, [refresh]);
 
@@ -75,12 +96,28 @@ export function SyncCentreScreen({ apiFetch, deviceId, journal, onOpenPrint }: {
 
   const unknownEntries = entries.filter((entry) => entry.state === 'NEEDS_RECONCILIATION');
   const pendingEntries = entries.filter((entry) => entry.state === 'PENDING' || entry.state === 'IN_FLIGHT');
+  const versionState = clientVersion?.update_required
+    ? 'BLOCKING'
+    : clientVersion?.update_available
+      ? 'ACTION_REQUIRED'
+      : clientVersion
+        ? 'SAFE'
+        : 'ACTION_REQUIRED';
+  const versionDetail = !clientVersion
+    ? 'Daily HQ alignment check has not completed yet.'
+    : clientVersion.update_required
+      ? `HQ requires ${clientVersion.latest_version}. This till is on ${clientVersion.client_version}. ${clientVersion.operations_impact || 'Update before continuing operations.'}`
+      : clientVersion.update_available
+        ? `HQ published ${clientVersion.latest_version}. ${clientVersion.operations_impact || 'Install when the shift allows.'}`
+        : `Aligned with HQ release ${clientVersion.latest_version || clientVersion.client_version}. Rechecks daily.`;
+
   return <View style={styles.root} accessibilityLabel="Sync Centre">
     <View style={styles.header}><View style={styles.headerCopy}><Text style={styles.kicker}>Authoritative recovery</Text><Text style={styles.title}>Sync Centre</Text><Text style={styles.body}>Refreshes status only. It never blindly replays payment, collection, supply or clinical decisions.</Text></View><Pressable accessibilityRole="button" disabled={busy} onPress={() => void refresh()} style={[styles.secondary, busy && styles.disabled]}><Text style={styles.secondaryLabel}>{busy ? 'Refreshing…' : 'Refresh'}</Text></Pressable></View>
     {error ? <View accessibilityLiveRegion="assertive" style={styles.error}><Text style={styles.errorText}>{error}</Text></View> : null}
     {notice ? <View accessibilityLiveRegion="polite" style={styles.success}><Text style={styles.successText}>{notice}</Text></View> : null}
-    <ScrollView contentContainerStyle={styles.scroll}>
+    <ScrollView contentContainerStyle={[styles.scroll, readableColumn]}>
       <View style={styles.statusGrid}>
+        <StatusCard title="HQ client alignment" state={versionState} detail={versionDetail} />
         <StatusCard title="Clinical authority" state={clinicalConnected === true ? 'SAFE' : clinicalConnected === false ? 'BLOCKING' : 'ACTION_REQUIRED'} detail={clinicalConnected === true ? 'Clinical ruleset endpoint is reachable. Offline decisions are not replayed here.' : clinicalConnected === false ? 'Clinical authority is unavailable. Dispensing stays fail-closed.' : 'Checking clinical authority.'} />
         <StatusCard title="Operational context" state={runtime?.readiness === 'READY' ? 'SAFE' : runtime ? 'ACTION_REQUIRED' : 'BLOCKING'} detail={runtime ? runtime.notices[0] || `Register status: ${runtime.readiness.toLowerCase()}.` : 'Operational context is unavailable.'} />
         <StatusCard title="Printing" state={printCounts.retryRequired > 0 ? 'ACTION_REQUIRED' : 'SAFE'} detail={printCounts.retryRequired > 0 ? `${printCounts.retryRequired} print job${plural(printCounts.retryRequired)} requires a controlled retry.` : `${printCounts.queued} queued or rendered document${plural(printCounts.queued)} on this device.`} actionLabel="Open Print Centre" onAction={onOpenPrint} />
@@ -93,7 +130,7 @@ export function SyncCentreScreen({ apiFetch, deviceId, journal, onOpenPrint }: {
         {pendingEntries.length > 0 ? <Text style={styles.meta}>Pending items are retained for audit. Sync Centre does not dispatch them; return to their original workflow when ready.</Text> : null}
       </View>
     </ScrollView>
-    {busy ? <ActivityIndicator color="#12854A" style={styles.progress} /> : null}
+    {busy ? <ActivityIndicator color={action.primary} style={styles.progress} /> : null}
     {entryToReconcile ? <ReconciliationModal entry={entryToReconcile} busy={busy} onClose={() => !busy && setEntryToReconcile(null)} onConfirm={() => void reconcile()} /> : null}
   </View>;
 }
@@ -146,8 +183,8 @@ const styles = StyleSheet.create({
   statusChipText: { fontSize: fontSize.meta, fontWeight: '700' },
   secondary: { alignSelf: 'flex-start', minHeight: 40, justifyContent: 'center', paddingHorizontal: spacing.md, borderWidth: 1, borderColor: surface.borderStrong, borderRadius: 8, backgroundColor: surface.raised },
   secondaryLabel: { color: text.primary, fontSize: fontSize.caption, fontWeight: '700' },
-  primary: { minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.md, borderRadius: 8, backgroundColor: '#12854A' },
-  primaryLabel: { color: '#fff', fontSize: fontSize.caption, fontWeight: '700' },
+  primary: { minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.md, borderRadius: 8, backgroundColor: action.primary },
+  primaryLabel: { color: action.primaryForeground, fontSize: fontSize.caption, fontWeight: '700' },
   disabled: { opacity: 0.55, backgroundColor: surface.sunken },
   progress: { position: 'absolute', top: spacing.lg, right: spacing.lg },
   modalBackdrop: { flex: 1, justifyContent: 'center', padding: spacing.lg, backgroundColor: 'rgba(5, 18, 42, 0.56)' },

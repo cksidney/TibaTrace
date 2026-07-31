@@ -3,6 +3,7 @@ import {
   CLINICAL_STATUS,
   controlSize,
   fontSize,
+  glyphFor,
   spacing,
   statusPalette,
   surface,
@@ -109,6 +110,9 @@ export function PatientBanner({
         accessibilityLabel={allergy.label}
         style={[styles.badge, { backgroundColor: palette.surface, borderColor: palette.border }]}
       >
+        <Text style={[styles.badgeGlyph, { color: palette.foreground }]} accessible={false}>
+          {glyphFor(allergy.status)}
+        </Text>
         <Text style={[styles.badgeLabel, { color: palette.foreground }]}>{allergy.label}</Text>
       </View>
     </View>
@@ -177,10 +181,17 @@ const styles = StyleSheet.create({
   },
   badge: {
     marginLeft: 'auto',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
     borderWidth: 1,
     borderRadius: 999,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
+  },
+  badgeGlyph: {
+    fontSize: fontSize.caption,
+    fontWeight: '700',
   },
   badgeLabel: {
     fontSize: fontSize.caption,

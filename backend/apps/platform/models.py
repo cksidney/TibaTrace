@@ -39,6 +39,13 @@ class PosRelease(TimestampedModel):
     #: Minimum OS the build runs on, shown so somebody does not download an
     #: installer their till cannot run.
     minimum_os = models.CharField(max_length=80, blank=True)
+    #: Clients reporting a build below this must upgrade before POS operations
+    #: that affect stock, cash or clinical decisions continue. Zero means the
+    #: release is advisory only — Sync Centre still surfaces it daily.
+    minimum_supported_build = models.PositiveIntegerField(default=0)
+    #: Operator-facing note for HQ upgrades that change till behaviour
+    #: (screening rules, dispensing gates, cash controls, etc.).
+    operations_impact = models.TextField(blank=True)
     #: Unpublished rows are invisible to the API. Uploading an artefact and
     #: releasing it are separate acts.
     is_published = models.BooleanField(default=False)

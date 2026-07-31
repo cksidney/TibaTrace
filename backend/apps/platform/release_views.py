@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from pathlib import PurePosixPath
 
+from django.http import FileResponse
 from drf_spectacular.utils import extend_schema
 from rest_framework import serializers, status
 from rest_framework.permissions import IsAuthenticated
@@ -21,9 +22,12 @@ from rest_framework.views import APIView
 from apps.platform.models import PosRelease
 from apps.platform.release_storage import (
     DOWNLOAD_URL_TTL_SECONDS,
+    LOCAL_DOWNLOAD_URL_TTL_SECONDS,
     ReleaseStorageNotConfigured,
     is_configured,
+    local_object_path,
     signed_download_url,
+    storage_backend,
 )
 
 #: What a saved file is called. The storage key is an implementation detail and
@@ -57,6 +61,8 @@ class PosReleaseSerializer(serializers.ModelSerializer):
             "sha256",
             "release_notes",
             "minimum_os",
+            "minimum_supported_build",
+            "operations_impact",
             "published_at",
             "download_filename",
         )
@@ -83,14 +89,19 @@ class PosReleaseListView(APIView):
         return Response(
             {
                 "downloads_available": is_configured(),
-                "url_ttl_seconds": DOWNLOAD_URL_TTL_SECONDS,
+                "url_ttl_seconds": (
+                    LOCAL_DOWNLOAD_URL_TTL_SECONDS
+                    if storage_backend() == "local"
+                    else DOWNLOAD_URL_TTL_SECONDS
+                ),
+                "storage_backend": storage_backend(),
                 "releases": PosReleaseSerializer(releases, many=True).data,
             }
         )
 
 
 class PosReleaseDownloadView(APIView):
-    """Issue a short-lived signed URL for one installer.
+    """Issue a short-lived URL for one installer.
 
     The response is the URL rather than a redirect, so the client can show the
     checksum next to the link and the operator can verify what they downloaded.
@@ -108,10 +119,21 @@ class PosReleaseDownloadView(APIView):
                 {"detail": "Release not found."}, status=status.HTTP_404_NOT_FOUND
             )
 
+        filename = download_filename(release)
         try:
-            url = signed_download_url(
-                release.object_key, filename=download_filename(release)
-            )
+            if storage_backend() == "local":
+                path = local_object_path(release.object_key)
+                if not path.is_file():
+                    raise ReleaseStorageNotConfigured(
+                        f"Local installer is missing at {release.object_key}."
+                    )
+                url = request.build_absolute_uri(
+                    f"/api/hq/pos-releases/{release.pk}/artifact/"
+                )
+                expires = LOCAL_DOWNLOAD_URL_TTL_SECONDS
+            else:
+                url = signed_download_url(release.object_key, filename=filename)
+                expires = DOWNLOAD_URL_TTL_SECONDS
         except ReleaseStorageNotConfigured as exc:
             # 503, not 500: the request was valid and the deployment is
             # incomplete. Retrying the same request will not help.
@@ -139,9 +161,43 @@ class PosReleaseDownloadView(APIView):
         return Response(
             {
                 "url": url,
-                "filename": download_filename(release),
-                "expires_in_seconds": DOWNLOAD_URL_TTL_SECONDS,
+                "filename": filename,
+                "expires_in_seconds": expires,
                 "sha256": release.sha256,
                 "size_bytes": release.size_bytes,
             }
         )
+
+
+class PosReleaseArtifactView(APIView):
+    """Stream a local installer for an authenticated HQ session.
+
+    Used when object storage is not configured. Session cookies travel with the
+    browser navigation that follows the download URL, so this stays behind the
+    same authentication gate as the catalogue.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        if storage_backend() != "local":
+            return Response(
+                {"detail": "Local artefact streaming is only available for the local backend."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        release = PosRelease.objects.filter(pk=pk, is_published=True).first()
+        if release is None:
+            return Response({"detail": "Release not found."}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            path = local_object_path(release.object_key)
+        except ReleaseStorageNotConfigured as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        if not path.is_file():
+            return Response(
+                {"detail": "Installer artefact is missing from local storage."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        filename = download_filename(release)
+        response = FileResponse(path.open("rb"), as_attachment=True, filename=filename)
+        response["Content-Length"] = str(path.stat().st_size)
+        return response

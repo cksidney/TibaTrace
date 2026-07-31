@@ -23,6 +23,7 @@ PASSWORD = "release-password-long-enough"
 DIGEST = "b" * 64
 
 STORAGE = {
+    "backend": "s3",
     "bucket": "tibatrace-releases",
     "endpoint_url": "https://minio.example.test",
     "access_key": "key",
@@ -35,9 +36,17 @@ STORAGE = {
 def clear_throttle():
     from django.core.cache import cache
 
-    cache.clear()
+    try:
+        cache.clear()
+    except Exception:
+        # Tests still run when the configured Redis cache is offline; throttle
+        # state simply is not reset between cases.
+        pass
     yield
-    cache.clear()
+    try:
+        cache.clear()
+    except Exception:
+        pass
 
 
 @pytest.fixture
@@ -148,9 +157,24 @@ class TestListing:
         )
         assert download_filename(release) == "TibaTrace-POS-windows-1.0.0.zip"
 
-    def test_the_list_says_whether_downloads_are_available(self, user, published):
-        # Unconfigured storage is reported up front rather than discovered by
-        # clicking a link that fails.
+    def test_the_list_says_whether_downloads_are_available(self, user, published, settings, tmp_path):
+        # Local backend is always ready; S3 without credentials is not.
+        settings.POS_RELEASE_STORAGE = {
+            "backend": "local",
+            "local_root": str(tmp_path / "releases"),
+        }
+        body = signed_in(user).get("/api/hq/pos-releases/").json()
+        assert body["downloads_available"] is True
+        assert body["storage_backend"] == "local"
+
+        settings.POS_RELEASE_STORAGE = {
+            "backend": "s3",
+            "bucket": "",
+            "endpoint_url": "",
+            "access_key": "",
+            "secret_key": "",
+            "region": "us-east-1",
+        }
         body = signed_in(user).get("/api/hq/pos-releases/").json()
         assert body["downloads_available"] is False
 
@@ -159,7 +183,8 @@ class TestListing:
 
 
 class TestDownload:
-    def test_a_signed_url_is_issued_for_a_published_build(self, user, published):
+    def test_a_signed_url_is_issued_for_a_published_build(self, user, published, settings):
+        settings.POS_RELEASE_STORAGE = {**STORAGE, "backend": "s3"}
         with patch(
             "apps.platform.release_views.signed_download_url",
             return_value="https://minio.example.test/signed",
@@ -184,18 +209,37 @@ class TestDownload:
         # but have not been released.
         assert response.status_code == 404
 
-    def test_unconfigured_storage_answers_503_not_500(self, user, published):
-        """The request was valid; the deployment is incomplete.
-
-        A 500 would send somebody looking for a bug in the request.
-        """
+    def test_unconfigured_storage_answers_503_not_500(self, user, published, settings, tmp_path):
+        """Missing artefact on local storage is a deployment gap, not a 500."""
+        settings.POS_RELEASE_STORAGE = {
+            "backend": "local",
+            "local_root": str(tmp_path / "empty-releases"),
+        }
         response = signed_in(user).post(f"/api/hq/pos-releases/{published.pk}/download/")
         assert response.status_code == 503
-        assert "not configured" in response.json()["detail"].lower()
+        assert "missing" in response.json()["detail"].lower()
 
-    def test_a_download_is_audited(self, user, published):
+    def test_local_download_returns_artifact_url(self, user, published, settings, tmp_path):
+        from apps.platform.release_storage import ensure_local_artifact
+
+        settings.POS_RELEASE_STORAGE = {
+            "backend": "local",
+            "local_root": str(tmp_path / "releases"),
+        }
+        ensure_local_artifact(published.object_key, b"installer-bytes")
+        client = signed_in(user)
+        grant = client.post(f"/api/hq/pos-releases/{published.pk}/download/")
+        assert grant.status_code == 200
+        body = grant.json()
+        assert body["url"].endswith(f"/api/hq/pos-releases/{published.pk}/artifact/")
+        artifact = client.get(f"/api/hq/pos-releases/{published.pk}/artifact/")
+        assert artifact.status_code == 200
+        assert b"".join(artifact.streaming_content) == b"installer-bytes"
+
+    def test_a_download_is_audited(self, user, published, settings):
         from apps.audit.models import AuditEvent
 
+        settings.POS_RELEASE_STORAGE = {**STORAGE, "backend": "s3"}
         with patch(
             "apps.platform.release_views.signed_download_url",
             return_value="https://minio.example.test/signed",
@@ -212,10 +256,11 @@ class TestDownload:
         assert event.metadata["version"] == "0.1.0-alpha.1"
 
     def test_a_platform_admin_can_request_a_download_without_tenant_audit(
-        self, platform_admin, published
+        self, platform_admin, published, settings
     ):
         from apps.audit.models import AuditEvent
 
+        settings.POS_RELEASE_STORAGE = {**STORAGE, "backend": "s3"}
         with patch(
             "apps.platform.release_views.signed_download_url",
             return_value="https://minio.example.test/signed",

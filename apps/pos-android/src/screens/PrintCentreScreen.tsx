@@ -1,6 +1,8 @@
-import { fontSize, spacing, statusPalette, surface, text } from '@dawatrace/shared/design-system/index.js';
+import { action, fontSize, spacing, statusPalette, surface, text } from '@dawatrace/shared/design-system/index.js';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+
+import { columnTrack, readableColumn } from '../components/tibatrace/layout';
 
 type PrintStatus = 'QUEUED' | 'RENDERED' | 'SENDING' | 'PRINTED' | 'FAILED' | 'RETRY_REQUIRED' | 'CANCELLED';
 type PrintActionKind = 'simulate' | 'retry' | 'reprint' | 'cancel';
@@ -147,12 +149,12 @@ export function PrintCentreScreen({ apiFetch, deviceId }: { readonly apiFetch: t
       {error ? <View accessibilityLiveRegion="assertive" style={styles.error}><Text style={styles.errorText}>{error}</Text></View> : null}
       {notice ? <View accessibilityLiveRegion="polite" style={styles.success}><Text style={styles.successText}>{notice}</Text></View> : null}
 
-      <ScrollView contentContainerStyle={styles.list}>
+      <ScrollView contentContainerStyle={[styles.list, readableColumn]}>
         {jobs.map((job) => <PrintJobCard key={job.id} job={job} busy={busy} onAction={openAction} />)}
         {jobs.length === 0 && !busy ? <View style={styles.empty}><Text style={styles.sectionTitle}>No print jobs for this device</Text><Text style={styles.body}>Completed payments create an immutable receipt snapshot and its first queued document job.</Text></View> : null}
       </ScrollView>
 
-      {busy ? <ActivityIndicator color="#12854A" style={styles.progress} /> : null}
+      {busy ? <ActivityIndicator color={action.primary} style={styles.progress} /> : null}
       {activeAction ? <ActionModal
         action={activeAction}
         busy={busy}
@@ -284,7 +286,7 @@ const styles = StyleSheet.create({
   status: { paddingHorizontal: spacing.sm, paddingVertical: 4, borderRadius: 999, borderWidth: 1 },
   statusText: { fontSize: fontSize.meta, fontWeight: '700' },
   metadata: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  metaItem: { flexGrow: 1, flexBasis: '42%', gap: 2 },
+  metaItem: { ...columnTrack(160), gap: 2 },
   metaLabel: { color: text.secondary, fontSize: fontSize.meta, textTransform: 'uppercase', letterSpacing: 0.4 },
   metaValue: { color: text.primary, fontSize: fontSize.caption },
   failure: { color: statusPalette.BLOCKING.foreground, fontSize: fontSize.caption, lineHeight: 18 },
@@ -293,8 +295,8 @@ const styles = StyleSheet.create({
   actionLabel: { color: text.primary, fontSize: fontSize.caption, fontWeight: '700' },
   secondary: { minHeight: 40, justifyContent: 'center', paddingHorizontal: spacing.md, borderWidth: 1, borderColor: surface.borderStrong, borderRadius: 8, backgroundColor: surface.raised },
   secondaryLabel: { color: text.primary, fontSize: fontSize.caption, fontWeight: '700' },
-  primary: { minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.md, borderRadius: 8, backgroundColor: '#12854A' },
-  primaryLabel: { color: '#fff', fontSize: fontSize.caption, fontWeight: '700' },
+  primary: { minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.md, borderRadius: 8, backgroundColor: action.primary },
+  primaryLabel: { color: action.primaryForeground, fontSize: fontSize.caption, fontWeight: '700' },
   primaryLabelDisabled: { color: text.tertiary },
   disabled: { opacity: 0.55, backgroundColor: surface.sunken },
   progress: { position: 'absolute', top: spacing.lg, right: spacing.lg },
@@ -302,10 +304,10 @@ const styles = StyleSheet.create({
   modalCard: { gap: spacing.md, padding: spacing.xl, borderRadius: 14, backgroundColor: surface.raised },
   choiceGroup: { gap: spacing.sm, padding: spacing.md, borderWidth: 1, borderColor: surface.border, borderRadius: 8 },
   choice: { minHeight: 42, flexDirection: 'row', gap: spacing.sm, alignItems: 'center', padding: spacing.sm, borderWidth: 1, borderColor: surface.border, borderRadius: 8 },
-  choiceSelected: { borderColor: '#075E37', backgroundColor: '#F0FBF5' },
+  choiceSelected: { borderColor: action.selectedBorder, backgroundColor: action.selectedSurface },
   radio: { width: 18, height: 18, borderWidth: 2, borderColor: text.secondary, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
-  radioSelected: { borderColor: '#12854A' },
-  radioDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#12854A' },
+  radioSelected: { borderColor: action.selectedBorder },
+  radioDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: action.primary },
   choiceLabel: { flex: 1, color: text.primary, fontSize: fontSize.caption, fontWeight: '600' },
   field: { gap: spacing.xs },
   fieldLabel: { color: text.primary, fontSize: fontSize.caption, fontWeight: '700' },

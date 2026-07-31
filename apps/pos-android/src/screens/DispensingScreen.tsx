@@ -1,10 +1,12 @@
 import {
   STAGE_STATUS,
+  action,
   controlSize,
   deriveStages,
   fontSize,
   nextAction,
   spacing,
+  stageMarker,
   statusPalette,
   surface,
   text,
@@ -13,6 +15,7 @@ import type { StageView } from '@dawatrace/shared/design-system/index.js';
 import type { DispensingEpisodeDTO } from '@dawatrace/shared/dispensing/index.js';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { readableColumn } from '../components/tibatrace/layout';
 import { ClinicalSummaryCard, PatientBanner } from '../components/tibatrace/ClinicalSummaryCard';
 import type { AndroidClinicalSummary } from '../components/tibatrace/ClinicalSummaryCard';
 import { TibaTraceBrand } from '../components/tibatrace/TibaTraceBrand';
@@ -72,7 +75,7 @@ export function DispensingScreen({
         allergyStatus={episode.allergies.length > 0 ? 'KNOWN_ALLERGY' : 'UNKNOWN'}
       />
 
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView contentContainerStyle={[styles.scroll, readableColumn]}>
         {/* The clinical summary sits directly below the banner: on a handheld
             the blocker must be readable without scrolling. */}
         <ClinicalSummaryCard
@@ -117,7 +120,9 @@ function StageRow({ stage }: { readonly stage: StageView }) {
         .toLowerCase()}${stage.blockedReason ? `. ${stage.blockedReason}` : ''}`}
       style={[styles.stageRow, { borderLeftColor: palette.accent }]}
     >
-      <Text style={styles.stageStep}>{stage.step}</Text>
+      <Text style={[styles.stageStep, { color: palette.foreground }]}>
+        {stageMarker(stage.state, stage.step)}
+      </Text>
       <View style={styles.stageText}>
         <Text style={styles.stageLabel}>{stage.label}</Text>
         {stage.blockedReason ? (
@@ -155,7 +160,6 @@ const styles = StyleSheet.create({
   stageStep: {
     fontSize: fontSize.caption,
     fontWeight: '700',
-    color: text.secondary,
     fontVariant: ['tabular-nums'],
     minWidth: 16,
   },
@@ -175,10 +179,10 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#12854A',
+    backgroundColor: action.primary,
   },
   primaryDisabled: { backgroundColor: surface.sunken },
-  primaryLabel: { color: text.inverse, fontSize: fontSize.bodyLarge, fontWeight: '600' },
+  primaryLabel: { color: action.primaryForeground, fontSize: fontSize.bodyLarge, fontWeight: '600' },
   primaryLabelDisabled: { color: text.tertiary },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl, gap: spacing.sm },
   emptyTitle: { marginTop: spacing.md, fontSize: fontSize.sectionTitle, fontWeight: '600', color: text.primary },

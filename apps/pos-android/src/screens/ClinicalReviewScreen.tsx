@@ -1,8 +1,10 @@
 import type { ScreeningDecision, ScreeningOverride, ScreeningResult } from '@dawatrace/shared/clinical/index.js';
-import { controlSize, fontSize, spacing, statusPalette, surface, text } from '@dawatrace/shared/design-system/index.js';
+import { action, controlSize, fontSize, spacing, statusPalette, surface, text } from '@dawatrace/shared/design-system/index.js';
 import type { DispensingEpisodeDTO } from '@dawatrace/shared/dispensing/index.js';
 import { useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+
+import { columnTrack, readableColumn } from '../components/tibatrace/layout';
 
 type ReviewDecision =
   | 'APPROVE'
@@ -109,7 +111,7 @@ export function ClinicalReviewScreen({
         <View style={styles.headerText}><Text style={styles.kicker}>Clinical decision workspace</Text><Text style={styles.title}>Pharmacist review</Text></View>
         <Pressable accessibilityRole="button" onPress={onBack} style={styles.secondary}><Text style={styles.secondaryLabel}>Back</Text></Pressable>
       </View>
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView contentContainerStyle={[styles.scroll, readableColumn]}>
         <View style={styles.patientCard}>
           <Meta label="Patient" value={episode.patient_name ?? 'Name not recorded'} />
           <Meta label="Prescription" value={episode.prescription_number ?? episode.dispensing_number} />
@@ -295,7 +297,7 @@ const styles = StyleSheet.create({
   sectionTitle: { marginTop: 3, fontSize: fontSize.sectionTitle, color: text.primary, fontWeight: '700' },
   kicker: { fontSize: fontSize.caption, color: text.tertiary, textTransform: 'uppercase', letterSpacing: 0.7 },
   patientCard: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.lg, padding: spacing.lg, borderRadius: 12, borderWidth: 1, borderColor: surface.border, backgroundColor: surface.raised },
-  meta: { minWidth: 130, flexGrow: 1 },
+  meta: columnTrack(150),
   metaLabel: { fontSize: fontSize.meta, color: text.tertiary, textTransform: 'uppercase' },
   metaValue: { marginTop: 4, color: text.primary, fontSize: fontSize.body },
   findingCard: { padding: spacing.lg, borderRadius: 12, borderWidth: 1, borderLeftWidth: 5, borderColor: statusPalette.BLOCKING.border, borderLeftColor: statusPalette.BLOCKING.accent, backgroundColor: surface.raised },
@@ -306,10 +308,10 @@ const styles = StyleSheet.create({
   formCard: { padding: spacing.lg, borderRadius: 12, borderWidth: 1, borderColor: surface.border, backgroundColor: surface.raised, gap: spacing.md },
   formHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: spacing.md },
   choice: { flexDirection: 'row', gap: spacing.md, padding: spacing.md, borderWidth: 1, borderColor: surface.border, borderRadius: 10 },
-  choiceSelected: { borderColor: '#075E37', backgroundColor: '#E6F5EA' },
+  choiceSelected: { borderColor: action.selectedBorder, backgroundColor: action.selectedSurface },
   radio: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: surface.borderStrong, alignItems: 'center', justifyContent: 'center', marginTop: 1 },
-  radioSelected: { borderColor: '#075E37' },
-  radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#075E37' },
+  radioSelected: { borderColor: action.selectedBorder },
+  radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: action.primary },
   choiceText: { flex: 1 },
   choiceLabel: { fontSize: fontSize.body, color: text.primary, fontWeight: '700' },
   choiceDetail: { marginTop: 2, fontSize: fontSize.caption, color: text.secondary, lineHeight: fontSize.caption * 1.35 },
@@ -318,8 +320,8 @@ const styles = StyleSheet.create({
   fieldLabel: { fontSize: fontSize.caption, color: text.secondary, fontWeight: '700' },
   input: { minHeight: 96, padding: spacing.md, borderRadius: 8, borderWidth: 1, borderColor: surface.borderStrong, backgroundColor: surface.raised, color: text.primary, fontSize: fontSize.body },
   singleLineInput: { minHeight: controlSize.touchTarget, paddingHorizontal: spacing.md, borderRadius: 8, borderWidth: 1, borderColor: surface.borderStrong, backgroundColor: surface.raised, color: text.primary, fontSize: fontSize.body },
-  primary: { minHeight: controlSize.touchTargetLarge, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#075E37' },
-  primaryLabel: { color: text.inverse, fontSize: fontSize.bodyLarge, fontWeight: '700' },
+  primary: { minHeight: controlSize.touchTargetLarge, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: action.primary },
+  primaryLabel: { color: action.primaryForeground, fontSize: fontSize.bodyLarge, fontWeight: '700' },
   primaryLabelDisabled: { color: text.tertiary },
   secondary: { minHeight: controlSize.touchTarget, justifyContent: 'center', paddingHorizontal: spacing.md, borderWidth: 1, borderColor: surface.borderStrong, borderRadius: 8 },
   secondaryLabel: { color: text.primary, fontSize: fontSize.caption, fontWeight: '700' },
@@ -330,8 +332,8 @@ const styles = StyleSheet.create({
   historyItem: { marginTop: spacing.md, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: surface.border },
   historyMeta: { marginTop: 3, color: text.tertiary, fontSize: fontSize.caption },
   overrideActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.md },
-  actionPrimary: { minHeight: controlSize.touchTarget, justifyContent: 'center', paddingHorizontal: spacing.md, borderRadius: 8, backgroundColor: '#075E37' },
-  actionPrimaryLabel: { color: text.inverse, fontSize: fontSize.caption, fontWeight: '700' },
+  actionPrimary: { minHeight: controlSize.touchTarget, justifyContent: 'center', paddingHorizontal: spacing.md, borderRadius: 8, backgroundColor: action.primary },
+  actionPrimaryLabel: { color: action.primaryForeground, fontSize: fontSize.caption, fontWeight: '700' },
   actionSecondary: { minHeight: controlSize.touchTarget, justifyContent: 'center', paddingHorizontal: spacing.md, borderWidth: 1, borderColor: surface.borderStrong, borderRadius: 8 },
   modalBackdrop: { flex: 1, justifyContent: 'center', padding: spacing.lg, backgroundColor: 'rgba(10, 24, 43, 0.52)' },
   modalCard: { gap: spacing.md, padding: spacing.lg, borderRadius: 12, backgroundColor: surface.raised, maxHeight: '90%' },

@@ -1,11 +1,10 @@
-from __future__ import annotations
-
 from django.conf import settings
+from django.core.management import call_command
 from django.db import connection
 from django.http import JsonResponse
 from django.shortcuts import render
 from drf_spectacular.utils import extend_schema
-from rest_framework import serializers
+from rest_framework import serializers, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -23,8 +22,6 @@ def pos_terminal_view(request):
     patients, with dispensing numbers, into the working queue -- which is not
     something a production till should be able to do from its own header.
     """
-    from django.conf import settings
-
     return render(
         request,
         "pos/pos.html",
@@ -33,6 +30,23 @@ def pos_terminal_view(request):
             "product_version": settings.DAWATRACE_VERSION,
         },
     )
+
+
+class PosDemoSeedView(APIView):
+    """DEBUG-only: replenish multi-scenario POS queue data for the signed-in tenant."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        if not settings.DEBUG:
+            return Response(
+                {"detail": "Demo seeding is disabled outside DEBUG deployments."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        tenant = getattr(request.user, "tenant", None)
+        slug = getattr(tenant, "slug", None) or "tibatrace-demo"
+        call_command("seed_pos_dispensing_demo", tenant=slug, verbosity=0)
+        return Response({"ok": True, "tenant": slug})
 
 
 def health(request):
