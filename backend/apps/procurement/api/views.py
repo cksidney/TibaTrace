@@ -146,6 +146,28 @@ class ProcurementContextView(APIView):
                         is_purchasable=True,
                     ).order_by("display_name", "sku_code")
                 ],
+                "suppliers": [
+                    {
+                        "id": str(supplier.pk),
+                        "supplier_code": supplier.supplier_code,
+                        "legal_name": supplier.legal_name,
+                        "status": supplier.status,
+                    }
+                    for supplier in Supplier.all_objects.filter(
+                        tenant_id=tenant_id
+                    ).order_by("legal_name", "supplier_code")
+                ],
+                "orders": [
+                    {
+                        "id": str(order.pk),
+                        "po_number": order.po_number,
+                        "supplier": str(order.supplier_id),
+                        "status": order.status,
+                    }
+                    for order in PurchaseOrder.all_objects.filter(
+                        tenant_id=tenant_id
+                    ).order_by("-created_at")
+                ],
             }
         )
 

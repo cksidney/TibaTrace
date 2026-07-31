@@ -22,6 +22,7 @@ from apps.insurance.models import (
     Insurer,
     InsurerPlan,
     InsurerScheme,
+    PrescriptionClaim,
 )
 
 SEEDED_MODELS = [
@@ -33,6 +34,7 @@ SEEDED_MODELS = [
     CoverageVerification,
     InsuranceRemittance,
     InsuranceRemittanceLine,
+    PrescriptionClaim,
 ]
 
 
@@ -121,6 +123,11 @@ class TestScenarioCoverage:
         assert line is not None
         assert line.status == "UNMATCHED"
 
+    def test_real_claim_rows_cover_the_hq_states(self, seeded):
+        assert set(
+            PrescriptionClaim.all_objects.values_list("adjudication_state", flat=True)
+        ) >= {"PENDING", "APPROVED", "REJECTED"}
+
 
 class TestSeededAdapterHonesty:
     def test_sha_is_configured_but_has_no_registered_adapter(self, seeded):
@@ -155,22 +162,11 @@ class TestSeededAdapterHonesty:
 
 
 class TestSeedSafety:
-    def test_the_seed_fabricates_no_insurer_decision(self):
-        """No adjudication, approval or payment is invented.
-
-        Seeded data that carries an approval nobody granted trains people to
-        believe approvals appear on their own.
-        """
-        from apps.insurance.management.commands import seed_insurance_demo as mod
-
-        source = open(mod.__file__).read()
-        for forbidden in [
-            "ClaimAdjudication",
-            "InsurancePaymentAllocation",
-            "adjudication_state",
-            "approved_amount",
-        ]:
-            assert forbidden not in source
+    def test_claim_decisions_are_confined_to_identifiable_demo_rows(self, seeded):
+        claims = PrescriptionClaim.all_objects.all()
+        assert claims.exists()
+        assert all(claim.claim_number.startswith("DEMO-INS-") for claim in claims)
+        assert not claims.exclude(payment_state="UNPAID").exists()
 
     def test_seeded_rows_are_identifiable(self):
         from apps.insurance.management.commands import seed_insurance_demo as mod

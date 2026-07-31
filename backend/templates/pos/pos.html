@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{% static 'pos/css/pos.css' %}">
+  <link rel="stylesheet" href="{% static 'pos/css/pos.css' %}?v=money-2dp-1">
 </head>
 <body class="dark-theme">
   <!-- Top Application Bar -->
@@ -51,82 +51,92 @@
     </div>
 
     <div class="header-actions">
-      <button class="btn btn-secondary btn-sm" id="btn-theme-toggle" onclick="toggleTheme()">
+      <div class="session-pill" id="pos-session-area" title="POS operator session">
+        <span class="session-dot" id="pos-session-dot"></span>
+        <span id="pos-session-label">Not signed in</span>
+      </div>
+      <button class="btn btn-secondary btn-sm" id="btn-theme-toggle" type="button" onclick="toggleTheme()">
         🌙 Dark Mode
       </button>
-      <button class="btn btn-secondary btn-sm" id="btn-shift-ops" onclick="openShiftModal()">
+      <button class="btn btn-secondary btn-sm" id="btn-shift-ops" type="button" onclick="openShiftModal()">
         ⚙️ Shift Ops (F8)
       </button>
-      {% if demo_tools_enabled %}
-      <button class="btn btn-primary btn-sm" onclick="seedDemoData()">
-        ⚡ Seed Demo Data
+      <button class="btn btn-primary btn-sm" id="btn-pos-signin" type="button" onclick="openPosSignIn()">
+        Sign in
       </button>
-      {% endif %}
+      <button class="btn btn-primary btn-sm" id="btn-pos-signout" type="button" onclick="signOutPos()" hidden>
+        Sign out
+      </button>
     </div>
   </header>
 
   <!-- KPI Overview Bar -->
-  <section class="kpi-bar">
-    <div class="kpi-card">
+  <section class="kpi-bar" aria-label="Dispensing KPIs">
+    <button type="button" class="kpi-card kpi-card-link" data-kpi="ACTIVE" onclick="drillKpi('ACTIVE')" title="Show active queue episodes">
       <div class="kpi-icon icon-queue">📋</div>
       <div class="kpi-content">
         <span class="kpi-label">Active Queue</span>
         <span class="kpi-value" id="kpi-queue-count">0</span>
       </div>
-    </div>
-    <div class="kpi-card">
+    </button>
+    <button type="button" class="kpi-card kpi-card-link" data-kpi="CHECKING" onclick="drillKpi('CHECKING')" title="Show episodes awaiting pharmacist check">
       <div class="kpi-icon icon-checking">⚖️</div>
       <div class="kpi-content">
         <span class="kpi-label">Awaiting Pharmacist Check</span>
         <span class="kpi-value" id="kpi-checking-count">0</span>
       </div>
-    </div>
-    <div class="kpi-card">
+    </button>
+    <button type="button" class="kpi-card kpi-card-link" data-kpi="READY_FOR_PAYMENT" onclick="drillKpi('READY_FOR_PAYMENT')" title="Show episodes ready for payment">
       <div class="kpi-icon icon-payment">💳</div>
       <div class="kpi-content">
         <span class="kpi-label">Ready for Payment</span>
         <span class="kpi-value" id="kpi-payment-count">0</span>
       </div>
-    </div>
-    <div class="kpi-card">
+    </button>
+    <button type="button" class="kpi-card kpi-card-link" data-kpi="SUPPLIED" onclick="drillKpi('SUPPLIED')" title="Show episodes supplied today">
       <div class="kpi-icon icon-supplied">📦</div>
       <div class="kpi-content">
         <span class="kpi-label">Supplied Today</span>
         <span class="kpi-value" id="kpi-supplied-count">0</span>
       </div>
-    </div>
-    <div class="kpi-card">
+    </button>
+    <button type="button" class="kpi-card kpi-card-link" data-kpi="CONTROLLED" onclick="drillKpi('CONTROLLED')" title="Show controlled-stock episodes and shift count">
       <div class="kpi-icon icon-controlled">🔒</div>
       <div class="kpi-content">
         <span class="kpi-label">Controlled Stock Count</span>
         <span class="kpi-value" id="kpi-controlled-count">100</span>
       </div>
-    </div>
+    </button>
   </section>
 
   <!-- Main Workstation Layout -->
-  <main class="workstation-container">
+  <main class="workstation-container" id="workstation-container">
     <!-- Left Column: Dispensing Queue Navigation -->
-    <aside class="queue-panel">
+    <aside class="queue-panel" id="queue-panel" aria-label="Dispensing Queue">
       <div class="panel-header">
-        <h2>Dispensing Queue</h2>
-        <button class="btn-refresh" onclick="fetchQueue()" title="Refresh Queue">🔄</button>
+        <h2 id="queue-panel-title">Dispensing Queue</h2>
+        <div class="panel-header-actions">
+          <button type="button" class="btn-refresh" onclick="fetchQueue()" title="Refresh Queue">🔄</button>
+          <button type="button" class="btn-queue-toggle" id="btn-queue-toggle" onclick="toggleQueuePanel()" title="Hide queue (F9)" aria-expanded="true" aria-controls="queue-panel-body">◀</button>
+        </div>
       </div>
 
-      <div class="queue-search">
-        <input type="text" id="queue-search-input" placeholder="Search patient, Rx #, or dispensing #..." onkeyup="filterQueueList()">
-      </div>
+      <div class="queue-panel-body" id="queue-panel-body">
+        <div class="queue-search">
+          <input type="search" id="queue-search-input" placeholder="Search patient, Rx #, dispensing #, status…" oninput="filterQueueList()" autocomplete="off">
+        </div>
 
-      <div class="filter-tabs">
-        <button class="tab-btn active" data-filter="ALL" onclick="setFilter('ALL', this)">All</button>
-        <button class="tab-btn" data-filter="PREPARING" onclick="setFilter('PREPARING', this)">Preparing</button>
-        <button class="tab-btn" data-filter="CHECKING" onclick="setFilter('CHECKING', this)">Checking</button>
-        <button class="tab-btn" data-filter="READY_FOR_PAYMENT" onclick="setFilter('READY_FOR_PAYMENT', this)">Payment</button>
-        <button class="tab-btn" data-filter="SUPPLIED" onclick="setFilter('SUPPLIED', this)">Supplied</button>
-      </div>
+        <div class="filter-tabs">
+          <button class="tab-btn active" data-filter="ALL" onclick="setFilter('ALL', this)">All</button>
+          <button class="tab-btn" data-filter="PREPARING" onclick="setFilter('PREPARING', this)">Preparing</button>
+          <button class="tab-btn" data-filter="CHECKING" onclick="setFilter('CHECKING', this)">Checking</button>
+          <button class="tab-btn" data-filter="READY_FOR_PAYMENT" onclick="setFilter('READY_FOR_PAYMENT', this)">Payment</button>
+          <button class="tab-btn" data-filter="SUPPLIED" onclick="setFilter('SUPPLIED', this)">Supplied</button>
+        </div>
 
-      <div class="queue-list" id="queue-list-container">
-        <div class="queue-empty-state">Loading dispensing queue...</div>
+        <div class="queue-list" id="queue-list-container">
+          <div class="queue-empty-state">Loading dispensing queue...</div>
+        </div>
       </div>
     </aside>
 
@@ -134,6 +144,7 @@
     <section class="workspace-panel">
       <div class="workspace-header" id="workspace-header">
         <div class="episode-title-group">
+          <button type="button" class="btn-queue-reveal" id="btn-queue-reveal" onclick="toggleQueuePanel()" title="Show dispensing queue (F9)" hidden>📋 Queue</button>
           <h2 id="dispensing-no-display">Select a Dispensing Episode</h2>
           <span class="status-badge" id="episode-status-badge">NO SELECTION</span>
         </div>
@@ -148,12 +159,28 @@
         <div class="empty-workspace" id="empty-workspace-view">
           <div class="empty-icon">💊</div>
           <h3>No Dispensing Episode Selected</h3>
-          <p>Select an episode from the queue to manage batch verification, pharmacist checking, payment, labelling, and collection.</p>
-          {% if demo_tools_enabled %}<button class="btn btn-primary" style="margin-top: 12px;" onclick="seedDemoData()">⚡ Seed &amp; Load Demo Episode</button>{% endif %}
+          <p>Choose an episode from the queue on the left, or use the selector below.</p>
+          <label class="episode-picker-label" for="episode-search-empty">
+            Search dispensing episode
+            <input type="search" id="episode-search-empty" class="form-control" placeholder="Patient, Rx #, DISP #, status…" oninput="filterEpisodeSearch(this.value)" autocomplete="off">
+          </label>
+          <label class="episode-picker-label" for="episode-picker-empty">
+            Select dispensing episode
+            <select id="episode-picker-empty" class="form-control" size="8" onchange="onEpisodePickerChange(this)"></select>
+          </label>
         </div>
 
         <div class="active-episode-view" id="active-episode-view" style="display: none;">
-          <!-- Patient, Insurance & Prescriber Metadata Cards -->
+          <div class="episode-picker-bar">
+            <label for="episode-search">
+              Search dispensing episode
+              <input type="search" id="episode-search" class="form-control" placeholder="Patient, Rx #, DISP #, status…" oninput="filterEpisodeSearch(this.value)" autocomplete="off">
+            </label>
+            <label for="episode-picker">
+              Dispensing episode
+              <select id="episode-picker" class="form-control" onchange="onEpisodePickerChange(this)"></select>
+            </label>
+          </div>
           <div class="info-grid">
             <div class="info-card">
               <div class="card-label">PATIENT DEMOGRAPHICS</div>
@@ -234,10 +261,10 @@
               <button class="btn btn-action btn-scan" onclick="triggerBarcodeScanModal()">
                 📷 Verify Batch (F2)
               </button>
-              <button class="btn btn-action btn-check" onclick="openPharmacistCheckModal()">
+              <button class="btn btn-action btn-check" id="btn-pharmacist-check" onclick="openPharmacistCheckModal()">
                 ⚖️ Pharmacist Check (F3)
               </button>
-              <button class="btn btn-action btn-pay" onclick="openPaymentModal()">
+              <button class="btn btn-action btn-pay" id="btn-process-payment" onclick="openPaymentModal()">
                 💳 Process Payment (F4)
               </button>
               <button class="btn btn-action btn-label" onclick="openLabelModal()">
@@ -512,21 +539,48 @@
         <button class="close-btn" onclick="closeModal('modal-cds')">&times;</button>
       </div>
       <div class="modal-body">
-        <div class="cds-findings-list">
-          <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); padding: 12px; border-radius: 8px; margin-bottom: 12px;">
-            <strong style="color: #fbbf24;">⚠️ MODERATE: Penicillin Class History Alert</strong>
-            <p style="font-size: 13px; color: #cbd5e1; margin-top: 4px;">Patient allergy profile notes mild rash history on Amoxicillin in 2022.</p>
-          </div>
+        <div class="cds-modal-summary" id="cds-modal-summary">
+          Select an episode to run clinical screening.
         </div>
+        <div class="cds-findings-list" id="cds-findings-list"></div>
 
-        <div class="form-group" style="margin-top: 14px;">
-          <label>Pharmacist Clinical Override Justification:</label>
-          <textarea id="cds-override-reason" class="form-control" rows="3" placeholder="Enter clinical rationale for override (e.g. Patient tolerated challenge dose under observation...)"></textarea>
+        <div class="form-group cds-action-panel" id="cds-action-panel" style="display: none;">
+          <label for="cds-action-finding">Selected finding</label>
+          <select id="cds-action-finding" class="form-control"></select>
+
+          <label for="cds-override-reason-code">Override reason code</label>
+          <select id="cds-override-reason-code" class="form-control">
+            <option value="CLINICALLY_JUSTIFIED">Clinically justified</option>
+            <option value="KNOWN_AND_MONITORED">Known and monitored</option>
+            <option value="PRESCRIBER_CONFIRMED">Prescriber confirmed</option>
+            <option value="PATIENT_ALREADY_STABLE">Patient already stable</option>
+            <option value="DOSE_ADJUSTED">Dose adjusted</option>
+            <option value="DUPLICATION_INTENTIONAL">Duplication intentional</option>
+            <option value="SHORT_DURATION">Short duration</option>
+            <option value="PALLIATIVE_CARE">Palliative care</option>
+            <option value="SPECIALIST_INSTRUCTION">Specialist instruction</option>
+            <option value="OTHER">Other</option>
+          </select>
+
+          <label for="cds-override-reason">Clinical justification / requested reason</label>
+          <textarea id="cds-override-reason" class="form-control" rows="3" placeholder="Document clinical rationale…"></textarea>
+
+          <label for="cds-approver-user">Approving pharmacist (SoD — must differ from requester)</label>
+          <div class="cds-approver-row">
+            <input type="text" id="cds-approver-user" class="form-control" placeholder="demo_cds_approver" autocomplete="username">
+            <input type="password" id="cds-approver-pass" class="form-control" placeholder="Password" autocomplete="current-password">
+          </div>
+          <p class="cds-hint">Demo approver: <code>demo_cds_approver</code> / same till password as the pharmacist.</p>
         </div>
       </div>
-      <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="closeModal('modal-cds')">Cancel</button>
-        <button class="btn btn-warning" onclick="submitClinicalOverride()">Submit Clinical Override</button>
+      <div class="modal-footer cds-modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeModal('modal-cds')">Close</button>
+        <button type="button" class="btn btn-outline" id="btn-cds-rescreen" onclick="rescreenClinicalSafety()">Re-screen</button>
+        <button type="button" class="btn btn-secondary" id="btn-cds-ack" onclick="acknowledgeSelectedFinding()">Acknowledge</button>
+        <button type="button" class="btn btn-secondary" id="btn-cds-request-rph" onclick="requestPharmacistReview()">Request pharmacist</button>
+        <button type="button" class="btn btn-warning" id="btn-cds-request-override" onclick="requestClinicalOverride()">Request override</button>
+        <button type="button" class="btn btn-primary" id="btn-cds-approve-review" onclick="submitPharmacistReviewDecision()">Pharmacist approve</button>
+        <button type="button" class="btn btn-warning" id="btn-cds-approve-override" onclick="approveClinicalOverride()">Approve override</button>
       </div>
     </div>
   </div>
@@ -576,6 +630,49 @@
   <!-- Dynamic Toast Container -->
   <div id="toast-container" class="toast-container"></div>
 
-  <script src="/static/pos/js/pos.js"></script>
+  <script>
+    (function () {
+      var VERSION = "{{ product_version|default:'0.0.0'|escapejs }}";
+      var KEY = 'tibatrace.pos.web-client-version.v1';
+      var DAY = 24 * 60 * 60 * 1000;
+      function due() {
+        try {
+          var raw = localStorage.getItem(KEY);
+          if (!raw) return true;
+          var cached = JSON.parse(raw);
+          return !cached.checkedAt || (Date.now() - cached.checkedAt) >= DAY;
+        } catch (e) { return true; }
+      }
+      function check() {
+        if (!due()) return;
+        fetch('/api/pos/client-version/?platform=WEB&version=' + encodeURIComponent(VERSION) + '&build_number=0', {
+          credentials: 'include',
+          headers: {
+            Accept: 'application/json',
+            'X-POS-Client-Platform': 'WEB',
+            'X-POS-Client-Version': VERSION,
+            'X-POS-Client-Build': '0'
+          }
+        }).then(function (response) {
+          if (!response.ok) return null;
+          return response.json();
+        }).then(function (status) {
+          if (!status) return;
+          try { localStorage.setItem(KEY, JSON.stringify({ checkedAt: Date.now(), status: status })); } catch (e) {}
+          if (!status.update_available && !status.update_required) return;
+          var banner = document.createElement('div');
+          banner.setAttribute('role', 'status');
+          banner.style.cssText = 'position:fixed;bottom:16px;left:16px;right:16px;z-index:9999;padding:12px 16px;border-radius:10px;background:#0f2744;color:#f4f7fb;font:600 13px/1.4 Inter,system-ui,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.35)';
+          banner.textContent = status.update_required
+            ? ('HQ requires terminal ' + status.latest_version + '. Update before continuing dispensing or cash work. ' + (status.operations_impact || ''))
+            : ('HQ published terminal ' + status.latest_version + '. ' + (status.operations_impact || 'Install when the shift allows.'));
+          document.body.appendChild(banner);
+        }).catch(function () {});
+      }
+      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', check);
+      else check();
+    })();
+  </script>
+  <script src="/static/pos/js/pos.js?v=money-2dp-1"></script>
 </body>
 </html>

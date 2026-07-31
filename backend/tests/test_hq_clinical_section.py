@@ -51,6 +51,14 @@ class TestTheSectionExists:
         context = build_hq_workspace_context(str(tenant.pk))
         assert "clinical" in context
         assert context["clinical"]["counts"]["knowledge_releases"] == 1
+        assert "substitutions" in context["clinical"]["counts"]
+        assert "dispensing_labels" in context["clinical"]["counts"]
+        assert "conditions" in context["clinical"]["counts"]
+        assert "observations" in context["clinical"]["counts"]
+        assert "fhir_idempotency_records" in context["clinical"]["counts"]
+        assert context["clinical"]["conditions"] == []
+        assert context["clinical"]["observations"] == []
+        assert context["clinical"]["fhir_idempotency_records"] == []
 
     def test_a_release_is_reported_with_its_real_fields(self, tenant):
         add_release(tenant, "REL-BNF")
@@ -69,6 +77,7 @@ class TestTheSectionExists:
         add_release(tenant, "REL-SUM")
         row = build_hq_workspace_context(str(tenant.pk))["clinical"]["knowledge_releases"][0]
         assert row["checksum"] == "a" * 12
+        assert row["checksum_full"] == "a" * 64
 
     def test_an_inactive_release_is_listed_but_counted_separately(self, tenant):
         # It still has to be visible: knowing a release was retired is the point

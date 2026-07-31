@@ -3,6 +3,7 @@ from __future__ import annotations
 from django.core.exceptions import ValidationError
 from django.db import transaction
 
+from apps.identity.services import UserAdministrationService
 from apps.tenancy.models import Tenant
 
 
@@ -24,13 +25,15 @@ class TenantManagementService:
         if Tenant.objects.filter(slug=slug).exists():
             raise ValidationError({"slug": "A tenant with this slug already exists."})
 
-        return Tenant.objects.create(
+        tenant = Tenant.objects.create(
             name=name.strip(),
             slug=slug.strip().lower(),
             country_code=(country_code or "KE").strip().upper(),
             time_zone=(time_zone or "Africa/Nairobi").strip(),
             metadata=metadata or {},
         )
+        UserAdministrationService.ensure_default_tenant_roles(tenant_id=tenant.pk)
+        return tenant
 
     @staticmethod
     @transaction.atomic
@@ -88,4 +91,5 @@ class TenantManagementService:
         tenant.metadata = metadata
         tenant.status = Tenant.STATUS_ACTIVE
         tenant.save(update_fields=["status", "metadata", "updated_at"])
+        UserAdministrationService.ensure_default_tenant_roles(tenant_id=tenant.pk)
         return tenant

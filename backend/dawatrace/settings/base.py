@@ -26,6 +26,9 @@ def database_config(url: str) -> dict:
         path = unquote(parsed.path or "")
         if path in {"", "/:memory:"}:
             name = ":memory:"
+        elif len(path) >= 3 and path[0] == "/" and path[2] == ":":
+            # sqlite:///D:/path -> "/D:/path" on Windows
+            name = path[1:]
         elif path.startswith("/"):
             name = path
         else:
@@ -144,11 +147,17 @@ TIME_ZONE = env("DAWATRACE_TIME_ZONE", "Africa/Nairobi")
 
 # Where POS installers are stored.
 #
-# S3-compatible, so this is the same configuration for AWS S3 and for a
-# self-hosted MinIO -- only the endpoint differs. Unset by default: with no
-# credentials the download endpoint answers 503 rather than pretending, and the
-# release list still renders with downloads marked unavailable.
+# backend=local writes under MEDIA_ROOT/pos-releases and streams through the API.
+# backend=s3 (or auto-detected when credentials are set) uses MinIO/AWS and
+# returns a short-lived signed URL. Local is the default so a fresh checkout
+# can download the seeded Windows and Android kits without MinIO.
 POS_RELEASE_STORAGE = {
+    # Default local so Windows/Android kits download without MinIO in dev.
+    "backend": env("TIBATRACE_RELEASE_BACKEND", "local"),
+    "local_root": env(
+        "TIBATRACE_RELEASE_LOCAL_ROOT",
+        str(Path(env("DAWATRACE_OBJECT_STORAGE_ROOT", str(ROOT_DIR / "media"))) / "pos-releases"),
+    ),
     "bucket": env("TIBATRACE_RELEASE_BUCKET", ""),
     "endpoint_url": env("TIBATRACE_RELEASE_ENDPOINT_URL", ""),
     "access_key": env("TIBATRACE_RELEASE_ACCESS_KEY", ""),
@@ -180,6 +189,7 @@ REST_FRAMEWORK = {
         # Bounds password guessing on the sign-in form. A password field with
         # no throttle is an offline attack conducted online.
         "signin": "10/min",
+        "password_reset": "10/min",
     },
 }
 
@@ -246,8 +256,29 @@ FHIR_TERMINOLOGY_EXPANSION_CACHE_SECONDS = int(
     env("DAWATRACE_FHIR_TERMINOLOGY_EXPANSION_CACHE_SECONDS", "300")
 )
 FHIR_ALLOWED_ABSOLUTE_REFERENCE_HOSTS = env_list(
-    "DAWATRACE_FHIR_ALLOWED_ABSOLUTE_REFERENCE_HOSTS", "localhost,127.0.0.1"
+    "DAWATRACE_FHIR_ALLOWED_ABSOLUTE_REFERENCE_HOSTS",
+    "localhost,127.0.0.1,cr.kenya-hie.health,shr.kenya-hie.health,"
+    "fr.kenya-hie.health,hwr.kenya-hie.health,nshr-uat.sha.go.ke,nshr.sha.go.ke,"
+    "fhir.dha.go.ke,kps.dha.go.ke",
 )
+# SMART on FHIR / OAuth discovery (wire to AfyaLink / Kenya HIE IdP — Bearer JWT).
+FHIR_SMART_ISSUER = env("DAWATRACE_FHIR_SMART_ISSUER", "")
+FHIR_SMART_AUTHORIZATION_ENDPOINT = env("DAWATRACE_FHIR_SMART_AUTHORIZATION_ENDPOINT", "")
+FHIR_SMART_TOKEN_ENDPOINT = env("DAWATRACE_FHIR_SMART_TOKEN_ENDPOINT", "")
+FHIR_SMART_JWKS_URI = env("DAWATRACE_FHIR_SMART_JWKS_URI", "")
+FHIR_SMART_REGISTRATION_ENDPOINT = env("DAWATRACE_FHIR_SMART_REGISTRATION_ENDPOINT", "")
+FHIR_SMART_MANAGEMENT_ENDPOINT = env("DAWATRACE_FHIR_SMART_MANAGEMENT_ENDPOINT", "")
+FHIR_SMART_INTROSPECTION_ENDPOINT = env("DAWATRACE_FHIR_SMART_INTROSPECTION_ENDPOINT", "")
+FHIR_SMART_REVOCATION_ENDPOINT = env("DAWATRACE_FHIR_SMART_REVOCATION_ENDPOINT", "")
+FHIR_SMART_CONFIGURATION_URL = env("DAWATRACE_FHIR_SMART_CONFIGURATION_URL", "")
+# Live DHA registry bases (resolve national IDs; do not invent local-only substitutes).
+FHIR_CLIENT_REGISTRY_BASE = env("DAWATRACE_FHIR_CLIENT_REGISTRY_BASE", "https://cr.kenya-hie.health")
+FHIR_FACILITY_REGISTRY_BASE = env("DAWATRACE_FHIR_FACILITY_REGISTRY_BASE", "https://fr.kenya-hie.health")
+FHIR_HEALTH_WORKER_REGISTRY_BASE = env(
+    "DAWATRACE_FHIR_HEALTH_WORKER_REGISTRY_BASE", "https://hwr.kenya-hie.health"
+)
+FHIR_AFYALINK_TOKEN_URL = env("DAWATRACE_FHIR_AFYALINK_TOKEN_URL", "")
+FHIR_DEFAULT_CURRENCY = env("DAWATRACE_FHIR_DEFAULT_CURRENCY", "KES")
 
 DAWATRACE_PRODUCT_NAME = "DawaTrace"
 DAWATRACE_VENDOR = "Esenai Group Ltd"

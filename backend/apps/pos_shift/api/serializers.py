@@ -16,6 +16,7 @@ from decimal import Decimal
 
 from rest_framework import serializers
 
+from apps.core.money import format_money
 from apps.pos_shift.models import (
     BusinessDay,
     CashDeclaration,
@@ -30,14 +31,16 @@ from apps.pos_shift.models import (
 
 
 class MoneyField(serializers.Field):
-    """A decimal amount, serialised as a string.
+    """A decimal amount, serialised as a fixed two-place string.
 
     JSON numbers are binary floats. A till total that round-trips through one
     stops matching the drawer.
     """
 
     def to_representation(self, value):
-        return str(value)
+        if value is None:
+            return None
+        return format_money(value)
 
 
 class PosRegisterSerializer(serializers.ModelSerializer):

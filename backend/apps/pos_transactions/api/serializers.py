@@ -4,6 +4,7 @@ from decimal import Decimal
 
 from rest_framework import serializers
 
+from apps.core.money import format_decimal, format_money
 from apps.pos_transactions.models import (
     PosTransaction,
     PosTransactionInventoryContext,
@@ -13,15 +14,20 @@ from apps.pos_transactions.models import (
 
 class MoneyField(serializers.Field):
     def to_representation(self, value):
-        return str(value)
+        if value is None:
+            return None
+        return format_money(value)
 
 
 class PosTransactionInventoryContextSerializer(serializers.ModelSerializer):
-    available_quantity = serializers.DecimalField(max_digits=15, decimal_places=4, read_only=True)
+    available_quantity = serializers.SerializerMethodField()
 
     class Meta:
         model = PosTransactionInventoryContext
         fields = ["store", "available_quantity", "stock_state", "policy"]
+
+    def get_available_quantity(self, row):
+        return format_decimal(row.available_quantity, places=2)
 
 
 class PosTransactionLineSerializer(serializers.ModelSerializer):

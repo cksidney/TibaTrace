@@ -120,9 +120,10 @@ class ClaimSerializer(serializers.ModelSerializer):
         return mask_membership(claim.member.membership_number)
 
     def get_outstanding_amount(self, claim) -> str:
+        from apps.core.money import format_money
         from apps.insurance.services.remittance import InsuranceReceivableService
 
-        return str(InsuranceReceivableService.outstanding(claim=claim))
+        return format_money(InsuranceReceivableService.outstanding(claim=claim)) or "0.00"
 
     def get_is_receivable(self, claim) -> bool:
         from apps.insurance.services.remittance import InsuranceReceivableService

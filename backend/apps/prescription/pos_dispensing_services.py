@@ -55,7 +55,17 @@ class PosDispensingQueueService:
         # with an empty queue that reads as "no patients waiting".
         if tenant is None:
             raise ValueError("get_queue requires a tenant; refusing to return an unscoped queue.")
-        qs = DispensingEpisode.all_objects.filter(tenant_id=getattr(tenant, "pk", tenant))
+        qs = (
+            DispensingEpisode.all_objects.filter(tenant_id=getattr(tenant, "pk", tenant))
+            .select_related(
+                "patient",
+                "prescription",
+                "prescription__practitioner",
+                "branch",
+                "pharmacist",
+            )
+            .prefetch_related("lines")
+        )
         if branch:
             qs = qs.filter(branch=branch)
         if status:

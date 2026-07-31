@@ -11,6 +11,7 @@ from django.utils import timezone
 from apps.prescription.models import DispensingLine
 from apps.prescription.pos_printing_models import PosPrintDocument, PosPrintJob
 from apps.prescription.services.clinical_dispensing import _require_capability
+from apps.core.money import format_money
 from apps.workflows.service import emit_event
 
 
@@ -60,10 +61,10 @@ class PosPrintDocumentService:
                 "settlement_id": str(settlement.id),
                 "reference": settlement.provider_reference or settlement.settlement_reference,
                 "tender_type": tender.tender_type,
-                "amount_due": str(intent.amount_due),
-                "amount_settled": str(intent.effective_settled),
-                "settled_amount": str(settlement.amount),
-                "change_due": str(tender.change_due or 0),
+                "amount_due": format_money(intent.amount_due),
+                "amount_settled": format_money(intent.effective_settled),
+                "settled_amount": format_money(settlement.amount),
+                "change_due": format_money(tender.change_due or 0),
                 "currency": settlement.currency,
             },
             "register_session_id": str(tender.register_session_id or ""),

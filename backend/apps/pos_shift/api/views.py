@@ -17,6 +17,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.response import Response
 
+from apps.platform.client_alignment import RequireAlignedPosClientMixin
 from apps.pos_shift.authority import RegisterAuthorityService
 from apps.pos_shift.models import (
     BusinessDay,
@@ -77,7 +78,7 @@ def _run(operation):
         raise DRFValidationError(error.messages) from error
 
 
-class TenantScopedViewSet(viewsets.ReadOnlyModelViewSet):
+class TenantScopedViewSet(RequireAlignedPosClientMixin, viewsets.ReadOnlyModelViewSet):
     """Tenant-scoped collections with explicit controlled commands."""
 
     permission_classes = [permissions.IsAuthenticated]

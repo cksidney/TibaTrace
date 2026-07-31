@@ -336,14 +336,16 @@ class Command(BaseCommand):
                         package_number=f"PKG-{num}",
                         defaults={"package_type": "BOX", "status": "SEALED"},
                     )
-                    PackageLine.objects.create(
+                    PackageLine.all_objects.get_or_create(
                         tenant=tenant,
                         package=package,
                         sales_order_line=so_line,
-                        sku=sku1,
-                        batch=batch1,
-                        quantity=Decimal("10.0000"),
-                        unit="PACK",
+                        defaults={
+                            "sku": sku1,
+                            "batch": batch1,
+                            "quantity": Decimal("10.0000"),
+                            "unit": "PACK",
+                        },
                     )
 
                 if status in ["DISPATCHED", "DELIVERED", "RETURNED"]:
@@ -361,16 +363,28 @@ class Command(BaseCommand):
                             "vehicle": "KAA 123A",
                         },
                     )
-                    dispatch_line = DispatchLine.objects.create(
+                    dispatch_key = f"{tenant.slug}-DISP-{num}"
+                    dispatch_line = DispatchLine.all_objects.filter(
                         tenant=tenant,
-                        dispatch_order=dispatch,
-                        sales_order_line=so_line,
-                        sku=sku1,
-                        batch=batch1,
-                        quantity=Decimal("10.0000"),
-                        unit="PACK",
-                        idempotency_key=f"DISP-{num}",
-                    )
+                        idempotency_key=dispatch_key,
+                    ).first()
+                    if dispatch_line is None:
+                        dispatch_line = DispatchLine.all_objects.filter(
+                            tenant=tenant,
+                            dispatch_order=dispatch,
+                            sales_order_line=so_line,
+                        ).first()
+                    if dispatch_line is None:
+                        dispatch_line = DispatchLine.all_objects.create(
+                            tenant=tenant,
+                            dispatch_order=dispatch,
+                            sales_order_line=so_line,
+                            sku=sku1,
+                            batch=batch1,
+                            quantity=Decimal("10.0000"),
+                            unit="PACK",
+                            idempotency_key=dispatch_key,
+                        )
 
                 if status in ["DELIVERED", "RETURNED"]:
                     so_line.delivered_quantity = Decimal("10.0000")
@@ -380,15 +394,17 @@ class Command(BaseCommand):
                     delivery, _ = DeliveryRecord.objects.get_or_create(
                         tenant=tenant, dispatch_order=dispatch, customer=pharma_cust, defaults={"status": "DELIVERED"}
                     )
-                    DeliveryLine.objects.create(
+                    DeliveryLine.all_objects.get_or_create(
                         tenant=tenant,
                         delivery_record=delivery,
                         dispatch_line=dispatch_line,
-                        sales_order_line=so_line,
-                        sku=sku1,
-                        batch=batch1,
-                        dispatched_quantity=Decimal("10.0000"),
-                        accepted_quantity=Decimal("10.0000"),
+                        defaults={
+                            "sales_order_line": so_line,
+                            "sku": sku1,
+                            "batch": batch1,
+                            "dispatched_quantity": Decimal("10.0000"),
+                            "accepted_quantity": Decimal("10.0000"),
+                        },
                     )
 
                 if num == "SO-RETURNED":
@@ -400,14 +416,16 @@ class Command(BaseCommand):
                         return_number=f"SRA-{num}",
                         defaults={"sales_order": so, "customer": pharma_cust, "status": "APPROVED"},
                     )
-                    SalesReturnLine.objects.create(
+                    SalesReturnLine.all_objects.get_or_create(
                         tenant=tenant,
                         return_authorization=sra,
                         sales_order_line=so_line,
-                        sku=sku1,
-                        batch=batch1,
-                        quantity=Decimal("5.0000"),
-                        received_quantity=Decimal("5.0000"),
+                        defaults={
+                            "sku": sku1,
+                            "batch": batch1,
+                            "quantity": Decimal("5.0000"),
+                            "received_quantity": Decimal("5.0000"),
+                        },
                     )
 
         self.stdout.write(self.style.SUCCESS("Sales data seeded successfully!"))

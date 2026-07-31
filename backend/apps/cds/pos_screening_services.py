@@ -52,6 +52,21 @@ class StaleClinicalContext(ValidationError):
         super().__init__(f"STALE_CLINICAL_CONTEXT: {message}")
 
 
+def _normalize_pos_severity(severity):
+    """Map knowledge-rule severities onto the POS finding vocabulary."""
+    mapping = {
+        "INFO": "INFORMATION",
+        "INFORMATION": "INFORMATION",
+        "LOW": "LOW",
+        "WARNING": "MODERATE",
+        "MODERATE": "MODERATE",
+        "HIGH": "HIGH",
+        "BLOCK": "CRITICAL",
+        "CRITICAL": "CRITICAL",
+    }
+    return mapping.get(str(severity or "").upper(), "MODERATE")
+
+
 def _canonical_quantity(value):
     """Represent an equivalent decimal quantity identically at every POS edge."""
     return format(Decimal(str(value)).normalize(), 'f')
@@ -247,21 +262,22 @@ class PosClinicalScreeningService:
         )
         for r in rules:
             if r.primary_code in ingredient_codes and r.interacting_code in ingredient_codes:
+                severity = _normalize_pos_severity(r.severity)
                 f = PosClinicalFinding.all_objects.create(
                     tenant=tenant,
                     screening=screening,
                     rule=r,
                     rule_version=r.rule_version,
                     category='DRUG_DRUG_INTERACTION',
-                    severity=r.severity,
+                    severity=severity,
                     title=f"Drug-Drug Interaction: {r.primary_code} and {r.interacting_code}",
                     summary=r.explanation[:255] if r.explanation else f"Interaction between {r.primary_code} and {r.interacting_code}",
                     clinical_explanation=r.explanation,
                     recommendation=r.recommended_action,
                     affected_basket_line_ids=[i['line_id'] for i in context['items']],
                     affected_medicine_ids=[r.primary_code, r.interacting_code],
-                    blocking=(r.severity in ['HIGH', 'CRITICAL']),
-                    requires_pharmacist=(r.severity in ['MODERATE', 'HIGH', 'CRITICAL']),
+                    blocking=(severity in ['HIGH', 'CRITICAL']),
+                    requires_pharmacist=(severity in ['MODERATE', 'HIGH', 'CRITICAL']),
                     override_allowed=(r.override_policy != 'PROHIBITED')
                 )
                 findings.append(f)
@@ -301,6 +317,9 @@ class PosClinicalScreeningService:
         screening.blocking_count = blocking_count
         screening.requires_pharmacist = any(f.requires_pharmacist for f in findings)
         screening.safe_to_proceed = (blocking_count == 0)
+        screening.evaluated_at = timezone.now()
+        if not screening.expires_at:
+            screening.expires_at = timezone.now() + timedelta(hours=8)
         screening.save()
 
         emit_event(
@@ -341,7 +360,7 @@ class PosClinicalScreeningService:
         # Acknowledgement can only clear an advisory finding. It must never be
         # able to turn a blocking finding into a safe state -- that requires a
         # pharmacist decision or an authorised override.
-        if finding.severity in ['INFO', 'LOW'] and not finding.blocking:
+        if finding.severity in ['INFO', 'INFORMATION', 'LOW'] and not finding.blocking:
             finding.resolution_status = 'ACKNOWLEDGED'
             finding.resolved_by = cashier
             finding.resolved_at = timezone.now()

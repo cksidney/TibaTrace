@@ -2,6 +2,7 @@ from decimal import Decimal
 
 from rest_framework import serializers
 
+from apps.core.money import format_money
 from apps.prescription.payment_models import (
     TENDER_TYPES,
     PaymentIntent,
@@ -12,6 +13,11 @@ from apps.prescription.payment_models import (
 
 class PaymentTenderSerializer(serializers.ModelSerializer):
     effective_settled = serializers.SerializerMethodField()
+    allocated_amount = serializers.SerializerMethodField()
+    settled_amount = serializers.SerializerMethodField()
+    reversed_amount = serializers.SerializerMethodField()
+    cash_received = serializers.SerializerMethodField()
+    change_due = serializers.SerializerMethodField()
 
     class Meta:
         model = PaymentTender
@@ -32,13 +38,31 @@ class PaymentTenderSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
     def get_effective_settled(self, tender):
-        return str(tender.effective_settled)
+        return format_money(tender.effective_settled)
+
+    def get_allocated_amount(self, tender):
+        return format_money(tender.allocated_amount)
+
+    def get_settled_amount(self, tender):
+        return format_money(tender.settled_amount)
+
+    def get_reversed_amount(self, tender):
+        return format_money(tender.reversed_amount)
+
+    def get_cash_received(self, tender):
+        return format_money(tender.cash_received) if tender.cash_received is not None else None
+
+    def get_change_due(self, tender):
+        return format_money(tender.change_due) if tender.change_due is not None else None
 
 
 class PaymentIntentSerializer(serializers.ModelSerializer):
     tenders = serializers.SerializerMethodField()
     amount_remaining = serializers.SerializerMethodField()
     effective_settled = serializers.SerializerMethodField()
+    amount_due = serializers.SerializerMethodField()
+    amount_settled = serializers.SerializerMethodField()
+    amount_reversed = serializers.SerializerMethodField()
 
     class Meta:
         model = PaymentIntent
@@ -63,11 +87,20 @@ class PaymentIntentSerializer(serializers.ModelSerializer):
             many=True,
         ).data
 
+    def get_amount_due(self, intent):
+        return format_money(intent.amount_due)
+
+    def get_amount_settled(self, intent):
+        return format_money(intent.amount_settled)
+
+    def get_amount_reversed(self, intent):
+        return format_money(intent.amount_reversed)
+
     def get_amount_remaining(self, intent):
-        return str(intent.amount_remaining)
+        return format_money(intent.amount_remaining)
 
     def get_effective_settled(self, intent):
-        return str(intent.effective_settled)
+        return format_money(intent.effective_settled)
 
 
 class CreateIntentSerializer(serializers.Serializer):

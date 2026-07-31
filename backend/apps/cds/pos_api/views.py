@@ -1,4 +1,4 @@
-from django.contrib.auth import get_user_model
+from django.contrib.auth import authenticate, get_user_model
 from django.core.exceptions import PermissionDenied
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import status, viewsets
@@ -15,6 +15,7 @@ from apps.cds.pos_screening_services import (
     PosPharmacistReviewService,
 )
 from apps.core.tenant_context import get_current_tenant_id
+from apps.platform.client_alignment import RequireAlignedPosClientMixin
 
 from .serializers import (
     PosClinicalAcknowledgementSerializer,
@@ -31,7 +32,30 @@ from .serializers import (
 
 User = get_user_model()
 
-class PosClinicalScreeningViewSet(viewsets.GenericViewSet):
+
+def _resolve_acting_pharmacist(*, request, username="", password=""):
+    """Use the session user, or a second principal authenticated for SoD.
+
+    Till operators often need a second pharmacist to clear a blocking finding
+    without signing the cashier out. Credentials are verified here and never
+    replace the till session.
+    """
+    username = (username or "").strip()
+    if not username:
+        return request.user
+    pharmacist = authenticate(
+        request=request,
+        username=username,
+        password=password or "",
+    )
+    if pharmacist is None or not pharmacist.is_active:
+        raise ValidationError("Approver username or password is incorrect.")
+    tenant = getattr(request, "tenant", None)
+    if tenant and getattr(pharmacist, "tenant_id", None) not in (None, tenant.pk):
+        raise ValidationError("Approver does not belong to this pharmacy workspace.")
+    return pharmacist
+
+class PosClinicalScreeningViewSet(RequireAlignedPosClientMixin, viewsets.GenericViewSet):
     permission_classes = [IsAuthenticated]
     lookup_field = 'screening_id'
     # Required for schema generation: without it drf-spectacular cannot infer a
@@ -147,7 +171,11 @@ class PosClinicalScreeningViewSet(viewsets.GenericViewSet):
             PosPharmacistReviewService.submit_decision(
                 screening=screening,
                 finding_id=data.get('finding_id'),
-                pharmacist=self._actor(),
+                pharmacist=_resolve_acting_pharmacist(
+                    request=request,
+                    username=data.get('approver_username', ''),
+                    password=data.get('approver_password', ''),
+                ),
                 decision=data['decision'],
                 clinical_justification=data.get('clinical_justification', ''),
                 conditions=data.get('conditions', ''),
@@ -189,7 +217,7 @@ class PosClinicalScreeningViewSet(viewsets.GenericViewSet):
         return Response({"detail": "No offline package available"}, status=404)
 
 
-class PosClinicalOverrideViewSet(viewsets.GenericViewSet):
+class PosClinicalOverrideViewSet(RequireAlignedPosClientMixin, viewsets.GenericViewSet):
     permission_classes = [IsAuthenticated]
     lookup_field = 'pk'
 
@@ -243,7 +271,11 @@ class PosClinicalOverrideViewSet(viewsets.GenericViewSet):
         try:
             override = PosClinicalOverrideService.approve(
                 override=self.get_object(),
-                pharmacist=request.user,
+                pharmacist=_resolve_acting_pharmacist(
+                    request=request,
+                    username=data.get('approver_username', ''),
+                    password=data.get('approver_password', ''),
+                ),
                 clinical_justification=data['clinical_justification'],
                 conditions=data.get('conditions', ''),
                 expires_at=data.get('expires_at'),

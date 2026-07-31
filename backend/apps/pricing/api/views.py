@@ -22,6 +22,7 @@ from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from apps.core.money import format_money
 from apps.pricing.catalogue import PriceCatalogue
 from apps.pricing.models import (
     AppliedPriceSnapshot,
@@ -75,6 +76,33 @@ class TenantScopedReadOnly(viewsets.ReadOnlyModelViewSet):
 class PriceBookViewSet(TenantScopedReadOnly):
     model = PriceBook
     serializer_class = PriceBookSerializer
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        tenant_id = self.tenant_id()
+        if tenant_id and not queryset.exists():
+            from apps.tenancy.models import Tenant
+            tenant = Tenant.objects.filter(pk=tenant_id).first()
+            if tenant:
+                book, _ = PriceBook.all_objects.get_or_create(
+                    tenant=tenant,
+                    code="RETAIL-DEFAULT",
+                    defaults={
+                        "name": "Standard Tenant Retail Price Book",
+                        "scope_type": PriceBook.ScopeType.TENANT,
+                        "price_type": PriceBook.PriceType.RETAIL,
+                        "currency": "KES",
+                        "priority": 100,
+                    },
+                )
+                PriceAssignment.all_objects.get_or_create(
+                    tenant=tenant,
+                    price_book=book,
+                    scope_type=PriceBook.ScopeType.TENANT,
+                    defaults={"priority": 100, "is_active": True},
+                )
+                queryset = super().get_queryset()
+        return queryset
 
 
 class PriceBookVersionViewSet(TenantScopedReadOnly):
@@ -291,7 +319,7 @@ class PriceResolutionViewSet(viewsets.ViewSet):
 
         return Response(
             {
-                "unit_price": str(resolved.unit_price),
+                "unit_price": format_money(resolved.unit_price),
                 "currency": resolved.currency,
                 "source": resolved.source,
                 "source_reference": resolved.reference,
@@ -334,8 +362,8 @@ class PriceResolutionViewSet(viewsets.ViewSet):
         return Response({
             "status": "DRAFT",
             "sku_code": entry.sku.sku_code,
-            "unit_price": str(entry.unit_price),
-            "minimum_allowed_price": str(entry.minimum_allowed_price) if entry.minimum_allowed_price else None,
+            "unit_price": format_money(entry.unit_price),
+            "minimum_allowed_price": format_money(entry.minimum_allowed_price) if entry.minimum_allowed_price else None,
             "tax_inclusive": entry.tax_inclusive,
             "price_book": entry.version.price_book.code,
             "version_id": str(entry.version_id),

@@ -35,6 +35,7 @@ from apps.insurance.models import (
     Insurer,
     InsurerPlan,
     InsurerScheme,
+    PrescriptionClaim,
 )
 from apps.tenancy.models import Tenant
 
@@ -91,13 +92,14 @@ class Command(BaseCommand):
 
         self._coverages(tenant, scheme, plan, members)
         self._verifications(tenant, private, members)
+        claim_count = self._claims(tenant, private, scheme, members)
         self._remittance(tenant, private)
 
         self.stdout.write(self.style.SUCCESS("Insurance demo data seeded."))
         self.stdout.write(
             "Scenarios: eligible member, ineligible member, expired coverage, "
             "fixed co-payment, co-insurance, benefit limit, exclusion, "
-            "stale verification, unmatched remittance line, "
+            f"stale verification, {claim_count} prescription claims, unmatched remittance line, "
             "SHA configured without a registered adapter."
         )
 
@@ -244,31 +246,140 @@ class Command(BaseCommand):
         """
         patients = self._patients(tenant, members)
         now = timezone.now()
+        for suffix, member, patient, expires_at in (
+            ("CURRENT", members["eligible"], patients["eligible"], now + timedelta(hours=4)),
+            ("STALE", members["copay"], patients["copay"], now - timedelta(hours=1)),
+        ):
+            legacy_reference = f"{DEMO_PREFIX}-VER-{suffix}"
+            scoped_reference = f"{legacy_reference}-{tenant.slug}"[:128]
+            existing = CoverageVerification.all_objects.filter(
+                tenant=tenant,
+                verification_reference__in=(legacy_reference, scoped_reference),
+            ).first()
+            if existing is None:
+                CoverageVerification.all_objects.create(
+                    tenant=tenant,
+                    verification_reference=scoped_reference,
+                    insurer=insurer,
+                    member=member,
+                    patient=patient,
+                    is_eligible=True,
+                    eligibility_status="ACTIVE",
+                    expires_at=expires_at,
+                )
 
-        CoverageVerification.all_objects.get_or_create(
+    def _claims(self, tenant, insurer, scheme, members):
+        """Create clearly-labelled claim rows in three adjudication states."""
+        from apps.identity.models import User
+        from apps.inventory.models import InventoryLocation
+        from apps.organizations.models import Location, Organization
+        from apps.practitioners.models import Practitioner
+        from apps.prescription.models import DispensingEpisode, MedicineSupply, Prescription
+
+        organization, _ = Organization.all_objects.get_or_create(
             tenant=tenant,
-            verification_reference=f"{DEMO_PREFIX}-VER-CURRENT",
+            code=f"{DEMO_PREFIX}-ORG",
+            defaults={"name": "Demo Insurance Pharmacy"},
+        )
+        branch, _ = Location.all_objects.get_or_create(
+            tenant=tenant,
+            code=f"{DEMO_PREFIX}-BRANCH",
+            defaults={"organization": organization, "name": "Demo Insurance Branch"},
+        )
+        pharmacy_location, _ = InventoryLocation.all_objects.get_or_create(
+            tenant=tenant,
+            branch=branch,
+            location_code=f"{DEMO_PREFIX}-DISP",
             defaults={
-                "insurer": insurer,
-                "member": members["eligible"],
-                "patient": patients["eligible"],
-                "is_eligible": True,
-                "eligibility_status": "ACTIVE",
-                "expires_at": now + timedelta(hours=4),
+                "name": "Demo Insurance Dispensary",
+                "location_type": InventoryLocation.LocationType.DISPENSARY,
             },
         )
-        CoverageVerification.all_objects.get_or_create(
+        username = f"demo-insurance-{tenant.slug}"[:150]
+        pharmacist, _ = User.objects.get_or_create(
+            username=username,
+            defaults={"tenant": tenant, "first_name": "Demo", "last_name": "Pharmacist"},
+        )
+        practitioner, _ = Practitioner.all_objects.get_or_create(
             tenant=tenant,
-            verification_reference=f"{DEMO_PREFIX}-VER-STALE",
+            registration_number=f"{DEMO_PREFIX}-{str(tenant.pk)[:8]}",
             defaults={
-                "insurer": insurer,
-                "member": members["copay"],
-                "patient": patients["copay"],
-                "is_eligible": True,
-                "eligibility_status": "ACTIVE",
-                "expires_at": now - timedelta(hours=1),
+                "first_name": "Demo",
+                "last_name": "Prescriber",
+                "profession": "DOCTOR",
+                "organization": organization,
             },
         )
+        patients = self._patients(tenant, members)
+        scenarios = (
+            ("PENDING", PrescriptionClaim.AdjudicationState.PENDING, Decimal("0.00")),
+            ("APPROVED", PrescriptionClaim.AdjudicationState.APPROVED, Decimal("2400.00")),
+            ("REJECTED", PrescriptionClaim.AdjudicationState.REJECTED, Decimal("0.00")),
+        )
+        for index, (label, adjudication_state, approved_amount) in enumerate(scenarios, start=1):
+            member = members["eligible"] if label != "REJECTED" else members["copay"]
+            patient = patients["eligible"] if label != "REJECTED" else patients["copay"]
+            prescription, _ = Prescription.all_objects.get_or_create(
+                tenant=tenant,
+                prescription_number=f"{DEMO_PREFIX}-RX-{index:04d}",
+                defaults={
+                    "patient": patient,
+                    "practitioner": practitioner,
+                    "organization": organization,
+                    "location": branch,
+                    "status": "SUPPLIED",
+                    "prescription_date": timezone.localdate() - timedelta(days=index),
+                },
+            )
+            episode, _ = DispensingEpisode.all_objects.get_or_create(
+                tenant=tenant,
+                dispensing_number=f"{DEMO_PREFIX}-DISP-{index:04d}",
+                defaults={
+                    "prescription": prescription,
+                    "patient": patient,
+                    "branch": branch,
+                    "pharmacy_location": pharmacy_location,
+                    "pharmacist": pharmacist,
+                    "status": "SUPPLIED",
+                    "payment_state": "NOT_REQUIRED",
+                    "idempotency_key": f"{DEMO_PREFIX}-EPISODE-{index:04d}",
+                },
+            )
+            supply, _ = MedicineSupply.all_objects.get_or_create(
+                tenant=tenant,
+                supply_number=f"{DEMO_PREFIX}-SUPPLY-{index:04d}",
+                defaults={
+                    "episode": episode,
+                    "prescription": prescription,
+                    "patient": patient,
+                    "supplied_by": pharmacist,
+                    "status": "COMPLETE",
+                    "idempotency_key": f"{DEMO_PREFIX}-SUPPLY-KEY-{index:04d}",
+                },
+            )
+            PrescriptionClaim.all_objects.get_or_create(
+                tenant=tenant,
+                claim_number=f"{DEMO_PREFIX}-CLAIM-{label}",
+                defaults={
+                    "episode": episode,
+                    "prescription": prescription,
+                    "supply": supply,
+                    "patient": patient,
+                    "member": member,
+                    "insurer": insurer,
+                    "scheme": scheme,
+                    "submission_state": PrescriptionClaim.SubmissionState.SUBMITTED,
+                    "adjudication_state": adjudication_state,
+                    "claimed_gross_amount": Decimal("2500.00"),
+                    "claimed_net_amount": Decimal("2400.00"),
+                    "approved_amount": approved_amount,
+                    "patient_copay_amount": Decimal("100.00"),
+                    "insurer_payable_amount": approved_amount,
+                },
+            )
+        return PrescriptionClaim.all_objects.filter(
+            tenant=tenant, claim_number__startswith=f"{DEMO_PREFIX}-CLAIM-"
+        ).count()
 
     def _remittance(self, tenant, insurer):
         """A remittance carrying a line that names no claim.

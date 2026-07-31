@@ -1,5 +1,6 @@
 from rest_framework import serializers
 
+from apps.core.money import format_decimal, format_money
 from apps.prescription.models import (
     DispensingEpisode,
     DispensingLine,
@@ -17,6 +18,10 @@ TENDER_TYPES = ["CASH", "CARD", "MPESA"]
 
 
 class PosDispensingLineSerializer(serializers.ModelSerializer):
+    quantity_authorized = serializers.SerializerMethodField()
+    quantity_prepared = serializers.SerializerMethodField()
+    quantity_supplied = serializers.SerializerMethodField()
+
     class Meta:
         model = DispensingLine
         fields = [
@@ -34,6 +39,15 @@ class PosDispensingLineSerializer(serializers.ModelSerializer):
             "dosage_label_instructions",
             "status",
         ]
+
+    def get_quantity_authorized(self, line):
+        return format_decimal(line.quantity_authorized, places=2)
+
+    def get_quantity_prepared(self, line):
+        return format_decimal(line.quantity_prepared, places=2)
+
+    def get_quantity_supplied(self, line):
+        return format_decimal(line.quantity_supplied, places=2)
 
 
 class PosDispensingEpisodeSerializer(serializers.ModelSerializer):
@@ -65,15 +79,15 @@ class PosDispensingEpisodeSerializer(serializers.ModelSerializer):
 
     def get_amount_due(self, episode):
         intent = self._intent(episode)
-        return str(intent.amount_due) if intent else None
+        return format_money(intent.amount_due) if intent else None
 
     def get_amount_settled(self, episode):
         intent = self._intent(episode)
-        return str(intent.effective_settled) if intent else None
+        return format_money(intent.effective_settled) if intent else None
 
     def get_amount_remaining(self, episode):
         intent = self._intent(episode)
-        return str(intent.amount_remaining) if intent else None
+        return format_money(intent.amount_remaining) if intent else None
 
     def get_currency(self, episode):
         intent = self._intent(episode)

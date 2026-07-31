@@ -135,7 +135,9 @@ class ManualPriceOverrideSerializer(serializers.ModelSerializer):
         return getattr(override.approved_by, "username", "") or ""
 
     def get_difference(self, override) -> str:
-        return str(override.difference)
+        from apps.core.money import format_money
+
+        return format_money(override.difference) or "0.00"
 
 
 class PriceLockSerializer(serializers.ModelSerializer):

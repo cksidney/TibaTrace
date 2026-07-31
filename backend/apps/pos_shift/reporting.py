@@ -30,6 +30,7 @@ from django.db.models import Max
 from django.utils import timezone
 
 from .cash_control import CashControlService, money
+from apps.core.money import format_money
 from .models import (
     ZERO,
     BusinessDay,
@@ -104,9 +105,9 @@ class ShiftReportService:
                 tolerance=tolerance if tolerance is not None else ZERO,
             )
             variance = {
-                "declared": str(variance_result.declared),
-                "expected": str(variance_result.expected),
-                "difference": str(variance_result.difference),
+                "declared": format_money(variance_result.declared),
+                "expected": format_money(variance_result.expected),
+                "difference": format_money(variance_result.difference),
                 "classification": variance_result.classification,
                 "requires_explanation": variance_result.requires_explanation,
             }
@@ -114,7 +115,7 @@ class ShiftReportService:
         movements = [
             {
                 "kind": movement.kind,
-                "amount": str(money(movement.amount)),
+                "amount": format_money(money(movement.amount)),
                 "affects_expected_cash": movement.affects_expected_cash,
                 "reference": movement.reference,
             }
@@ -128,21 +129,21 @@ class ShiftReportService:
             "generated_at": timezone.now().isoformat(),
             "currency": session.register.currency,
             "cash": {
-                "opening": str(expected.opening),
-                "cash_sales": str(expected.cash_sales),
-                "cash_in": str(expected.cash_in),
-                "cash_out": str(expected.cash_out),
-                "cash_refunds": str(expected.cash_refunds),
-                "expected_closing": str(expected.expected),
+                "opening": format_money(expected.opening),
+                "cash_sales": format_money(expected.cash_sales),
+                "cash_in": format_money(expected.cash_in),
+                "cash_out": format_money(expected.cash_out),
+                "cash_refunds": format_money(expected.cash_refunds),
+                "expected_closing": format_money(expected.expected),
             },
             "tenders": {
                 # Cash and non-cash are reported side by side but never summed
                 # into a single "takings" figure that a drawer gets counted
                 # against.
-                "by_type": {k: str(v) for k, v in sorted(breakdown.by_type.items())},
-                "cash_total": str(breakdown.cash),
-                "non_cash_total": str(breakdown.non_cash),
-                "grand_total": str(breakdown.total),
+                "by_type": {k: format_money(v) for k, v in sorted(breakdown.by_type.items())},
+                "cash_total": format_money(breakdown.cash),
+                "non_cash_total": format_money(breakdown.non_cash),
+                "grand_total": format_money(breakdown.total),
             },
             "cash_movements": movements,
             "variance": variance,

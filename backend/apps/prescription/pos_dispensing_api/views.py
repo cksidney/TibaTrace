@@ -6,6 +6,7 @@ from rest_framework.response import Response
 
 from apps.core.tenant_context import get_current_tenant_id
 from apps.identity.models import User
+from apps.platform.client_alignment import RequireAlignedPosClientMixin
 from apps.prescription.models import (
     DispensingEpisode,
     PosDeviceHealthRecord,
@@ -46,7 +47,7 @@ from apps.prescription.pos_printing_models import PosPrintJob
 from apps.prescription.pos_printing_services import PosPrintJobService
 
 
-class PosDispensingViewSet(viewsets.ReadOnlyModelViewSet):
+class PosDispensingViewSet(RequireAlignedPosClientMixin, viewsets.ReadOnlyModelViewSet):
     """Read-only over episodes; all mutation goes through the gated actions.
 
     Deliberately not a ModelViewSet: a writable PATCH/PUT/DELETE here would let

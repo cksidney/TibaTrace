@@ -112,7 +112,9 @@ class PaymentIntentViewSet(viewsets.ReadOnlyModelViewSet):
         """Allocation totals for the till."""
         intent = self.get_object()
         summary = SplitTenderService.summary(intent=intent)
-        return Response({key: str(value) for key, value in summary.items()})
+        from apps.core.money import format_money
+
+        return Response({key: format_money(value) for key, value in summary.items()})
 
     @action(detail=True, methods=["post"])
     def cancel(self, request, pk=None):

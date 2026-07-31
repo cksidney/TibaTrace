@@ -239,7 +239,10 @@ def test_replayed_payment_does_not_charge_twice(domain):
     payload = PosDispensingEpisodeSerializer(episode).data
     assert payload["amount_due"] == "150.00"
     assert payload["amount_settled"] == "150.00"
-    assert payload["amount_remaining"] == "0"
+    # Two places, like amount_due and amount_settled above: the serializer now
+    # routes every money field through apps.core.money.format_money instead of
+    # str(Decimal), which rendered an exact zero as "0".
+    assert payload["amount_remaining"] == "0.00"
 
 
 def test_payment_is_refused_without_authoritative_pricing(domain):

@@ -158,6 +158,12 @@ class PosPharmacistDecisionSerializer(serializers.Serializer):
     #: The context the client believes it is acting on. The server refuses
     #: the write if the basket has moved on since.
     expected_context_hash = serializers.CharField(max_length=64)
+    #: Optional second principal for separation of duties without swapping the
+    #: till session (approving pharmacist credentials).
+    approver_username = serializers.CharField(required=False, allow_blank=True)
+    approver_password = serializers.CharField(
+        required=False, allow_blank=True, write_only=True, trim_whitespace=False
+    )
 
     def validate(self, attrs):
         if (
@@ -166,6 +172,12 @@ class PosPharmacistDecisionSerializer(serializers.Serializer):
         ):
             raise serializers.ValidationError(
                 {'conditions': 'Approval with conditions requires the conditions to be recorded.'}
+            )
+        user = (attrs.get('approver_username') or '').strip()
+        password = attrs.get('approver_password') or ''
+        if bool(user) ^ bool(password):
+            raise serializers.ValidationError(
+                {'approver_password': 'Approver username and password are both required.'}
             )
         return attrs
 
@@ -185,6 +197,19 @@ class PosClinicalOverrideApprovalSerializer(serializers.Serializer):
     expires_at = serializers.DateTimeField(required=False, allow_null=True)
     idempotency_key = serializers.CharField(required=True)
     expected_context_hash = serializers.CharField(max_length=64)
+    approver_username = serializers.CharField(required=False, allow_blank=True)
+    approver_password = serializers.CharField(
+        required=False, allow_blank=True, write_only=True, trim_whitespace=False
+    )
+
+    def validate(self, attrs):
+        user = (attrs.get('approver_username') or '').strip()
+        password = attrs.get('approver_password') or ''
+        if bool(user) ^ bool(password):
+            raise serializers.ValidationError(
+                {'approver_password': 'Approver username and password are both required.'}
+            )
+        return attrs
 
 
 class PosClinicalOverrideRejectionSerializer(serializers.Serializer):
