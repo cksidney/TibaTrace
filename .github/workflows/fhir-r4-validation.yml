@@ -1,0 +1,60 @@
+name: FHIR R4 validation
+
+on:
+  pull_request:
+    paths:
+      - "backend/apps/fhir/**"
+      - "scripts/validate-fhir-samples.sh"
+      - "scripts/validate-fhir-claims-ig.sh"
+      - ".github/workflows/fhir-r4-validation.yml"
+  push:
+    branches: [main, master]
+    paths:
+      - "backend/apps/fhir/**"
+      - "scripts/validate-fhir-samples.sh"
+      - "scripts/validate-fhir-claims-ig.sh"
+      - ".github/workflows/fhir-r4-validation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-samples:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Validate FHIR samples (R4 4.0.1)
+        run: bash scripts/validate-fhir-samples.sh
+
+      - name: Validate Claims IG samples (when present)
+        run: bash scripts/validate-fhir-claims-ig.sh
+
+  gateway-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.lock
+          pip install pytest pytest-django
+      - name: Run FHIR gateway tests
+        env:
+          DJANGO_SETTINGS_MODULE: dawatrace.settings.test
+          DAWATRACE_DATABASE_URL: sqlite:///:memory:
+          DAWATRACE_REDIS_URL: locmem://
+        run: python -m pytest tests/test_fhir_r4_gateway.py tests/test_fhir_kenya_ig_policy.py tests/test_fhir_kenya_hie_policy.py -q --tb=short

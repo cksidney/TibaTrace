@@ -69,6 +69,7 @@ from apps.fhir.services.resource_lookup import (
     PractitionerLookupService,
     PractitionerRoleLookupService,
 )
+from apps.fhir.kenya_ig import profiles_for
 from apps.fhir.services.resource_registry import FHIRResourceRegistry, ResourceInteraction, ResourceRegistration
 from apps.fhir.services.value_set import ValueSetLookupService
 
@@ -294,3 +295,11 @@ def init_registry():
             read_permission=PERMISSION_VALUESET_READ
         )
     )
+
+    # Apply Kenya eRx (or empty) profiles declared for each resource type.
+    for resource_type, registration in list(FHIRResourceRegistry._registry.items()):
+        profiles = list(profiles_for(resource_type))
+        if profiles and not registration.supported_profiles:
+            FHIRResourceRegistry._registry[resource_type] = registration.copy(
+                update={"supported_profiles": profiles}
+            )

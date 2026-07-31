@@ -1,0 +1,19 @@
+{
+  "resourceType": "Patient",
+  "id": "example-kenya-patient",
+  "identifier": [
+    {
+      "system": "https://dawatrace.health/fhir/system/patient-reference",
+      "value": "KE-PAT-DEMO-001"
+    }
+  ],
+  "active": true,
+  "name": [
+    {
+      "family": "Hassan",
+      "given": ["Amina"]
+    }
+  ],
+  "gender": "female",
+  "birthDate": "1990-03-12"
+}

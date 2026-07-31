@@ -1,0 +1,44 @@
+---
+description: HL7 FHIR R4 + Kenya eRx/eClaims + DHA HIE + DPA 2019
+alwaysApply: true
+---
+
+# HL7 FHIR Compliance (mandatory) — Kenya / DHA
+
+## Locked targets
+
+- **FHIR R4 `4.0.1` only** (`fhir.resources==6.5.0`). Do not mix versions.
+- **Clinical (non-claim) exchange:** Kenya ePrescription IG **0.1.0**  
+  (`kenya_ig.py`) + base R4 + DHA code systems.
+- **Claims / preauth / dispensing-for-reimbursement:** `fhir.kenyaClaimsIG#0.1.0`  
+  (`kenya_claims_ig.py`) — validate against Claims IG StructureDefinitions  
+  ([artifacts](https://build.fhir.org/ig/IntelliSOFT-Consulting/Kenya-eClaims-FHIR-IG/artifacts.html)), not base R4 alone.
+- Do **not** default to US Core for Kenya pharmacy workflows.
+- Keep `docs/fhir/FHIR_CONFORMANCE.md` updated.
+
+## Decisions (adopted)
+
+1. Kenya-profiled clinical resources on `/api/fhir/r4/` must include correct `meta.profile`.
+2. SMART / AfyaLink: CapStmt + `/.well-known/smart-configuration`; Bearer JWT via `DAWATRACE_FHIR_SMART_*` / `DAWATRACE_FHIR_AFYALINK_TOKEN_URL`.
+3. Terminology: RxNorm / LOINC / SNOMED (+ ATC) primary; PPB/eTCD/MFL secondary.
+4. CI: `scripts/validate-fhir-samples.sh`; claims samples via `scripts/validate-fhir-claims-ig.sh`.
+5. CapStmt searchParam types must be correct FHIR types.
+6. HIE conventions (`kenya_hie.py`): CR Patient URLs, encounter-types CodeSystem, **KES**, ISO 8601, **`application/fhir+json`**.
+7. Resolve CR / FR / HWR / Drug registry identifiers — do not invent local-only national IDs.
+8. Privacy: comply with Kenya **Data Protection Act 2019** control map  
+   (`docs/fhir/KENYA_DATA_PROTECTION_ACT_2019.md`).
+
+## Resource rules
+
+- Standard FHIR types only; Extensions need resolvable URLs.
+- Prefer CR absolute Patient references when CR ID is linked.
+- Domain models remain system of record; converters are the exchange boundary.
+- Do not invent clinical-lane Patient profiles; use Claims IG Patient only on claim Bundles.
+
+## Mapping (§8)
+
+Show field→element mapping (`KENYA_ERX_FIELD_MAPPINGS.md`) and wait for review before large converter rewrites.
+
+## Validation
+
+Base R4 always; Claims IG profiles when claiming reimbursement conformance. Flag uncertainty — do not guess profile constraints.

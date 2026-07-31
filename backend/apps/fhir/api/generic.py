@@ -9,6 +9,7 @@ from apps.fhir.exceptions import (
     FHIRSecurityError,
     FHIRValidationError,
 )
+from apps.fhir.services.resource_meta import apply_declared_profiles
 from apps.fhir.services.resource_registry import FHIRResourceRegistry
 
 
@@ -47,7 +48,12 @@ class FHIRReadView(BaseFHIRAPIView):
                 "The domain record could not be rendered as FHIR.",
                 diagnostics="; ".join(conversion_result.errors) or "No FHIR resource was produced.",
             )
-        return Response(conversion_result.fhir_resource.dict(exclude_none=True))
+        resource = apply_declared_profiles(
+            conversion_result.fhir_resource,
+            resource_type,
+            extra=registration.supported_profiles,
+        )
+        return Response(resource.dict(exclude_none=True))
 
 
 class FHIRSearchView(BaseFHIRAPIView):
@@ -65,7 +71,7 @@ class FHIRSearchView(BaseFHIRAPIView):
         if not registration.interactions.search:
             raise FHIRNotSupportedError(f"Search operation not supported for {resource_type}")
 
-        allowed_parameters = set(registration.search_parameters) | {"_count", "_format", "_pretty"}
+        allowed_parameters = set(registration.search_parameter_names()) | {"_count", "_format", "_pretty"}
         unsupported = sorted(set(request.query_params.keys()) - allowed_parameters)
         if unsupported:
             raise FHIRValidationError(
@@ -102,7 +108,11 @@ class FHIRSearchView(BaseFHIRAPIView):
                 )
             entry = fhir_bundle.BundleEntry(
                 fullUrl=request.build_absolute_uri(f"/api/fhir/r4/{resource_type}/{instance.id}"),
-                resource=conversion_result.fhir_resource
+                resource=apply_declared_profiles(
+                    conversion_result.fhir_resource,
+                    resource_type,
+                    extra=registration.supported_profiles,
+                ),
             )
             bundle.entry.append(entry)
 

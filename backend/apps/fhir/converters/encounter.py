@@ -8,6 +8,7 @@ from fhir.resources.reference import Reference
 
 from apps.clinical.models import ClinicalEncounter
 from apps.fhir.converters.base import BaseFHIRConverter, ConversionResult
+from apps.fhir.kenya_hie import SYSTEM_ENCOUNTER_TYPES, patient_subject_reference
 
 
 class EncounterConverter(BaseFHIRConverter):
@@ -22,12 +23,27 @@ class EncounterConverter(BaseFHIRConverter):
                 system="http://terminology.hl7.org/CodeSystem/v3-ActCode",
                 code=domain_object.encounter_class,
             )
+            patient = getattr(domain_object, "patient", None)
             encounter = Encounter(
                 id=str(domain_object.id),
                 status=status,
-                subject=Reference(reference=f"Patient/{domain_object.patient_id}"),
+                subject=Reference(
+                    reference=patient_subject_reference(patient, local_id=domain_object.patient_id)
+                ),
                 class_fhir=encounter_class_coding,
             )
+            # DHA convention: Encounter.type uses https://shr.kenya-hie.health/encounter-types
+            if domain_object.encounter_class:
+                encounter.type = [
+                    CodeableConcept(
+                        coding=[
+                            Coding(
+                                system=SYSTEM_ENCOUNTER_TYPES,
+                                code=str(domain_object.encounter_class),
+                            )
+                        ]
+                    )
+                ]
 
             if domain_object.reason_code:
                 encounter.reasonCode = [CodeableConcept(coding=[Coding(code=domain_object.reason_code)])]

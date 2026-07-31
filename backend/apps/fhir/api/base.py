@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.fhir.exceptions import FHIRException
+from apps.fhir.renderers import FHIRJSONRenderer
 from apps.fhir.services.operation_outcome import OperationOutcomeFactory
 
 
@@ -14,6 +15,9 @@ class BaseFHIRAPIView(APIView):
     Base view for all FHIR API endpoints.
     Automatically handles formatting exceptions into FHIR OperationOutcome responses.
     """
+
+    # DHA wire convention: application/fhir+json (not bare application/json).
+    renderer_classes = [FHIRJSONRenderer]
 
     # All FHIR views should define their primary resource type
     fhir_resource_type = None

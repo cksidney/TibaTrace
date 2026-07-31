@@ -96,7 +96,13 @@ class FHIRReferenceResolver:
         if parsed.scheme or parsed.netloc:
             if parsed.scheme not in {"http", "https"}:
                 raise FHIRReferenceResolutionError("Unsupported absolute reference scheme.", code="invalid")
-            allowed_hosts = set(getattr(settings, "FHIR_ALLOWED_ABSOLUTE_REFERENCE_HOSTS", []))
+            allowed_hosts = set(getattr(settings, "FHIR_ALLOWED_ABSOLUTE_REFERENCE_HOSTS", []) or [])
+            try:
+                from apps.fhir.kenya_hie import DEFAULT_HIE_REFERENCE_HOSTS
+
+                allowed_hosts.update(DEFAULT_HIE_REFERENCE_HOSTS)
+            except Exception:
+                pass
             if parsed.hostname not in allowed_hosts:
                 raise FHIRReferenceResolutionError(
                     "External reference host is not permitted for local resolution.",

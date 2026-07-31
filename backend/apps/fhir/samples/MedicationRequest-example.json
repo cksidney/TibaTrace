@@ -1,0 +1,61 @@
+{
+  "resourceType": "MedicationRequest",
+  "id": "example-kenya-medicationrequest",
+  "meta": {
+    "profile": [
+      "https://nshr-uat.sha.go.ke/fhir/StructureDefinition/ke-medication-request"
+    ]
+  },
+  "status": "active",
+  "intent": "order",
+  "medicationCodeableConcept": {
+    "coding": [
+      {
+        "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+        "code": "308460",
+        "display": "azithromycin 500 MG Oral Tablet"
+      },
+      {
+        "system": "http://www.whocc.no/atc",
+        "code": "J01FA10",
+        "display": "azithromycin"
+      }
+    ],
+    "text": "Azithromycin 500 mg tablet"
+  },
+  "subject": {
+    "reference": "Patient/example-kenya-patient"
+  },
+  "authoredOn": "2026-07-31",
+  "dosageInstruction": [
+    {
+      "text": "Take one tablet once daily for 3 days",
+      "timing": {
+        "repeat": {
+          "frequency": 1,
+          "period": 1,
+          "periodUnit": "d",
+          "count": 3
+        }
+      },
+      "doseAndRate": [
+        {
+          "doseQuantity": {
+            "value": 500,
+            "unit": "mg",
+            "system": "http://unitsofmeasure.org",
+            "code": "mg"
+          }
+        }
+      ]
+    }
+  ],
+  "dispenseRequest": {
+    "quantity": {
+      "value": 3,
+      "unit": "tablet",
+      "system": "http://unitsofmeasure.org",
+      "code": "{tablet}"
+    }
+  }
+}

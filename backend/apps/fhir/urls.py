@@ -4,6 +4,7 @@ from apps.fhir.views.allergy_intolerance import AllergyIntoleranceView
 from apps.fhir.views.audit_event import AuditEventView
 from apps.fhir.views.bundle import BundleView
 from apps.fhir.views.capability import CapabilityStatementView
+from apps.fhir.views.smart_configuration import SmartConfigurationView
 from apps.fhir.views.code_system import CodeSystemValidateCodeView, CodeSystemView
 from apps.fhir.views.condition import ConditionView
 from apps.fhir.views.diagnostic_report import DiagnosticReportView
@@ -26,6 +27,7 @@ app_name = "fhir"
 
 urlpatterns = [
     path('metadata', CapabilityStatementView.as_view(), name='metadata'),
+    path('.well-known/smart-configuration', SmartConfigurationView.as_view(), name='smart-configuration'),
     path('Organization/<str:id>', OrganizationReadView.as_view(), name='organization-read'),
     path('Organization', OrganizationReadView.as_view(), name='organization-search'),
     path('Location/<str:id>', LocationReadView.as_view(), name='location-read'),

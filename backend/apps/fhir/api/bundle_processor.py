@@ -285,8 +285,10 @@ class BundleProcessor:
                 diagnostics="; ".join(rendered.errors),
             )
 
+        from apps.fhir.services.resource_meta import apply_declared_profiles
+
         return fhir_bundle.BundleEntry(
-            resource=rendered.fhir_resource,
+            resource=apply_declared_profiles(rendered.fhir_resource, resource_type),
             response=fhir_bundle.BundleEntryResponse(
                 status="201 Created" if method == "POST" else "200 OK",
                 location=location

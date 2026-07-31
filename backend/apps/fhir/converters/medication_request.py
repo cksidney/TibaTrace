@@ -7,6 +7,7 @@ import fhir.resources.quantity as fhir_qty
 import fhir.resources.reference as fhir_ref
 
 from apps.fhir.converters.base import BaseFHIRConverter, ConversionResult
+from apps.fhir.kenya_hie import patient_subject_reference
 from apps.fhir.services.reference_resolver import FHIRReferenceResolver
 from apps.prescription.models import PrescriptionItem
 
@@ -54,8 +55,9 @@ class MedicationRequestConverter(BaseFHIRConverter):
                 display=domain_object.medication_name
             )
 
+        patient = getattr(prescription, "patient", None)
         subject = fhir_ref.Reference(
-            reference=f"Patient/{prescription.patient_id}"
+            reference=patient_subject_reference(patient, local_id=prescription.patient_id)
         )
 
         requester = fhir_ref.Reference(

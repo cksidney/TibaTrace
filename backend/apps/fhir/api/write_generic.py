@@ -205,6 +205,14 @@ class FHIRWriteView(BaseFHIRAPIView):
                     diagnostics="; ".join(rendered.errors),
                 )
 
+            from apps.fhir.services.resource_meta import apply_declared_profiles
+
+            rendered.fhir_resource = apply_declared_profiles(
+                rendered.fhir_resource,
+                resource_type,
+                extra=registration.supported_profiles,
+            )
+
             response_status = (
                 status.HTTP_200_OK
                 if operation == "update" and existed_before

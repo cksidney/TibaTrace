@@ -6,6 +6,11 @@ from fhir.resources.identifier import Identifier
 from fhir.resources.patient import Patient as FHIRPatient
 
 from apps.fhir.converters.base import BaseFHIRConverter, ConversionResult
+from apps.fhir.kenya_hie import (
+    SYSTEM_CLIENT_REGISTRY_ID,
+    SYSTEM_LOCAL_PATIENT_REFERENCE,
+    extract_client_registry_id,
+)
 from apps.patients.models import Patient
 
 
@@ -19,10 +24,16 @@ class PatientConverter(BaseFHIRConverter):
             identifiers.insert(
                 0,
                 Identifier(
-                    system="https://dawatrace.health/fhir/system/patient-reference",
+                    system=SYSTEM_LOCAL_PATIENT_REFERENCE,
                     value=domain_object.internal_reference_id,
                 ),
             )
+            cr_id = extract_client_registry_id(domain_object)
+            if cr_id and not any(
+                (getattr(i, "system", None) or "") == SYSTEM_CLIENT_REGISTRY_ID for i in identifiers
+            ):
+                identifiers.append(Identifier(system=SYSTEM_CLIENT_REGISTRY_ID, value=cr_id))
+
             telecom = []
             if domain_object.phone:
                 telecom.append(ContactPoint(system="phone", value=domain_object.phone))
@@ -59,7 +70,7 @@ class PatientConverter(BaseFHIRConverter):
                 (
                     row["value"]
                     for row in identifiers
-                    if row["system"] == "https://dawatrace.health/fhir/system/patient-reference"
+                    if row["system"] == SYSTEM_LOCAL_PATIENT_REFERENCE
                 ),
                 None,
             )
@@ -76,7 +87,11 @@ class PatientConverter(BaseFHIRConverter):
                 "phone": telecom.get("phone", ""),
                 "email": telecom.get("email", ""),
                 "is_active": resource.active is not False,
-                "identifiers": [row for row in identifiers if row["system"] != "https://dawatrace.health/fhir/system/patient-reference"],
+                "identifiers": [
+                    row
+                    for row in identifiers
+                    if row["system"] != SYSTEM_LOCAL_PATIENT_REFERENCE
+                ],
             }
         except Exception:
             result.add_exception("FHIR Patient could not be mapped to a DawaTrace patient command.")
