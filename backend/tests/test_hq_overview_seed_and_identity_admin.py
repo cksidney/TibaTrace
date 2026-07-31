@@ -40,7 +40,7 @@ def test_hq_seed_fills_overview_metrics_without_blanks(django_user_model):
         password="test-password",
         is_platform_admin=True,
     )
-    call_command("seed_hq_workspaces", tenant_slug=tenant.slug, verbosity=0)
+    call_command("seed_hq_workspaces", tenant_slug=tenant.slug, verbosity=0, allow_demo_seed=True)
 
     context = build_hq_dashboard_context(admin, tenant.pk)
 

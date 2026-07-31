@@ -25,7 +25,7 @@ def test_hq_seed_builds_complete_and_open_procurement_journeys(
         status=Tenant.STATUS_ACTIVE,
     )
 
-    call_command("seed_hq_workspaces", tenant_slug=tenant.slug, verbosity=0)
+    call_command("seed_hq_workspaces", tenant_slug=tenant.slug, verbosity=0, allow_demo_seed=True)
 
     supplier = Supplier.all_objects.get(
         tenant=tenant,
@@ -85,7 +85,7 @@ def test_hq_seed_builds_complete_and_open_procurement_journeys(
         model: model.all_objects.filter(tenant=tenant).count()
         for model in tracked_models
     }
-    call_command("seed_hq_workspaces", tenant_slug=tenant.slug, verbosity=0)
+    call_command("seed_hq_workspaces", tenant_slug=tenant.slug, verbosity=0, allow_demo_seed=True)
     counts_after = {
         model: model.all_objects.filter(tenant=tenant).count()
         for model in tracked_models

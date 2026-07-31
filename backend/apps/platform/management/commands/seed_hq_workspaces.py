@@ -18,6 +18,12 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.audit.models import AuditEvent
+from apps.core.demo_seed import (
+    add_demo_seed_arguments,
+    demo_password_notice,
+    ensure_demo_seed_allowed,
+    resolve_demo_password,
+)
 from apps.audit.service import log_audit
 from apps.cds.models import ClinicalKnowledgeRelease
 from apps.clinical.models import ClinicalCondition, ClinicalEncounter, ClinicalObservation
@@ -109,8 +115,16 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument("--tenant", dest="tenant_slug", help="Seed only this active tenant slug.")
+        add_demo_seed_arguments(parser)
 
     def handle(self, *args, **options):
+        # Fail closed before touching the database: this command creates HQ
+        # demo operators, managers and approvers across every active tenant.
+        ensure_demo_seed_allowed(allow_demo_seed=options["allow_demo_seed"])
+        self._password, self._password_generated = resolve_demo_password(
+            allow_generated_fallback=options["allow_demo_seed"]
+        )
+
         tenants = Tenant.objects.filter(status=Tenant.STATUS_ACTIVE)
         tenant_slug = options.get("tenant_slug")
         if tenant_slug:
@@ -128,6 +142,9 @@ class Command(BaseCommand):
             finally:
                 reset_current_tenant_id(token)
         self.stdout.write(self.style.SUCCESS(f"HQ workspace seeding complete for {len(tenants)} tenant(s)."))
+        self.stdout.write(
+            demo_password_notice(self._password, was_generated=self._password_generated)
+        )
 
     @transaction.atomic
     def _seed_tenant(self, tenant):
@@ -145,7 +162,14 @@ class Command(BaseCommand):
         self._governance(tenant, operator)
         call_command("seed_insurance_demo", tenant=tenant.slug, verbosity=0)
         call_command("seed_sales", tenant=tenant.slug, verbosity=0)
-        call_command("seed_pos_dispensing_demo", tenant=tenant.slug, verbosity=0)
+        # This command has already cleared the demo-seed gate, so pass that
+        # consent down rather than letting the nested seeder re-derive it.
+        call_command(
+            "seed_pos_dispensing_demo",
+            tenant=tenant.slug,
+            verbosity=0,
+            allow_demo_seed=True,
+        )
 
         after = self._counts(tenant)
         from apps.insurance.models import Insurer, PrescriptionClaim
@@ -624,7 +648,7 @@ class Command(BaseCommand):
                 if updates:
                     user.save(update_fields=[*updates])
             if created or not user.has_usable_password():
-                user.set_password("placeholder-not-a-secret")
+                user.set_password(self._password)
                 user.save(update_fields=["password"])
             users_by_label[label] = user
 

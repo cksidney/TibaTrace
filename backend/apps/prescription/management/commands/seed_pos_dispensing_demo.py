@@ -31,9 +31,13 @@ from apps.prescription.models import (
     Prescription,
     PrescriptionItem,
 )
+from apps.core.demo_seed import (
+    add_demo_seed_arguments,
+    demo_password_notice,
+    ensure_demo_seed_allowed,
+    resolve_demo_password,
+)
 from apps.tenancy.models import Tenant
-
-DEMO_PASSWORD = "placeholder-not-a-secret"
 
 # Kenya-flavoured till scenarios covering every KPI bucket an operator drills.
 SCENARIOS = (
@@ -407,8 +411,16 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument("--tenant", default="tibatrace-demo", help="Tenant slug to seed")
+        add_demo_seed_arguments(parser)
 
     def handle(self, *args, **options):
+        # Fail closed before touching the database: this command creates a
+        # pharmacist, a cashier and a CDS approver.
+        ensure_demo_seed_allowed(allow_demo_seed=options["allow_demo_seed"])
+        self._password, self._password_generated = resolve_demo_password(
+            allow_generated_fallback=options["allow_demo_seed"]
+        )
+
         tenant_slug = options["tenant"]
         self.stdout.write(f"Seeding POS dispensing scenarios for tenant '{tenant_slug}'...")
 
@@ -521,9 +533,11 @@ class Command(BaseCommand):
         self.stdout.write(
             self.style.SUCCESS(
                 f"Seeded {len(SCENARIOS)} Kenya POS dispensing scenarios for '{tenant_slug}'.\n"
-                f"  Pharmacist:  demo_dispensing_rph / {DEMO_PASSWORD}\n"
-                f"  Cashier:     demo_dispensing_cashier / {DEMO_PASSWORD}\n"
-                f"  CDS approver: demo_cds_approver / {DEMO_PASSWORD}"
+                f"  Tenant:       {tenant_slug}\n"
+                f"  Pharmacist:   demo_dispensing_rph\n"
+                f"  Cashier:      demo_dispensing_cashier\n"
+                f"  CDS approver: demo_cds_approver\n"
+                + demo_password_notice(self._password, was_generated=self._password_generated)
             )
         )
 
@@ -543,7 +557,7 @@ class Command(BaseCommand):
             user.tenant = tenant
         user.first_name = first[:150]
         user.last_name = last[:150]
-        user.set_password(DEMO_PASSWORD)
+        user.set_password(self._password)
         user.is_active = True
         user.save()
         return user

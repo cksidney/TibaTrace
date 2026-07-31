@@ -35,7 +35,7 @@ def test_seeded_pharmacist_can_walk_the_prescription_workflow():
         slug="hq-clinical-journey",
         status=Tenant.STATUS_ACTIVE,
     )
-    call_command("seed_hq_workspaces", tenant_slug=tenant.slug, verbosity=0)
+    call_command("seed_hq_workspaces", tenant_slug=tenant.slug, verbosity=0, allow_demo_seed=True)
 
     intake = Prescription.all_objects.get(
         tenant=tenant,
@@ -90,7 +90,7 @@ def test_seeded_open_prescription_counts_toward_the_overview_signal():
         slug="hq-clinical-signal",
         status=Tenant.STATUS_ACTIVE,
     )
-    call_command("seed_hq_workspaces", tenant_slug=tenant.slug, verbosity=0)
+    call_command("seed_hq_workspaces", tenant_slug=tenant.slug, verbosity=0, allow_demo_seed=True)
 
     final_statuses = {
         "CANCELLED",

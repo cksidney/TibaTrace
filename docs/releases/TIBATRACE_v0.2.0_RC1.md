@@ -109,6 +109,78 @@ by `ValidationError`.
 
 ---
 
+## Demo seed safety
+
+Two seed commands create privileged accounts — `seed_pos_dispensing_demo`
+(pharmacist, cashier, **CDS approver**) and `seed_hq_workspaces` (HQ operators,
+managers, approvers across every active tenant). Both are now fail-closed.
+
+**Blocked in production.** Both refuse when `settings.DAWATRACE_ENV` resolves to
+`production`, `prod` or `live`. The comparison is case-insensitive and
+whitespace-stripped. Neither `--allow-demo-seed` nor `DEBUG=True` overrides this
+— the environment check is evaluated first and has no escape.
+
+Outside `DEBUG`, running either command additionally requires an explicit
+`--allow-demo-seed` flag, so a staging run is a deliberate act.
+
+**Passwords are no longer hardcoded or logged.** The two retired demo
+credentials are removed from tracked source — and from Git history, which was
+rewritten before the first push so they appear in no reachable commit. A
+regression test asserts they cannot reappear anywhere under `backend/`.
+
+The same credential was also prefilled into the POS demo login form in
+`backend/static/pos/js/pos.js` — a `value="…"` on a password input, plus a
+sign-in hint naming it. That file is in `STATICFILES_DIRS`, so it was collected
+by `collectstatic` and served publicly at `/static/`. Both are removed; the
+field now renders empty and the hint names only the username.
+Credentials now come from `DAWATRACE_DEMO_SEED_PASSWORD`, validated through
+Django's `validate_password`. When that variable is absent, a cryptographically
+random 24-character password is generated — but only under `DEBUG`, or when
+`--allow-demo-seed` has already established non-production intent.
+
+A supplied password is **never** echoed. A generated password is shown exactly
+once, and only under `DEBUG`, labelled local-development-only. Command output
+still reports usernames, roles and tenant, plus whether the password was
+supplied or generated.
+
+### Required local-development invocation
+
+```bash
+export DAWATRACE_DEMO_SEED_PASSWORD='choose-a-strong-local-password'
+python manage.py seed_hq_workspaces --tenant <slug>
+python manage.py seed_pos_dispensing_demo --tenant <slug>
+```
+
+With `DEBUG=True` the variable may be omitted and a random password is printed
+once. Outside `DEBUG`, add `--allow-demo-seed` and set the variable if you need
+a password you can actually log in with.
+
+### Environment-variable requirements
+
+| Variable | Required when | Notes |
+|---|---|---|
+| `DAWATRACE_ENV` | always (defaults to `development`) | `production`/`prod`/`live` blocks all demo seeding |
+| `DAWATRACE_DEMO_SEED_PASSWORD` | outside `DEBUG` when a usable password is needed | Validated by Django; never printed |
+
+### Security-test evidence
+
+`backend/tests/test_demo_seed_safety.py` — **30 tests**, covering: refusal in
+each production alias for both commands; `--allow-demo-seed` failing to override
+production; `DEBUG=True` failing to override production; case and whitespace not
+bypassing the guard; refusal outside `DEBUG` without the flag; successful local
+run; missing password variable failing safely; weak supplied password rejected;
+generated password confined to `DEBUG`; generated passwords not repeating; a
+supplied password never appearing in captured output; idempotency across two
+runs with no duplicate users or role assignments; existing users reused rather
+than duplicated; retired literals absent from tracked source; and every
+password-setting seeder invoking the shared guard.
+
+The repository secret scanner (`scripts/scan_secrets.py`) gained four rules for
+the classes it previously missed — `password-constant`, `set-password-literal`,
+`create-user-password-literal` and `printed-credential` — with a documented
+test-only exemption by location. Verified by reintroducing the retired literals
+and confirming detection, then removing them again. **Tracked-source findings: 0.**
+
 ## Upgrade notes
 
 1. Install the new runtime dependency: `pip install -r backend/requirements.lock`.
@@ -166,7 +238,7 @@ All figures from a clean run after `npm ci`.
 
 | Check | Result |
 |---|---|
-| Backend `pytest` | **1,407 passed**, 0 failed |
+| Backend `pytest` | **1,437 passed**, 0 failed |
 | Frontend tests | **348 passed**, 0 failed |
 | — `@dawatrace/shared` | 175 |
 | — `@dawatrace/hq-web` | 43 |
@@ -178,6 +250,7 @@ All figures from a clean run after `npm ci`.
 | `makemigrations --check` | No changes detected |
 | Android `assembleDebug` | **BUILD SUCCESSFUL**, 35 MB APK, 10 launcher icons packaged |
 | Infrastructure security | 33 passed |
+| Demo seed safety | 30 passed |
 | Reports PDF | 2 passed |
 | HQ reports navigation | passed |
 | Restored medicines tests | 21 passed |

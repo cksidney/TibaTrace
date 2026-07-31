@@ -19,7 +19,7 @@ def test_hq_workspace_payload_renders_for_a_fully_seeded_tenant(client, django_u
         slug="hq-workspace-contract",
         status=Tenant.STATUS_ACTIVE,
     )
-    call_command("seed_hq_workspaces", tenant_slug=tenant.slug, verbosity=0)
+    call_command("seed_hq_workspaces", tenant_slug=tenant.slug, verbosity=0, allow_demo_seed=True)
 
     admin = django_user_model.objects.create_user(
         username="hq-workspace-contract-admin",
