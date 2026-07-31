@@ -2,7 +2,11 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
-from apps.identity.api.session_views import SessionView
+from apps.identity.api.session_views import (
+    PasswordForgotView,
+    PasswordResetConfirmView,
+    SessionView,
+)
 from apps.identity.api.views import (
     CapabilityMatrixView,
     MeView,
@@ -29,6 +33,8 @@ urlpatterns = [
     path("token/", DawaTraceTokenView.as_view(), name="identity-token"),
     path("token/refresh/", TokenRefreshView.as_view(), name="identity-token-refresh"),
     path("session/", SessionView.as_view(), name="identity-session"),
+    path("password/forgot/", PasswordForgotView.as_view(), name="identity-password-forgot"),
+    path("password/reset/", PasswordResetConfirmView.as_view(), name="identity-password-reset"),
     path("me/", MeView.as_view(), name="identity-me"),
     path("roles/", RoleListView.as_view(), name="identity-roles"),
     path("matrix/", CapabilityMatrixView.as_view(), name="identity-capability-matrix"),

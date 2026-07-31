@@ -32,6 +32,30 @@ EXPLICIT_GLOBAL_MODELS = frozenset(
     }
 )
 
+# Per-call-site exemptions, narrower than EXPLICIT_GLOBAL_MODELS: each marks one
+# lookup, on the line above it, rather than every lookup of a model. The value
+# is the module the marker may appear in, so pasting the comment onto an
+# unrelated lookup does not silence the audit; None means any module. Adding an
+# entry requires the same explicit review.
+REVIEWED_SITE_MARKERS: dict[str, str | None] = {
+    # Re-reading a row by its own pk to prove it already exists before refusing
+    # an update. Safe in any module: the pk being read is the record's own, so
+    # the lookup cannot reach another tenant's data by construction.
+    "# tenant-safety: immutable-existence-check": None,
+    # Credential recovery, which is global by construction. Reviewed on
+    # 2026-07-31, and confined to the password-reset view:
+    #
+    # Scope -- a password reset link is issued before any tenant context exists;
+    # the signed uid is the only identifier available, so the lookup cannot be
+    # tenant-qualified without changing the link format.
+    #
+    # Authorization -- resolving the row is not the access decision. The request
+    # is rejected unless PasswordResetTokenGenerator.check_token succeeds, and
+    # that token is bound to the user's pk, password hash and last_login, so it
+    # cannot be replayed against a different user.
+    "# tenant-safety: global-credential-recovery": "identity/api/session_views.py",
+}
+
 
 @dataclass(frozen=True)
 class UnsafeLookup:
@@ -78,9 +102,12 @@ def find_unscoped_uuid_lookups(source_root: Path) -> list[UnsafeLookup]:
                 continue
             if keyword_names.intersection(TENANT_SCOPE_KEYS) or model in EXPLICIT_GLOBAL_MODELS:
                 continue
+            relative_path = str(path.relative_to(source_root))
             previous_line = source_lines[node.lineno - 2].strip() if node.lineno > 1 else ""
-            if previous_line == "# tenant-safety: immutable-existence-check":
-                continue
+            if previous_line in REVIEWED_SITE_MARKERS:
+                permitted_module = REVIEWED_SITE_MARKERS[previous_line]
+                if permitted_module is None or relative_path == permitted_module:
+                    continue
             findings.append(
                 UnsafeLookup(
                     path=str(path.relative_to(source_root)),
