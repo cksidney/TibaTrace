@@ -14,6 +14,7 @@ export type IconName =
   | 'external'
   | 'inventory'
   | 'insurance'
+  | 'logout'
   | 'menu'
   | 'network'
   | 'overview'
@@ -41,6 +42,7 @@ const paths: Record<IconName, ReactNode> = {
   external: <><path d="M14 4h6v6" /><path d="m20 4-9 9" /><path d="M18 13v6H5V6h6" /></>,
   inventory: <><path d="m4 7 8-4 8 4-8 4-8-4Z" /><path d="m4 7 8 4 8-4v10l-8 4-8-4V7Z" /><path d="M12 11v10" /></>,
   insurance: <><path d="M12 2 3 7v6c0 5.5 3.8 10.7 9 12 5.2-1.3 9-6.5 9-12V7l-9-5Z" /><path d="M9 12h6M12 9v6" /></>,
+  logout: <><path d="M10 5H5v14h5" /><path d="M14 8l4 4-4 4" /><path d="M8 12h10" /></>,
   menu: <><path d="M4 7h16M4 12h16M4 17h16" /></>,
   network: <><circle cx="6" cy="6" r="2.5" /><circle cx="18" cy="7" r="2.5" /><circle cx="12" cy="18" r="2.5" /><path d="m8.2 7.2 7.4-.4M7.3 8.2l3.4 7.6M16.8 9.1l-3.5 6.7" /></>,
   overview: <><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="5" rx="1" /><rect x="14" y="12" width="7" height="9" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /></>,

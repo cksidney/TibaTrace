@@ -281,20 +281,20 @@ describe('workbench collections', () => {
 
   it('reads an unpaginated collection', async () => {
     respond([{ code: 'A' }, { code: 'B' }]);
-    expect((await loadInsurers()).length).toBe(2);
+    expect((await loadInsurers('tenant-123')).length).toBe(2);
   });
 
   it('reads a paginated collection', async () => {
     // Turning pagination on is a presentation change and must not break the UI.
     respond({ results: [{ code: 'A' }] });
-    expect((await loadInsurers()).length).toBe(1);
+    expect((await loadInsurers('tenant-123')).length).toBe(1);
   });
 
   it('throws rather than returning an empty list on failure', async () => {
     // A section rendering "0 claims" because the request failed is worse than
     // one saying it could not load: the first is believed.
     respond(null, false, 503);
-    await expect(loadApprovedUnpaidClaims()).rejects.toThrow(HQApiError);
+    await expect(loadApprovedUnpaidClaims('tenant-123')).rejects.toThrow(HQApiError);
   });
 
   it('keeps approved-unpaid and awaiting-decision as separate calls', async () => {
@@ -304,8 +304,8 @@ describe('workbench collections', () => {
       return { ok: true, status: 200, json: async () => [] } as unknown as Response;
     }) as typeof fetch;
 
-    await loadApprovedUnpaidClaims();
-    await loadClaimsAwaitingDecision();
+    await loadApprovedUnpaidClaims('tenant-123');
+    await loadClaimsAwaitingDecision('tenant-123');
     // Showing them together is how transport acceptance starts looking like a
     // debt.
     expect(called[0]).not.toBe(called[1]);

@@ -107,7 +107,47 @@ export function ProcurementWorkspace({
     heldBatches: data?.batches.filter((item) => item.quality_status !== 'RELEASED').length ?? 0,
     openOrders: data?.orders.filter((item) => !['CLOSED', 'CANCELLED', 'FULLY_RECEIVED'].includes(item.status)).length ?? 0,
     pendingRequisitions: data?.requisitions.filter((item) => ['DRAFT', 'SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'PARTIALLY_ORDERED'].includes(item.status)).length ?? 0,
+    matchedInvoices: data?.matches.filter((item) => item.matching_status === 'MATCHED').length ?? 0,
+    releasedBatches: data?.batches.filter((item) => item.quality_status === 'RELEASED').length ?? 0,
   }), [data]);
+
+  const journey = useMemo(() => ([
+    {
+      step: '01',
+      title: 'Qualify',
+      detail: 'Verify supplier licences before an order can be raised.',
+      tab: 'suppliers' as ProcurementTab,
+      done: metrics.purchaseReadySuppliers > 0,
+    },
+    {
+      step: '02',
+      title: 'Approve demand',
+      detail: 'Separate requesting from approval before funds are committed.',
+      tab: 'requisitions' as ProcurementTab,
+      done: (data?.requisitions.some((item) => ['APPROVED', 'PARTIALLY_ORDERED', 'FULLY_ORDERED', 'CLOSED'].includes(item.status)) ?? false),
+    },
+    {
+      step: '03',
+      title: 'Order',
+      detail: 'Price every line and release only an approved purchase order.',
+      tab: 'orders' as ProcurementTab,
+      done: (data?.orders.some((item) => ['SENT', 'PARTIALLY_RECEIVED', 'FULLY_RECEIVED', 'CLOSED'].includes(item.status)) ?? false),
+    },
+    {
+      step: '04',
+      title: 'Receive & inspect',
+      detail: 'Capture delivery note, batch, expiry, quality decision, and custody.',
+      tab: 'receiving' as ProcurementTab,
+      done: metrics.releasedBatches > 0 || (data?.receipts.some((item) => ['ACCEPTED', 'CLOSED', 'UNDER_INSPECTION'].includes(item.status)) ?? false),
+    },
+    {
+      step: '05',
+      title: 'Reconcile',
+      detail: 'Match purchase order, accepted receipt, and supplier invoice.',
+      tab: 'reconciliation' as ProcurementTab,
+      done: metrics.matchedInvoices > 0,
+    },
+  ]), [data, metrics.matchedInvoices, metrics.purchaseReadySuppliers, metrics.releasedBatches]);
 
   if (!tenantId) {
     return (
@@ -140,10 +180,34 @@ export function ProcurementWorkspace({
       </section>
 
       <section className="metric-grid network-metrics" aria-label="Procurement totals">
-        <ProcurementMetric icon="building" label="Purchase-ready suppliers" value={metrics.purchaseReadySuppliers} detail={`${metrics.approvedSuppliers} commercially approved`} />
-        <ProcurementMetric icon="docs" label="Open requisitions" value={metrics.pendingRequisitions} detail="Demand awaiting completion" />
-        <ProcurementMetric icon="store" label="Open orders" value={metrics.openOrders} detail="Commitments not fully received" />
-        <ProcurementMetric icon="alert" label="Quality holds" value={metrics.heldBatches} detail="Batches outside released state" />
+        <ProcurementMetric
+          detail={`${metrics.approvedSuppliers} commercially approved`}
+          icon="building"
+          label="Purchase-ready suppliers"
+          onActivate={() => setTab('suppliers')}
+          value={metrics.purchaseReadySuppliers}
+        />
+        <ProcurementMetric
+          detail="Demand awaiting completion"
+          icon="docs"
+          label="Open requisitions"
+          onActivate={() => setTab('requisitions')}
+          value={metrics.pendingRequisitions}
+        />
+        <ProcurementMetric
+          detail="Commitments not fully received"
+          icon="store"
+          label="Open orders"
+          onActivate={() => setTab('orders')}
+          value={metrics.openOrders}
+        />
+        <ProcurementMetric
+          detail="Batches outside released state"
+          icon="alert"
+          label="Quality holds"
+          onActivate={() => setTab('quality')}
+          value={metrics.heldBatches}
+        />
       </section>
 
       <article className="panel procurement-workspace">
@@ -206,16 +270,31 @@ export function ProcurementWorkspace({
       </article>
 
       <section className="procurement-flow" aria-label="Procurement control flow">
-        {[
-          ['01', 'Qualify', 'Verify supplier licences before an order can be raised.'],
-          ['02', 'Approve demand', 'Separate requesting from approval before funds are committed.'],
-          ['03', 'Order', 'Price every line and release only an approved purchase order.'],
-          ['04', 'Receive & inspect', 'Capture delivery note, batch, expiry, quality decision, and custody.'],
-          ['05', 'Reconcile', 'Match purchase order, accepted receipt, and supplier invoice.'],
-        ].map(([step, title, detail]) => (
-          <article key={step}><b>{step}</b><strong>{title}</strong><span>{detail}</span></article>
+        {journey.map((item) => (
+          <button
+            aria-label={`Open ${item.title} workspace`}
+            className={item.done ? 'procurement-flow-step is-complete' : 'procurement-flow-step'}
+            key={item.step}
+            onClick={() => setTab(item.tab)}
+            type="button"
+          >
+            <b>{item.step}</b>
+            <strong>{item.title}</strong>
+            <span>{item.detail}</span>
+            <em>{item.done ? 'Complete in this tenant' : 'Awaiting activity'}</em>
+          </button>
         ))}
       </section>
+
+      {metrics.releasedBatches > 0 ? (
+        <p className="procurement-inventory-link">
+          Released batches post to the stock ledger.
+          {' '}
+          <a href="#inventory">Open Inventory Control</a>
+          {' '}
+          to verify balances after quality release.
+        </p>
+      ) : null}
 
       {dialog && data ? (
         <ProcurementDialog
@@ -995,19 +1074,34 @@ function ProcurementMetric({
   detail,
   icon,
   label,
+  onActivate,
   value,
 }: {
   readonly detail: string;
   readonly icon: 'alert' | 'building' | 'docs' | 'store';
   readonly label: string;
+  readonly onActivate?: () => void;
   readonly value: number;
 }) {
-  return (
-    <article className="summary-card">
+  const content = (
+    <>
       <span className="summary-icon"><Icon name={icon} /></span>
       <div><p>{label}</p><strong>{value.toLocaleString()}</strong><small>{detail}</small></div>
-    </article>
+    </>
   );
+  if (onActivate) {
+    return (
+      <button
+        aria-label={`Open ${label}: ${value.toLocaleString()}`}
+        className="summary-card summary-card-link"
+        onClick={onActivate}
+        type="button"
+      >
+        {content}
+      </button>
+    );
+  }
+  return <article className="summary-card">{content}</article>;
 }
 
 function ProcurementRecord({

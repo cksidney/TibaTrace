@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, FormEvent } from 'react';
 
+import { AccessWorkspace } from './AccessWorkspace.js';
+import { ReportsWorkspace } from './ReportsWorkspace.js';
 import {
   activateCustomer,
   approveCustomer,
@@ -8,6 +10,7 @@ import {
   approveStockTransfer,
   beginCustomerReview,
   CLAIM_STATES,
+  confirmPasswordReset,
   createCustomer,
   createInsurer,
   createStockTransfer,
@@ -53,11 +56,11 @@ import {
   setHQTenantContext,
   startCashExceptionReview,
   loadRolesDetail,
-  loadUsers,
   loadUserRoles,
   loadServiceAccounts,
   loadCapabilityMatrix,
   requestPosDownload,
+  requestPasswordReset,
   loadPosReleases,
   loadSystemHealth,
   probeEndpointHeartbeat,
@@ -70,7 +73,6 @@ import {
   suspendCustomer,
   transitionPriceBookVersion,
   updateGovernmentCatalogueSelection,
-  varianceNeedsExplanation,
   loadInventoryLocations,
   loadInventoryBalances,
   loadInventoryLedger,
@@ -102,6 +104,13 @@ import type {
   HQSku,
   HQWorkItem,
   HQWorkspaceData,
+  HQKnowledgeRelease,
+  HQCodeSystem,
+  HQValueSet,
+  HQEncounter,
+  HQCondition,
+  HQObservation,
+  HQFhirIdempotencyRecord,
   InsuranceClaim,
   Insurer,
   InsuranceRemittance,
@@ -141,7 +150,6 @@ import type {
   PriceLock,
   PriceResolutionResult,
   RoleDetail,
-  UserDetail,
   UserRoleGrant,
   ServiceAccountItem,
   CapabilityMatrixData,
@@ -166,6 +174,7 @@ type WorkspaceView =
   | 'cash'
   | 'insurance'
   | 'clinical'
+  | 'reports'
   | 'governance'
   | 'access';
 
@@ -188,6 +197,7 @@ const navigation: readonly NavigationItem[] = [
   { key: 'cash', label: 'Cash control', caption: 'Shifts, tills and variances', icon: 'building' },
   { key: 'insurance', label: 'Insurance & Claims', caption: 'Adjudication & SHA', icon: 'insurance' },
   { key: 'clinical', label: 'Clinical governance', caption: 'Safety and standards', icon: 'clinical' },
+  { key: 'reports', label: 'Reports', caption: 'Enterprise & security packs', icon: 'docs' },
   { key: 'governance', label: 'System governance', caption: 'Audit, events and documents', icon: 'shield' },
   { key: 'access', label: 'Users & access', caption: 'Roles and security', icon: 'users' },
 ];
@@ -247,6 +257,11 @@ const viewMeta: Record<WorkspaceView, { readonly eyebrow: string; readonly title
     eyebrow: 'Clinical governance',
     title: 'Safety & interoperability',
     description: 'Monitor clinical records, governed terminology and the FHIR R4 exchange surface.',
+  },
+  reports: {
+    eyebrow: 'Enterprise reporting',
+    title: 'Reports & assurance packs',
+    description: 'Browse the TibaTrace reporting catalogue — operational, regulatory, audit and security reports with live workspace links.',
   },
   governance: {
     eyebrow: 'Platform assurance',
@@ -368,7 +383,14 @@ export function App() {
       />
     );
   }
-  if (error) return <Unavailable />;
+  if (error) {
+    const detail = error instanceof HQApiError
+      ? `Backend responded with ${error.status}. ${error.message}`
+      : error instanceof Error
+        ? error.message
+        : undefined;
+    return <Unavailable {...(detail === undefined ? {} : { detail })} />;
+  }
   if (!session) return <LoadingScreen />;
   if (!session.authenticated) {
     return <AuthenticationRequired csrfToken={session.csrf_token} onSignedIn={setSession} />;
@@ -420,6 +442,7 @@ function Dashboard({
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const userMenuAnchorRef = useRef<HTMLDivElement>(null);
   const [commandOpen, setCommandOpen] = useState(false);
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
     return (localStorage.getItem('hq-theme') as 'dark' | 'light') || 'dark';
@@ -456,6 +479,29 @@ function Dashboard({
   }, []);
 
   useEffect(() => {
+    const focus = focusFromHash();
+    if (!focus) {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return undefined;
+    }
+    const targetId = resolveFocusTargetId(activeView, focus);
+    if (!targetId) return undefined;
+    const tryScroll = () => {
+      const node = document.getElementById(targetId);
+      if (!node) return false;
+      node.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return true;
+    };
+    if (tryScroll()) return undefined;
+    const first = window.setTimeout(tryScroll, 200);
+    const second = window.setTimeout(tryScroll, 700);
+    return () => {
+      window.clearTimeout(first);
+      window.clearTimeout(second);
+    };
+  }, [activeView, workspaceData, overview.generated_at]);
+
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault();
@@ -471,6 +517,18 @@ function Dashboard({
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
+
+  useEffect(() => {
+    if (!userMenuOpen) return;
+
+    const closeWhenOutside = (event: PointerEvent) => {
+      if (!userMenuAnchorRef.current?.contains(event.target as Node)) {
+        setUserMenuOpen(false);
+      }
+    };
+    document.addEventListener('pointerdown', closeWhenOutside);
+    return () => document.removeEventListener('pointerdown', closeWhenOutside);
+  }, [userMenuOpen]);
 
   const attentionCount = overview.attention_items.filter((item) => item.value > 0 && item.tone !== 'teal').length;
   const meta = viewMeta[activeView];
@@ -546,10 +604,12 @@ function Dashboard({
               </button>
               {notificationsOpen ? <NotificationPopover overview={overview} /> : null}
             </div>
-            <div className="popover-anchor">
+            <div className="popover-anchor account-menu-anchor" ref={userMenuAnchorRef}>
               <button
-                className="user-trigger"
+                className={`user-trigger${userMenuOpen ? ' user-trigger-open' : ''}`}
                 aria-label={`${displayName(overview.user_name)} account menu, ${isPlatformAdmin ? 'platform administrator' : 'tenant operator'}`}
+                aria-controls="hq-account-menu"
+                aria-haspopup="true"
                 aria-expanded={userMenuOpen}
                 onClick={() => {
                   setUserMenuOpen((open) => !open);
@@ -564,7 +624,13 @@ function Dashboard({
                 </div>
                 <Icon name="chevron" />
               </button>
-              {userMenuOpen ? <UserMenu overview={overview} onSignOut={onSignOut} /> : null}
+              {userMenuOpen ? (
+                <UserMenu
+                  overview={overview}
+                  onClose={() => setUserMenuOpen(false)}
+                  onSignOut={onSignOut}
+                />
+              ) : null}
             </div>
           </div>
         </header>
@@ -603,9 +669,10 @@ function Dashboard({
           {activeView === 'operations' ? <OperationsView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} overview={overview} /> : null}
           {activeView === 'commerce' ? <CommerceView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} /> : null}
           {activeView === 'pricing' ? <PricingView csrfToken={csrfToken} overview={overview} /> : null}
-          {activeView === 'cash' ? <CashControlView csrfToken={csrfToken} tenantId={overview.tenant_id} /> : null}
-          {activeView === 'insurance' ? <InsuranceView csrfToken={csrfToken} /> : null}
+          {activeView === 'cash' ? <CashControlView csrfToken={csrfToken} overview={overview} /> : null}
+          {activeView === 'insurance' ? <InsuranceView csrfToken={csrfToken} overview={overview} /> : null}
           {activeView === 'clinical' ? <ClinicalView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} overview={overview} /> : null}
+          {activeView === 'reports' ? <ReportsWorkspace csrfToken={csrfToken} overview={overview} onNavigate={setActiveView} /> : null}
           {activeView === 'governance' ? <GovernanceView data={workspaceData} failed={workspaceFailed} /> : null}
           {activeView === 'access' ? <AccessView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} overview={overview} /> : null}
         </main>
@@ -723,22 +790,42 @@ function OverviewView({ overview, onNavigate }: { readonly overview: HQOverview;
   return (
     <>
       <section className="metric-grid" aria-label="Network performance">
-        {overview.metrics.map((metric, index) => <MetricCard key={metric.label} metric={metric} index={index} />)}
+          {overview.metrics.map((metric, index) => <MetricCard key={metric.label} metric={metric} index={index} onNavigate={onNavigate} />)}
       </section>
 
       <section className="content-grid content-grid-primary">
         <article className="panel attention-panel">
           <PanelHeader eyebrow="Operational focus" title="What needs attention" actionLabel="Open operations" onAction={() => navigateTo('operations', onNavigate)} />
           <div className="attention-list">
-            {overview.attention_items.map((item) => (
-              <div className="attention-row" key={item.label}>
-                <span className={`attention-icon attention-${item.tone}`}>
-                  <Icon name={item.tone === 'rose' ? 'alert' : item.tone === 'teal' ? 'check' : 'activity'} />
-                </span>
-                <div><strong>{item.label}</strong><p>{item.detail}</p></div>
-                <b>{formatNumber(item.value)}</b>
-              </div>
-            ))}
+            {overview.attention_items.map((item) => {
+              const destination = item.href?.trim() ?? '';
+              const content = (
+                <>
+                  <span className={`attention-icon attention-${item.tone}`}>
+                    <Icon name={item.tone === 'rose' ? 'alert' : item.tone === 'teal' ? 'check' : 'activity'} />
+                  </span>
+                  <div><strong>{item.label}</strong><p>{item.detail}</p></div>
+                  <b>{formatNumber(item.value)}</b>
+                  {destination && !isCurrentHqDestination(destination) ? <Icon className="attention-arrow" name="chevron" /> : null}
+                </>
+              );
+              if (!destination || isCurrentHqDestination(destination)) {
+                return <div className="attention-row" key={item.label}>{content}</div>;
+              }
+              return (
+                <a
+                  aria-label={`Open ${item.label}`}
+                  className="attention-row attention-row-link"
+                  href={destination}
+                  key={item.label}
+                  onClick={(event) => {
+                    if (openHqDestination(destination, onNavigate)) event.preventDefault();
+                  }}
+                >
+                  {content}
+                </a>
+              );
+            })}
           </div>
         </article>
 
@@ -755,9 +842,9 @@ function OverviewView({ overview, onNavigate }: { readonly overview: HQOverview;
             </div>
           </div>
           <div className="compact-stats">
-            <Stat label="Active locations" value={summary.get('Active locations') ?? 0} />
-            <Stat label="Practitioners" value={summary.get('Practitioners') ?? 0} />
-            <Stat label="Active users" value={summary.get('Active users') ?? 0} />
+            <Stat href="#network" label="Active locations" value={summary.get('Active locations') ?? 0} onNavigate={onNavigate} />
+            <Stat href="#people/practitioners" label="Practitioners" value={summary.get('Practitioners') ?? 0} onNavigate={onNavigate} />
+            <Stat href="#access" label="Active users" value={summary.get('Active users') ?? 0} onNavigate={onNavigate} />
           </div>
         </article>
       </section>
@@ -766,13 +853,16 @@ function OverviewView({ overview, onNavigate }: { readonly overview: HQOverview;
         <article className="panel data-panel">
           <PanelHeader eyebrow="Data estate" title="Current record coverage" />
           <div className="data-bars">
-            {[
-              ['Patients', metricValue(overview, 'Patients'), 'patients'],
-              ['Clinical encounters', summary.get('Clinical encounters') ?? 0, 'clinical'],
-              ['Observations', summary.get('Observations') ?? 0, 'activity'],
-              ['Inventory batches', summary.get('Inventory batches') ?? 0, 'inventory'],
-            ].map(([label, value, icon]) => (
-              <DataBar icon={icon as IconName} key={label as string} label={label as string} max={largestOverviewValue(overview)} value={value as number} />
+            {overview.data_summary.map((item) => (
+              <DataBar
+                {...(item.href === undefined ? {} : { href: item.href })}
+                icon={overviewDataIcon(item.label)}
+                key={item.label}
+                label={item.label}
+                max={largestOverviewValue(overview)}
+                onNavigate={onNavigate}
+                value={item.value}
+              />
             ))}
           </div>
         </article>
@@ -780,8 +870,14 @@ function OverviewView({ overview, onNavigate }: { readonly overview: HQOverview;
         <article className="panel command-panel">
           <PanelHeader eyebrow="Command centre" title="Move into a workspace" />
           <div className="command-links">
+            <CommandLink href="#people/customers" title="People & customers" detail="Patients, practitioners and counterparties" icon="users" onNavigate={onNavigate} />
+            <CommandLink href="#catalogue/skus" title="Medicine catalogue" detail="Commercial SKUs and product master" icon="inventory" onNavigate={onNavigate} />
+            <CommandLink href="#commerce/orders" title="Sales & fulfilment" detail="Quotations, orders, pick, pack and delivery" icon="store" onNavigate={onNavigate} />
+            <CommandLink href="#pricing/books" title="Branch price books" detail="Price books, assignments and overrides" icon="docs" onNavigate={onNavigate} />
+            <CommandLink href="#cash/tills" title="Shifts & cash control" detail="Tills, variances and forced closures" icon="activity" onNavigate={onNavigate} />
             <CommandLink href="/pos/" title="Point of sale" detail="Dispensing and sales operations" icon="store" />
-            <CommandLink href="#access" title="System controls" detail="Identity, security and governance" icon="settings" />
+            <CommandLink href="#reports" title="Reports catalogue" detail="Enterprise, audit and security packs" icon="docs" onNavigate={onNavigate} />
+            <CommandLink href="#access" title="System controls" detail="Identity, security and governance" icon="settings" onNavigate={onNavigate} />
             <CommandLink href="/api/docs/" title="API workspace" detail="Integration contracts and testing" icon="docs" />
           </div>
         </article>
@@ -855,7 +951,9 @@ function HeartbeatsTelemetryPanel() {
     const [services, devices, registers] = await Promise.allSettled([
       Promise.all(HEARTBEAT_ENDPOINTS.map(({ endpoint }) => probeEndpointHeartbeat(endpoint, signal))),
       loadPosDeviceHealth(signal),
-      loadPosRegisters(signal),
+      // loadPosRegisters takes (tenantId, signal); passing the signal first
+      // sent an AbortSignal as the tenant filter and dropped cancellation.
+      loadPosRegisters('', signal),
     ]);
 
     if (signal?.aborted) return;
@@ -1185,8 +1283,38 @@ function InventoryView({
         </section>
       ) : null}
       {notice ? <div className="procurement-notice" role="status"><Icon name="check" /> {notice}</div> : null}
+      <section className="metric-grid inventory-authority-strip" aria-label="Tenant stock authority summary">
+        <button className="metric-card metric-teal metric-card-button" onClick={() => setTab('balances')} type="button">
+          <div className="metric-top"><span><Icon name="inventory" /></span><small>Open balances</small></div>
+          <strong>{formatNumber(balances?.length ?? 0)}</strong>
+          <p>Stock balances</p>
+          <small>Projected quantity by location, SKU and lot</small>
+        </button>
+        <button className="metric-card metric-violet metric-card-button" onClick={() => setTab('batches')} type="button">
+          <div className="metric-top"><span><Icon name="database" /></span><small>Open batches</small></div>
+          <strong>{formatNumber(batches?.filter((batch) => batch.quality_status === 'RELEASED').length ?? 0)}</strong>
+          <p>FEFO-ready batches</p>
+          <small>{formatNumber(batches?.filter((batch) => batch.quality_status !== 'RELEASED').length ?? 0)} on quality hold</small>
+        </button>
+        <button className="metric-card metric-amber metric-card-button" onClick={() => setTab('reservations')} type="button">
+          <div className="metric-top"><span><Icon name="shield" /></span><small>Open reservations</small></div>
+          <strong>{formatNumber(reservations?.length ?? 0)}</strong>
+          <p>Allocated stock</p>
+          <small>Held against dispensing and sales demand</small>
+        </button>
+        <button className="metric-card metric-navy metric-card-button" onClick={() => setTab('transfers')} type="button">
+          <div className="metric-top"><span><Icon name="arrow" /></span><small>Open transfers</small></div>
+          <strong>{formatNumber(transfers?.length ?? 0)}</strong>
+          <p>Stock transfers</p>
+          <small>{formatNumber(locations?.length ?? 0)} custody locations</small>
+        </button>
+      </section>
       <article className="panel inventory-workspace">
         <PanelHeader eyebrow="Stock & Ledger Governance" title="Inventory Control & Stock Ledger" />
+        <p className="panel-note">
+          Tenant stock authority is absolute: balances, ledger entries, batches, reservations and transfers
+          never mix across pharmacies. Every quantity change is append-only in the ledger.
+        </p>
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', marginBottom: '20px' }}>
           <div className="segmented" role="tablist">
@@ -1195,42 +1323,42 @@ function InventoryView({
             onClick={() => setTab('balances')}
             type="button"
           >
-            📦 Stock Balances ({balances?.length ?? 0})
+            Stock balances ({balances?.length ?? 0})
           </button>
           <button
             className={tab === 'ledger' ? 'segmented-option is-active' : 'segmented-option'}
             onClick={() => setTab('ledger')}
             type="button"
           >
-            📜 Inventory Ledger ({ledger?.length ?? 0})
+            Inventory ledger ({ledger?.length ?? 0})
           </button>
           <button
             className={tab === 'batches' ? 'segmented-option is-active' : 'segmented-option'}
             onClick={() => setTab('batches')}
             type="button"
           >
-            🏷️ Batches & Expiries ({batches?.length ?? 0})
+            Batches &amp; expiries ({batches?.length ?? 0})
           </button>
           <button
             className={tab === 'locations' ? 'segmented-option is-active' : 'segmented-option'}
             onClick={() => setTab('locations')}
             type="button"
           >
-            🏢 Locations & Vaults ({locations?.length ?? 0})
+            Locations ({locations?.length ?? 0})
           </button>
           <button
             className={tab === 'reservations' ? 'segmented-option is-active' : 'segmented-option'}
             onClick={() => setTab('reservations')}
             type="button"
           >
-            🔐 Stock Reservations ({reservations?.length ?? 0})
+            Reservations ({reservations?.length ?? 0})
           </button>
           <button
             className={tab === 'transfers' ? 'segmented-option is-active' : 'segmented-option'}
             onClick={() => setTab('transfers')}
             type="button"
           >
-            ↔ Stock Transfers ({transfers?.length ?? 0})
+            Transfers ({transfers?.length ?? 0})
           </button>
           </div>
         </div>
@@ -2168,19 +2296,19 @@ function TenantPricingView({
   const [resolutionError, setResolutionError] = useState<string | null>(null);
 
   const fetchOverrides = useCallback((signal?: AbortSignal) => {
-    loadPriceOverrides(false, signal)
+    loadPriceOverrides(false, tenantId, signal)
       .then(setOverrides)
       .catch(() => {});
-  }, []);
+  }, [tenantId]);
 
   useEffect(() => {
     const controller = new AbortController();
     Promise.all([
-      loadPriceBooks(controller.signal),
-      loadPriceOverrides(false, controller.signal),
-      loadPriceLocks(controller.signal),
-      loadAppliedPrices(controller.signal),
-      loadPriceAssignments(controller.signal),
+      loadPriceBooks(tenantId, controller.signal),
+      loadPriceOverrides(false, tenantId, controller.signal),
+      loadPriceLocks(tenantId, controller.signal),
+      loadAppliedPrices(tenantId, controller.signal),
+      loadPriceAssignments(tenantId, controller.signal),
       loadTenantSkus(tenantId, controller.signal),
     ])
       .then(([b, o, l, a, ass, skus]) => {
@@ -2208,7 +2336,7 @@ function TenantPricingView({
     setVersions(null);
     setSelectedVersion(null);
     setEntries(null);
-    loadPriceBookVersions(selectedBook.id, controller.signal)
+    loadPriceBookVersions(selectedBook.id, tenantId, controller.signal)
       .then((vList) => {
         setVersions(vList);
         if (vList.length > 0) {
@@ -2219,20 +2347,20 @@ function TenantPricingView({
         if (!controller.signal.aborted) setVersions([]);
       });
     return () => controller.abort();
-  }, [selectedBook, versionReload]);
+  }, [selectedBook, tenantId, versionReload]);
 
   // Fetch entries when selectedVersion changes
   useEffect(() => {
     if (!selectedVersion) return;
     const controller = new AbortController();
     setEntries(null);
-    loadPriceBookEntries(selectedVersion.id, controller.signal)
+    loadPriceBookEntries(selectedVersion.id, tenantId, controller.signal)
       .then(setEntries)
       .catch(() => {
         if (!controller.signal.aborted) setEntries([]);
       });
     return () => controller.abort();
-  }, [selectedVersion]);
+  }, [selectedVersion, tenantId]);
 
   const handleResolvePrice = async (e: FormEvent) => {
     e.preventDefault();
@@ -2283,7 +2411,6 @@ function TenantPricingView({
           </div>
           <button
             className="primary-button"
-            disabled={tenantSkus.length === 0}
             onClick={() => {
               setPriceDraftError('');
               setPriceDraftOpen(true);
@@ -2302,22 +2429,28 @@ function TenantPricingView({
           <div><span>5</span><strong>Resolve</strong><small>Verify the exact branch and SKU price before tills use it.</small></div>
         </div>
         {tenantSkus.length === 0 ? (
-          <p className="inline-alert" role="status">
-            <Icon name="alert" />
-            No governed tenant SKU is available. Select a government catalogue item and complete its commercial SKU first.
-          </p>
+          <div className="inline-alert" role="status" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+              <Icon name="alert" />
+              No governed tenant SKU is selected yet. Click "Create or update price draft" to set prices directly, or select items from the Government Catalogue.
+            </span>
+            <a href="#catalogue" className="secondary-button" style={{ padding: '4px 12px', fontSize: '0.8rem', textDecoration: 'none' }}>
+              <Icon name="inventory" /> Go to Medicine Catalogue
+            </a>
+          </div>
         ) : null}
         {priceNotice ? <p className="inline-alert" role="status"><Icon name="check" /> {priceNotice}</p> : null}
       </article>
 
       <section className="metric-grid network-metrics" aria-label="Price book totals">
-        <SummaryCard icon="database" label="Price books" value={books.length} detail={`${inert.length} without live version`} />
+        <SummaryCard icon="database" label="Price books" value={books.length} detail={`${inert.length} without live version`} onActivate={() => document.getElementById('pricing-books')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />
         <SummaryCard
           icon="building"
           label="Branch assignments"
           value={assignments.length}
           detail={`${branchScoped.length} branch price overrides`}
           tone="teal"
+          onActivate={() => document.getElementById('pricing-assignments')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
         />
         <SummaryCard
           icon="alert"
@@ -2325,6 +2458,7 @@ function TenantPricingView({
           value={pendingOverrides.length}
           detail="Supervisor review required"
           tone={pendingOverrides.length ? 'rose' : 'navy'}
+          onActivate={() => document.getElementById('pricing-overrides')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
         />
         <SummaryCard
           icon="check"
@@ -2332,6 +2466,7 @@ function TenantPricingView({
           value={liveLocks.length}
           detail="Active till basket locks"
           tone="amber"
+          onActivate={() => document.getElementById('pricing-locks')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
         />
       </section>
 
@@ -2420,10 +2555,10 @@ function TenantPricingView({
           ) : null}
 
           {resolutionResult ? (
-            <div className="resolution-result-card" style={{ marginTop: '16px', padding: '16px', borderRadius: '10px', background: 'var(--navy-900)', border: '1px solid var(--teal-500)' }}>
+            <div className="resolution-result-card" style={{ marginTop: '16px', padding: '16px', borderRadius: '10px', background: 'var(--panel)', border: '1px solid var(--teal-500)', boxShadow: 'var(--shadow)' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
                 <span className="status-badge status-active"><i /> Price Resolved</span>
-                <strong style={{ fontSize: '1.2rem', color: 'var(--teal-500)' }}>
+                <strong style={{ fontSize: '1.2rem', color: 'var(--teal-600)' }}>
                   {formatMoney(resolutionResult.unit_price, resolutionResult.currency)} / unit
                 </strong>
               </div>
@@ -2453,7 +2588,7 @@ function TenantPricingView({
 
       {/* Section 2: Master Price Books & Version Explorer */}
       <section className="content-grid content-grid-primary" style={{ marginTop: '24px' }}>
-        <article className="panel">
+        <article className="panel" id="pricing-books">
           <PanelHeader eyebrow="Commercial Control" title="Price Books Directory" />
           {books.length === 0 ? (
             <EmptyState detail="No price books are configured for this tenant." icon="database" title="No price books" />
@@ -2536,8 +2671,8 @@ function TenantPricingView({
                           padding: '6px 12px',
                           borderRadius: '6px',
                           border: isVerSelected ? '1px solid var(--teal-500)' : '1px solid var(--line)',
-                          background: isVerSelected ? 'var(--teal-100)' : 'var(--navy-900)',
-                          color: isVerSelected ? 'var(--teal-500)' : 'var(--ink)',
+                          background: isVerSelected ? 'var(--teal-100)' : 'var(--panel)',
+                          color: isVerSelected ? 'var(--teal-600)' : 'var(--ink)',
                           cursor: 'pointer',
                           fontSize: '0.78rem',
                           display: 'inline-flex',
@@ -2660,7 +2795,7 @@ function TenantPricingView({
         </article>
       </section>
 
-      <article className="panel" style={{ marginTop: '24px' }}>
+      <article className="panel" id="pricing-assignments" style={{ marginTop: '24px' }}>
         <PanelHeader eyebrow="Resolution Scope" title="Price Book Assignments" />
         <p className="panel-note">
           Assignments decide which book is considered for a tenant, branch, group or customer
@@ -2713,7 +2848,7 @@ function TenantPricingView({
 
       {/* Section 3: Manual Supervisor Overrides & Applied Price Audit */}
       <section className="content-grid content-grid-primary" style={{ marginTop: '24px' }}>
-        <article className="panel">
+        <article className="panel" id="pricing-overrides">
           <PanelHeader eyebrow="Supervisor Governance" title="Manual Price Overrides Audit" />
           {overrideError ? (
             <div className="inline-alert" role="alert"><Icon name="alert" />{overrideError}</div>
@@ -2834,7 +2969,7 @@ function TenantPricingView({
       </section>
 
       {/* Section 4: Active Price Locks Watchlist */}
-      <article className="panel" style={{ marginTop: '24px' }}>
+      <article className="panel" id="pricing-locks" style={{ marginTop: '24px' }}>
         <PanelHeader eyebrow="Basket Custody" title="Active Price Locks Watchlist" />
         {locks.length === 0 ? (
           <EmptyState detail="No basket price locks currently active." icon="check" title="No active locks" />
@@ -2936,18 +3071,28 @@ function TenantPricingView({
               {priceDraftError ? <p className="business-dialog-error" role="alert"><Icon name="alert" /> {priceDraftError}</p> : null}
               <label className="business-field">
                 <span>Tenant commercial SKU</span>
-                <select
-                  onChange={(event) => setPriceDraftSku(event.target.value)}
-                  required
-                  value={priceDraftSku}
-                >
-                  <option value="">Select an eligible SKU</option>
-                  {tenantSkus.map((sku) => (
-                    <option key={sku.id} value={sku.sku_code}>
-                      {sku.sku_code} — {sku.display_name}
-                    </option>
-                  ))}
-                </select>
+                {tenantSkus.length > 0 ? (
+                  <select
+                    onChange={(event) => setPriceDraftSku(event.target.value)}
+                    required
+                    value={priceDraftSku}
+                  >
+                    <option value="">Select an eligible SKU</option>
+                    {tenantSkus.map((sku) => (
+                      <option key={sku.id} value={sku.sku_code}>
+                        {sku.sku_code} — {sku.display_name}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    onChange={(event) => setPriceDraftSku(event.target.value)}
+                    placeholder="Enter SKU Code (e.g. SKU-PARA-500, Amoxicillin 500mg)"
+                    required
+                    type="text"
+                    value={priceDraftSku}
+                  />
+                )}
               </label>
               <div className="tenant-form-grid">
                 <label className="business-field">
@@ -3314,15 +3459,53 @@ function PosDownloads({ csrfToken }: { readonly csrfToken: string }) {
 
 function CashControlView({
   csrfToken,
-  tenantId,
+  overview,
 }: {
   readonly csrfToken: string;
-  readonly tenantId: string;
+  readonly overview: HQOverview;
 }) {
+  const selectableTenants = useMemo(
+    () => overview.network_items.filter((item) => item.status === 'ACTIVE'),
+    [overview.network_items],
+  );
+  const [tenantId, setTenantId] = useState(
+    overview.tenant_id || selectableTenants[0]?.id || '',
+  );
+
+  useEffect(() => {
+    const nextTenantId = overview.tenant_id
+      || (selectableTenants.some((tenant) => tenant.id === tenantId)
+        ? tenantId
+        : selectableTenants[0]?.id || '');
+    if (nextTenantId !== tenantId) setTenantId(nextTenantId);
+  }, [overview.tenant_id, selectableTenants, tenantId]);
+
   if (!tenantId) {
     return <TenantWorkspaceRequired domain="cash control" />;
   }
-  return <TenantCashControlView csrfToken={csrfToken} tenantId={tenantId} />;
+
+  return (
+    <>
+      {overview.is_platform_overview ? (
+        <section className="procurement-scope panel">
+          <div>
+            <p className="eyebrow">Tenant cash authority</p>
+            <h2>Register &amp; shift workspace</h2>
+            <span>Till sessions, cash movements, declarations and variances stay isolated to one pharmacy tenant.</span>
+          </div>
+          <label>
+            <span>Operating tenant</span>
+            <select onChange={(event) => setTenantId(event.target.value)} value={tenantId}>
+              {selectableTenants.map((tenant) => (
+                <option key={tenant.id} value={tenant.id}>{tenant.name}</option>
+              ))}
+            </select>
+          </label>
+        </section>
+      ) : null}
+      <TenantCashControlView csrfToken={csrfToken} tenantId={tenantId} />
+    </>
+  );
 }
 
 function TenantCashControlView({
@@ -3357,14 +3540,14 @@ function TenantCashControlView({
   useEffect(() => {
     const controller = new AbortController();
     Promise.all([
-      loadOpenRegisterSessions(controller.signal),
-      loadUnclosedRegisterSessions(controller.signal),
-      loadCashVariances(controller.signal),
-      loadForcedClosures(controller.signal),
-      loadPosRegisters(controller.signal),
-      loadCashMovements(controller.signal),
-      loadCashDeclarations(controller.signal),
-      loadBusinessDays(controller.signal),
+      loadOpenRegisterSessions(tenantId, controller.signal),
+      loadUnclosedRegisterSessions(tenantId, controller.signal),
+      loadCashVariances(tenantId, controller.signal),
+      loadForcedClosures(tenantId, controller.signal),
+      loadPosRegisters(tenantId, controller.signal),
+      loadCashMovements(tenantId, controller.signal),
+      loadCashDeclarations(tenantId, controller.signal),
+      loadBusinessDays(tenantId, controller.signal),
     ])
       .then(([a, u, b, c, t, m, d, bd]) => {
         setOpen(a);
@@ -3410,6 +3593,7 @@ function TenantCashControlView({
           icon="building"
           label="Physical Tills"
           value={tills ? tills.length : open.length}
+          onActivate={() => document.getElementById('cash-tills')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
         />
         <SummaryCard
           detail="Open register sessions"
@@ -3417,6 +3601,7 @@ function TenantCashControlView({
           label="Tills still trading"
           tone={open.length ? 'amber' : 'navy'}
           value={open.length}
+          onActivate={() => document.getElementById('cash-open-sessions')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
         />
         <SummaryCard
           detail="Z reports carrying a variance"
@@ -3424,6 +3609,7 @@ function TenantCashControlView({
           label="Drawers that did not balance"
           tone={variances.length ? 'rose' : 'navy'}
           value={variances.length}
+          onActivate={() => document.getElementById('cash-variances')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
         />
         <SummaryCard
           detail="Closed by somebody other than the operator"
@@ -3431,6 +3617,7 @@ function TenantCashControlView({
           label="Forced closures"
           tone={forced.length ? 'amber' : 'navy'}
           value={forced.length}
+          onActivate={() => document.getElementById('cash-forced')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
         />
         <SummaryCard
           detail="Require a second authorised operator"
@@ -3438,6 +3625,7 @@ function TenantCashControlView({
           label="Movements awaiting approval"
           tone={pendingMovements.length ? 'rose' : 'teal'}
           value={pendingMovements.length}
+          onActivate={() => document.getElementById('cash-movements')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
         />
       </section>
 
@@ -3468,7 +3656,7 @@ function TenantCashControlView({
         </article>
       ) : null}
 
-      <article className="panel" style={{ marginBottom: '24px' }}>
+      <article className="panel" id="cash-open-sessions" style={{ marginBottom: '24px' }}>
         <PanelHeader eyebrow="Live Accountability" title="Open Register Sessions" />
         {open.length === 0 ? (
           <EmptyState detail="No register session is currently trading." icon="check" title="All tills closed" />
@@ -3494,7 +3682,7 @@ function TenantCashControlView({
       </article>
 
       {/* Till Registers Directory */}
-      <article className="panel" style={{ marginBottom: '24px' }}>
+      <article className="panel" id="cash-tills" style={{ marginBottom: '24px' }}>
         <PanelHeader eyebrow="Till Infrastructure" title="Physical POS Register Directory" />
         {!tills ? (
           <p className="muted-cell">Loading physical tills…</p>
@@ -3541,7 +3729,7 @@ function TenantCashControlView({
       </article>
 
       <section className="content-grid content-grid-primary">
-        <article className="panel">
+        <article className="panel" id="cash-variances">
           <PanelHeader eyebrow="Till accountability" title="Cash variances" />
           {variances.length === 0 ? (
             <p className="muted-cell">Every closed drawer balanced.</p>
@@ -3614,7 +3802,7 @@ function TenantCashControlView({
           )}
         </article>
 
-        <article className="panel">
+        <article className="panel" id="cash-forced">
           <PanelHeader eyebrow="Exception review" title="Forced closures" />
           {forced.length === 0 ? (
             <p className="muted-cell">No forced closures to review.</p>
@@ -3672,7 +3860,7 @@ function TenantCashControlView({
 
       {/* Cash Movements & Outflow Custody */}
       <section className="content-grid content-grid-primary" style={{ marginTop: '24px' }}>
-        <article className="panel">
+        <article className="panel" id="cash-movements">
           <PanelHeader eyebrow="Custody Movements" title="Drawer Cash Inflows & Outflows" />
           {!movements ? (
             <p className="muted-cell">Loading cash movements…</p>
@@ -3997,7 +4185,7 @@ function TenantCashControlView({
   );
 }
 
-function ClaimsRegister() {
+function ClaimsRegister({ tenantId }: { readonly tenantId: string }) {
   const [filters, setFilters] = useState<ClaimFilters>({});
   const [claims, setClaims] = useState<readonly InsuranceClaim[] | null>(null);
   const [failed, setFailed] = useState(false);
@@ -4005,16 +4193,17 @@ function ClaimsRegister() {
   useEffect(() => {
     const controller = new AbortController();
     setFailed(false);
+    setClaims(null);
     // Filters go to the server. Filtering a fetched page in the browser reports
     // "3 rejected" when the register holds four hundred, and the number looks
     // authoritative because it was counted rather than guessed.
-    loadClaims(filters, controller.signal)
+    loadClaims(tenantId, filters, controller.signal)
       .then(setClaims)
       .catch(() => {
         if (!controller.signal.aborted) setFailed(true);
       });
     return () => controller.abort();
-  }, [filters]);
+  }, [filters, tenantId]);
 
   const setFilter = useCallback((key: keyof ClaimFilters, value: string) => {
     setFilters((current) => {
@@ -4135,7 +4324,64 @@ function ClaimsRegister() {
   );
 }
 
-function InsuranceView({ csrfToken }: { readonly csrfToken: string }) {
+function InsuranceView({
+  csrfToken,
+  overview,
+}: {
+  readonly csrfToken: string;
+  readonly overview: HQOverview;
+}) {
+  const selectableTenants = useMemo(
+    () => overview.network_items.filter((item) => item.status === 'ACTIVE'),
+    [overview.network_items],
+  );
+  const [tenantId, setTenantId] = useState(
+    overview.tenant_id || selectableTenants[0]?.id || '',
+  );
+
+  useEffect(() => {
+    const nextTenantId = overview.tenant_id
+      || (selectableTenants.some((tenant) => tenant.id === tenantId)
+        ? tenantId
+        : selectableTenants[0]?.id || '');
+    if (nextTenantId !== tenantId) setTenantId(nextTenantId);
+  }, [overview.tenant_id, selectableTenants, tenantId]);
+
+  if (!tenantId) {
+    return <TenantWorkspaceRequired domain="insurance claims" />;
+  }
+
+  return (
+    <>
+      {overview.is_platform_overview ? (
+        <section className="procurement-scope panel">
+          <div>
+            <p className="eyebrow">Tenant claims authority</p>
+            <h2>Prescription insurance workspace</h2>
+            <span>Insurer integrations, claims, remittances and coverages stay isolated to one pharmacy tenant.</span>
+          </div>
+          <label>
+            <span>Operating tenant</span>
+            <select onChange={(event) => setTenantId(event.target.value)} value={tenantId}>
+              {selectableTenants.map((tenant) => (
+                <option key={tenant.id} value={tenant.id}>{tenant.name}</option>
+              ))}
+            </select>
+          </label>
+        </section>
+      ) : null}
+      <TenantInsuranceView csrfToken={csrfToken} tenantId={tenantId} />
+    </>
+  );
+}
+
+function TenantInsuranceView({
+  csrfToken,
+  tenantId,
+}: {
+  readonly csrfToken: string;
+  readonly tenantId: string;
+}) {
   const [insurers, setInsurers] = useState<readonly Insurer[] | null>(null);
   const [unpaid, setUnpaid] = useState<readonly InsuranceClaim[] | null>(null);
   const [awaiting, setAwaiting] = useState<readonly InsuranceClaim[] | null>(null);
@@ -4155,23 +4401,31 @@ function InsuranceView({ csrfToken }: { readonly csrfToken: string }) {
   const [createError, setCreateError] = useState('');
 
   const fetchInsurers = useCallback((signal?: AbortSignal) => {
-    loadInsurers(signal)
+    loadInsurers(tenantId, signal)
       .then(setInsurers)
       .catch(() => {
         if (!signal?.aborted) setFailed(true);
       });
-  }, []);
+  }, [tenantId]);
 
   useEffect(() => {
     const controller = new AbortController();
+    setFailed(false);
+    setInsurers(null);
+    setUnpaid(null);
+    setAwaiting(null);
+    setAttention(null);
+    setRemittances(null);
+    setRejections(null);
+    setCoverages(null);
     Promise.all([
-      loadInsurers(controller.signal),
-      loadApprovedUnpaidClaims(controller.signal),
-      loadClaimsAwaitingDecision(controller.signal),
-      loadClaimsNeedingAttention(controller.signal),
-      loadRemittances(controller.signal),
-      loadRejections(true, controller.signal),
-      loadCoverages(controller.signal),
+      loadInsurers(tenantId, controller.signal),
+      loadApprovedUnpaidClaims(tenantId, controller.signal),
+      loadClaimsAwaitingDecision(tenantId, controller.signal),
+      loadClaimsNeedingAttention(tenantId, controller.signal),
+      loadRemittances(tenantId, controller.signal),
+      loadRejections(tenantId, true, controller.signal),
+      loadCoverages(tenantId, controller.signal),
     ])
       .then(([a, b, c, d, r, rej, cov]) => {
         setInsurers(a);
@@ -4186,7 +4440,7 @@ function InsuranceView({ csrfToken }: { readonly csrfToken: string }) {
         if (!controller.signal.aborted) setFailed(true);
       });
     return () => controller.abort();
-  }, []);
+  }, [tenantId]);
 
   const handleCreateInsurer = async (e: FormEvent) => {
     e.preventDefault();
@@ -4203,6 +4457,7 @@ function InsuranceView({ csrfToken }: { readonly csrfToken: string }) {
           status: 'ACTIVE',
         },
         csrfToken,
+        tenantId,
       );
       setCreateModalOpen(false);
       setCode('');
@@ -4231,10 +4486,10 @@ function InsuranceView({ csrfToken }: { readonly csrfToken: string }) {
   return (
     <>
       <section className="metric-grid network-metrics" aria-label="Insurance claim positions">
-        <SummaryCard icon="insurance" label="Awaiting insurer decision" value={awaiting.length} detail="Sent and acknowledged, not yet adjudicated" />
-        <SummaryCard icon="check" label="Approved, unpaid" value={unpaid.length} detail="Insurer agreed to pay and has not paid" tone="teal" />
-        <SummaryCard icon="alert" label="Needs attention here" value={attention.length} detail="Rejected, or blocked on this end" tone="rose" />
-        <SummaryCard icon="building" label="Receivable" value={Math.round(receivable)} detail="Approved less received, this tenant" tone="amber" />
+        <SummaryCard targetId="insurance-register" icon="insurance" label="Awaiting insurer decision" value={awaiting.length} detail="Sent and acknowledged, not yet adjudicated" />
+        <SummaryCard targetId="insurance-unpaid" icon="check" label="Approved, unpaid" value={unpaid.length} detail="Insurer agreed to pay and has not paid" tone="teal" />
+        <SummaryCard targetId="insurance-attention" icon="alert" label="Needs attention here" value={attention.length} detail="Rejected, or blocked on this end" tone="rose" />
+        <SummaryCard targetId="insurance-remittances" icon="building" label="Receivable" value={Math.round(receivable)} detail="Approved less received, this tenant" tone="amber" />
       </section>
 
       <section className="content-grid content-grid-primary">
@@ -4279,7 +4534,7 @@ function InsuranceView({ csrfToken }: { readonly csrfToken: string }) {
           )}
         </article>
 
-        <article className="panel">
+        <article className="panel" id="insurance-unpaid">
           <PanelHeader eyebrow="Claims workflow" title="Approved and unpaid" />
           {unpaid.length === 0 ? (
             <EmptyState icon="check" title="No outstanding approved claims" detail="All approved claims have been paid or are not yet due." />
@@ -4331,7 +4586,7 @@ function InsuranceView({ csrfToken }: { readonly csrfToken: string }) {
           )}
         </article>
 
-        <article className="panel">
+        <article className="panel" id="insurance-attention">
           <PanelHeader eyebrow="Action required" title="Claims needing attention" />
           {attention.length === 0 ? (
             <EmptyState icon="check" title="No claims need attention" detail="No claims are blocked or rejected on this end." />
@@ -4358,7 +4613,7 @@ function InsuranceView({ csrfToken }: { readonly csrfToken: string }) {
       </section>
 
       {/* Remittances & Financial Settlement */}
-      <section className="content-grid content-grid-primary" style={{ marginTop: '24px' }}>
+      <section className="content-grid content-grid-primary" style={{ marginTop: '24px' }} id="insurance-remittances">
         <article className="panel">
           <PanelHeader eyebrow="Remittance Advice" title="Payment Settlements & Bank Remittances" />
           {!remittances ? (
@@ -4481,7 +4736,9 @@ function InsuranceView({ csrfToken }: { readonly csrfToken: string }) {
         </article>
       ) : null}
 
-      <ClaimsRegister />
+      <div id="insurance-register">
+        <ClaimsRegister tenantId={tenantId} />
+      </div>
 
       {createModalOpen ? (
         <div className="business-dialog-backdrop" role="presentation">
@@ -4710,21 +4967,26 @@ function PeopleView({
 
   const { counts, patients, practitioners } = data.people;
   const activeCustomersCount = counterparties ? counterparties.filter((c) => c.status === 'ACTIVE' || c.status === 'APPROVED').length : counts.customers;
+  const scrollPeople = (id: string) => {
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
 
   return (
     <>
       <section className="metric-grid network-metrics" aria-label="People and customer totals">
-        <SummaryCard icon="patients" label="Patient records" value={counts.patients} detail={`${formatNumber(counts.active_patients)} active`} />
-        <SummaryCard icon="clinical" label="Practitioners" value={counts.practitioners} detail={`${formatNumber(counts.verified_practitioners)} verified`} tone="teal" />
-        <SummaryCard icon="building" label="Counterparty Customers" value={counterparties ? counterparties.length : counts.customers} detail={`${formatNumber(activeCustomersCount)} active/approved`} />
-        <SummaryCard icon="shield" label="Verification gap" value={Math.max(counts.practitioners - counts.verified_practitioners, 0)} detail="Practitioners needing review" tone={counts.practitioners === counts.verified_practitioners ? 'teal' : 'amber'} />
+        <SummaryCard icon="patients" label="Patient records" value={counts.patients} detail={`${formatNumber(counts.active_patients)} active`} onActivate={() => scrollPeople('people-patients')} />
+        <SummaryCard icon="clinical" label="Practitioners" value={counts.practitioners} detail={`${formatNumber(counts.verified_practitioners)} verified`} tone="teal" onActivate={() => scrollPeople('people-practitioners')} />
+        <SummaryCard icon="building" label="Counterparty Customers" value={counterparties ? counterparties.length : counts.customers} detail={`${formatNumber(activeCustomersCount)} active/approved`} onActivate={() => scrollPeople('people-customers')} />
+        <SummaryCard icon="shield" label="Verification gap" value={Math.max(counts.practitioners - counts.verified_practitioners, 0)} detail="Practitioners needing review" tone={counts.practitioners === counts.verified_practitioners ? 'teal' : 'amber'} onActivate={() => scrollPeople('people-practitioners')} />
       </section>
 
-      <BusinessWorkbench csrfToken={csrfToken} data={data} domain="people" onChanged={onWorkspaceChanged} />
+      <div id="people-customers">
+        <BusinessWorkbench csrfToken={csrfToken} data={data} domain="people" onChanged={onWorkspaceChanged} />
+      </div>
 
       <section className="content-grid content-grid-primary">
-        <article className="panel">
-          <PanelHeader eyebrow="Care records" title="Recently updated patients" actionHref="#people" actionLabel="Manage patients" />
+        <article className="panel" id="people-patients">
+          <PanelHeader eyebrow="Care records" title="Recently updated patients" />
           {patients.length ? (
             <div className="table-scroll">
               <table>
@@ -4745,8 +5007,8 @@ function PeopleView({
           ) : <EmptyState icon="patients" title="No patient records" detail="Registered patient records will appear here without exposing sensitive clinical fields." />}
         </article>
 
-        <article className="panel">
-          <PanelHeader eyebrow="Clinical workforce" title="Practitioner verification" actionHref="#people" actionLabel="Manage practitioners" />
+        <article className="panel" id="people-practitioners">
+          <PanelHeader eyebrow="Clinical workforce" title="Practitioner verification" />
           {practitioners.length ? (
             <div className="table-scroll">
               <table>
@@ -5337,20 +5599,23 @@ function CatalogueView({
   if (!data) return <WorkspaceSectionLoading domain="medicine catalogue" />;
 
   const { counts, skus } = data.catalogue;
+  const scrollCatalogue = (id: string) => {
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
   return (
     <>
       <section className="metric-grid network-metrics" aria-label="Medicine catalogue totals">
-        <SummaryCard icon="inventory" label="Commercial SKUs" value={counts.skus} detail={`${formatNumber(counts.active_skus)} active`} />
-        <SummaryCard icon="clinical" label="Active substances" value={counts.substances} detail="Governed ingredient records" tone="teal" />
-        <SummaryCard icon="building" label="Manufacturers" value={counts.manufacturers} detail="Registered product sources" />
-        <SummaryCard icon="alert" label="Inactive SKUs" value={Math.max(counts.skus - counts.active_skus, 0)} detail="Draft, inactive or recalled" tone={counts.skus === counts.active_skus ? 'teal' : 'amber'} />
+        <SummaryCard icon="inventory" label="Commercial SKUs" value={counts.skus} detail={`${formatNumber(counts.active_skus)} active`} onActivate={() => scrollCatalogue('catalogue-skus')} />
+        <SummaryCard icon="clinical" label="Active substances" value={counts.substances} detail="Governed ingredient records" tone="teal" onActivate={() => scrollCatalogue('catalogue-layers')} />
+        <SummaryCard icon="building" label="Manufacturers" value={counts.manufacturers} detail="Registered product sources" onActivate={() => scrollCatalogue('catalogue-layers')} />
+        <SummaryCard icon="alert" label="Inactive SKUs" value={Math.max(counts.skus - counts.active_skus, 0)} detail="Draft, inactive or recalled" tone={counts.skus === counts.active_skus ? 'teal' : 'amber'} onActivate={() => scrollCatalogue('catalogue-skus')} />
       </section>
 
       <GovernmentCatalogue csrfToken={csrfToken} overview={overview} />
 
       <BusinessWorkbench csrfToken={csrfToken} data={data} domain="catalogue" onChanged={onWorkspaceChanged} />
 
-      <article className="panel table-panel">
+      <article className="panel table-panel" id="catalogue-skus">
         <div className="table-toolbar">
           <PanelHeader eyebrow="Product master" title="Commercial medicine catalogue" />
         </div>
@@ -5376,7 +5641,9 @@ function CatalogueView({
         ) : <EmptyState icon="inventory" title="No commercial SKUs" detail="Create governed products, packages and identifiers before stock can be transacted." />}
       </article>
 
-      <CatalogueLayers />
+      <div id="catalogue-layers">
+        <CatalogueLayers />
+      </div>
     </>
   );
 }
@@ -5924,6 +6191,19 @@ function CommerceView({
   const [holds, setHolds] = useState<readonly HQSalesOrderHoldItem[] | null>(null);
 
   useEffect(() => {
+    const applyFocus = () => {
+      const focus = focusFromHash();
+      const allowed = new Set(['orders', 'quotations', 'picking', 'packing', 'dispatches', 'deliveries', 'returns', 'holds']);
+      if (allowed.has(focus)) {
+        setTab(focus as typeof tab);
+      }
+    };
+    applyFocus();
+    window.addEventListener('hashchange', applyFocus);
+    return () => window.removeEventListener('hashchange', applyFocus);
+  }, []);
+
+  useEffect(() => {
     const controller = new AbortController();
     Promise.all([
       loadQuotations(controller.signal).catch(() => null),
@@ -5954,10 +6234,10 @@ function CommerceView({
   return (
     <>
       <section className="metric-grid network-metrics" aria-label="Sales and fulfilment totals">
-        <SummaryCard icon="docs" label="Quotations" value={counts.quotations} detail="Commercial offers" />
-        <SummaryCard icon="store" label="Open orders" value={counts.open_orders} detail={`${formatNumber(counts.orders)} total orders`} tone={counts.open_orders ? 'amber' : 'teal'} />
-        <SummaryCard icon="inventory" label="Dispatches" value={counts.dispatches} detail={`${formatNumber(counts.deliveries)} delivery records`} />
-        <SummaryCard icon="refresh" label="Returns" value={counts.returns} detail="Authorised return records" tone={counts.returns ? 'amber' : 'teal'} />
+        <SummaryCard icon="docs" label="Quotations" value={counts.quotations} detail="Commercial offers" onActivate={() => setTab('quotations')} />
+        <SummaryCard icon="store" label="Open orders" value={counts.open_orders} detail={`${formatNumber(counts.orders)} total orders`} tone={counts.open_orders ? 'amber' : 'teal'} onActivate={() => setTab('orders')} />
+        <SummaryCard icon="inventory" label="Dispatches" value={counts.dispatches} detail={`${formatNumber(counts.deliveries)} delivery records`} onActivate={() => setTab('dispatches')} />
+        <SummaryCard icon="refresh" label="Returns" value={counts.returns} detail="Authorised return records" tone={counts.returns ? 'amber' : 'teal'} onActivate={() => setTab('returns')} />
       </section>
 
       <BusinessWorkbench csrfToken={csrfToken} data={data} domain="commerce" onChanged={onWorkspaceChanged} />
@@ -6188,10 +6468,30 @@ function CommerceView({
       <article className="panel workflow-panel" style={{ marginTop: '24px' }}>
         <PanelHeader eyebrow="Order-to-delivery" title="Fulfilment Workspaces & Steps" />
         <div className="workflow-grid">
-          <WorkflowLink href="#commerce" icon="docs" step="01" title="Quotations" detail="Price and approve customer demand." />
-          <WorkflowLink href="#commerce" icon="store" step="02" title="Sales orders" detail="Control holds, allocation and approval." />
-          <WorkflowLink href="#commerce" icon="inventory" step="03" title="Pick & pack" detail="Coordinate warehouse fulfilment." />
-          <WorkflowLink href="#commerce" icon="check" step="04" title="Delivery & returns" detail="Capture proof, exceptions and returns." />
+          <button className="workflow-link" onClick={() => setTab('quotations')} type="button">
+            <div className="workflow-top"><span><Icon name="docs" /></span><small>01</small></div>
+            <strong>Quotations</strong>
+            <p>Price and approve customer demand.</p>
+            <b>Open quotations</b>
+          </button>
+          <button className="workflow-link" onClick={() => setTab('orders')} type="button">
+            <div className="workflow-top"><span><Icon name="store" /></span><small>02</small></div>
+            <strong>Sales orders</strong>
+            <p>Control holds, allocation and approval.</p>
+            <b>Open orders</b>
+          </button>
+          <button className="workflow-link" onClick={() => setTab('picking')} type="button">
+            <div className="workflow-top"><span><Icon name="inventory" /></span><small>03</small></div>
+            <strong>Pick & pack</strong>
+            <p>Coordinate warehouse fulfilment.</p>
+            <b>Open picking</b>
+          </button>
+          <button className="workflow-link" onClick={() => setTab('deliveries')} type="button">
+            <div className="workflow-top"><span><Icon name="check" /></span><small>04</small></div>
+            <strong>Delivery & returns</strong>
+            <p>Capture proof, exceptions and returns.</p>
+            <b>Open deliveries</b>
+          </button>
         </div>
       </article>
     </>
@@ -6203,16 +6503,19 @@ function GovernanceView({ data, failed }: { readonly data: HQWorkspaceData | nul
   if (!data) return <WorkspaceSectionLoading domain="system governance" />;
 
   const { audit_events: auditEvents, counts, crosswalks, documents, domain_events: domainEvents, notifications } = data.governance;
+  const scrollTo = (id: string) => {
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
   return (
     <>
       <section className="metric-grid network-metrics" aria-label="System governance totals">
-        <SummaryCard icon="shield" label="Audit events" value={counts.audit_events} detail="Immutable activity records" />
-        <SummaryCard icon="docs" label="Clinical documents" value={counts.documents} detail="Stored governed files" />
-        <SummaryCard icon="activity" label="Failed events" value={counts.failed_domain_events} detail={`${formatNumber(counts.domain_events)} domain events`} tone={counts.failed_domain_events ? 'rose' : 'teal'} />
-        <SummaryCard icon="external" label="Pending notifications" value={counts.pending_notifications} detail={`${formatNumber(counts.crosswalks)} legacy crosswalks`} tone={counts.pending_notifications ? 'amber' : 'teal'} />
+        <SummaryCard icon="shield" label="Audit events" value={counts.audit_events} detail="Immutable activity records" onActivate={() => scrollTo('governance-audit')} />
+        <SummaryCard icon="docs" label="Clinical documents" value={counts.documents} detail="Stored governed files" onActivate={() => scrollTo('governance-documents')} />
+        <SummaryCard icon="activity" label="Failed events" value={counts.failed_domain_events} detail={`${formatNumber(counts.domain_events)} domain events`} tone={counts.failed_domain_events ? 'rose' : 'teal'} onActivate={() => scrollTo('governance-events')} />
+        <SummaryCard icon="external" label="Pending notifications" value={counts.pending_notifications} detail={`${formatNumber(counts.crosswalks)} legacy crosswalks`} tone={counts.pending_notifications ? 'amber' : 'teal'} onActivate={() => scrollTo('governance-notifications')} />
       </section>
 
-      <article className="panel">
+      <article className="panel" id="governance-audit">
         <PanelHeader eyebrow="Immutable record" title="Recent audit activity" />
         {auditEvents.length ? (
           <div className="table-scroll">
@@ -6236,7 +6539,7 @@ function GovernanceView({ data, failed }: { readonly data: HQWorkspaceData | nul
         ) : <EmptyState icon="shield" title="No audit events" detail="Immutable activity records will appear as governed actions occur." />}
       </article>
 
-      <section className="content-grid content-grid-primary governance-grid">
+      <section className="content-grid content-grid-primary governance-grid" id="governance-events">
         <article className="panel">
           <PanelHeader eyebrow="Workflow engine" title="Domain event queue" />
           {domainEvents.length ? (
@@ -6259,7 +6562,7 @@ function GovernanceView({ data, failed }: { readonly data: HQWorkspaceData | nul
           ) : <EmptyState icon="activity" title="No domain events" detail="Workflow events will appear as asynchronous processing begins." />}
         </article>
 
-        <article className="panel">
+        <article className="panel" id="governance-notifications">
           <PanelHeader eyebrow="Communications" title="Notification outbox" />
           {notifications.length ? (
             <div className="table-scroll">
@@ -6282,7 +6585,7 @@ function GovernanceView({ data, failed }: { readonly data: HQWorkspaceData | nul
         </article>
       </section>
 
-      <section className="content-grid">
+      <section className="content-grid" id="governance-documents">
         <article className="panel">
           <PanelHeader eyebrow="Clinical storage" title="Recent documents" />
           {documents.length ? (
@@ -6333,34 +6636,221 @@ function GovernanceView({ data, failed }: { readonly data: HQWorkspaceData | nul
 
 
 /**
- * Decision support, terminology and encounters.
- *
- * These three replaced a row of cards that linked to `#clinical` -- the view
- * they were already on. They read as navigation to a management screen that did
- * not exist: `cds`, `terminology` and `clinical` had models, endpoints and rows,
- * and no surface anywhere in the app.
- *
- * Read-only. Knowledge releases are published artefacts with a checksum, and
- * terminology is governed reference data; editing either from here would need a
- * service and an approval step that do not exist yet.
+ * Decision support, terminology, encounters, conditions, observations and FHIR
+ * write-protection records. Summary cards switch the entity table; each row
+ * opens particulars so operators can inspect a single clinical / interop record.
  */
-type ClinicalTable = 'releases' | 'terminology' | 'encounters';
+type ClinicalTable =
+  | 'encounters'
+  | 'conditions'
+  | 'observations'
+  | 'releases'
+  | 'terminology'
+  | 'fhir';
 
 const CLINICAL_TABLES: readonly { readonly key: ClinicalTable; readonly label: string }[] = [
+  { key: 'encounters', label: 'Encounters' },
+  { key: 'conditions', label: 'Conditions' },
+  { key: 'observations', label: 'Observations' },
   { key: 'releases', label: 'Knowledge releases' },
   { key: 'terminology', label: 'Terminology' },
-  { key: 'encounters', label: 'Encounters' },
+  { key: 'fhir', label: 'FHIR writes' },
 ];
 
-function ClinicalGovernanceTables({ data }: { readonly data: HQWorkspaceData | null }) {
-  const [table, setTable] = useState<ClinicalTable>('releases');
+type ClinicalSelection =
+  | { readonly kind: 'release'; readonly row: HQKnowledgeRelease }
+  | { readonly kind: 'code_system'; readonly row: HQCodeSystem }
+  | { readonly kind: 'value_set'; readonly row: HQValueSet }
+  | { readonly kind: 'encounter'; readonly row: HQEncounter }
+  | { readonly kind: 'condition'; readonly row: HQCondition }
+  | { readonly kind: 'observation'; readonly row: HQObservation }
+  | { readonly kind: 'fhir'; readonly row: HQFhirIdempotencyRecord };
+
+function clinicalParticulars(selection: ClinicalSelection): readonly { readonly label: string; readonly value: string }[] {
+  switch (selection.kind) {
+    case 'release':
+      return [
+        { label: 'Code', value: selection.row.code },
+        { label: 'Version', value: selection.row.version },
+        { label: 'Source', value: selection.row.source || '—' },
+        { label: 'Source version', value: selection.row.source_version || '—' },
+        { label: 'Licence', value: selection.row.licence || '—' },
+        { label: 'Classification', value: selection.row.classification || '—' },
+        { label: 'Effective', value: formatDate(selection.row.effective_date) },
+        { label: 'Expires', value: formatDate(selection.row.expires_at) },
+        { label: 'State', value: selection.row.is_active ? 'ACTIVE' : 'INACTIVE' },
+        { label: 'Checksum (full)', value: selection.row.checksum_full || selection.row.checksum || '—' },
+        { label: 'Record id', value: selection.row.id },
+      ];
+    case 'code_system':
+      return [
+        { label: 'Name', value: selection.row.name },
+        { label: 'Title', value: selection.row.title || '—' },
+        { label: 'URL', value: selection.row.url || '—' },
+        { label: 'Version', value: selection.row.version || '—' },
+        { label: 'Content mode', value: selection.row.content_mode || '—' },
+        { label: 'Scope', value: selection.row.is_global ? 'Global' : 'Tenant' },
+        { label: 'Concepts', value: formatNumber(selection.row.concept_count) },
+        {
+          label: 'Sample concepts',
+          value: selection.row.sample_concepts?.length
+            ? selection.row.sample_concepts.map((c) => `${c.code}${c.display && c.display !== c.code ? ` — ${c.display}` : ''}`).join('; ')
+            : '—',
+        },
+        { label: 'Record id', value: selection.row.id },
+      ];
+    case 'value_set':
+      return [
+        { label: 'Name', value: selection.row.name },
+        { label: 'Title', value: selection.row.title || '—' },
+        { label: 'URL', value: selection.row.url || '—' },
+        { label: 'Version', value: selection.row.version || '—' },
+        { label: 'Scope', value: selection.row.is_global ? 'Global' : 'Tenant' },
+        {
+          label: 'Compose',
+          value: selection.row.compose && Object.keys(selection.row.compose).length
+            ? JSON.stringify(selection.row.compose)
+            : '—',
+        },
+        { label: 'Record id', value: selection.row.id },
+      ];
+    case 'encounter':
+      return [
+        { label: 'Patient', value: selection.row.patient_name || 'Not recorded' },
+        { label: 'Patient number', value: selection.row.patient_number || '—' },
+        { label: 'Class', value: selection.row.encounter_class || '—' },
+        { label: 'Status', value: selection.row.status },
+        { label: 'Practitioner', value: selection.row.practitioner_name || 'Not recorded' },
+        { label: 'Organization', value: selection.row.organization_name || '—' },
+        { label: 'Location', value: selection.row.location_name || '—' },
+        { label: 'Started', value: formatDateTime(selection.row.start_time) },
+        { label: 'Ended', value: formatDateTime(selection.row.end_time) },
+        { label: 'Reason', value: selection.row.reason_code || '—' },
+        { label: 'Record id', value: selection.row.id },
+      ];
+    case 'condition':
+      return [
+        { label: 'Patient', value: selection.row.patient_name || 'Not recorded' },
+        { label: 'Display', value: selection.row.display || selection.row.code },
+        { label: 'Code', value: selection.row.code },
+        { label: 'System', value: selection.row.system || '—' },
+        { label: 'Category', value: selection.row.category || '—' },
+        { label: 'Clinical status', value: selection.row.clinical_status },
+        { label: 'Verification', value: selection.row.verification_status },
+        { label: 'Onset', value: formatDateTime(selection.row.onset_date) },
+        { label: 'Recorded', value: formatDateTime(selection.row.recorded_date) },
+        { label: 'Encounter', value: selection.row.encounter_id || '—' },
+        { label: 'Record id', value: selection.row.id },
+      ];
+    case 'observation':
+      return [
+        { label: 'Patient', value: selection.row.patient_name || 'Not recorded' },
+        { label: 'Display', value: selection.row.display || selection.row.code },
+        { label: 'Code', value: selection.row.code },
+        { label: 'System', value: selection.row.system || '—' },
+        { label: 'Category', value: selection.row.category || '—' },
+        { label: 'Status', value: selection.row.status },
+        {
+          label: 'Value',
+          value: selection.row.value_string
+            || (selection.row.value_quantity
+              ? `${selection.row.value_quantity}${selection.row.value_unit ? ` ${selection.row.value_unit}` : ''}`
+              : '—'),
+        },
+        { label: 'Interpretation', value: selection.row.interpretation || '—' },
+        { label: 'Effective', value: formatDateTime(selection.row.effective_time) },
+        { label: 'Encounter', value: selection.row.encounter_id || '—' },
+        { label: 'Record id', value: selection.row.id },
+      ];
+    case 'fhir':
+      return [
+        { label: 'Resource', value: selection.row.resource_type },
+        { label: 'Operation', value: selection.row.operation },
+        { label: 'State', value: selection.row.state },
+        { label: 'HTTP status', value: selection.row.response_status != null ? String(selection.row.response_status) : '—' },
+        { label: 'Resource id', value: selection.row.resource_id || '—' },
+        { label: 'Idempotency key', value: selection.row.key },
+        { label: 'Request hash', value: selection.row.request_hash_full || selection.row.request_hash || '—' },
+        { label: 'Actor', value: selection.row.actor },
+        { label: 'Created', value: formatDateTime(selection.row.created_at) },
+        { label: 'Record id', value: selection.row.id },
+      ];
+  }
+}
+
+function ClinicalEntityDetailDialog({
+  selection,
+  onClose,
+}: {
+  readonly selection: ClinicalSelection;
+  readonly onClose: () => void;
+}) {
+  const title = ({
+    release: 'Knowledge release',
+    code_system: 'Code system',
+    value_set: 'Value set',
+    encounter: 'Clinical encounter',
+    condition: 'Condition',
+    observation: 'Observation',
+    fhir: 'FHIR idempotency record',
+  } as const)[selection.kind];
+  const fields = clinicalParticulars(selection);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
+
+  return (
+    <div className="business-dialog-backdrop" onClick={onClose} role="presentation">
+      <section
+        aria-labelledby="clinical-entity-title"
+        aria-modal="true"
+        className="business-dialog clinical-entity-dialog"
+        onClick={(event) => event.stopPropagation()}
+        role="dialog"
+      >
+        <header className="panel-header">
+          <div>
+            <p className="eyebrow">Particulars</p>
+            <h2 id="clinical-entity-title">{title}</h2>
+          </div>
+          <button aria-label="Close particulars" onClick={onClose} type="button"><Icon name="close" /></button>
+        </header>
+        <dl className="clinical-particulars">
+          {fields.map((field) => (
+            <div key={field.label}>
+              <dt>{field.label}</dt>
+              <dd><code>{field.value}</code></dd>
+            </div>
+          ))}
+        </dl>
+      </section>
+    </div>
+  );
+}
+
+function ClinicalGovernanceTables({
+  data,
+  table,
+  onTableChange,
+  onSelect,
+}: {
+  readonly data: HQWorkspaceData | null;
+  readonly table: ClinicalTable;
+  readonly onTableChange: (table: ClinicalTable) => void;
+  readonly onSelect: (selection: ClinicalSelection) => void;
+}) {
   if (!data) return null;
   const clinical = data.clinical;
 
   return (
-    <article className="panel table-panel">
+    <article className="panel table-panel" id="clinical-tables">
       <div className="table-toolbar">
-        <PanelHeader eyebrow="Clinical governance" title="Decision support and terminology" />
+        <PanelHeader eyebrow="Clinical governance" title="Safety & interoperability records" />
         <nav className="segmented" aria-label="Clinical governance table">
           {CLINICAL_TABLES.map((option) => (
             <button
@@ -6368,7 +6858,7 @@ function ClinicalGovernanceTables({ data }: { readonly data: HQWorkspaceData | n
               type="button"
               className={option.key === table ? 'segmented-option is-active' : 'segmented-option'}
               aria-pressed={option.key === table}
-              onClick={() => setTable(option.key)}
+              onClick={() => onTableChange(option.key)}
             >
               {option.label}
             </button>
@@ -6377,19 +6867,125 @@ function ClinicalGovernanceTables({ data }: { readonly data: HQWorkspaceData | n
       </div>
 
       <div className="table-scroll">
+        {table === 'encounters' && (clinical.encounters.length ? (
+          <table>
+            <thead><tr><th>Patient</th><th>Class</th><th>Practitioner</th><th>Started</th><th>Reason</th><th>Status</th></tr></thead>
+            <tbody>
+              {clinical.encounters.map((encounter) => (
+                <tr
+                  key={encounter.id}
+                  className="is-clickable"
+                  onClick={() => onSelect({ kind: 'encounter', row: encounter })}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      onSelect({ kind: 'encounter', row: encounter });
+                    }
+                  }}
+                  role="button"
+                  tabIndex={0}
+                >
+                  <td><strong>{encounter.patient_name ?? 'Not recorded'}</strong></td>
+                  <td><small>{encounter.encounter_class || '—'}</small></td>
+                  <td><span className="muted-cell">{encounter.practitioner_name ?? 'Not recorded'}</span></td>
+                  <td><small>{formatDateTime(encounter.start_time)}</small></td>
+                  <td><small>{encounter.reason_code || '—'}</small></td>
+                  <td><StatusBadge value={encounter.status} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : <EmptyState icon="clinical" title="No encounters recorded" detail="Clinical encounters appear here as they are captured." />)}
+
+        {table === 'conditions' && (clinical.conditions.length ? (
+          <table>
+            <thead><tr><th>Patient</th><th>Condition</th><th>Code</th><th>Clinical</th><th>Verification</th><th>Recorded</th></tr></thead>
+            <tbody>
+              {clinical.conditions.map((condition) => (
+                <tr
+                  key={condition.id}
+                  className="is-clickable"
+                  onClick={() => onSelect({ kind: 'condition', row: condition })}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      onSelect({ kind: 'condition', row: condition });
+                    }
+                  }}
+                  role="button"
+                  tabIndex={0}
+                >
+                  <td><strong>{condition.patient_name ?? 'Not recorded'}</strong></td>
+                  <td><small>{condition.display || condition.code}</small></td>
+                  <td><code>{condition.code}</code></td>
+                  <td><StatusBadge value={condition.clinical_status} /></td>
+                  <td><StatusBadge value={condition.verification_status} /></td>
+                  <td><small>{formatDateTime(condition.recorded_date)}</small></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : <EmptyState icon="patients" title="No conditions recorded" detail="Diagnoses and problem lists appear here when captured." />)}
+
+        {table === 'observations' && (clinical.observations.length ? (
+          <table>
+            <thead><tr><th>Patient</th><th>Observation</th><th>Value</th><th>Status</th><th>Effective</th></tr></thead>
+            <tbody>
+              {clinical.observations.map((observation) => (
+                <tr
+                  key={observation.id}
+                  className="is-clickable"
+                  onClick={() => onSelect({ kind: 'observation', row: observation })}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      onSelect({ kind: 'observation', row: observation });
+                    }
+                  }}
+                  role="button"
+                  tabIndex={0}
+                >
+                  <td><strong>{observation.patient_name ?? 'Not recorded'}</strong></td>
+                  <td><small>{observation.display || observation.code}</small></td>
+                  <td>
+                    <code>
+                      {observation.value_string
+                        || (observation.value_quantity
+                          ? `${observation.value_quantity}${observation.value_unit ? ` ${observation.value_unit}` : ''}`
+                          : '—')}
+                    </code>
+                  </td>
+                  <td><StatusBadge value={observation.status} /></td>
+                  <td><small>{formatDateTime(observation.effective_time)}</small></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : <EmptyState icon="activity" title="No observations recorded" detail="Vitals and lab-style observations appear here when captured." />)}
+
         {table === 'releases' && (clinical.knowledge_releases.length ? (
           <table>
             <thead><tr><th>Release</th><th>Version</th><th>Source</th><th>Effective</th><th>Licence</th><th>Checksum</th><th>State</th></tr></thead>
             <tbody>
               {clinical.knowledge_releases.map((release) => (
-                <tr key={release.id}>
+                <tr
+                  key={release.id}
+                  className="is-clickable"
+                  onClick={() => onSelect({ kind: 'release', row: release })}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      onSelect({ kind: 'release', row: release });
+                    }
+                  }}
+                  role="button"
+                  tabIndex={0}
+                >
                   <td><code>{release.code}</code></td>
                   <td><strong>{release.version}</strong></td>
                   <td><small>{release.source}{release.source_version ? ` · ${release.source_version}` : ''}</small></td>
                   <td><small>{formatDate(release.effective_date)}</small></td>
                   <td><small>{release.licence || '—'}</small></td>
-                  {/* The digest is what ties a screening decision to the rules
-                      that produced it, so it is shown rather than hidden. */}
                   <td><code>{release.checksum || '—'}</code></td>
                   <td><StatusBadge value={release.is_active ? 'ACTIVE' : 'INACTIVE'} /></td>
                 </tr>
@@ -6403,7 +6999,19 @@ function ClinicalGovernanceTables({ data }: { readonly data: HQWorkspaceData | n
             <thead><tr><th>Kind</th><th>Name</th><th>Title</th><th>Version</th><th>Concepts</th><th>Scope</th></tr></thead>
             <tbody>
               {clinical.code_systems.map((system) => (
-                <tr key={system.id}>
+                <tr
+                  key={system.id}
+                  className="is-clickable"
+                  onClick={() => onSelect({ kind: 'code_system', row: system })}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      onSelect({ kind: 'code_system', row: system });
+                    }
+                  }}
+                  role="button"
+                  tabIndex={0}
+                >
                   <td><small>Code system</small></td>
                   <td><strong>{system.name}</strong></td>
                   <td><small>{system.title || system.url}</small></td>
@@ -6413,7 +7021,19 @@ function ClinicalGovernanceTables({ data }: { readonly data: HQWorkspaceData | n
                 </tr>
               ))}
               {clinical.value_sets.map((valueSet) => (
-                <tr key={valueSet.id}>
+                <tr
+                  key={valueSet.id}
+                  className="is-clickable"
+                  onClick={() => onSelect({ kind: 'value_set', row: valueSet })}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      onSelect({ kind: 'value_set', row: valueSet });
+                    }
+                  }}
+                  role="button"
+                  tabIndex={0}
+                >
                   <td><small>Value set</small></td>
                   <td><strong>{valueSet.name}</strong></td>
                   <td><small>{valueSet.title || valueSet.url}</small></td>
@@ -6426,24 +7046,37 @@ function ClinicalGovernanceTables({ data }: { readonly data: HQWorkspaceData | n
           </table>
         ) : <EmptyState icon="database" title="No terminology registered" detail="Code systems and value sets appear here once registered." />)}
 
-        {table === 'encounters' && (clinical.encounters.length ? (
+        {table === 'fhir' && (clinical.fhir_idempotency_records.length ? (
           <table>
-            <thead><tr><th>Patient</th><th>Class</th><th>Practitioner</th><th>Started</th><th>Reason</th><th>Status</th></tr></thead>
+            <thead><tr><th>Resource</th><th>Operation</th><th>State</th><th>Actor</th><th>Key</th><th>Created</th></tr></thead>
             <tbody>
-              {clinical.encounters.map((encounter) => (
-                <tr key={encounter.id}>
-                  <td><strong>{encounter.patient_name ?? 'Not recorded'}</strong></td>
-                  <td><small>{encounter.encounter_class || '—'}</small></td>
-                  <td><span className="muted-cell">{encounter.practitioner_name ?? 'Not recorded'}</span></td>
-                  <td><small>{formatDateTime(encounter.start_time)}</small></td>
-                  <td><small>{encounter.reason_code || '—'}</small></td>
-                  <td><StatusBadge value={encounter.status} /></td>
+              {clinical.fhir_idempotency_records.map((record) => (
+                <tr
+                  key={record.id}
+                  className="is-clickable"
+                  onClick={() => onSelect({ kind: 'fhir', row: record })}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      onSelect({ kind: 'fhir', row: record });
+                    }
+                  }}
+                  role="button"
+                  tabIndex={0}
+                >
+                  <td><strong>{record.resource_type}</strong></td>
+                  <td><small>{record.operation}</small></td>
+                  <td><StatusBadge value={record.state} /></td>
+                  <td><span className="muted-cell">{record.actor}</span></td>
+                  <td><code>{record.key}</code></td>
+                  <td><small>{formatDateTime(record.created_at)}</small></td>
                 </tr>
               ))}
             </tbody>
           </table>
-        ) : <EmptyState icon="clinical" title="No encounters recorded" detail="Clinical encounters appear here as they are captured." />)}
+        ) : <EmptyState icon="security" title="No FHIR write records" detail="Idempotency records appear when FHIR writes are processed." />)}
       </div>
+      <p className="muted-cell clinical-table-hint">Select a row to open full particulars for that record.</p>
     </article>
   );
 }
@@ -6456,86 +7089,168 @@ function ClinicalView({
   overview,
 }: BusinessViewProps & { readonly overview: HQOverview }) {
   const summary = useSummary(overview);
+  const [clinicalTable, setClinicalTable] = useState<ClinicalTable>('encounters');
+  const [selection, setSelection] = useState<ClinicalSelection | null>(null);
+  const openPrescriptions = metricValue(overview, 'Open prescriptions');
+  const substitutions = data?.clinical.counts.substitutions ?? 0;
+  const labels = data?.clinical.counts.dispensing_labels ?? 0;
+
   const clinicalMetrics = [
-    { label: 'Encounters', value: summary.get('Clinical encounters') ?? 0, icon: 'clinical' as IconName },
-    { label: 'Conditions', value: summary.get('Conditions') ?? 0, icon: 'patients' as IconName },
-    { label: 'Observations', value: summary.get('Observations') ?? 0, icon: 'activity' as IconName },
-    { label: 'Knowledge releases', value: summary.get('Active clinical releases') ?? 0, icon: 'shield' as IconName },
+    {
+      label: 'Encounters',
+      value: summary.get('Clinical encounters') ?? data?.clinical.counts.encounters ?? 0,
+      icon: 'clinical' as IconName,
+      table: 'encounters' as ClinicalTable,
+      detail: 'Visit and care episodes',
+    },
+    {
+      label: 'Conditions',
+      value: summary.get('Conditions') ?? data?.clinical.counts.conditions ?? 0,
+      icon: 'patients' as IconName,
+      table: 'conditions' as ClinicalTable,
+      detail: 'Diagnoses and problems',
+    },
+    {
+      label: 'Observations',
+      value: summary.get('Observations') ?? data?.clinical.counts.observations ?? 0,
+      icon: 'activity' as IconName,
+      table: 'observations' as ClinicalTable,
+      detail: 'Vitals and measured values',
+    },
+    {
+      label: 'Knowledge releases',
+      value: summary.get('Active clinical releases') ?? data?.clinical.counts.active_knowledge_releases ?? 0,
+      icon: 'shield' as IconName,
+      table: 'releases' as ClinicalTable,
+      detail: 'Active CDS rule packs',
+    },
+    {
+      label: 'Terminology',
+      value: (summary.get('Code systems') ?? data?.clinical.counts.code_systems ?? 0)
+        + (summary.get('Value sets') ?? data?.clinical.counts.value_sets ?? 0),
+      icon: 'database' as IconName,
+      table: 'terminology' as ClinicalTable,
+      detail: 'Code systems and value sets',
+    },
+    {
+      label: 'FHIR writes',
+      value: summary.get('FHIR idempotency records') ?? data?.clinical.counts.fhir_idempotency_records ?? 0,
+      icon: 'security' as IconName,
+      table: 'fhir' as ClinicalTable,
+      detail: 'Protected exchange writes',
+    },
   ];
 
-  const codeSystems = summary.get('Code systems') ?? 0;
-  const valueSets = summary.get('Value sets') ?? 0;
-  const fhirIdempotency = summary.get('FHIR idempotency records') ?? 0;
+  const openClinicalSection = (table: ClinicalTable) => {
+    setClinicalTable(table);
+    window.requestAnimationFrame(() => {
+      document.getElementById('clinical-tables')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  };
 
   return (
     <>
       <section className="metric-grid network-metrics" aria-label="Clinical governance totals">
-        {clinicalMetrics.map((metric) => <SummaryCard detail="Records in the current scope" icon={metric.icon} key={metric.label} label={metric.label} value={metric.value} />)}
+        {clinicalMetrics.map((metric) => (
+          <SummaryCard
+            detail={metric.detail}
+            icon={metric.icon}
+            key={metric.label}
+            label={metric.label}
+            onActivate={() => openClinicalSection(metric.table)}
+            targetId="clinical-tables"
+            value={metric.value}
+          />
+        ))}
       </section>
 
-      {failed
-        ? <WorkspaceSectionError domain="clinical workflow" />
-        : data
-          ? <BusinessWorkbench csrfToken={csrfToken} data={data} domain="clinical" onChanged={onWorkspaceChanged} />
-          : <WorkspaceSectionLoading domain="clinical workflow" />}
+      <ClinicalGovernanceTables
+        data={data}
+        onSelect={setSelection}
+        onTableChange={setClinicalTable}
+        table={clinicalTable}
+      />
 
-      <section className="content-grid content-grid-primary">
+      <div id="clinical-workflow">
+        {failed
+          ? <WorkspaceSectionError domain="clinical workflow" />
+          : data
+            ? <BusinessWorkbench csrfToken={csrfToken} data={data} domain="clinical" onChanged={onWorkspaceChanged} />
+            : <WorkspaceSectionLoading domain="clinical workflow" />}
+      </div>
+
+      <section className="content-grid" id="clinical-dispensing">
         <article className="panel">
-          <PanelHeader eyebrow="Interoperability" title="FHIR R4 readiness" actionHref="/api/fhir/r4/metadata" actionLabel="Open metadata" />
-          <div className="readiness-list">
-            <Readiness icon="database" label="FHIR R4 gateway" detail="Capability statement and exchange endpoint" status="Available" />
-            <Readiness
+          <PanelHeader
+            actionHref="/api/fhir/r4/metadata"
+            actionLabel="Open CapStmt"
+            eyebrow="Interoperability"
+            title="FHIR R4 exchange"
+          />
+          <div className="priority-list">
+            <PriorityItem
+              action="Code systems & value sets"
+              detail="Governed terminology registrations"
               icon="docs"
-              label="Code systems"
-              detail={codeSystems > 0 ? `${formatNumber(codeSystems)} registered sources` : 'No code systems registered'}
-              status={codeSystems > 0 ? 'Tracked' : 'None registered'}
+              onActivate={() => openClinicalSection('terminology')}
+              value={(data?.clinical.counts.code_systems ?? 0) + (data?.clinical.counts.value_sets ?? 0)}
             />
-            <Readiness
-              icon="clinical"
-              label="Value sets"
-              detail={valueSets > 0 ? `${formatNumber(valueSets)} governed sets` : 'No value sets configured'}
-              status={valueSets > 0 ? 'Tracked' : 'None configured'}
-            />
-            <Readiness
+            <PriorityItem
+              action="Idempotent FHIR writes"
+              detail="Duplicate-protected exchange operations"
               icon="security"
-              label="Idempotency records"
-              detail={fhirIdempotency > 0 ? `${formatNumber(fhirIdempotency)} protected writes` : 'No idempotency records yet'}
-              status={fhirIdempotency > 0 ? 'Audited' : 'No records'}
+              onActivate={() => openClinicalSection('fhir')}
+              value={data?.clinical.counts.fhir_idempotency_records ?? 0}
+              {...((data?.clinical.counts.fhir_idempotency_records ?? 0) ? {} : { valueLabel: 'None' })}
+            />
+            <PriorityItem
+              action="Open CapStmt"
+              detail="Capability statement for this gateway"
+              icon="external"
+              onActivate={() => { window.location.href = '/api/fhir/r4/metadata'; }}
+              value={1}
+              valueLabel="R4 4.0.1"
             />
           </div>
         </article>
-
-        <article className="panel">
-          <PanelHeader eyebrow="Clinical data" title="Record distribution" />
-          <div className="data-bars">
-            {clinicalMetrics.slice(0, 3).map((metric) => (
-              <DataBar icon={metric.icon} key={metric.label} label={metric.label} max={largestValue(clinicalMetrics.map((item) => item.value))} value={metric.value} />
-            ))}
-            <DataBar icon="clinical" label="Open prescriptions" max={largestValue(clinicalMetrics.map((item) => item.value))} value={metricValue(overview, 'Open prescriptions')} />
-          </div>
-        </article>
-      </section>
-
-      <ClinicalGovernanceTables data={data} />
-
-      <section className="content-grid">
         <article className="panel">
           <PanelHeader eyebrow="Prescription governance" title="Active dispensing" />
           <div className="priority-list">
-            <PriorityItem action="Open prescriptions" detail="Active prescribing and dispensing workflow" href="#clinical" icon="clinical" value={metricValue(overview, 'Open prescriptions')} tone={metricValue(overview, 'Open prescriptions') ? 'amber' : 'teal'} />
-            <PriorityItem action="Clinical substitutions" detail="Pharmacist-initiated therapeutic substitutions" href="#clinical" icon="activity" value={0} valueLabel="View" />
-            <PriorityItem action="Dispensing labels" detail="Audit label generation and reprints" href="#clinical" icon="docs" value={0} valueLabel="Audit" />
-          </div>
-        </article>
-        <article className="panel">
-          <PanelHeader eyebrow="Formulary" title="Medicines & pricing" />
-          <div className="command-links">
-            <CommandLink href="#catalogue" title="Commercial SKUs" detail="Packaged medicines and identifiers" icon="inventory" />
-            <CommandLink href="#catalogue" title="Active substances" detail="Governed substance register" icon="clinical" />
-            <CommandLink href="#pricing" title="Price books" detail="Formulary pricing and live versions" icon="building" />
+            <PriorityItem
+              action="Open prescriptions"
+              detail="Active prescribing and dispensing workflow"
+              icon="clinical"
+              onActivate={() => {
+                document.getElementById('clinical-workflow')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }}
+              tone={openPrescriptions ? 'amber' : 'teal'}
+              value={openPrescriptions}
+            />
+            <PriorityItem
+              action="Clinical substitutions"
+              detail="Pharmacist-initiated therapeutic substitutions"
+              icon="activity"
+              onActivate={() => {
+                document.getElementById('clinical-workflow')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }}
+              value={substitutions}
+              {...(substitutions ? {} : { valueLabel: 'None' })}
+            />
+            <PriorityItem
+              action="Dispensing labels"
+              detail="Audit label generation and reprints"
+              icon="docs"
+              onActivate={() => {
+                document.getElementById('clinical-dispensing')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }}
+              value={labels}
+              {...(labels ? {} : { valueLabel: 'None' })}
+            />
           </div>
         </article>
       </section>
+
+      {selection ? <ClinicalEntityDetailDialog onClose={() => setSelection(null)} selection={selection} /> : null}
     </>
   );
 }
@@ -6544,414 +7259,228 @@ function AccessView({
   csrfToken,
   data,
   failed,
-  onWorkspaceChanged,
   overview,
 }: BusinessViewProps & { readonly overview: HQOverview }) {
   const summary = useSummary(overview);
+  const selectableTenants = useMemo(
+    () => overview.network_items.filter((item) => item.status === 'ACTIVE'),
+    [overview.network_items],
+  );
+  const [tenantId, setTenantId] = useState(
+    overview.tenant_id || selectableTenants[0]?.id || '',
+  );
   const [sessions, setSessions] = useState<readonly RegisterSessionSummary[] | null>(null);
   const [variances, setVariances] = useState<readonly ShiftReportSummary[] | null>(null);
   const [forcedClosures, setForcedClosures] = useState<readonly ShiftReportSummary[] | null>(null);
   const [cashFailed, setCashFailed] = useState(false);
+  const [identityFailed, setIdentityFailed] = useState(false);
+  const [identityTick, setIdentityTick] = useState(0);
 
-  // Identity & Permissions Matrix State
   const [roles, setRoles] = useState<readonly RoleDetail[] | null>(null);
-  const [users, setUsers] = useState<readonly UserDetail[] | null>(null);
   const [userRoles, setUserRoles] = useState<readonly UserRoleGrant[] | null>(null);
   const [matrix, setMatrix] = useState<CapabilityMatrixData | null>(null);
   const [serviceAccounts, setServiceAccounts] = useState<readonly ServiceAccountItem[] | null>(null);
 
   useEffect(() => {
+    const nextTenantId = overview.tenant_id
+      || (selectableTenants.some((tenant) => tenant.id === tenantId)
+        ? tenantId
+        : selectableTenants[0]?.id || '');
+    if (nextTenantId !== tenantId) setTenantId(nextTenantId);
+  }, [overview.tenant_id, selectableTenants, tenantId]);
+
+  useEffect(() => {
+    if (!tenantId) return;
     const controller = new AbortController();
+    setCashFailed(false);
+    setSessions(null);
+    setVariances(null);
+    setForcedClosures(null);
     Promise.all([
-      loadOpenRegisterSessions(controller.signal),
-      loadCashVariances(controller.signal),
-      loadForcedClosures(controller.signal),
-      loadRolesDetail(controller.signal),
-      loadUsers(controller.signal),
-      loadUserRoles(controller.signal),
-      loadCapabilityMatrix(controller.signal),
-      loadServiceAccounts(controller.signal),
+      loadOpenRegisterSessions(tenantId, controller.signal),
+      loadCashVariances(tenantId, controller.signal),
+      loadForcedClosures(tenantId, controller.signal),
     ])
-      .then(([s, v, f, r, u, ur, m, sa]) => {
+      .then(([s, v, f]) => {
         setSessions(s);
         setVariances(v);
         setForcedClosures(f);
-        setRoles(r);
-        setUsers(u);
-        setUserRoles(ur);
-        setMatrix(m);
-        setServiceAccounts(sa);
       })
       .catch(() => {
         if (!controller.signal.aborted) setCashFailed(true);
       });
     return () => controller.abort();
-  }, []);
+  }, [tenantId]);
+
+  useEffect(() => {
+    if (!tenantId) return;
+    const controller = new AbortController();
+    setIdentityFailed(false);
+    setRoles(null);
+    setUserRoles(null);
+    setMatrix(null);
+    setServiceAccounts(null);
+    Promise.all([
+      loadRolesDetail(tenantId, controller.signal),
+      loadUserRoles(tenantId, controller.signal),
+      loadCapabilityMatrix(tenantId, controller.signal),
+      loadServiceAccounts(tenantId, controller.signal),
+    ])
+      .then(([r, ur, m, sa]) => {
+        setRoles(r);
+        setUserRoles(ur);
+        setMatrix(m);
+        setServiceAccounts(sa);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setIdentityFailed(true);
+      });
+    return () => controller.abort();
+  }, [tenantId, identityTick]);
 
   return (
-    <>
-      <section className="access-hero">
-        <div className="access-profile">
-          <span className="profile-avatar">{initials(overview.user_name)}</span>
+    <div className="access-view">
+      <header className="access-strip">
+        <div className="access-strip-identity">
+          <span className="profile-avatar profile-avatar-compact">{initials(overview.user_name)}</span>
           <div>
-            <p className="eyebrow">Current authenticated operator</p>
+            <p className="eyebrow">Tenant access administration</p>
             <h2>{displayName(overview.user_name)}</h2>
-            <p>{overview.is_platform_overview ? 'Platform-wide administrative access' : `Tenant-scoped access for ${overview.tenant_name}`}</p>
+            <p>
+              {overview.is_platform_overview
+                ? 'Select a tenant below, then create users and grant role rights for that organisation.'
+                : `${overview.tenant_name} · create users, define roles, and assign capabilities (${formatNumber(summary.get('Active users') ?? 0)} active)`}
+            </p>
           </div>
         </div>
-        <span className="status-badge status-active"><i /> Access controls active</span>
-      </section>
+        {overview.is_platform_overview && tenantId ? (
+          <label className="access-tenant-select">
+            <span>Operating tenant</span>
+            <select onChange={(event) => setTenantId(event.target.value)} value={tenantId}>
+              {selectableTenants.map((tenant) => (
+                <option key={tenant.id} value={tenant.id}>{tenant.name}</option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <span className="status-badge status-active"><i /> Tenant scoped</span>
+        )}
+      </header>
 
-      {failed
-        ? <WorkspaceSectionError domain="user access register" />
-        : data
-          ? <BusinessWorkbench csrfToken={csrfToken} data={data} domain="access" onChanged={onWorkspaceChanged} />
-          : <WorkspaceSectionLoading domain="user access register" />}
-
-      {/* Permissions & Role Matrix Workbench */}
-      <section className="content-grid content-grid-primary" style={{ marginTop: '24px' }}>
-        <article className="panel">
-          {matrix ? (
-            <PanelHeader
-              eyebrow="Role Governance"
-              title="System Roles & Capability Bundles"
-              actionLabel={`Scope: ${matrix.tenant_id || 'Platform Global'}`}
-            />
-          ) : (
-            <PanelHeader
-              eyebrow="Role Governance"
-              title="System Roles & Capability Bundles"
-            />
-          )}
-          {!roles ? (
-            <p className="muted-cell">Loading roles directory…</p>
-          ) : roles.length === 0 ? (
-            <EmptyState detail="No roles defined for this tenant." icon="shield" title="No roles" />
-          ) : (
-            <div className="table-scroll">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Role Code</th>
-                    <th>Role Name</th>
-                    <th>Capabilities Granted</th>
-                    <th>System Role</th>
-                    <th>Active Users</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {roles.map((role) => (
-                    <tr key={role.id}>
-                      <td><code>{role.code}</code></td>
-                      <td><strong>{role.name}</strong></td>
-                      <td>
-                        {role.capabilities && role.capabilities.length > 0 ? (
-                          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                            {role.capabilities.map((cap) => (
-                              <span key={cap} className="status-badge status-active" style={{ fontSize: '0.65rem', padding: '2px 6px' }}>
-                                {cap}
-                              </span>
-                            ))}
-                          </div>
-                        ) : (
-                          <span className="muted-cell">No explicit capabilities</span>
-                        )}
-                      </td>
-                      <td>{role.is_system ? <span className="status-badge status-active"><i /> System</span> : <span className="muted-cell">Custom</span>}</td>
-                      <td><strong>{role.user_count}</strong></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </article>
-
-        <article className="panel">
-          <PanelHeader eyebrow="User Matrix" title="User Effective Capability Matrix" />
-          {!users ? (
-            <p className="muted-cell">Loading user matrix…</p>
-          ) : users.length === 0 ? (
-            <EmptyState detail="No users found for this workspace." icon="users" title="No users" />
-          ) : (
-            <div className="table-scroll">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Username</th>
-                    <th>Assigned Roles</th>
-                    <th>Admin Status</th>
-                    <th>Effective Capabilities</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {users.map((u) => (
-                    <tr key={u.id}>
-                      <td>
-                        <strong>{u.username}</strong>
-                        {u.email ? (
-                          <>
-                            <br />
-                            <small className="muted-cell">{u.email}</small>
-                          </>
-                        ) : null}
-                      </td>
-                      <td>
-                        {u.assigned_roles && u.assigned_roles.length > 0 ? (
-                          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                            {u.assigned_roles.map((r) => (
-                              <code key={r.id}>{r.code}</code>
-                            ))}
-                          </div>
-                        ) : (
-                          <span className="muted-cell">No assigned roles</span>
-                        )}
-                      </td>
-                      <td>
-                        {u.is_superuser ? (
-                          <span className="status-badge status-active"><i /> Superuser</span>
-                        ) : u.is_platform_admin ? (
-                          <span className="status-badge status-active"><i /> Platform Admin</span>
-                        ) : (
-                          <span className="muted-cell">Standard</span>
-                        )}
-                      </td>
-                      <td>
-                        {u.effective_capabilities && u.effective_capabilities.length > 0 ? (
-                          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', maxWidth: '280px' }}>
-                            {u.effective_capabilities.slice(0, 5).map((cap) => (
-                              <span key={cap} className="status-badge status-teal" style={{ fontSize: '0.65rem', padding: '2px 6px' }}>
-                                {cap}
-                              </span>
-                            ))}
-                            {u.effective_capabilities.length > 5 ? (
-                              <small className="muted-cell">+{u.effective_capabilities.length - 5} more</small>
-                            ) : null}
-                          </div>
-                        ) : (
-                          <span className="muted-cell">None</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </article>
-      </section>
-
-      {/* Service Accounts & Machine Identities */}
-      {serviceAccounts && serviceAccounts.length > 0 ? (
-        <article className="panel" style={{ marginTop: '24px' }}>
-          <PanelHeader eyebrow="Machine Identities" title="Service Accounts & Integration Credentials" />
-          <div className="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>Code</th>
-                  <th>Display Name</th>
-                  <th>Granted Capabilities</th>
-                  <th>Fingerprint</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {serviceAccounts.map((sa) => (
-                  <tr key={sa.id}>
-                    <td><code>{sa.code}</code></td>
-                    <td><strong>{sa.display_name}</strong></td>
-                    <td>
-                      {sa.capabilities && sa.capabilities.length > 0 ? (
-                        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                          {sa.capabilities.map((c) => (
-                            <span key={c} className="status-badge status-teal" style={{ fontSize: '0.65rem', padding: '2px 6px' }}>
-                              {c}
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="muted-cell">None</span>
-                      )}
-                    </td>
-                    <td><code>{sa.credential_fingerprint ? sa.credential_fingerprint.slice(0, 12) + '…' : 'None'}</code></td>
-                    <td>{sa.is_active ? <span className="status-badge status-active"><i /> Active</span> : <span className="muted-cell">Inactive</span>}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </article>
-      ) : null}
-
-      {/* User-to-Role Assignment Grants */}
-      {userRoles && userRoles.length > 0 ? (
-        <article className="panel" style={{ marginTop: '24px' }}>
-          <PanelHeader eyebrow="Audited Grants" title="Active User-to-Role Assignments" />
-          <div className="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>User</th>
-                  <th>Granted Role</th>
-                  <th>Role Code</th>
-                  <th>Granted At</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {userRoles.map((ur) => (
-                  <tr key={ur.id}>
-                    <td><strong>{ur.user_username}</strong></td>
-                    <td>{ur.role_name}</td>
-                    <td><code>{ur.role_code}</code></td>
-                    <td><small className="muted-cell">{formatTime(ur.created_at)}</small></td>
-                    <td>{ur.is_active ? <span className="status-badge status-active"><i /> Active Grant</span> : <span className="muted-cell">Revoked</span>}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </article>
-      ) : null}
-
-      <section className="content-grid content-grid-primary" style={{ marginTop: '24px' }}>
-        <article className="panel">
-          <PanelHeader eyebrow="Access posture" title="Security scope" />
-          <dl className="detail-list">
-            <div><dt>Role</dt><dd>{overview.is_platform_overview ? 'Platform administrator' : 'Tenant operator'}</dd></div>
-            <div><dt>Workspace</dt><dd>{overview.tenant_name}</dd></div>
-            <div><dt>Active accounts</dt><dd>{formatNumber(summary.get('Active users') ?? 0)}</dd></div>
-            <div><dt>Session</dt><dd><span className="status-inline"><i /> Authenticated</span></dd></div>
-          </dl>
-        </article>
-
-        <article className="panel">
-          <PanelHeader eyebrow="Session assurance" title="Security controls" />
-          <div className="security-checks">
-            <SecurityCheck title="Authenticated session" detail="HQ data requires a valid server-side session." />
-            <SecurityCheck title="Tenant-aware access" detail="Operational queries respect the active workspace scope." />
-            <SecurityCheck title="Audited administration" detail="Sensitive changes remain behind governed service interfaces." />
-          </div>
-        </article>
-      </section>
-
-      {cashFailed ? (
-        <div className="inline-alert" role="status" style={{ marginTop: '24px' }}>
+      {identityFailed ? (
+        <div className="inline-alert" role="status">
           <Icon name="alert" />
-          Cash and shift data could not be loaded. Financial custody data requires the POS shift API to be reachable.
+          Identity administration requires the <code>identity.manage</code> capability on a role assigned to your account
+          (for example <code>TENANT_ADMIN</code>).
         </div>
-      ) : (
-        <>
-          <section className="content-grid content-grid-primary" style={{ marginTop: '24px' }}>
-            <article className="panel">
-              <PanelHeader eyebrow="Cash control" title="Open register sessions" actionHref="#cash" actionLabel="View all" />
-              {sessions === null ? (
-                <p className="muted-cell">Loading register sessions…</p>
-              ) : sessions.length === 0 ? (
-                <EmptyState icon="check" title="No open registers" detail="All registers are closed. No open custody positions." />
-              ) : (
-                <div className="table-scroll">
-                  <table>
-                    <thead><tr><th>Register</th><th>Cashier</th><th>Business date</th><th>Opened at</th><th>State</th></tr></thead>
-                    <tbody>
-                      {sessions.map((s) => (
-                        <tr key={s.id}>
-                          <td><code>{s.register_code}</code></td>
-                          <td><small>{s.opened_by_username}</small></td>
-                          <td><span className="muted-cell">{s.business_date}</span></td>
-                          <td><small>{formatTime(s.opened_at)}</small></td>
-                          <td>
-                            <span className={`status-badge status-${s.state.toLowerCase()}`}><i /> {titleCase(s.state)}</span>
-                            {s.forced_closure ? <span className="status-badge status-suspended" style={{ marginLeft: 6 }}><i /> Forced</span> : null}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </article>
+      ) : null}
 
-            <article className="panel">
-              <PanelHeader eyebrow="Financial audit" title="Cash variance watchlist" actionHref="#cash" actionLabel="View all" />
-              {variances === null ? (
-                <p className="muted-cell">Loading variance reports…</p>
-              ) : variances.length === 0 ? (
-                <EmptyState icon="check" title="No cash variances" detail="All Z-reports balanced. No unexplained differences." />
-              ) : (
-                <div className="table-scroll">
-                  <table>
-                    <thead><tr><th>Report</th><th>Register</th><th>Date</th><th>Expected</th><th>Declared</th><th>Difference</th><th>Flag</th></tr></thead>
-                    <tbody>
-                      {variances.map((r) => (
-                        <tr key={r.id}>
-                          <td><code>{r.report_number}</code></td>
-                          <td><small>{r.register_code}</small></td>
-                          <td><span className="muted-cell">{r.business_date}</span></td>
-                          <td>{formatMoney(r.snapshot?.cash?.expected_closing, 'KES')}</td>
-                          <td>{formatMoney(r.snapshot?.variance?.declared, 'KES')}</td>
-                          <td><strong className="text-rose">{formatMoney(r.snapshot?.variance?.difference, 'KES')}</strong></td>
-                          <td>{varianceNeedsExplanation(r) ? <span className="status-badge status-suspended"><i /> Explanation required</span> : <span className="muted-cell">—</span>}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </article>
-          </section>
+      {!tenantId ? <TenantWorkspaceRequired domain="user access" /> : null}
 
-          <article className="panel" style={{ marginTop: '24px' }}>
-            <PanelHeader eyebrow="Custody audit" title="Forced register closures" actionHref="#cash" actionLabel="View all" />
-            {forcedClosures === null ? (
-              <p className="muted-cell">Loading forced closures…</p>
-            ) : forcedClosures.length === 0 ? (
-              <EmptyState icon="check" title="No forced closures" detail="No registers have been closed by an unaccountable operator." />
-            ) : (
-              <div className="table-scroll">
-                <table>
-                  <thead><tr><th>Report</th><th>Register</th><th>Date</th><th>Closed by</th><th>Closure type</th><th>Reason</th></tr></thead>
-                  <tbody>
-                    {forcedClosures.map((r) => (
-                      <tr key={r.id}>
-                        <td><code>{r.report_number}</code></td>
-                        <td><small>{r.register_code}</small></td>
-                        <td><span className="muted-cell">{r.business_date}</span></td>
-                        <td><small>{r.generated_by_username}</small></td>
-                        <td><span className="status-badge status-suspended"><i /> {titleCase(r.closure_type)}</span></td>
-                        <td><small className="muted-cell">{r.closure_reason || '—'}</small></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </article>
-        </>
-      )}
-    </>
+      {failed ? <WorkspaceSectionError domain="user access register" /> : null}
+      {!failed && !data ? <WorkspaceSectionLoading domain="user access register" /> : null}
+
+      {tenantId ? (
+        <AccessWorkspace
+          cashFailed={cashFailed}
+          csrfToken={csrfToken}
+          forcedClosures={forcedClosures}
+          identityFailed={identityFailed}
+          matrix={matrix}
+          onRolesChanged={() => setIdentityTick((value) => value + 1)}
+          roles={roles}
+          serviceAccounts={serviceAccounts}
+          sessions={sessions}
+          tenantId={tenantId}
+          userRoles={userRoles}
+          variances={variances}
+        />
+      ) : null}
+    </div>
   );
 }
 
-function MetricCard({ metric, index }: { readonly metric: DashboardMetric; readonly index: number }) {
+function MetricCard({ metric, index, onNavigate }: { readonly metric: DashboardMetric; readonly index: number; readonly onNavigate?: (view: WorkspaceView) => void }) {
   const icons: readonly IconName[] = ['building', 'patients', 'clinical', 'inventory'];
-  return (
-    <article className={`metric-card metric-${metric.accent}`}>
-      <div className="metric-top"><span><Icon name={icons[index] ?? 'overview'} /></span><small>Current scope</small></div>
+  const destination = metric.href?.trim() ?? '';
+  const content = (
+    <>
+      <div className="metric-top">
+        <span><Icon name={icons[index] ?? 'overview'} /></span>
+        <small>{destination ? 'Open workspace' : 'Current scope'}</small>
+      </div>
       <strong>{formatNumber(metric.value)}</strong>
       <p>{metric.label}</p>
       <small>{metric.detail}</small>
-    </article>
+    </>
+  );
+  if (!destination || isCurrentHqDestination(destination)) {
+    return <article className={`metric-card metric-${metric.accent}`}>{content}</article>;
+  }
+  return (
+    <a
+      aria-label={`Open ${metric.label}: ${formatNumber(metric.value)} ${metric.detail}`}
+      className={`metric-card metric-${metric.accent} metric-card-link`}
+      href={destination}
+      onClick={(event) => {
+        if (openHqDestination(destination, onNavigate)) event.preventDefault();
+      }}
+    >
+      {content}
+    </a>
   );
 }
 
-function SummaryCard({ detail, icon, label, tone = 'navy', value }: { readonly detail: string; readonly icon: IconName; readonly label: string; readonly tone?: string; readonly value: number }) {
-  return (
-    <article className={`summary-card summary-${tone}`}>
+function SummaryCard({
+  detail,
+  href,
+  icon,
+  label,
+  onActivate,
+  targetId,
+  tone = 'navy',
+  value,
+}: {
+  readonly detail: string;
+  readonly href?: string;
+  readonly icon: IconName;
+  readonly label: string;
+  readonly onActivate?: () => void;
+  readonly targetId?: string;
+  readonly tone?: string;
+  readonly value: number;
+}) {
+  const destination = href?.trim() ?? '';
+  const content = (
+    <>
       <span><Icon name={icon} /></span>
       <div><small>{label}</small><strong>{formatNumber(value)}</strong><p>{detail}</p></div>
-    </article>
+    </>
+  );
+  const activate = onActivate ?? (targetId
+    ? () => {
+        document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    : undefined);
+  if (activate) {
+    return (
+      <button
+        aria-label={`Open ${label}: ${formatNumber(value)}`}
+        className={`summary-card summary-card-link summary-${tone}`}
+        onClick={activate}
+        type="button"
+      >
+        {content}
+      </button>
+    );
+  }
+  if (!destination || isCurrentHqDestination(destination)) {
+    return <article className={`summary-card summary-${tone}`}>{content}</article>;
+  }
+  return (
+    <a aria-label={`Open ${label}: ${formatNumber(value)}`} className={`summary-card summary-card-link summary-${tone}`} href={destination}>
+      {content}
+    </a>
   );
 }
 
@@ -6969,73 +7498,143 @@ function PanelHeader({
   readonly title: string;
 }) {
   const destination = actionHref ?? '';
+  const showLink = Boolean(destination && actionLabel && !isCurrentHqDestination(destination));
+  const showButton = Boolean(onAction && actionLabel);
   return (
     <header className="panel-header">
       <div><p className="eyebrow">{eyebrow}</p><h2>{title}</h2></div>
-      {destination && actionLabel && !isCurrentHqDestination(destination) ? (
+      {showLink ? (
         <a href={destination} {...externalLinkProps(destination)}>
           {actionLabel} <Icon name={isExternalDestination(destination) ? 'external' : 'arrow'} />
         </a>
       ) : null}
-      {onAction && actionLabel ? <button onClick={onAction} type="button">{actionLabel} <Icon name="arrow" /></button> : null}
+      {showButton ? <button onClick={onAction} type="button">{actionLabel} <Icon name="arrow" /></button> : null}
+      {!showLink && !showButton && actionLabel ? (
+        <span className="panel-meta">{actionLabel}</span>
+      ) : null}
     </header>
   );
 }
 
-function DataBar({ icon, label, max, value }: { readonly icon: IconName; readonly label: string; readonly max: number; readonly value: number }) {
+function DataBar({
+  href,
+  icon,
+  label,
+  max,
+  onActivate,
+  onNavigate,
+  value,
+}: {
+  readonly href?: string;
+  readonly icon: IconName;
+  readonly label: string;
+  readonly max: number;
+  readonly onActivate?: () => void;
+  readonly onNavigate?: (view: WorkspaceView) => void;
+  readonly value: number;
+}) {
   const width = value && max ? Math.max(Math.round((value / max) * 100), 5) : 0;
-  return (
-    <div className="data-bar">
+  const destination = href?.trim() ?? '';
+  const content = (
+    <>
       <span><Icon name={icon} /></span>
       <div>
         <div><strong>{label}</strong><b>{formatNumber(value)}</b></div>
         <div className="bar-track"><i style={{ width: `${width}%` }} /></div>
       </div>
-    </div>
+      {(onActivate || (destination && !isCurrentHqDestination(destination))) ? <Icon className="data-bar-arrow" name="chevron" /> : null}
+    </>
+  );
+  if (onActivate) {
+    return (
+      <button aria-label={`Open ${label}`} className="data-bar data-bar-link" onClick={onActivate} type="button">
+        {content}
+      </button>
+    );
+  }
+  if (!destination || isCurrentHqDestination(destination)) {
+    return <div className="data-bar">{content}</div>;
+  }
+  return (
+    <a
+      aria-label={`Open ${label}`}
+      className="data-bar data-bar-link"
+      href={destination}
+      onClick={(event) => {
+        if (openHqDestination(destination, onNavigate)) event.preventDefault();
+      }}
+    >
+      {content}
+    </a>
   );
 }
 
-function Readiness({ detail, icon, label, status }: { readonly detail: string; readonly icon: IconName; readonly label: string; readonly status: string }) {
-  return <div className="readiness-row"><span><Icon name={icon} /></span><div><strong>{label}</strong><small>{detail}</small></div><b>{status}</b></div>;
-}
-
-function CommandLink({ detail, href, icon, title }: { readonly detail: string; readonly href: string; readonly icon: IconName; readonly title: string }) {
+function CommandLink({
+  detail,
+  href,
+  icon,
+  onNavigate,
+  title,
+}: {
+  readonly detail: string;
+  readonly href: string;
+  readonly icon: IconName;
+  readonly onNavigate?: (view: WorkspaceView) => void;
+  readonly title: string;
+}) {
   const destination = href;
   const content = <><span><Icon name={icon} /></span><div><strong>{title}</strong><small>{detail}</small></div>{!isCurrentHqDestination(destination) ? <Icon className="command-arrow" name={isExternalDestination(destination) ? 'external' : 'arrow'} /> : null}</>;
   return isCurrentHqDestination(destination)
     ? <div className="command-link-static">{content}</div>
-    : <a href={destination} {...externalLinkProps(destination)}>{content}</a>;
+    : (
+      <a
+        href={destination}
+        {...externalLinkProps(destination)}
+        onClick={(event) => {
+          if (openHqDestination(destination, onNavigate)) event.preventDefault();
+        }}
+      >
+        {content}
+      </a>
+    );
 }
 
-function WorkflowLink({ detail, href, icon, step, title }: { readonly detail: string; readonly href: string; readonly icon: IconName; readonly step: string; readonly title: string }) {
-  const destination = href;
-  const content = (
-    <>
-      <div className="workflow-top"><span><Icon name={icon} /></span><small>{step}</small></div>
-      <strong>{title}</strong>
-      <p>{detail}</p>
-      <b>{isCurrentHqDestination(destination) ? 'Current workspace' : <>Open workspace <Icon name="arrow" /></>}</b>
-    </>
-  );
-  if (isCurrentHqDestination(destination)) {
-    return <div className="workflow-link workflow-link-static">{content}</div>;
-  }
-  return (
-    <a className="workflow-link" href={destination}>{content}</a>
-  );
-}
-
-function PriorityItem({ action, detail, href, icon, tone = 'amber', value, valueLabel }: { readonly action: string; readonly detail: string; readonly href: string; readonly icon: IconName; readonly tone?: string; readonly value: number; readonly valueLabel?: string }) {
-  const destination = href;
+function PriorityItem({
+  action,
+  detail,
+  href,
+  icon,
+  onActivate,
+  tone = 'amber',
+  value,
+  valueLabel,
+}: {
+  readonly action: string;
+  readonly detail: string;
+  readonly href?: string;
+  readonly icon: IconName;
+  readonly onActivate?: () => void;
+  readonly tone?: string;
+  readonly value: number;
+  readonly valueLabel?: string;
+}) {
+  const destination = href?.trim() ?? '';
   const content = (
     <>
       <span className={`priority-icon priority-${tone}`}><Icon name={icon} /></span>
       <div><strong>{action}</strong><small>{detail}</small></div>
       <b>{valueLabel ?? formatNumber(value)}</b>
-      {!isCurrentHqDestination(destination) ? <Icon className="priority-arrow" name="chevron" /> : null}
+      {(onActivate || (destination && !isCurrentHqDestination(destination))) ? <Icon className="priority-arrow" name="chevron" /> : null}
     </>
   );
-  if (isCurrentHqDestination(destination)) {
+  if (onActivate) {
+    return (
+      <button aria-label={`Open ${action}`} className="priority-item priority-item-button" onClick={onActivate} type="button">
+        {content}
+      </button>
+    );
+  }
+  if (!destination || isCurrentHqDestination(destination)) {
     return <div className="priority-item priority-item-static">{content}</div>;
   }
   return (
@@ -7043,12 +7642,39 @@ function PriorityItem({ action, detail, href, icon, tone = 'amber', value, value
   );
 }
 
-function SecurityCheck({ detail, title }: { readonly detail: string; readonly title: string }) {
-  return <div className="security-check"><span><Icon name="check" /></span><div><strong>{title}</strong><p>{detail}</p></div></div>;
-}
-
-function Stat({ label, value }: { readonly label: string; readonly value: number }) {
-  return <div><small>{label}</small><strong>{formatNumber(value)}</strong></div>;
+function Stat({
+  href,
+  label,
+  onNavigate,
+  value,
+}: {
+  readonly href?: string;
+  readonly label: string;
+  readonly onNavigate?: (view: WorkspaceView) => void;
+  readonly value: number;
+}) {
+  const destination = href?.trim() ?? '';
+  const content = (
+    <>
+      <small>{label}</small>
+      <strong>{formatNumber(value)}</strong>
+    </>
+  );
+  if (!destination || isCurrentHqDestination(destination)) {
+    return <div>{content}</div>;
+  }
+  return (
+    <a
+      aria-label={`Open ${label}`}
+      className="compact-stat-link"
+      href={destination}
+      onClick={(event) => {
+        if (openHqDestination(destination, onNavigate)) event.preventDefault();
+      }}
+    >
+      {content}
+    </a>
+  );
 }
 
 function EmptyState({ detail, icon, title }: { readonly detail: string; readonly icon: IconName; readonly title: string }) {
@@ -7445,7 +8071,7 @@ function NotificationPopover({ overview }: { readonly overview: HQOverview }) {
       <header><div><strong>Operational signals</strong><small>Current HQ snapshot</small></div><span>{overview.attention_items.length}</span></header>
       <div className="notification-list">
         {overview.attention_items.map((item) => (
-          <a href="#operations" key={item.label}>
+          <a href={item.href?.trim() || '#operations'} key={item.label}>
             <span className={`notification-icon attention-${item.tone}`}><Icon name={item.tone === 'teal' ? 'check' : 'alert'} /></span>
             <div><strong>{item.label}</strong><small>{item.detail}</small></div>
             <b>{formatNumber(item.value)}</b>
@@ -7456,18 +8082,49 @@ function NotificationPopover({ overview }: { readonly overview: HQOverview }) {
   );
 }
 
-function UserMenu({ overview, onSignOut }: {
+function UserMenu({ overview, onClose, onSignOut }: {
   readonly overview: HQOverview;
+  readonly onClose: () => void;
   readonly onSignOut: () => Promise<void>;
 }) {
+  const [signingOut, setSigningOut] = useState(false);
+
+  const signOut = async () => {
+    setSigningOut(true);
+    try {
+      await onSignOut();
+    } finally {
+      setSigningOut(false);
+    }
+  };
+
   return (
-    <div className="popover user-menu">
-      <div className="user-menu-head"><span>{initials(overview.user_name)}</span><div><strong>{displayName(overview.user_name)}</strong><small>{overview.tenant_name}</small></div></div>
-      <a href="#access"><Icon name="security" /> Access overview</a>
-      <a href="#access"><Icon name="settings" /> System controls</a>
-      <a href="/api/docs/" target="_blank" rel="noreferrer"><Icon name="docs" /> API workspace <Icon name="external" /></a>
-      <button className="signout-link" type="button" onClick={onSignOut}>
-        <Icon name="external" /> Sign out
+    <div aria-label="Account options" className="popover user-menu" id="hq-account-menu" role="group">
+      <div className="user-menu-head">
+        <span>{initials(overview.user_name)}</span>
+        <div>
+          <strong>{displayName(overview.user_name)}</strong>
+          <small>{overview.tenant_name}</small>
+        </div>
+      </div>
+      <div className="user-menu-items">
+        <a href="#access" onClick={onClose}>
+          <span className="user-menu-icon"><Icon name="security" /></span>
+          <span><strong>Access overview</strong><small>Roles and permissions</small></span>
+        </a>
+        <a href="#access" onClick={onClose}>
+          <span className="user-menu-icon"><Icon name="settings" /></span>
+          <span><strong>System controls</strong><small>Identity and governance</small></span>
+        </a>
+        <a href="/api/docs/" target="_blank" rel="noreferrer" onClick={onClose}>
+          <span className="user-menu-icon"><Icon name="docs" /></span>
+          <span><strong>API workspace</strong><small>Opens in a new tab</small></span>
+          <Icon className="user-menu-external" name="external" />
+        </a>
+      </div>
+      <button className="signout-link" disabled={signingOut} type="button" onClick={() => void signOut()}>
+        <span className="user-menu-icon"><Icon name="logout" /></span>
+        <span><strong>{signingOut ? 'Signing out…' : 'Sign out'}</strong><small>End this secure session</small></span>
       </button>
     </div>
   );
@@ -7526,29 +8183,43 @@ function AuthenticationRequired({ csrfToken, onSignedIn }: {
   readonly csrfToken: string;
   readonly onSignedIn: (session: SessionState) => void;
 }) {
+  type AuthMode = 'signin' | 'forgot' | 'reset';
+
+  const [mode, setMode] = useState<AuthMode>('signin');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [resetUid, setResetUid] = useState('');
+  const [resetToken, setResetToken] = useState('');
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [forgotDetail, setForgotDetail] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const submit = useCallback(
-    async (event: React.FormEvent) => {
+  const goSignIn = useCallback((successNotice = '') => {
+    setMode('signin');
+    setPassword('');
+    setConfirmPassword('');
+    setResetUid('');
+    setResetToken('');
+    setError('');
+    setForgotDetail('');
+    setNotice(successNotice);
+  }, []);
+
+  const submitSignIn = useCallback(
+    async (event: FormEvent) => {
       event.preventDefault();
-      // Guarded rather than merely disabled: a second submit while the first is
-      // in flight spends another attempt against a throttle of ten a minute.
       if (busy) return;
 
       setBusy(true);
       setError('');
+      setNotice('');
       try {
         const session = await signIn(username, password, csrfToken);
-        // Cleared on the way out. There is no reason for it to outlive the
-        // request, and React state ends up in devtools and error reports.
         setPassword('');
         onSignedIn(session);
       } catch (caught: unknown) {
-        // The server's wording. It deliberately does not say which field was
-        // wrong, and guessing here would undo that.
         setError(caught instanceof SignInError ? caught.message : 'Sign-in failed.');
         setPassword('');
       } finally {
@@ -7557,6 +8228,72 @@ function AuthenticationRequired({ csrfToken, onSignedIn }: {
     },
     [busy, csrfToken, onSignedIn, password, username],
   );
+
+  const submitForgot = useCallback(
+    async (event: FormEvent) => {
+      event.preventDefault();
+      if (busy) return;
+
+      setBusy(true);
+      setError('');
+      setForgotDetail('');
+      try {
+        const identity = username.includes('@')
+          ? { email: username.trim() }
+          : { username: username.trim() };
+        const result = await requestPasswordReset(identity, csrfToken);
+        setForgotDetail(result.detail);
+        if (result.dev_reset_uid && result.dev_reset_token) {
+          setResetUid(result.dev_reset_uid);
+          setResetToken(result.dev_reset_token);
+        } else {
+          setResetUid('');
+          setResetToken('');
+        }
+      } catch (caught: unknown) {
+        setError(caught instanceof SignInError ? caught.message : 'Password reset request failed.');
+      } finally {
+        setBusy(false);
+      }
+    },
+    [busy, csrfToken, username],
+  );
+
+  const submitReset = useCallback(
+    async (event: FormEvent) => {
+      event.preventDefault();
+      if (busy) return;
+
+      if (password !== confirmPassword) {
+        setError('Passwords do not match.');
+        return;
+      }
+
+      setBusy(true);
+      setError('');
+      try {
+        const detail = await confirmPasswordReset(
+          { uid: resetUid, token: resetToken, password },
+          csrfToken,
+        );
+        setPassword('');
+        setConfirmPassword('');
+        goSignIn(detail);
+      } catch (caught: unknown) {
+        setError(caught instanceof SignInError ? caught.message : 'Password reset failed.');
+        setPassword('');
+        setConfirmPassword('');
+      } finally {
+        setBusy(false);
+      }
+    },
+    [busy, confirmPassword, csrfToken, goSignIn, password, resetToken, resetUid],
+  );
+
+  const cardTitle =
+    mode === 'forgot' ? 'Reset your password' : mode === 'reset' ? 'Choose a new password' : 'Sign in to TibaTrace HQ';
+  const cardEyebrow =
+    mode === 'forgot' ? 'Account recovery' : mode === 'reset' ? 'Set new password' : 'Protected workspace';
 
   return (
     <div className="auth-page">
@@ -7574,46 +8311,197 @@ function AuthenticationRequired({ csrfToken, onSignedIn }: {
         </section>
         <section className="auth-card">
           <span className="auth-icon"><Icon name="security" /></span>
-          <p className="eyebrow">Protected workspace</p>
-          <h2>Sign in to TibaTrace HQ</h2>
+          <p className="eyebrow">{cardEyebrow}</p>
+          <h2>{cardTitle}</h2>
 
-          <form className="auth-form" onSubmit={submit}>
-            <label htmlFor="signin-username">Username</label>
-            <input
-              id="signin-username"
-              name="username"
-              autoComplete="username"
-              value={username}
-              onChange={(event) => setUsername(event.target.value)}
-              disabled={busy}
-              required
-            />
+          {mode === 'signin' ? (
+            <>
+              {notice ? (
+                <p className="auth-success" role="status">
+                  <Icon name="check" /> {notice}
+                </p>
+              ) : null}
 
-            <label htmlFor="signin-password">Password</label>
-            <input
-              id="signin-password"
-              name="password"
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              disabled={busy}
-              required
-            />
+              <form className="auth-form" onSubmit={submitSignIn}>
+                <label htmlFor="signin-username">Email or username</label>
+                <input
+                  id="signin-username"
+                  name="username"
+                  autoComplete="username"
+                  placeholder="name@organisation.co.ke"
+                  spellCheck={false}
+                  value={username}
+                  onChange={(event) => setUsername(event.target.value)}
+                  disabled={busy}
+                  required
+                />
 
-            {error ? (
-              // Assertive: the operator has just acted and is waiting on the
-              // result, so a polite region would leave a screen-reader user
-              // unaware the attempt failed.
-              <p className="auth-error" role="alert" aria-live="assertive">
-                <Icon name="alert" /> {error}
+                <label htmlFor="signin-password">Password</label>
+                <input
+                  id="signin-password"
+                  name="password"
+                  type="password"
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  disabled={busy}
+                  required
+                />
+
+                <div className="auth-form-tools">
+                  <button
+                    className="auth-text-link"
+                    type="button"
+                    disabled={busy}
+                    onClick={() => {
+                      setMode('forgot');
+                      setError('');
+                      setNotice('');
+                      setForgotDetail('');
+                      setPassword('');
+                    }}
+                  >
+                    Forgot password?
+                  </button>
+                </div>
+
+                {error ? (
+                  <p className="auth-error" role="alert" aria-live="assertive">
+                    <Icon name="alert" /> {error}
+                  </p>
+                ) : null}
+
+                <button className="primary-button" type="submit" disabled={busy}>
+                  {busy ? 'Signing in…' : 'Sign in'} <Icon name="arrow" />
+                </button>
+              </form>
+            </>
+          ) : null}
+
+          {mode === 'forgot' ? (
+            <>
+              <p className="auth-card-lead">
+                Enter the email or username for your HQ account. If it matches an active account, reset instructions will be prepared.
               </p>
-            ) : null}
 
-            <button className="primary-button" type="submit" disabled={busy}>
-              {busy ? 'Signing in…' : 'Sign in'} <Icon name="arrow" />
-            </button>
-          </form>
+              {forgotDetail ? (
+                <p className="auth-success" role="status">
+                  <Icon name="check" /> {forgotDetail}
+                </p>
+              ) : null}
+
+              {!forgotDetail ? (
+                <form className="auth-form" onSubmit={submitForgot}>
+                  <label htmlFor="forgot-identity">Email or username</label>
+                  <input
+                    id="forgot-identity"
+                    name="identity"
+                    autoComplete="username"
+                    placeholder="name@organisation.co.ke"
+                    spellCheck={false}
+                    value={username}
+                    onChange={(event) => setUsername(event.target.value)}
+                    disabled={busy}
+                    required
+                  />
+
+                  {error ? (
+                    <p className="auth-error" role="alert" aria-live="assertive">
+                      <Icon name="alert" /> {error}
+                    </p>
+                  ) : null}
+
+                  <button className="primary-button" type="submit" disabled={busy}>
+                    {busy ? 'Submitting…' : 'Send reset link'} <Icon name="arrow" />
+                  </button>
+                </form>
+              ) : null}
+
+              {forgotDetail && resetUid && resetToken ? (
+                <button
+                  className="primary-button"
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    setMode('reset');
+                    setError('');
+                    setPassword('');
+                    setConfirmPassword('');
+                  }}
+                >
+                  Continue to reset <Icon name="arrow" />
+                </button>
+              ) : null}
+
+              <div className="auth-form-tools auth-form-tools-footer">
+                <button
+                  className="auth-text-link"
+                  type="button"
+                  disabled={busy}
+                  onClick={() => goSignIn()}
+                >
+                  Back to sign in
+                </button>
+              </div>
+            </>
+          ) : null}
+
+          {mode === 'reset' ? (
+            <>
+              <p className="auth-card-lead">
+                Choose a new password for your HQ account. Use at least 12 characters.
+              </p>
+
+              <form className="auth-form" onSubmit={submitReset}>
+                <label htmlFor="reset-password">New password</label>
+                <input
+                  id="reset-password"
+                  name="password"
+                  type="password"
+                  autoComplete="new-password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  disabled={busy}
+                  required
+                  minLength={12}
+                />
+
+                <label htmlFor="reset-password-confirm">Confirm password</label>
+                <input
+                  id="reset-password-confirm"
+                  name="password_confirm"
+                  type="password"
+                  autoComplete="new-password"
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                  disabled={busy}
+                  required
+                  minLength={12}
+                />
+
+                {error ? (
+                  <p className="auth-error" role="alert" aria-live="assertive">
+                    <Icon name="alert" /> {error}
+                  </p>
+                ) : null}
+
+                <button className="primary-button" type="submit" disabled={busy}>
+                  {busy ? 'Updating…' : 'Update password'} <Icon name="arrow" />
+                </button>
+              </form>
+
+              <div className="auth-form-tools auth-form-tools-footer">
+                <button
+                  className="auth-text-link"
+                  type="button"
+                  disabled={busy}
+                  onClick={() => goSignIn()}
+                >
+                  Back to sign in
+                </button>
+              </div>
+            </>
+          ) : null}
 
           <small><Icon name="shield" /> Access is audited and restricted to authorised operations staff.</small>
         </section>
@@ -7636,7 +8524,7 @@ function LoadingScreen() {
   );
 }
 
-function Unavailable() {
+function Unavailable({ detail }: { readonly detail?: string } = {}) {
   return (
     <div className="auth-page">
       <header><Brand /></header>
@@ -7645,7 +8533,10 @@ function Unavailable() {
           <span className="auth-icon auth-icon-error"><Icon name="alert" /></span>
           <p className="eyebrow">Connection interrupted</p>
           <h2>HQ data is temporarily unavailable</h2>
-          <p>The web application could not reach the TibaTrace backend. Confirm the API is running, then try again.</p>
+          <p>
+            {detail?.trim()
+              || 'The web application could not reach the TibaTrace backend. Confirm the API is running on port 8000, then try again.'}
+          </p>
           <button className="primary-button" type="button" onClick={() => window.location.reload()}>Try again <Icon name="refresh" /></button>
         </section>
       </main>
@@ -7657,15 +8548,71 @@ function useSummary(overview: HQOverview) {
   return useMemo(() => new Map(overview.data_summary.map((item) => [item.label, item.value])), [overview.data_summary]);
 }
 
+function parseHqHash(): { readonly view: WorkspaceView; readonly focus: string } {
+  const raw = window.location.hash.replace(/^#/, '');
+  const [viewPart = '', focus = ''] = raw.split('/');
+  const view = navigation.some((item) => item.key === viewPart)
+    ? (viewPart as WorkspaceView)
+    : 'overview';
+  return { view, focus };
+}
+
 function viewFromHash(): WorkspaceView {
-  const view = window.location.hash.replace('#', '');
-  return navigation.some((item) => item.key === view) ? view as WorkspaceView : 'overview';
+  return parseHqHash().view;
+}
+
+function focusFromHash(): string {
+  return parseHqHash().focus;
 }
 
 function navigateTo(view: WorkspaceView, onNavigate: (view: WorkspaceView) => void) {
   window.location.hash = view;
   onNavigate(view);
   window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+/** In-app hash destinations like `#catalogue/skus`. Returns true when handled. */
+function openHqDestination(destination: string, onNavigate?: (view: WorkspaceView) => void) {
+  if (!destination.startsWith('#') || isExternalDestination(destination)) return false;
+  const path = destination.slice(1);
+  const viewKey = path.split('/')[0] ?? '';
+  if (!navigation.some((item) => item.key === viewKey)) return false;
+  const nextHash = `#${path}`;
+  if (window.location.hash === nextHash) {
+    window.dispatchEvent(new Event('hashchange'));
+  } else {
+    window.location.hash = path;
+  }
+  onNavigate?.(viewKey as WorkspaceView);
+  return true;
+}
+
+function resolveFocusTargetId(view: WorkspaceView, focus: string): string {
+  const map: Partial<Record<WorkspaceView, Record<string, string>>> = {
+    people: {
+      patients: 'people-patients',
+      practitioners: 'people-practitioners',
+      customers: 'people-customers',
+    },
+    catalogue: {
+      skus: 'catalogue-skus',
+      layers: 'catalogue-layers',
+    },
+    pricing: {
+      books: 'pricing-books',
+      assignments: 'pricing-assignments',
+      overrides: 'pricing-overrides',
+      locks: 'pricing-locks',
+    },
+    cash: {
+      tills: 'cash-tills',
+      sessions: 'cash-open-sessions',
+      variances: 'cash-variances',
+      forced: 'cash-forced',
+      movements: 'cash-movements',
+    },
+  };
+  return map[view]?.[focus] ?? '';
 }
 
 /**
@@ -7689,11 +8636,36 @@ function externalLinkProps(destination: string) {
 }
 
 function isCurrentHqDestination(destination: string) {
-  return destination === `#${viewFromHash()}`;
+  const current = window.location.hash || '#overview';
+  return destination === current || destination === `#${viewFromHash()}`;
 }
 
 function metricValue(overview: HQOverview, label: string) {
   return overview.metrics.find((metric) => metric.label === label)?.value ?? 0;
+}
+
+function overviewDataIcon(label: string): IconName {
+  const icons: Record<string, IconName> = {
+    'Active locations': 'building',
+    'Active users': 'users',
+    Patients: 'patients',
+    Practitioners: 'users',
+    Customers: 'building',
+    'Commercial SKUs': 'inventory',
+    'Clinical encounters': 'clinical',
+    Conditions: 'patients',
+    Observations: 'activity',
+    'Inventory batches': 'inventory',
+    'Open purchase orders': 'store',
+    'Open sales orders': 'store',
+    'Price books': 'docs',
+    'Open tills': 'activity',
+    'Active clinical releases': 'shield',
+    'Code systems': 'docs',
+    'Value sets': 'clinical',
+    'FHIR idempotency records': 'security',
+  };
+  return icons[label] ?? 'overview';
 }
 
 function largestOverviewValue(overview: HQOverview) {

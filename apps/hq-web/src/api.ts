@@ -3,6 +3,8 @@ export interface DashboardMetric {
   readonly value: number;
   readonly detail: string;
   readonly accent: string;
+  /** HQ hash destination when this metric can be opened. */
+  readonly href?: string;
 }
 
 let activeTenantContext = '';
@@ -25,11 +27,15 @@ export interface AttentionItem {
   readonly value: number;
   readonly detail: string;
   readonly tone: string;
+  /** HQ hash destination when this signal can be opened. */
+  readonly href?: string;
 }
 
 export interface DataSummaryItem {
   readonly label: string;
   readonly value: number;
+  /** HQ hash destination when this record count can be opened. */
+  readonly href?: string;
 }
 
 export interface NetworkItem {
@@ -241,6 +247,8 @@ export interface HQKnowledgeRelease {
   readonly classification: string;
   /** First twelve characters of the SHA-256, enough to compare by eye. */
   readonly checksum: string;
+  /** Full SHA-256 digest for particulars / verification. */
+  readonly checksum_full?: string;
 }
 
 export interface HQCodeSystem {
@@ -252,6 +260,7 @@ export interface HQCodeSystem {
   readonly content_mode: string;
   readonly is_global: boolean;
   readonly concept_count: number;
+  readonly sample_concepts?: readonly { readonly code: string; readonly display: string }[];
 }
 
 export interface HQValueSet {
@@ -261,17 +270,65 @@ export interface HQValueSet {
   readonly url: string;
   readonly version: string;
   readonly is_global: boolean;
+  readonly compose?: Record<string, unknown>;
 }
 
 export interface HQEncounter {
   readonly id: string;
   readonly patient_name: string | null;
+  readonly patient_number?: string;
   readonly status: string;
   readonly encounter_class: string;
   readonly practitioner_name: string | null;
+  readonly organization_name?: string;
+  readonly location_name?: string;
   readonly start_time: string | null;
   readonly end_time: string | null;
   readonly reason_code: string;
+}
+
+export interface HQCondition {
+  readonly id: string;
+  readonly patient_name: string | null;
+  readonly clinical_status: string;
+  readonly verification_status: string;
+  readonly category: string;
+  readonly code: string;
+  readonly system: string;
+  readonly display: string;
+  readonly onset_date: string | null;
+  readonly recorded_date: string | null;
+  readonly encounter_id: string;
+}
+
+export interface HQObservation {
+  readonly id: string;
+  readonly patient_name: string | null;
+  readonly status: string;
+  readonly category: string;
+  readonly code: string;
+  readonly system: string;
+  readonly display: string;
+  readonly effective_time: string | null;
+  readonly value_quantity: string;
+  readonly value_unit: string;
+  readonly value_string: string;
+  readonly interpretation: string;
+  readonly encounter_id: string;
+}
+
+export interface HQFhirIdempotencyRecord {
+  readonly id: string;
+  readonly key: string;
+  readonly resource_type: string;
+  readonly operation: string;
+  readonly resource_id: string;
+  readonly state: string;
+  readonly response_status: number | null;
+  readonly request_hash: string;
+  readonly request_hash_full?: string;
+  readonly actor: string;
+  readonly created_at: string;
 }
 
 export interface HQWorkspaceData {
@@ -322,15 +379,23 @@ export interface HQWorkspaceData {
   readonly clinical: {
     readonly counts: {
       readonly encounters: number;
+      readonly conditions: number;
+      readonly observations: number;
       readonly knowledge_releases: number;
       readonly active_knowledge_releases: number;
       readonly code_systems: number;
       readonly value_sets: number;
+      readonly fhir_idempotency_records: number;
+      readonly substitutions: number;
+      readonly dispensing_labels: number;
     };
     readonly knowledge_releases: readonly HQKnowledgeRelease[];
     readonly code_systems: readonly HQCodeSystem[];
     readonly value_sets: readonly HQValueSet[];
     readonly encounters: readonly HQEncounter[];
+    readonly conditions: readonly HQCondition[];
+    readonly observations: readonly HQObservation[];
+    readonly fhir_idempotency_records: readonly HQFhirIdempotencyRecord[];
   };
   readonly governance: {
     readonly counts: {
@@ -999,8 +1064,8 @@ export interface Insurer {
   readonly adapter_registered: boolean;
 }
 
-export const loadInsurers = (signal?: AbortSignal) =>
-  getCollection<Insurer>('/api/insurance/insurers/', signal);
+export const loadInsurers = (tenantId: string, signal?: AbortSignal) =>
+  getTenantCollection<Insurer>('/api/insurance/insurers/', tenantId, signal);
 
 export interface CreateInsurerInput {
   readonly code: string;
@@ -1014,12 +1079,13 @@ export interface CreateInsurerInput {
 export const createInsurer = (
   input: CreateInsurerInput,
   csrfToken: string,
+  tenantId = '',
 ): Promise<Insurer> =>
-  mutateJson<Insurer>('/api/insurance/insurers/', 'POST', input, csrfToken);
+  mutateJson<Insurer>('/api/insurance/insurers/', 'POST', input, csrfToken, tenantId);
 
 /** Claims the insurer agreed to pay and has not paid. The money owed. */
-export const loadApprovedUnpaidClaims = (signal?: AbortSignal) =>
-  getCollection<InsuranceClaim>('/api/insurance/claims/approved-unpaid/', signal);
+export const loadApprovedUnpaidClaims = (tenantId: string, signal?: AbortSignal) =>
+  getTenantCollection<InsuranceClaim>('/api/insurance/claims/approved-unpaid/', tenantId, signal);
 
 /**
  * Sent, acknowledged, still undecided.
@@ -1028,12 +1094,12 @@ export const loadApprovedUnpaidClaims = (signal?: AbortSignal) =>
  * insurer, the other is chased for payment, and showing them together is how
  * transport acceptance starts looking like a debt.
  */
-export const loadClaimsAwaitingDecision = (signal?: AbortSignal) =>
-  getCollection<InsuranceClaim>('/api/insurance/claims/awaiting-decision/', signal);
+export const loadClaimsAwaitingDecision = (tenantId: string, signal?: AbortSignal) =>
+  getTenantCollection<InsuranceClaim>('/api/insurance/claims/awaiting-decision/', tenantId, signal);
 
 /** Everything blocked on this end rather than on the insurer. */
-export const loadClaimsNeedingAttention = (signal?: AbortSignal) =>
-  getCollection<InsuranceClaim>('/api/insurance/claims/needs-attention/', signal);
+export const loadClaimsNeedingAttention = (tenantId: string, signal?: AbortSignal) =>
+  getTenantCollection<InsuranceClaim>('/api/insurance/claims/needs-attention/', tenantId, signal);
 
 export interface InsuranceRemittance {
   readonly id: string;
@@ -1069,14 +1135,18 @@ export interface InsuranceCoverage {
   readonly coinsurance_percentage: string;
 }
 
-export const loadRemittances = (signal?: AbortSignal) =>
-  getCollection<InsuranceRemittance>('/api/insurance/remittances/', signal);
+export const loadRemittances = (tenantId: string, signal?: AbortSignal) =>
+  getTenantCollection<InsuranceRemittance>('/api/insurance/remittances/', tenantId, signal);
 
-export const loadRejections = (unresolvedOnly = true, signal?: AbortSignal) =>
-  getCollection<ClaimRejection>(unresolvedOnly ? '/api/insurance/rejections/?unresolved=true' : '/api/insurance/rejections/', signal);
+export const loadRejections = (tenantId: string, unresolvedOnly = true, signal?: AbortSignal) =>
+  getTenantCollection<ClaimRejection>(
+    unresolvedOnly ? '/api/insurance/rejections/?unresolved=true' : '/api/insurance/rejections/',
+    tenantId,
+    signal,
+  );
 
-export const loadCoverages = (signal?: AbortSignal) =>
-  getCollection<InsuranceCoverage>('/api/insurance/coverages/', signal);
+export const loadCoverages = (tenantId: string, signal?: AbortSignal) =>
+  getTenantCollection<InsuranceCoverage>('/api/insurance/coverages/', tenantId, signal);
 
 /* ── tenancy & counterparty customers ─────────────────────────────────────── */
 
@@ -1248,8 +1318,8 @@ export interface BusinessDayItem {
   readonly reopen_reason: string;
 }
 
-export const loadPosRegisters = (signal?: AbortSignal) =>
-  getCollection<PosRegisterItem>('/api/pos/shift/registers/', signal);
+export const loadPosRegisters = (tenantId = '', signal?: AbortSignal) =>
+  getTenantCollection<PosRegisterItem>('/api/pos/shift/registers/', tenantId, signal);
 
 export interface PosDeviceHealthItem {
   readonly id: string;
@@ -1268,14 +1338,14 @@ export interface PosDeviceHealthItem {
 export const loadPosDeviceHealth = (signal?: AbortSignal) =>
   getCollection<PosDeviceHealthItem>('/api/pos/dispensing/devices/', signal);
 
-export const loadCashMovements = (signal?: AbortSignal) =>
-  getCollection<CashMovementItem>('/api/pos/shift/cash-movements/', signal);
+export const loadCashMovements = (tenantId = '', signal?: AbortSignal) =>
+  getTenantCollection<CashMovementItem>('/api/pos/shift/cash-movements/', tenantId, signal);
 
-export const loadCashDeclarations = (signal?: AbortSignal) =>
-  getCollection<CashDeclarationItem>('/api/pos/shift/cash-declarations/', signal);
+export const loadCashDeclarations = (tenantId = '', signal?: AbortSignal) =>
+  getTenantCollection<CashDeclarationItem>('/api/pos/shift/cash-declarations/', tenantId, signal);
 
-export const loadBusinessDays = (signal?: AbortSignal) =>
-  getCollection<BusinessDayItem>('/api/pos/shift/business-days/', signal);
+export const loadBusinessDays = (tenantId = '', signal?: AbortSignal) =>
+  getTenantCollection<BusinessDayItem>('/api/pos/shift/business-days/', tenantId, signal);
 
 export const approveCashMovement = (
   movementId: string,
@@ -1417,26 +1487,38 @@ export interface PriceDraftResult {
   readonly created: boolean;
 }
 
-export const loadPriceBooks = (signal?: AbortSignal) =>
-  getCollection<PriceBookSummary>('/api/pricing/books/', signal);
+export const loadPriceBooks = (tenantId = '', signal?: AbortSignal) =>
+  getTenantCollection<PriceBookSummary>('/api/pricing/books/', tenantId, signal);
 
-export const loadPriceBookVersions = (bookId?: string, signal?: AbortSignal) =>
-  getCollection<PriceBookVersion>(bookId ? `/api/pricing/versions/?price_book=${encodeURIComponent(bookId)}` : '/api/pricing/versions/', signal);
+export const loadPriceBookVersions = (bookId = '', tenantId = '', signal?: AbortSignal) =>
+  getTenantCollection<PriceBookVersion>(
+    bookId ? `/api/pricing/versions/?price_book=${encodeURIComponent(bookId)}` : '/api/pricing/versions/',
+    tenantId,
+    signal,
+  );
 
-export const loadPriceBookEntries = (versionId?: string, signal?: AbortSignal) =>
-  getCollection<PriceBookEntry>(versionId ? `/api/pricing/entries/?version=${encodeURIComponent(versionId)}` : '/api/pricing/entries/', signal);
+export const loadPriceBookEntries = (versionId = '', tenantId = '', signal?: AbortSignal) =>
+  getTenantCollection<PriceBookEntry>(
+    versionId ? `/api/pricing/entries/?version=${encodeURIComponent(versionId)}` : '/api/pricing/entries/',
+    tenantId,
+    signal,
+  );
 
-export const loadPriceAssignments = (signal?: AbortSignal) =>
-  getCollection<PriceAssignment>('/api/pricing/assignments/', signal);
+export const loadPriceAssignments = (tenantId = '', signal?: AbortSignal) =>
+  getTenantCollection<PriceAssignment>('/api/pricing/assignments/', tenantId, signal);
 
-export const loadAppliedPrices = (signal?: AbortSignal) =>
-  getCollection<AppliedPriceSnapshot>('/api/pricing/applied/', signal);
+export const loadAppliedPrices = (tenantId = '', signal?: AbortSignal) =>
+  getTenantCollection<AppliedPriceSnapshot>('/api/pricing/applied/', tenantId, signal);
 
-export const loadPriceOverrides = (pendingOnly = false, signal?: AbortSignal) =>
-  getCollection<ManualPriceOverride>(pendingOnly ? '/api/pricing/overrides/?pending=true' : '/api/pricing/overrides/', signal);
+export const loadPriceOverrides = (pendingOnly = false, tenantId = '', signal?: AbortSignal) =>
+  getTenantCollection<ManualPriceOverride>(
+    pendingOnly ? '/api/pricing/overrides/?pending=true' : '/api/pricing/overrides/',
+    tenantId,
+    signal,
+  );
 
-export const loadPriceLocks = (signal?: AbortSignal) =>
-  getCollection<PriceLock>('/api/pricing/locks/', signal);
+export const loadPriceLocks = (tenantId = '', signal?: AbortSignal) =>
+  getTenantCollection<PriceLock>('/api/pricing/locks/', tenantId, signal);
 
 export const loadTenantSkus = (tenantId: string, signal?: AbortSignal) =>
   getTenantCollection<HQSku>('/api/medicines/skus/?page_size=100', tenantId, signal);
@@ -1531,12 +1613,17 @@ export interface UserDetail {
   readonly first_name: string;
   readonly last_name: string;
   readonly is_active: boolean;
+  readonly account_status: 'ACTIVE' | 'SUSPENDED' | 'DISABLED' | string;
+  readonly category: string;
   readonly is_platform_admin: boolean;
   readonly is_superuser: boolean;
+  readonly must_change_password: boolean;
   readonly professional_staff_id: string;
   readonly assigned_roles: readonly { readonly id: string; readonly code: string; readonly name: string }[];
   readonly effective_capabilities: readonly string[];
   readonly date_joined: string;
+  readonly last_login: string | null;
+  readonly temporary_password?: string;
 }
 
 export interface UserRoleGrant {
@@ -1560,8 +1647,17 @@ export interface ServiceAccountItem {
   readonly created_at: string;
 }
 
+export interface CapabilityCatalogue {
+  readonly capabilities: readonly string[];
+  readonly groups: readonly {
+    readonly label: string;
+    readonly capabilities: readonly string[];
+  }[];
+}
+
 export interface CapabilityMatrixData {
   readonly tenant_id: string;
+  readonly catalogue?: CapabilityCatalogue;
   readonly roles: readonly {
     readonly id: string;
     readonly code: string;
@@ -1588,22 +1684,159 @@ export interface CapabilityMatrixData {
   }[];
 }
 
-export const loadRolesDetail = (signal?: AbortSignal) =>
-  getCollection<RoleDetail>('/api/identity/roles-detail/', signal);
+export interface UserDirectoryPage {
+  readonly count: number;
+  readonly next: string | null;
+  readonly previous: string | null;
+  readonly results: readonly UserDetail[];
+}
 
-export const loadUsers = (signal?: AbortSignal) =>
-  getCollection<UserDetail>('/api/identity/users/', signal);
+export interface UserDirectoryFilters {
+  readonly search?: string;
+  readonly category?: string;
+  readonly page?: number;
+  readonly pageSize?: number;
+}
 
-export const loadUserRoles = (signal?: AbortSignal) =>
-  getCollection<UserRoleGrant>('/api/identity/user-roles/', signal);
+export const loadRolesDetail = (tenantId: string, signal?: AbortSignal) =>
+  getTenantCollection<RoleDetail>('/api/identity/roles-detail/', tenantId, signal);
 
-export const loadServiceAccounts = (signal?: AbortSignal) =>
-  getCollection<ServiceAccountItem>('/api/identity/service-accounts/', signal);
+export const loadUsers = (tenantId: string, signal?: AbortSignal) =>
+  getTenantCollection<UserDetail>('/api/identity/users/?page_size=100', tenantId, signal);
 
-export async function loadCapabilityMatrix(signal?: AbortSignal): Promise<CapabilityMatrixData> {
+export async function loadUserDirectory(
+  tenantId: string,
+  filters: UserDirectoryFilters = {},
+  signal?: AbortSignal,
+): Promise<UserDirectoryPage> {
+  const parameters = new URLSearchParams();
+  parameters.set('page_size', String(filters.pageSize ?? 20));
+  parameters.set('page', String(filters.page ?? 1));
+  if (filters.search?.trim()) parameters.set('search', filters.search.trim());
+  if (filters.category?.trim()) parameters.set('category', filters.category.trim());
   const request: RequestInit = {
     credentials: 'include',
-    headers: { Accept: 'application/json', ...tenantHeaders() },
+    headers: { Accept: 'application/json', ...tenantHeaders(tenantId) },
+  };
+  if (signal) request.signal = signal;
+  const response = await fetch(`/api/identity/users/?${parameters.toString()}`, request);
+  if (!response.ok) {
+    throw new HQApiError(response.status, `User directory failed with ${response.status}.`);
+  }
+  const body = await response.json();
+  if (Array.isArray(body)) {
+    return { count: body.length, next: null, previous: null, results: body as UserDetail[] };
+  }
+  return body as UserDirectoryPage;
+}
+
+export async function createTenantUser(
+  tenantId: string,
+  csrfToken: string,
+  payload: {
+    readonly username: string;
+    readonly email?: string;
+    readonly first_name?: string;
+    readonly last_name?: string;
+    readonly password?: string;
+    readonly professional_staff_id?: string;
+    readonly role_ids?: readonly string[];
+    readonly must_change_password?: boolean;
+  },
+): Promise<UserDetail> {
+  return mutateJson<UserDetail>('/api/identity/users/', 'POST', payload, csrfToken, tenantId);
+}
+
+export async function setUserAccountStatus(
+  tenantId: string,
+  userId: string,
+  action: 'activate' | 'suspend' | 'disable',
+  csrfToken: string,
+): Promise<UserDetail> {
+  return mutateJson<UserDetail>(
+    `/api/identity/users/${userId}/${action}/`,
+    'POST',
+    {},
+    csrfToken,
+    tenantId,
+  );
+}
+
+export async function resetUserPassword(
+  tenantId: string,
+  userId: string,
+  csrfToken: string,
+  password?: string,
+): Promise<UserDetail> {
+  return mutateJson<UserDetail>(
+    `/api/identity/users/${userId}/reset-password/`,
+    'POST',
+    password ? { password } : {},
+    csrfToken,
+    tenantId,
+  );
+}
+
+export async function setUserRoles(
+  tenantId: string,
+  userId: string,
+  roleIds: readonly string[],
+  csrfToken: string,
+): Promise<UserDetail> {
+  return mutateJson<UserDetail>(
+    `/api/identity/users/${userId}/set-roles/`,
+    'POST',
+    { role_ids: roleIds },
+    csrfToken,
+    tenantId,
+  );
+}
+
+export async function createTenantRole(
+  tenantId: string,
+  csrfToken: string,
+  payload: {
+    readonly code: string;
+    readonly name: string;
+    readonly capabilities?: readonly string[];
+    readonly is_active?: boolean;
+  },
+): Promise<RoleDetail> {
+  return mutateJson<RoleDetail>('/api/identity/roles-detail/', 'POST', payload, csrfToken, tenantId);
+}
+
+export async function updateRolePermissions(
+  tenantId: string,
+  roleId: string,
+  csrfToken: string,
+  payload: {
+    readonly name?: string;
+    readonly capabilities?: readonly string[];
+    readonly is_active?: boolean;
+  },
+): Promise<RoleDetail> {
+  return mutateJson<RoleDetail>(
+    `/api/identity/roles-detail/${roleId}/`,
+    'PATCH',
+    payload,
+    csrfToken,
+    tenantId,
+  );
+}
+
+export const loadUserRoles = (tenantId: string, signal?: AbortSignal) =>
+  getTenantCollection<UserRoleGrant>('/api/identity/user-roles/', tenantId, signal);
+
+export const loadServiceAccounts = (tenantId: string, signal?: AbortSignal) =>
+  getTenantCollection<ServiceAccountItem>('/api/identity/service-accounts/', tenantId, signal);
+
+export async function loadCapabilityMatrix(
+  tenantId: string,
+  signal?: AbortSignal,
+): Promise<CapabilityMatrixData> {
+  const request: RequestInit = {
+    credentials: 'include',
+    headers: { Accept: 'application/json', ...tenantHeaders(tenantId) },
   };
   if (signal) request.signal = signal;
 
@@ -1612,6 +1845,97 @@ export async function loadCapabilityMatrix(signal?: AbortSignal): Promise<Capabi
     throw new HQApiError(response.status, `Capability matrix request failed with ${response.status}.`);
   }
   return (await response.json()) as CapabilityMatrixData;
+}
+
+/* ── enterprise reporting ──────────────────────────────────────────────────── */
+
+export type ReportExportFormat = 'pdf' | 'csv' | 'json' | 'xlsx';
+
+export interface ReportDownloadReceipt {
+  readonly receiptId: string;
+  readonly validationCode: string;
+  readonly checksumSha256: string;
+  readonly validationUrl: string;
+  readonly filename: string;
+}
+
+function terminalFingerprint(): { terminalId: string; terminalLabel: string } {
+  const existing = window.sessionStorage.getItem('tibatrace.hq.terminal_id');
+  const terminalId = existing || (() => {
+    const id = (globalThis.crypto?.randomUUID?.() || `hq-${Date.now()}`).slice(0, 36);
+    window.sessionStorage.setItem('tibatrace.hq.terminal_id', id);
+    return id;
+  })();
+  return {
+    terminalId,
+    terminalLabel: `HQ Web · ${window.location.host}`,
+  };
+}
+
+export async function downloadEnterpriseReport(
+  reportId: string,
+  format: ReportExportFormat,
+  csrfToken: string,
+  tenantId = '',
+): Promise<ReportDownloadReceipt> {
+  const terminal = terminalFingerprint();
+  const response = await fetch(`/api/hq/reports/${encodeURIComponent(reportId)}/download/`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: '*/*',
+      'Content-Type': 'application/json',
+      'X-CSRFToken': csrfToken,
+      'X-Terminal-ID': terminal.terminalId,
+      'X-Terminal-Label': terminal.terminalLabel,
+      ...tenantHeaders(tenantId),
+    },
+    body: JSON.stringify({
+      format,
+      terminal_id: terminal.terminalId,
+      terminal_label: terminal.terminalLabel,
+    }),
+  });
+  if (!response.ok) {
+    const errorJson = (await response.json().catch(() => ({}))) as { detail?: string };
+    throw new HQApiError(response.status, errorJson.detail || `Report download failed with ${response.status}.`);
+  }
+  const blob = await response.blob();
+  const disposition = response.headers.get('Content-Disposition') || '';
+  const matched = /filename="([^"]+)"/i.exec(disposition);
+  const filename = matched?.[1] || `${reportId}.${format === 'xlsx' ? 'csv' : format}`;
+  const objectUrl = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = objectUrl;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(objectUrl);
+  return {
+    receiptId: response.headers.get('X-Report-Receipt-Id') || '',
+    validationCode: response.headers.get('X-Report-Validation-Code') || '',
+    checksumSha256: response.headers.get('X-Report-Checksum-SHA256') || '',
+    validationUrl: response.headers.get('X-Report-Validation-Url') || '',
+    filename,
+  };
+}
+
+export async function validateReportReceipt(
+  receiptId: string,
+  tenantId = '',
+  signal?: AbortSignal,
+): Promise<Record<string, unknown>> {
+  const request: RequestInit = {
+    credentials: 'include',
+    headers: { Accept: 'application/json', ...tenantHeaders(tenantId) },
+  };
+  if (signal) request.signal = signal;
+  const response = await fetch(`/api/hq/reports/validate/${encodeURIComponent(receiptId)}/`, request);
+  if (!response.ok) {
+    throw new HQApiError(response.status, `Report validation failed with ${response.status}.`);
+  }
+  return (await response.json()) as Record<string, unknown>;
 }
 
 /* ── product master ────────────────────────────────────────────────────────────
@@ -2004,20 +2328,20 @@ export interface ShiftReportSnapshot {
 }
 
 /** Registers currently trading. Checked at close of business. */
-export const loadOpenRegisterSessions = (signal?: AbortSignal) =>
-  getCollection<RegisterSessionSummary>('/api/pos/shift/sessions/open/', signal);
+export const loadOpenRegisterSessions = (tenantId = '', signal?: AbortSignal) =>
+  getTenantCollection<RegisterSessionSummary>('/api/pos/shift/sessions/open/', tenantId, signal);
 
 /** Sessions in a closing state without an authoritative final Z report. */
-export const loadUnclosedRegisterSessions = (signal?: AbortSignal) =>
-  getCollection<RegisterSessionSummary>('/api/pos/shift/sessions/unclosed/', signal);
+export const loadUnclosedRegisterSessions = (tenantId = '', signal?: AbortSignal) =>
+  getTenantCollection<RegisterSessionSummary>('/api/pos/shift/sessions/unclosed/', tenantId, signal);
 
 /** Z reports whose counted cash did not match expected. */
-export const loadCashVariances = (signal?: AbortSignal) =>
-  getCollection<ShiftReportSummary>('/api/pos/shift/reports/variances/', signal);
+export const loadCashVariances = (tenantId = '', signal?: AbortSignal) =>
+  getTenantCollection<ShiftReportSummary>('/api/pos/shift/reports/variances/', tenantId, signal);
 
 /** Closures performed by somebody other than the accountable operator. */
-export const loadForcedClosures = (signal?: AbortSignal) =>
-  getCollection<ShiftReportSummary>('/api/pos/shift/reports/forced-closures/', signal);
+export const loadForcedClosures = (tenantId = '', signal?: AbortSignal) =>
+  getTenantCollection<ShiftReportSummary>('/api/pos/shift/reports/forced-closures/', tenantId, signal);
 
 export const startCashExceptionReview = (
   reportId: string,
@@ -2046,24 +2370,10 @@ export const resolveCashExceptionReview = (
 /**
  * Format a decimal string for display without going through a JS number.
  *
- * `Number(value).toFixed(2)` is the obvious implementation and it is wrong for
- * exactly the reason the backend sends strings: it round-trips through a binary
- * float. It also turns an unparseable value into the string "NaN", which is
- * then rendered onto a money field as though it were an amount.
+ * Prefer the shared helper so HQ, Windows POS and Android POS render the same
+ * two-place amounts. Local re-export keeps existing HQ imports stable.
  */
-export function formatMoney(value: Money | null | undefined, currency = 'KES'): string {
-  const text = (value ?? '').trim();
-  if (text === '') return '—';
-  if (!/^-?\d+(\.\d+)?$/.test(text)) return '—';
-
-  const negative = text.startsWith('-');
-  const [whole = '0', fraction = ''] = text.replace('-', '').split('.');
-  const padded = (fraction + '00').slice(0, 2);
-  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-  // Sign after the currency: "KES -50.00" sits more naturally beside
-  // "KES 3,000.00" in a variance column than "-KES 50.00" does.
-  return `${currency} ${negative ? '-' : ''}${grouped}.${padded}`;
-}
+export { formatMoney } from '@dawatrace/shared/money.js';
 
 /**
  * Whether a variance needs somebody to explain it.
@@ -2184,6 +2494,90 @@ export async function signOut(csrfToken: string): Promise<void> {
   });
 }
 
+export interface PasswordForgotResult {
+  readonly detail: string;
+  /** Present only when the API is running with DEBUG=true. */
+  readonly dev_reset_uid?: string;
+  readonly dev_reset_token?: string;
+}
+
+/**
+ * Request a password reset.
+ *
+ * The server always returns a generic success message so the form cannot be
+ * used to enumerate accounts. In DEBUG it may also return a reset token for
+ * local HQ use without email infrastructure.
+ */
+export async function requestPasswordReset(
+  identity: { readonly email?: string; readonly username?: string },
+  csrfToken: string,
+): Promise<PasswordForgotResult> {
+  const response = await fetch('/api/identity/password/forgot/', {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      'X-CSRFToken': csrfToken,
+    },
+    body: JSON.stringify(identity),
+  });
+
+  const body = (await response.json().catch(() => null)) as
+    | (PasswordForgotResult & { detail?: string })
+    | null;
+
+  if (!response.ok) {
+    throw new SignInError(
+      response.status,
+      body?.detail ??
+        (response.status === 429
+          ? 'Too many attempts. Wait a moment before trying again.'
+          : 'Password reset request failed.'),
+    );
+  }
+
+  // The dev_reset_* keys are omitted entirely rather than set to undefined:
+  // under exactOptionalPropertyTypes an explicit undefined is not assignable
+  // to an optional property.
+  return {
+    detail: body?.detail ?? 'If an account matches that identity, password reset instructions have been prepared.',
+    ...(body?.dev_reset_uid === undefined ? {} : { dev_reset_uid: body.dev_reset_uid }),
+    ...(body?.dev_reset_token === undefined ? {} : { dev_reset_token: body.dev_reset_token }),
+  };
+}
+
+/** Confirm a password reset with uid + token from the forgot step. */
+export async function confirmPasswordReset(
+  payload: { readonly uid: string; readonly token: string; readonly password: string },
+  csrfToken: string,
+): Promise<string> {
+  const response = await fetch('/api/identity/password/reset/', {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      'X-CSRFToken': csrfToken,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const body = (await response.json().catch(() => null)) as { detail?: string } | null;
+
+  if (!response.ok) {
+    throw new SignInError(
+      response.status,
+      body?.detail ??
+        (response.status === 429
+          ? 'Too many attempts. Wait a moment before trying again.'
+          : 'Password reset failed.'),
+    );
+  }
+
+  return body?.detail ?? 'Password updated. You can sign in with your new password.';
+}
+
 /* ── claims register ───────────────────────────────────────────────────────── */
 
 export interface ClaimFilters {
@@ -2202,6 +2596,7 @@ export interface ClaimFilters {
  * authoritative because it was counted rather than guessed.
  */
 export function loadClaims(
+  tenantId: string,
   filters: ClaimFilters = {},
   signal?: AbortSignal,
 ): Promise<readonly InsuranceClaim[]> {
@@ -2210,8 +2605,9 @@ export function loadClaims(
     if (value) query.set(key, value);
   }
   const suffix = query.toString();
-  return getCollection<InsuranceClaim>(
+  return getTenantCollection<InsuranceClaim>(
     `/api/insurance/claims/${suffix ? `?${suffix}` : ''}`,
+    tenantId,
     signal,
   );
 }
