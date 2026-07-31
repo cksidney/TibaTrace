@@ -15,10 +15,14 @@
  */
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
-const SRC = new URL('.', import.meta.url).pathname;
+// URL.pathname leaves a leading slash on Windows (`/D:/...`), which `join`
+// turns into the invalid `D:\D:\...`. Convert the file URL with Node's
+// platform-aware helper so this repository test is portable.
+const SRC = fileURLToPath(new URL('.', import.meta.url));
 
 function sourceFiles(): readonly string[] {
   return readdirSync(SRC)
@@ -55,16 +59,22 @@ describe('workspace navigation', () => {
   });
 
   it('points every internal href at a real workspace view', () => {
+    // Mirrors the WorkspaceView union in App.tsx; add to both when a view lands.
     const views = [
-      'overview', 'network', 'people', 'catalogue', 'operations', 'commerce',
-      'pricing', 'cash', 'insurance', 'clinical', 'governance', 'access',
+      'overview', 'network', 'people', 'catalogue', 'inventory', 'operations', 'commerce',
+      'pricing', 'cash', 'insurance', 'clinical', 'reports', 'governance', 'access',
     ];
     // #main-content is the skip link's target, not a view.
-    const allowed = new Set([...views.map((v) => `#${v}`), '#main-content']);
+    // Deep links like #catalogue/skus are allowed when the view segment is known.
+    const allowedViews = new Set(views);
     const unknown = sourceFiles()
       .flatMap(hrefLiterals)
       .filter((href) => href.startsWith('#'))
-      .filter((href) => !allowed.has(href));
+      .filter((href) => {
+        if (href === '#main-content') return false;
+        const view = href.slice(1).split('/')[0] ?? '';
+        return !allowedViews.has(view);
+      });
     expect([...new Set(unknown)]).toEqual([]);
   });
 });

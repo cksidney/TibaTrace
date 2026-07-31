@@ -20,3 +20,6 @@ python-dateutil==2.9.0.post0
 # POS installer distribution: S3-compatible object storage (AWS S3 or MinIO).
 boto3==1.43.56
 django-storages[s3]==1.14.6
+# Report download validation receipts. Pure-python; we consume the module
+# matrix directly and never render an image, so no Pillow dependency.
+qrcode==8.2
