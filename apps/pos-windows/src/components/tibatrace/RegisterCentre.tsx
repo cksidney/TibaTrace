@@ -4,7 +4,8 @@ import {
   type PosOperationalRuntimeDTO,
   type ShiftReportDTO,
 } from '@dawatrace/shared/operational/index.js';
-import { fontSize, spacing, statusPalette, surface, text } from '@dawatrace/shared/design-system/index.js';
+import { action, autoColumns, fontSize, spacing, statusPalette, surface, text } from '@dawatrace/shared/design-system/index.js';
+import { formatDecimal } from '@dawatrace/shared/money.js';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 const DENOMINATIONS = ['1000', '500', '200', '100', '50', '20', '10', '5', '1'] as const;
@@ -521,7 +522,7 @@ function denominationTotal(counts: Readonly<Record<string, string>>): string {
     (sum, [face, count]) => sum + Math.round(Number(face) * 100) * (Number.parseInt(count || '0', 10) || 0),
     0,
   );
-  return (cents / 100).toFixed(2);
+  return formatDecimal(cents / 100, 2);
 }
 
 function closureHasExternalBlocker(runtime: PosOperationalRuntimeDTO | null): boolean {
@@ -575,14 +576,14 @@ const detailText = { margin: 0, color: text.secondary, fontSize: fontSize.captio
 const errorText = { margin: 0, padding: spacing.md, borderRadius: 8, background: statusPalette.BLOCKING.surface, color: statusPalette.BLOCKING.foreground };
 const noticeText = { margin: 0, padding: spacing.md, borderRadius: 8, background: statusPalette.SAFE.surface, color: statusPalette.SAFE.foreground };
 const attentionPanel = { display: 'grid', gap: spacing.xs, padding: spacing.md, border: `1px solid ${statusPalette.ACTION_REQUIRED.border}`, borderRadius: 10, background: statusPalette.ACTION_REQUIRED.surface, color: statusPalette.ACTION_REQUIRED.foreground };
-const summaryGrid = { display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: spacing.md };
+const summaryGrid = { display: 'grid', gridTemplateColumns: autoColumns(180), gap: spacing.md };
 const summaryCard = { display: 'grid', gap: spacing.xs, padding: spacing.md, border: `1px solid ${surface.border}`, borderRadius: 10, background: surface.raised };
 const summaryValue = { color: text.primary, fontSize: fontSize.bodyLarge };
 const sectionCard = { display: 'grid', gap: spacing.md, padding: spacing.lg, border: `1px solid ${surface.border}`, borderRadius: 12, background: surface.raised };
 const sectionHeader = { display: 'flex', justifyContent: 'space-between', gap: spacing.md, alignItems: 'flex-start' };
-const actionGrid = { display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: spacing.sm };
-const actionButton = (disabled: boolean) => ({ display: 'grid', gap: spacing.xs, minHeight: 82, padding: spacing.md, textAlign: 'left' as const, border: `1px solid ${disabled ? surface.border : '#7CCBA5'}`, borderRadius: 10, background: disabled ? surface.sunken : '#F0FBF5', color: disabled ? text.tertiary : text.primary, cursor: disabled ? 'not-allowed' : 'pointer' });
-const twoColumn = { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: spacing.lg, alignItems: 'start' };
+const actionGrid = { display: 'grid', gridTemplateColumns: autoColumns(190), gap: spacing.sm };
+const actionButton = (disabled: boolean) => ({ display: 'grid', gap: spacing.xs, minHeight: 82, padding: spacing.md, textAlign: 'left' as const, border: `1px solid ${disabled ? surface.border : action.selectedBorder}`, borderRadius: 10, background: disabled ? surface.sunken : action.selectedSurface, color: disabled ? text.tertiary : text.primary, cursor: disabled ? 'not-allowed' : 'pointer' });
+const twoColumn = { display: 'grid', gridTemplateColumns: autoColumns(320), gap: spacing.lg, alignItems: 'start' };
 const countChip = { borderRadius: 999, padding: '4px 8px', background: statusPalette.ACTION_REQUIRED.surface, color: statusPalette.ACTION_REQUIRED.foreground, fontSize: fontSize.caption, fontWeight: 700 };
 const list = { display: 'grid', gap: spacing.sm };
 const listItem = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: spacing.md, padding: spacing.md, border: `1px solid ${surface.border}`, borderRadius: 9, background: surface.page };
@@ -592,16 +593,16 @@ const secondaryButton = { minHeight: 38, padding: '7px 11px', border: `1px solid
 const modalBackdrop = { position: 'fixed' as const, inset: 0, zIndex: 40, display: 'grid', placeItems: 'center', padding: spacing.xl, background: 'rgba(5, 18, 42, 0.56)' };
 const modalCard = { width: 'min(760px, 100%)', maxHeight: 'calc(100vh - 48px)', overflowY: 'auto' as const, display: 'grid', gap: spacing.md, padding: spacing.xxl, borderRadius: 14, background: surface.raised, boxShadow: '0 22px 60px rgba(0, 0, 0, 0.35)' };
 const modalActions = { display: 'flex', justifyContent: 'flex-end', gap: spacing.sm };
-const primaryButton = (enabled: boolean) => ({ minHeight: 40, padding: '8px 12px', border: 'none', borderRadius: 8, background: enabled ? '#12854A' : surface.sunken, color: enabled ? '#fff' : text.tertiary, fontWeight: 700, cursor: enabled ? 'pointer' : 'not-allowed' });
-const formGrid = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: spacing.md };
+const primaryButton = (enabled: boolean) => ({ minHeight: 40, padding: '8px 12px', border: 'none', borderRadius: 8, background: enabled ? action.primary : surface.sunken, color: enabled ? action.primaryForeground : text.tertiary, fontWeight: 700, cursor: enabled ? 'pointer' : 'not-allowed' });
+const formGrid = { display: 'grid', gridTemplateColumns: autoColumns(220), gap: spacing.md };
 const fieldLabel = { display: 'grid', gap: spacing.xs, color: text.primary, fontSize: fontSize.caption, fontWeight: 700 };
 const input = { minHeight: 40, boxSizing: 'border-box' as const, padding: spacing.sm, border: `1px solid ${surface.borderStrong}`, borderRadius: 8, color: text.primary, background: surface.raised, font: 'inherit' };
 const textarea = { minHeight: 82, resize: 'vertical' as const, padding: spacing.sm, border: `1px solid ${surface.borderStrong}`, borderRadius: 8, color: text.primary, font: 'inherit' };
 const denominationPanel = { display: 'grid', gap: spacing.md };
-const denominationGrid = { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: spacing.sm };
-const totalPanel = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: spacing.md, borderRadius: 8, background: surface.inverse, color: text.inverse };
+const denominationGrid = { display: 'grid', gridTemplateColumns: autoColumns(140), gap: spacing.sm };
+const totalPanel = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: spacing.md, borderRadius: 8, background: surface.inverse, color: action.primaryForeground };
 const confirmation = { display: 'grid', gap: spacing.xs, padding: spacing.md, border: `1px solid ${surface.border}`, borderRadius: 8, background: surface.page, color: text.primary };
 const reportPanel = { display: 'grid', gap: spacing.md };
-const reportGrid = { display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: spacing.md, margin: 0 };
+const reportGrid = { display: 'grid', gridTemplateColumns: autoColumns(180), gap: spacing.md, margin: 0 };
 const detailLabel = { color: text.secondary, fontSize: fontSize.caption, textTransform: 'uppercase' as const, letterSpacing: 0.4 };
 const detailValue = { margin: '3px 0 0', color: text.primary, fontSize: fontSize.body };

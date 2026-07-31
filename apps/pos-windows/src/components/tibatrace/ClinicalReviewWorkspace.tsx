@@ -1,4 +1,4 @@
-import { fontSize, spacing, statusPalette, surface, text } from '@dawatrace/shared/design-system/index.js';
+import { action, autoColumns, fontSize, spacing, statusPalette, surface, text } from '@dawatrace/shared/design-system/index.js';
 import type { ScreeningDecision, ScreeningOverride, ScreeningResult } from '@dawatrace/shared/clinical/index.js';
 import { useMemo, useState } from 'react';
 
@@ -116,7 +116,7 @@ export function ClinicalReviewWorkspace({
         </div>
         <div style={decisionGrid}>
           {DECISIONS.map((option) => (
-            <label key={option.value} style={{ ...decisionOption, borderColor: decision === option.value ? '#075E37' : surface.border }}>
+            <label key={option.value} style={{ ...decisionOption, borderColor: decision === option.value ? action.primary : surface.border }}>
               <input type="radio" name="clinical-decision" checked={decision === option.value} onChange={() => setDecision(option.value)} />
               <span><strong>{option.label}</strong><small style={consequence}>{option.consequence}</small></span>
             </label>
@@ -303,7 +303,7 @@ const header: React.CSSProperties = { display: 'flex', justifyContent: 'space-be
 const heading: React.CSSProperties = { margin: 0, fontSize: fontSize.screenTitle, color: text.primary };
 const subheading: React.CSSProperties = { maxWidth: 680, margin: `${spacing.sm}px 0 0`, color: text.secondary, lineHeight: 1.5 };
 const eyebrow: React.CSSProperties = { margin: 0, color: text.tertiary, fontSize: fontSize.caption, textTransform: 'uppercase', letterSpacing: 0.7 };
-const patientCard: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: spacing.lg, margin: 0, padding: spacing.lg, border: `1px solid ${surface.border}`, borderRadius: 12, background: surface.raised };
+const patientCard: React.CSSProperties = { display: 'grid', gridTemplateColumns: autoColumns(180), gap: spacing.lg, margin: 0, padding: spacing.lg, border: `1px solid ${surface.border}`, borderRadius: 12, background: surface.raised };
 const metaLabel: React.CSSProperties = { margin: 0, color: text.tertiary, fontSize: fontSize.meta, textTransform: 'uppercase' };
 const metaValue: React.CSSProperties = { margin: '4px 0 0', color: text.primary, fontSize: fontSize.body, overflowWrap: 'anywhere' };
 const findingCard: React.CSSProperties = { padding: spacing.lg, border: `1px solid ${surface.border}`, borderLeftWidth: 5, borderRadius: 12, background: surface.raised };
@@ -312,13 +312,13 @@ const statusText: React.CSSProperties = { margin: `${spacing.md}px 0 0`, color: 
 const formCard: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: spacing.lg, padding: spacing.xl, border: `1px solid ${surface.border}`, borderRadius: 12, background: surface.raised };
 const formHeader: React.CSSProperties = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: spacing.md };
 const sectionHeading: React.CSSProperties = { margin: '4px 0 0', color: text.primary, fontSize: fontSize.sectionTitle };
-const decisionGrid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: spacing.sm };
+const decisionGrid: React.CSSProperties = { display: 'grid', gridTemplateColumns: autoColumns(240), gap: spacing.sm };
 const decisionOption: React.CSSProperties = { display: 'flex', gap: spacing.sm, alignItems: 'flex-start', padding: spacing.md, border: '1px solid', borderRadius: 10, cursor: 'pointer', color: text.primary };
 const consequence: React.CSSProperties = { display: 'block', margin: 0, color: text.secondary, fontSize: fontSize.caption, lineHeight: 1.35 };
 const fieldLabel: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: spacing.xs, color: text.secondary, fontSize: fontSize.caption, fontWeight: 600 };
 const textarea: React.CSSProperties = { minHeight: 84, resize: 'vertical', padding: spacing.md, border: `1px solid ${surface.borderStrong}`, borderRadius: 8, color: text.primary, fontFamily: 'inherit', fontSize: fontSize.body };
 const secondaryButton: React.CSSProperties = { minHeight: 42, padding: '8px 12px', borderRadius: 8, border: `1px solid ${surface.borderStrong}`, background: surface.raised, color: text.primary, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' };
-const primaryButton = (ready: boolean): React.CSSProperties => ({ minHeight: 48, alignSelf: 'flex-start', padding: '12px 18px', border: 'none', borderRadius: 8, background: ready ? '#075E37' : surface.sunken, color: ready ? text.inverse : text.tertiary, fontWeight: 700, cursor: ready ? 'pointer' : 'not-allowed' });
+const primaryButton = (ready: boolean): React.CSSProperties => ({ minHeight: 48, alignSelf: 'flex-start', padding: '12px 18px', border: 'none', borderRadius: 8, background: ready ? action.primary : surface.sunken, color: ready ? text.inverse : text.tertiary, fontWeight: 700, cursor: ready ? 'pointer' : 'not-allowed' });
 const errorText: React.CSSProperties = { margin: 0, padding: spacing.md, borderRadius: 8, color: statusPalette.BLOCKING.foreground, background: statusPalette.BLOCKING.surface };
 const historyCard: React.CSSProperties = { padding: spacing.lg, border: `1px solid ${surface.border}`, borderRadius: 12, background: surface.raised };
 const historyItem: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: spacing.xs, padding: `${spacing.md}px 0`, borderTop: `1px solid ${surface.border}` };

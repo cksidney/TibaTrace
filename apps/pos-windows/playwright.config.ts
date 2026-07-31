@@ -54,16 +54,41 @@ export default defineConfig({
     trace: 'retain-on-failure',
   },
 
+  /**
+   * Two kinds of project.
+   *
+   * The first two hold approved pixel baselines. The last two do not: they
+   * exist so the layout assertions -- occupies real space, does not clip --
+   * run at tablet and phone widths, which is where a fixed column count or an
+   * unclamped `minmax` floor shows up first. Adding baselines for them would
+   * quadruple the images to review for no extra signal, since the same
+   * components are already pixel-checked at two widths.
+   */
   projects: [
     {
       name: 'console-1280',
       use: { viewport: { width: 1280, height: 900 } },
+      metadata: { baselines: true },
     },
     {
       // The smallest till screen the console must remain usable on. Layout
       // failures show up here first.
       name: 'console-1024',
       use: { viewport: { width: 1024, height: 768 } },
+      metadata: { baselines: true },
+    },
+    {
+      // Tablet portrait, carried to the shelf.
+      name: 'console-768',
+      use: { viewport: { width: 768, height: 1024 } },
+      metadata: { baselines: false },
+    },
+    {
+      // A phone. Narrower than anything the console was designed for, which is
+      // the point: nothing here may scroll sideways or clip.
+      name: 'console-390',
+      use: { viewport: { width: 390, height: 844 } },
+      metadata: { baselines: false },
     },
   ],
 

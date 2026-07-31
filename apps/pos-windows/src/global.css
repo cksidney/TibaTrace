@@ -1,0 +1,46 @@
+/*
+ * Renderer baseline.
+ *
+ * The console is styled inline, so this file carries only what an inline style
+ * cannot express: document-level defaults, and the rules that keep a narrow
+ * screen from scrolling sideways. Nothing here is a component style.
+ */
+
+*,
+*::before,
+*::after {
+  /* Controls are sized by the track they sit in, not by their content. Without
+     this, horizontal padding is added on top of a 100% width and a full-width
+     input overflows its column. */
+  box-sizing: border-box;
+}
+
+html {
+  /* Respect the operating system text size instead of pinning 16px. An
+     operator who has scaled their display up has done so for a reason. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  /* A clinical console must never hide content past the right edge: a sideways
+     scroll reads as "nothing more to see". The panes that genuinely need to
+     scroll sideways, such as the workflow ribbon, opt in themselves. */
+  overflow-x: hidden;
+}
+
+img,
+svg {
+  max-width: 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

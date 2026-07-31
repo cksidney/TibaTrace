@@ -39,6 +39,10 @@ for (const scenario of SCENARIOS) {
         !process.env.CI,
         'Approved pixel baselines are captured and reviewed only by the CI visual job.',
       );
+      test.skip(
+        test.info().project.metadata.baselines !== true,
+        'This viewport is checked for layout only; it holds no pixel baseline.',
+      );
       // Recorded on the test, so the rationale is in front of whoever reviews
       // a baseline change rather than buried in the catalogue.
       test.info().annotations.push({ type: 'rationale', description: scenario.rationale });

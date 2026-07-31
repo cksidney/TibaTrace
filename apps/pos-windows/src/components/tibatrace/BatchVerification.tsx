@@ -1,4 +1,4 @@
-import { fontFamily, fontSize, spacing, surface, text } from '@dawatrace/shared/design-system/index.js';
+import { autoColumns, fontFamily, fontSize, spacing, surface, text } from '@dawatrace/shared/design-system/index.js';
 import type { ClinicalStatus } from '@dawatrace/shared/design-system/index.js';
 import type { BatchVerificationResponse } from '@dawatrace/shared/dispensing/index.js';
 import { useRef, useState } from 'react';
@@ -131,7 +131,7 @@ export function BatchVerification({
           <dl
             style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+              gridTemplateColumns: autoColumns(150),
               gap: spacing.md,
               margin: 0,
             }}

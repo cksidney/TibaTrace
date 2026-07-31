@@ -1,5 +1,6 @@
 import {
   action,
+  autoColumns,
   controlSize,
   deriveRetailPrimaryAction,
   fontSize,
@@ -7,7 +8,10 @@ import {
   statusPalette,
   surface,
   text,
+  viewportAtMost,
+  type ViewportClass,
 } from '@dawatrace/shared/design-system/index.js';
+import { formatDecimal, formatMoney } from '@dawatrace/shared/money.js';
 import {
   PosRetailClient,
   type RetailCatalogueItemDTO,
@@ -17,6 +21,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { resolveShortcut } from '../../state/keyboard.js';
+import { useViewport } from '../../state/useViewport.js';
 
 interface RetailWorkspaceProps {
   readonly apiFetch: typeof fetch;
@@ -116,7 +121,7 @@ export function RetailWorkspace({ apiFetch, deviceId }: RetailWorkspaceProps) {
       await client.scan(transaction.id, {
         device_id: deviceId,
         barcode: barcode.trim(),
-        quantity: '1.0000',
+        quantity: '1.00',
       });
       await refreshTransaction(transaction.id);
       setBarcode('');
@@ -141,7 +146,7 @@ export function RetailWorkspace({ apiFetch, deviceId }: RetailWorkspaceProps) {
       await client.addLine(transaction.id, {
         device_id: deviceId,
         sku_id: item.sku_id,
-        quantity: '1.0000',
+        quantity: '1.00',
       });
       await refreshTransaction(transaction.id);
       barcodeInput.current?.focus();
@@ -157,7 +162,7 @@ export function RetailWorkspace({ apiFetch, deviceId }: RetailWorkspaceProps) {
         await client.setQuantity(transaction.id, {
           device_id: deviceId,
           line_id: line.id,
-          quantity: next.toFixed(4),
+          quantity: formatDecimal(next, 2) || '1.00',
         });
       }
       await refreshTransaction(transaction.id);
@@ -203,9 +208,10 @@ export function RetailWorkspace({ apiFetch, deviceId }: RetailWorkspaceProps) {
     if (primary.kind === 'RESUME_SALE') resume();
     if (primary.kind === 'PREPARE_PAYMENT') preparePayment();
   };
+  const viewport = useViewport();
 
   return (
-    <main style={layout} aria-label="Retail sale workspace">
+    <main style={layoutFor(viewport)} aria-label="Retail sale workspace">
       <section style={panel} aria-label="Product search and barcode input">
         <SectionTitle title="Find and add" detail="Scan first, then search the sellable catalogue." />
         <label style={labelStyle}>
@@ -500,23 +506,31 @@ function selectedStoreName(
 }
 
 function money(amount: string, currency: string) {
-  return `${currency} ${Number(amount).toLocaleString('en-KE', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
+  return formatMoney(amount, currency);
 }
 
 function message(cause: unknown) {
   return cause instanceof Error ? cause.message : String(cause);
 }
 
-const layout = {
-  display: 'grid',
-  gridTemplateColumns: 'minmax(270px, 0.8fr) minmax(440px, 1.45fr) minmax(300px, 0.9fr)',
-  gap: spacing.lg,
-  padding: spacing.xl,
-  overflow: 'auto',
-} as const;
+/**
+ * Search, basket and totals.
+ *
+ * The three panes only sit side by side once all three can hold their content;
+ * below that they reflow, and the panes fall in the order the operator works
+ * in -- find the item, check the basket, then settle.
+ */
+function layoutFor(viewport: ViewportClass) {
+  return {
+    display: 'grid',
+    gridTemplateColumns: viewportAtMost(viewport, 'expanded')
+      ? autoColumns(300)
+      : 'minmax(270px, 0.8fr) minmax(440px, 1.45fr) minmax(300px, 0.9fr)',
+    gap: spacing.lg,
+    padding: viewportAtMost(viewport, 'compact') ? spacing.md : spacing.xl,
+    overflow: 'auto',
+  } as const;
+}
 const panel = {
   background: surface.raised,
   border: `1px solid ${surface.border}`,

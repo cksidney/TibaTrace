@@ -6,6 +6,7 @@ import {
   statusPalette,
   surface,
   text,
+  viewportAtMost,
 } from '@dawatrace/shared/design-system/index.js';
 import type {
   ClinicalStatus,
@@ -13,6 +14,7 @@ import type {
 } from '@dawatrace/shared/design-system/index.js';
 import { formatInstant } from '@dawatrace/shared/clinical/index.js';
 
+import { useViewport } from '../../state/useViewport.js';
 import { BlockingReason, StatusBadge } from './StatusBadge.js';
 
 export interface ClinicalFinding {
@@ -65,6 +67,10 @@ export function ClinicalRail({
 }) {
   const headline = deriveHeadline(summary);
   const palette = statusPalette[headline.status];
+  const viewport = useViewport();
+  // Stacked under the workspace on narrow screens, so the divider that reads
+  // as "this is a separate column" has to move to the edge it is now on.
+  const stacked = viewportAtMost(viewport, 'medium');
 
   return (
     <aside
@@ -75,9 +81,10 @@ export function ClinicalRail({
         gap: spacing.lg,
         padding: spacing.lg,
         background: surface.raised,
-        borderLeft: `1px solid ${surface.border}`,
-        overflowY: 'auto',
-        minWidth: 320,
+        borderLeft: stacked ? undefined : `1px solid ${surface.border}`,
+        borderTop: stacked ? `1px solid ${surface.border}` : undefined,
+        overflowY: stacked ? 'visible' : 'auto',
+        minWidth: 0,
       }}
     >
       <section

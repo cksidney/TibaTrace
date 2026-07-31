@@ -1,4 +1,4 @@
-import { fontFamily, fontSize, spacing, surface, text } from '@dawatrace/shared/design-system/index.js';
+import { action, fontFamily, fontSize, spacing, surface, text } from '@dawatrace/shared/design-system/index.js';
 import type { CounsellingRecordRequest } from '@dawatrace/shared/dispensing/index.js';
 import { formatInstant } from '@dawatrace/shared/clinical/index.js';
 import { useState } from 'react';
@@ -179,18 +179,30 @@ export function CollectionPanel({
       <div style={{ display: 'flex', gap: spacing.md, flexWrap: 'wrap' }}>
         <Field label="Collector name" value={name} onChange={setName} />
         <Field label="Identity number" value={idNumber} onChange={setIdNumber} numeric />
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: fontSize.caption, color: text.secondary }}>
+        <label
+          style={{
+            display: 'flex',
+            flex: '1 1 200px',
+            minWidth: 0,
+            flexDirection: 'column',
+            gap: 4,
+            fontSize: fontSize.caption,
+            color: text.secondary,
+          }}
+        >
           Relationship
           <select
             value={relationship}
             onChange={(event) => setRelationship(event.target.value)}
             style={{
+              boxSizing: 'border-box',
+              width: '100%',
               padding: '10px 12px',
               borderRadius: 8,
               border: `1px solid ${surface.borderStrong}`,
               fontSize: fontSize.body,
               minHeight: 44,
-              minWidth: 200,
+              minWidth: 0,
             }}
           >
             <option value="SELF">Patient</option>
@@ -214,8 +226,8 @@ export function CollectionPanel({
             borderRadius: 8,
             minHeight: 48,
             border: 'none',
-            background: canConfirm && !busy && !submitted && name.trim() ? '#12854A' : surface.sunken,
-            color: canConfirm && !busy && !submitted && name.trim() ? '#fff' : text.tertiary,
+            background: canConfirm && !busy && !submitted && name.trim() ? action.primary : surface.sunken,
+            color: canConfirm && !busy && !submitted && name.trim() ? action.primaryForeground : text.tertiary,
             fontSize: fontSize.bodyLarge,
             fontWeight: 600,
             cursor: canConfirm && !busy && !submitted && name.trim() ? 'pointer' : 'not-allowed',
@@ -244,18 +256,30 @@ function Field({
   readonly numeric?: boolean;
 }) {
   return (
-    <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: fontSize.caption, color: text.secondary }}>
+    <label
+      style={{
+        display: 'flex',
+        flex: '1 1 200px',
+        minWidth: 0,
+        flexDirection: 'column',
+        gap: 4,
+        fontSize: fontSize.caption,
+        color: text.secondary,
+      }}
+    >
       {label}
       <input
         value={value}
         onChange={(event) => onChange(event.target.value)}
         style={{
+          boxSizing: 'border-box',
+          width: '100%',
           padding: '10px 12px',
           borderRadius: 8,
           border: `1px solid ${surface.borderStrong}`,
           fontSize: fontSize.body,
           minHeight: 44,
-          minWidth: 200,
+          minWidth: 0,
           fontFamily: numeric ? fontFamily.numeric : fontFamily.sans,
         }}
       />

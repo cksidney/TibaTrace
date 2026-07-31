@@ -1,4 +1,4 @@
-import { fontFamily, fontSize, spacing, statusPalette, surface, text } from '@dawatrace/shared/design-system/index.js';
+import { autoColumns, fontFamily, fontSize, spacing, statusPalette, surface, text } from '@dawatrace/shared/design-system/index.js';
 import type { ClinicalStatus } from '@dawatrace/shared/design-system/index.js';
 import type { DispensingLineDTO } from '@dawatrace/shared/dispensing/index.js';
 
@@ -126,7 +126,7 @@ function MedicineLine({
       <dl
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+          gridTemplateColumns: autoColumns(140),
           gap: spacing.md,
           margin: `${spacing.lg}px 0 0`,
         }}

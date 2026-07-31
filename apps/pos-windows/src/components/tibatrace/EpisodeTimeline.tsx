@@ -77,7 +77,7 @@ export function EpisodeTimeline({ entries }: { readonly entries: readonly Timeli
               key={entry.id}
               style={{
                 display: 'grid',
-                gridTemplateColumns: '150px 12px 1fr',
+                gridTemplateColumns: 'clamp(88px, 26vw, 150px) 12px minmax(0, 1fr)',
                 gap: spacing.md,
                 alignItems: 'start',
                 padding: `${spacing.md}px 0`,

@@ -1,6 +1,7 @@
-import { fontFamily, fontSize, spacing, statusPalette, surface, text } from '@dawatrace/shared/design-system/index.js';
+import { action, autoColumns, fontFamily, fontSize, spacing, statusPalette, surface, text } from '@dawatrace/shared/design-system/index.js';
 import type { PaymentMode, PaymentState, PaymentTenderType } from '@dawatrace/shared/dispensing/index.js';
 import { TENDER_OPTIONS, paymentPermitsSupply } from '@dawatrace/shared/dispensing/index.js';
+import { formatDecimal, formatMoney } from '@dawatrace/shared/money.js';
 import { useState } from 'react';
 
 import { BlockingReason, StatusBadge } from './StatusBadge.js';
@@ -91,7 +92,7 @@ export function remainingAmount(due: string | null, settled: string | null): num
 export function defaultAmount(due: string | null, settled: string | null): string {
   const remaining = remainingAmount(due, settled);
   if (remaining === null || remaining <= 0) return '';
-  return remaining.toFixed(2);
+  return formatDecimal(remaining, 2);
 }
 
 export interface PaymentActionState {
@@ -186,7 +187,7 @@ export function PaymentPanel({
     busy,
     submitted,
   });
-  const action =
+  const paymentControl =
     tender === 'CARD' && !reference.trim()
       ? { enabled: false, reason: 'Enter the approval reference from the card terminal.' }
       : baseAction;
@@ -198,12 +199,12 @@ export function PaymentPanel({
         <StatusBadge status={meta.status} label={meta.label} />
       </header>
 
-      <dl style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: spacing.lg, margin: 0 }}>
-        <Amount label="Amount due" value={amountDue ?? 'Not priced'} />
-        <Amount label="Settled" value={amountSettled ?? '—'} />
+      <dl style={{ display: 'grid', gridTemplateColumns: autoColumns(200), gap: spacing.lg, margin: 0 }}>
+        <Amount label="Amount due" value={amountDue == null ? 'Not priced' : formatMoney(amountDue)} />
+        <Amount label="Settled" value={amountSettled == null ? '—' : formatMoney(amountSettled)} />
         <Amount
           label="Remaining"
-          value={remaining === null ? '—' : remaining.toFixed(2)}
+          value={remaining === null ? '—' : formatDecimal(remaining, 2)}
           emphasis={remaining !== null && remaining > 0}
         />
       </dl>
@@ -254,11 +255,11 @@ export function PaymentPanel({
                 borderRadius: 8,
                 minHeight: 44,
                 cursor: option.available ? 'pointer' : 'not-allowed',
-                border: `1px solid ${tender === option.type ? statusPalette.INFORMATION.accent : surface.borderStrong}`,
+                border: `1px solid ${tender === option.type ? action.selectedBorder : surface.borderStrong}`,
                 background: !option.available
                   ? surface.sunken
                   : tender === option.type
-                    ? statusPalette.INFORMATION.surface
+                    ? action.selectedSurface
                     : surface.raised,
                 color: option.available ? text.primary : text.tertiary,
                 fontSize: fontSize.body,
@@ -289,8 +290,8 @@ export function PaymentPanel({
         type="button"
         // A single derived gate gives `disabled`, the fill and the cursor the
         // same answer, so the control can never look available while inert.
-        disabled={!action.enabled}
-        title={action.reason}
+        disabled={!paymentControl.enabled}
+        title={paymentControl.reason}
         onClick={() => {
           // Guards a double-submit: a second click must not become a second
           // charge while the first is still in flight.
@@ -305,11 +306,11 @@ export function PaymentPanel({
           borderRadius: 8,
           border: 'none',
           minHeight: 48,
-          background: action.enabled ? '#12854A' : surface.sunken,
-          color: action.enabled ? '#fff' : text.tertiary,
+          background: paymentControl.enabled ? action.primary : surface.sunken,
+          color: paymentControl.enabled ? action.primaryForeground : text.tertiary,
           fontSize: fontSize.bodyLarge,
           fontWeight: 600,
-          cursor: action.enabled ? 'pointer' : 'not-allowed',
+          cursor: paymentControl.enabled ? 'pointer' : 'not-allowed',
         }}
       >
         {busy ? 'Confirming payment…' : 'Take payment'}
@@ -317,8 +318,8 @@ export function PaymentPanel({
 
       {/* A disabled control with no stated reason reads as a broken screen, and
           operators route around broken screens. */}
-      {!action.enabled && action.reason ? (
-        <p style={{ margin: 0, fontSize: fontSize.caption, color: text.tertiary }}>{action.reason}</p>
+      {!paymentControl.enabled && paymentControl.reason ? (
+        <p style={{ margin: 0, fontSize: fontSize.caption, color: text.tertiary }}>{paymentControl.reason}</p>
       ) : null}
 
       {paymentPermitsSupply(paymentState) ? (
@@ -365,19 +366,31 @@ function Input({
   readonly numeric?: boolean;
 }) {
   return (
-    <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: fontSize.caption, color: text.secondary }}>
+    <label
+      style={{
+        display: 'flex',
+        flex: '1 1 200px',
+        minWidth: 0,
+        flexDirection: 'column',
+        gap: 4,
+        fontSize: fontSize.caption,
+        color: text.secondary,
+      }}
+    >
       {label}
       <input
         value={value}
         onChange={(event) => onChange(event.target.value)}
         inputMode={numeric ? 'decimal' : 'text'}
         style={{
+          boxSizing: 'border-box',
+          width: '100%',
           padding: '10px 12px',
           borderRadius: 8,
           border: `1px solid ${surface.borderStrong}`,
           fontSize: fontSize.body,
           minHeight: 44,
-          minWidth: 200,
+          minWidth: 0,
           fontFamily: numeric ? fontFamily.numeric : fontFamily.sans,
           fontVariantNumeric: 'tabular-nums',
         }}

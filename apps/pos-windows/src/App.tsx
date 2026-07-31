@@ -1,4 +1,4 @@
-import { action, deriveStages, fontFamily, fontSize, nextAction, spacing, surface, text } from '@dawatrace/shared/design-system/index.js';
+import { action, deriveStages, fontFamily, fontSize, nextAction, spacing, surface, text, viewportAtMost } from '@dawatrace/shared/design-system/index.js';
 import { useEffect, useMemo, useState } from 'react';
 
 import { ClinicalRail } from './components/tibatrace/ClinicalRail.js';
@@ -17,6 +17,7 @@ import { BlockingReason } from './components/tibatrace/StatusBadge.js';
 import { WorkflowRibbon } from './components/tibatrace/WorkflowRibbon.js';
 import { useClinicalScreening } from './state/useClinicalScreening.js';
 import { usePosWorkflow } from './state/usePosWorkflow.js';
+import { useViewport } from './state/useViewport.js';
 import { createPosRuntime } from './runtime.js';
 
 const runtime = createPosRuntime();
@@ -101,6 +102,11 @@ function OperationsConsole({
   const [clinicalReviewBusy, setClinicalReviewBusy] = useState(false);
   const [clinicalReviewError, setClinicalReviewError] = useState('');
   const [locked, setLocked] = useState(false);
+  const viewport = useViewport();
+  // Below `expanded` the rail cannot hold its 320px and leave the workspace a
+  // usable width, so it moves under the workspace instead of beside it. It is
+  // still on the page -- a blocking finding must never be a screen away.
+  const railBeside = !viewportAtMost(viewport, 'medium');
 
   useEffect(() => {
     void refreshQueue();
@@ -246,7 +252,12 @@ function OperationsConsole({
       style={{
         display: 'grid',
         gridTemplateRows: 'auto auto auto auto 1fr auto',
-        height: '100vh',
+        // dvh, not vh: on a phone the browser chrome is subtracted from dvh, so
+        // the action bar sits above the address bar instead of under it. The
+        // height is only pinned once the workspace scrolls internally; on a
+        // stacked layout the document scrolls as a whole.
+        minHeight: '100dvh',
+        height: railBeside ? '100dvh' : undefined,
         fontFamily: fontFamily.sans,
         background: surface.page,
         color: text.primary,
@@ -276,8 +287,22 @@ function OperationsConsole({
       <PatientSafetyBanner patient={patient} />
       <WorkflowRibbon stages={stages} />
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 360px', minHeight: 0 }}>
-        <main style={{ padding: spacing.xl, overflowY: 'auto' }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: railBeside
+            ? `minmax(0, 1fr) clamp(300px, 24vw, 360px)`
+            : 'minmax(0, 1fr)',
+          minHeight: 0,
+        }}
+      >
+        <main
+          style={{
+            padding: viewportAtMost(viewport, 'compact') ? spacing.md : spacing.xl,
+            overflowY: railBeside ? 'auto' : 'visible',
+            minWidth: 0,
+          }}
+        >
           {state.notice ? (
             <div style={{ marginBottom: spacing.lg }}>
               <BlockingReason
@@ -350,7 +375,7 @@ function OperationsConsole({
           )}
         </main>
 
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
           {/* Why the screening is unavailable, stated rather than left as an
               unexplained empty rail. An operator who cannot tell a failed
               request from an unscreened basket will assume the latter. */}
@@ -408,15 +433,23 @@ function Header({
   readonly onLock: () => void;
   readonly onLogout: () => Promise<void>;
 }) {
+  const viewport = useViewport();
+  const compact = viewportAtMost(viewport, 'compact');
+
   return (
     <header
       style={{
         display: 'flex',
         alignItems: 'center',
-        gap: spacing.lg,
-        padding: `${spacing.sm}px ${spacing.xl}px`,
+        // Wraps rather than compressing: the workspace tabs and the lock and
+        // sign-out controls all stay full size and reachable, on a second row
+        // if the width cannot hold one.
+        flexWrap: 'wrap',
+        rowGap: spacing.sm,
+        columnGap: spacing.lg,
+        padding: `${spacing.sm}px ${compact ? spacing.md : spacing.xl}px`,
         background: surface.inverse,
-        color: text.inverse,
+        color: action.primaryForeground,
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: spacing.sm }}>
@@ -438,10 +471,12 @@ function Header({
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           <strong style={{ fontSize: fontSize.bodyLarge, letterSpacing: 0.3 }}>TibaTrace</strong>
-          <span style={{ fontSize: fontSize.caption, opacity: 0.8 }}>Clinical operations console</span>
+          {compact ? null : (
+            <span style={{ fontSize: fontSize.caption, opacity: 0.8 }}>Clinical operations console</span>
+          )}
         </div>
       </div>
-      <div style={{ display: 'flex', gap: 4 }}>
+      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
         {(['clinical', 'retail', 'register', 'print', 'sync'] as const).map((option) => (
           <button
             key={option}
@@ -452,8 +487,8 @@ function Header({
               padding: '4px 10px',
               border: '1px solid rgba(255,255,255,0.35)',
               borderRadius: 7,
-              background: workspace === option ? '#fff' : 'transparent',
-              color: workspace === option ? surface.inverse : '#fff',
+            background: workspace === option ? text.inverse : 'transparent',
+            color: workspace === option ? surface.inverse : text.inverse,
               fontWeight: 700,
               cursor: 'pointer',
               textTransform: 'capitalize',
@@ -463,7 +498,7 @@ function Header({
           </button>
         ))}
       </div>
-      <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: spacing.md }}>
+      <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: spacing.md, flexWrap: 'wrap' }}>
         <span style={{ fontSize: fontSize.caption, opacity: 0.8 }}>
           {/* The operator's name, not a truncated primary key. Falls back to
               the id only when the server did not send a username. */}
@@ -477,7 +512,7 @@ function Header({
             padding: '6px 12px',
             border: '1px solid rgba(255,255,255,0.35)',
             borderRadius: 8,
-            background: '#fff',
+          background: text.inverse,
             color: surface.inverse,
             cursor: 'pointer',
             fontWeight: 700,
@@ -494,7 +529,7 @@ function Header({
             border: '1px solid rgba(255,255,255,0.35)',
             borderRadius: 8,
             background: 'transparent',
-            color: '#fff',
+          color: action.primaryForeground,
             cursor: 'pointer',
           }}
         >
@@ -532,7 +567,7 @@ function WorkstationLock({
         placeItems: 'center',
         padding: spacing.xl,
         background: surface.inverse,
-        color: text.inverse,
+        color: action.primaryForeground,
       }}
     >
       <form
@@ -607,7 +642,7 @@ const lockPrimary = (disabled: boolean) => ({
   minHeight: 44,
   border: 'none',
   borderRadius: 8,
-  background: disabled ? surface.sunken : '#12854A',
+  background: disabled ? surface.sunken : action.primary,
   color: disabled ? text.tertiary : '#fff',
   fontSize: fontSize.body,
   fontWeight: 700,
@@ -635,106 +670,151 @@ function SignInScreen({
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(initialError);
+  const viewport = useViewport();
+  // The hero column needs roughly 300px before its 42px headline starts
+  // breaking words. Below `expanded` it goes under the form instead.
+  const sideBySide = !viewportAtMost(viewport, 'medium');
 
   return (
     <main
       style={{
-        minHeight: '100vh',
+        minHeight: '100dvh',
         display: 'grid',
         placeItems: 'center',
-        padding: spacing.xl,
+        padding: viewportAtMost(viewport, 'compact') ? spacing.lg : spacing.xxl,
         boxSizing: 'border-box',
-        background: surface.page,
+        background: `linear-gradient(135deg, ${surface.inverse} 0%, #14243B 52%, #0D403A 100%)`,
         fontFamily: fontFamily.sans,
-        color: text.primary,
+        color: action.primaryForeground,
       }}
     >
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          setBusy(true);
-          setError('');
-          void onSignIn(username.trim(), password)
-            .catch((cause: unknown) =>
-              setError(cause instanceof Error ? cause.message : String(cause)),
-            )
-            .finally(() => setBusy(false));
-        }}
+      <div
         style={{
-          width: 'min(420px, 100%)',
+          width: 'min(1080px, 100%)',
           display: 'grid',
-          gap: spacing.md,
-          padding: spacing.xxl,
-          border: `1px solid ${surface.border}`,
-          borderRadius: 16,
-          background: surface.raised,
-          boxShadow: '0 20px 50px rgba(0, 20, 50, 0.12)',
+          gridTemplateColumns: sideBySide
+            ? 'minmax(300px, 1.15fr) minmax(380px, 0.85fr)'
+            : 'minmax(0, 1fr)',
+          gap: sideBySide ? spacing.xxxl : spacing.xl,
+          alignItems: 'center',
         }}
       >
-        <img
-          src="./brand/tibatrace-logo.jpeg"
-          alt="TibaTrace — Trace. Trust. Health."
-          style={{ width: 180, maxWidth: '100%', margin: '0 auto' }}
-        />
-        <div>
-          <h1 style={{ margin: 0, fontSize: fontSize.screenTitle }}>Windows POS</h1>
-          <p style={{ color: text.secondary, marginBottom: 0 }}>
-            Sign in with your assigned TibaTrace operator account.
-          </p>
-        </div>
-        {error ? <BlockingReason status="BLOCKING" reason={error} /> : null}
-        <label style={{ display: 'grid', gap: spacing.xs, fontSize: fontSize.caption }}>
-          Username
-          <input
-            autoComplete="username"
-            value={username}
-            onChange={(event) => setUsername(event.target.value)}
-            required
-            maxLength={150}
-            style={{
-              minHeight: 44,
-              border: `1px solid ${surface.borderStrong}`,
-              borderRadius: 8,
-              padding: '0 12px',
-              fontSize: fontSize.body,
-            }}
-          />
-        </label>
-        <label style={{ display: 'grid', gap: spacing.xs, fontSize: fontSize.caption }}>
-          Password
-          <input
-            type="password"
-            autoComplete="current-password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            required
-            maxLength={256}
-            style={{
-              minHeight: 44,
-              border: `1px solid ${surface.borderStrong}`,
-              borderRadius: 8,
-              padding: '0 12px',
-              fontSize: fontSize.body,
-            }}
-          />
-        </label>
-        <button
-          type="submit"
-          disabled={busy || !username.trim() || !password}
+        <section
+          aria-labelledby="pos-welcome-title"
           style={{
-            minHeight: 44,
-            border: 'none',
-            borderRadius: 8,
-            background: busy || !username.trim() || !password ? surface.sunken : '#12854A',
-            color: busy || !username.trim() || !password ? text.tertiary : '#fff',
-            fontSize: fontSize.body,
-            fontWeight: 600,
-            cursor: busy || !username.trim() || !password ? 'not-allowed' : 'pointer',
+            maxWidth: 560,
+            // Once stacked, the form is what the operator came for; the hero
+            // copy moves below it rather than pushing sign-in off the fold.
+            order: sideBySide ? 0 : 1,
           }}
         >
-          {busy ? 'Signing in…' : 'Sign in'}
-        </button>
-      </form>
+          <div style={{ display: 'flex', alignItems: 'center', gap: spacing.md, marginBottom: spacing.xxl }}>
+            <div style={{ width: 52, height: 52, overflow: 'hidden', borderRadius: 14, background: text.inverse }}>
+              <img
+                src="./brand/tibatrace-logo.jpeg"
+                alt=""
+                style={{ display: 'block', width: 130, height: 130, maxWidth: 'none', transform: 'translate(-38px, -20px)' }}
+              />
+            </div>
+            <div style={{ display: 'grid', gap: 2 }}>
+              <strong style={{ fontSize: fontSize.medicineName }}>TibaTrace</strong>
+              <span style={{ fontSize: fontSize.caption, opacity: 0.75, letterSpacing: 0.8 }}>CLINICAL OPERATIONS</span>
+            </div>
+          </div>
+          <p style={{ margin: 0, color: '#6EE7D0', fontSize: fontSize.caption, fontWeight: 700, letterSpacing: 1.4, textTransform: 'uppercase' }}>
+            Trace. Trust. Health.
+          </p>
+          <h1
+            id="pos-welcome-title"
+            style={{ margin: `${spacing.md}px 0`, maxWidth: 520, fontSize: 'clamp(28px, 5vw, 42px)', lineHeight: 1.08 }}
+          >
+            Safe dispensing starts with a trusted operator.
+          </h1>
+          <p style={{ maxWidth: 520, margin: 0, color: '#CBD5E1', fontSize: fontSize.bodyLarge, lineHeight: 1.6 }}>
+            One secure workstation for prescription review, clinical screening,
+            payment, counselling and collection.
+          </p>
+          <div style={{ display: 'flex', gap: spacing.sm, flexWrap: 'wrap', marginTop: spacing.xl }}>
+            {['Clinical safety', 'Offline resilience', 'Audited actions'].map((feature) => (
+              <span key={feature} style={{ padding: `${spacing.sm}px ${spacing.md}px`, border: '1px solid rgba(255,255,255,0.18)', borderRadius: 999, fontSize: fontSize.caption, color: '#E2E8F0' }}>
+                {feature}
+              </span>
+            ))}
+          </div>
+        </section>
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            setBusy(true);
+            setError('');
+            void onSignIn(username.trim(), password)
+              .catch((cause: unknown) =>
+                setError(cause instanceof Error ? cause.message : String(cause)),
+              )
+              .finally(() => setBusy(false));
+          }}
+          style={{
+            display: 'grid',
+            gap: spacing.md,
+            padding: viewportAtMost(viewport, 'compact') ? spacing.lg : spacing.xxl,
+            border: '1px solid rgba(255,255,255,0.16)',
+            borderRadius: 20,
+            background: surface.raised,
+            color: text.primary,
+            boxShadow: '0 28px 80px rgba(0, 0, 0, 0.32)',
+            minWidth: 0,
+          }}
+        >
+          <div>
+            <p style={{ margin: `0 0 ${spacing.sm}px`, color: action.primary, fontSize: fontSize.caption, fontWeight: 700, letterSpacing: 0.8, textTransform: 'uppercase' }}>Protected workstation</p>
+            <h2 style={{ margin: 0, fontSize: fontSize.screenTitle }}>Sign in to Windows POS</h2>
+            <p style={{ color: text.secondary, marginBottom: 0 }}>Use your assigned TibaTrace operator account.</p>
+          </div>
+          {error ? <BlockingReason status="BLOCKING" reason={error} /> : null}
+          <label style={{ display: 'grid', gap: spacing.xs, fontSize: fontSize.caption, fontWeight: 600 }}>
+            Email or username
+            <input
+              autoComplete="username"
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              required
+              maxLength={150}
+              style={lockInput}
+            />
+          </label>
+          <label style={{ display: 'grid', gap: spacing.xs, fontSize: fontSize.caption, fontWeight: 600 }}>
+            Password
+            <input
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              required
+              maxLength={256}
+              style={lockInput}
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={busy || !username.trim() || !password}
+            style={{
+              minHeight: 48,
+              border: 'none',
+              borderRadius: 10,
+              background: busy || !username.trim() || !password ? action.disabled : action.primary,
+              color: busy || !username.trim() || !password ? action.disabledForeground : action.primaryForeground,
+              fontSize: fontSize.body,
+              fontWeight: 700,
+              cursor: busy || !username.trim() || !password ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {busy ? 'Signing in…' : 'Sign in securely'}
+          </button>
+          <small style={{ color: text.tertiary, lineHeight: 1.5 }}>
+            Access is encrypted, audited and restricted to authorised pharmacy staff.
+          </small>
+        </form>
+      </div>
     </main>
   );
 }
@@ -775,6 +855,8 @@ function Queue({
           style={{
             display: 'flex',
             justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: spacing.sm,
             padding: spacing.md,
             borderRadius: 10,
             border: `1px solid ${surface.border}`,
@@ -825,7 +907,7 @@ function EpisodeWorkspace({
 }) {
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: spacing.md }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', flexWrap: 'wrap', gap: spacing.md }}>
         <h2 style={{ fontSize: fontSize.sectionTitle, margin: 0, fontVariantNumeric: 'tabular-nums' }}>
           {episode.dispensing_number}
         </h2>
@@ -882,14 +964,21 @@ function ActionBar({
       style={{
         display: 'flex',
         alignItems: 'center',
+        flexWrap: 'wrap',
         gap: spacing.md,
-        padding: `${spacing.md}px ${spacing.xl}px`,
+        padding: `${spacing.md}px clamp(${spacing.md}px, 3vw, ${spacing.xl}px)`,
         background: surface.raised,
         borderTop: `1px solid ${surface.border}`,
+        // Once the layout stacks, the document scrolls rather than the
+        // workspace, and a non-sticky bar would leave the next action at the
+        // bottom of a long page.
+        position: 'sticky',
+        bottom: 0,
+        zIndex: 1,
       }}
     >
       <span style={{ fontSize: fontSize.caption, color: text.secondary }}>Next: {nextLabel}</span>
-      <div style={{ marginLeft: 'auto', display: 'flex', gap: spacing.sm }}>
+      <div style={{ marginLeft: 'auto', display: 'flex', gap: spacing.sm, flexWrap: 'wrap' }}>
         {primary ? (
           <PrimaryButton onClick={primary.onClick}>{primary.label}</PrimaryButton>
         ) : (

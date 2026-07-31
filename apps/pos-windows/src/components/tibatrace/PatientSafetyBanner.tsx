@@ -66,8 +66,14 @@ export function PatientSafetyBanner({ patient }: { patient: PatientSummary | nul
       style={{
         display: 'flex',
         alignItems: 'center',
-        gap: spacing.xl,
-        padding: `${spacing.md}px ${spacing.xl}px`,
+        // Identity, safety badges and the prescription reference each move to
+        // their own line rather than being squeezed. Without this the three
+        // compete for one row, and on a narrow screen the prescription
+        // reference was compressed to a few pixels of clipped text.
+        flexWrap: 'wrap',
+        rowGap: spacing.sm,
+        columnGap: spacing.xl,
+        padding: `${spacing.md}px clamp(${spacing.md}px, 3vw, ${spacing.xl}px)`,
         background: surface.raised,
         borderBottom: `1px solid ${surface.border}`,
       }}
@@ -106,6 +112,7 @@ export function PatientSafetyBanner({ patient }: { patient: PatientSummary | nul
         <div
           style={{
             marginLeft: 'auto',
+            flexShrink: 0,
             fontSize: fontSize.caption,
             color: text.secondary,
             fontVariantNumeric: 'tabular-nums',

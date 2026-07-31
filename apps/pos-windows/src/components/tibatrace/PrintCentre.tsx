@@ -1,4 +1,4 @@
-import { fontSize, spacing, statusPalette, surface, text } from '@dawatrace/shared/design-system/index.js';
+import { action, autoColumns, fontSize, spacing, statusPalette, surface, text } from '@dawatrace/shared/design-system/index.js';
 import { useCallback, useEffect, useState } from 'react';
 
 type PrintStatus = 'QUEUED' | 'RENDERED' | 'SENDING' | 'PRINTED' | 'FAILED' | 'RETRY_REQUIRED' | 'CANCELLED';
@@ -297,7 +297,7 @@ const jobList = { display: 'grid', gap: spacing.md };
 const jobCard = { display: 'grid', gap: spacing.md, padding: spacing.lg, border: `1px solid ${surface.border}`, borderLeftWidth: 5, borderRadius: 12, background: surface.raised };
 const jobHeading = { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: spacing.md };
 const statusChip = { display: 'inline-flex', alignItems: 'center', border: '1px solid', borderRadius: 999, padding: '4px 8px', fontSize: fontSize.caption, fontWeight: 700, whiteSpace: 'nowrap' as const };
-const detailsGrid = { display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: spacing.md, margin: 0 };
+const detailsGrid = { display: 'grid', gridTemplateColumns: autoColumns(180), gap: spacing.md, margin: 0 };
 const detailLabel = { color: text.secondary, fontSize: fontSize.caption, textTransform: 'uppercase' as const, letterSpacing: 0.4 };
 const detailValue = { margin: '3px 0 0', color: text.primary, fontSize: fontSize.body, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const };
 const detailText = { margin: 0, color: text.secondary, fontSize: fontSize.caption, lineHeight: 1.45 };
@@ -311,4 +311,4 @@ const fieldLabel = { display: 'grid', gap: spacing.xs, color: text.primary, font
 const radioLabel = { display: 'flex', gap: spacing.sm, alignItems: 'center', color: text.primary, fontSize: fontSize.body };
 const textarea = { minHeight: 90, resize: 'vertical' as const, padding: spacing.sm, border: `1px solid ${surface.borderStrong}`, borderRadius: 8, color: text.primary, font: 'inherit' };
 const modalActions = { display: 'flex', justifyContent: 'flex-end', gap: spacing.sm };
-const primaryButton = (enabled: boolean) => ({ minHeight: 40, padding: '8px 12px', border: 'none', borderRadius: 8, background: enabled ? '#12854A' : surface.sunken, color: enabled ? '#fff' : text.tertiary, fontWeight: 700, cursor: enabled ? 'pointer' : 'not-allowed' });
+const primaryButton = (enabled: boolean) => ({ minHeight: 40, padding: '8px 12px', border: 'none', borderRadius: 8, background: enabled ? action.primary : surface.sunken, color: enabled ? action.primaryForeground : text.tertiary, fontWeight: 700, cursor: enabled ? 'pointer' : 'not-allowed' });

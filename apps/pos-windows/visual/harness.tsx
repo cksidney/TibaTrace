@@ -18,6 +18,10 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
+// The same document rules the renderer boots with. Without it the harness
+// judged every layout under the browser's default `content-box`, so a
+// component that overflows its column in the shipped app fitted here.
+import '../src/global.css';
 import { SCENARIOS, SCENARIOS_BY_ID } from './scenarios.js';
 
 const params = new URLSearchParams(window.location.search);

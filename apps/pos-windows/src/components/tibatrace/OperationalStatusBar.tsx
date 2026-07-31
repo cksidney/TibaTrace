@@ -2,7 +2,7 @@ import {
   PosOperationsClient,
 } from '@dawatrace/shared/operational/index.js';
 import type { PosOperationalRuntimeDTO } from '@dawatrace/shared/operational/index.js';
-import { spacing, statusPalette, surface, text } from '@dawatrace/shared/design-system/index.js';
+import { autoColumns, spacing, statusPalette, surface, text } from '@dawatrace/shared/design-system/index.js';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 interface OperationalStatusBarProps {
@@ -70,10 +70,13 @@ export function OperationalStatusBar({
       aria-label="Operational status"
       style={{
         display: 'grid',
-        gridTemplateColumns: 'minmax(240px, 1.4fr) repeat(5, minmax(110px, 1fr)) auto',
+        // Every field is equally load-bearing, so none of them is dropped on a
+        // narrow screen; the row reflows into as many columns as fit and the
+        // readiness summary keeps the full width it needs to be read.
+        gridTemplateColumns: autoColumns(150),
         gap: spacing.md,
         alignItems: 'center',
-        padding: `${spacing.sm}px ${spacing.xl}px`,
+        padding: `${spacing.sm}px clamp(${spacing.md}px, 3vw, ${spacing.xl}px)`,
         borderBottom: `1px solid ${palette.border}`,
         background: palette.surface,
         color: palette.foreground,

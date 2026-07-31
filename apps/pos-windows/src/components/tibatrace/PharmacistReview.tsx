@@ -1,4 +1,4 @@
-import { fontSize, spacing, statusPalette, surface, text } from '@dawatrace/shared/design-system/index.js';
+import { autoColumns, fontSize, spacing, statusPalette, surface, text } from '@dawatrace/shared/design-system/index.js';
 import { useState } from 'react';
 
 import { BlockingReason, StatusBadge } from './StatusBadge.js';
@@ -208,7 +208,7 @@ const panel: React.CSSProperties = {
 
 const metaGrid: React.CSSProperties = {
   display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+  gridTemplateColumns: autoColumns(160),
   gap: spacing.md,
   margin: 0,
 };

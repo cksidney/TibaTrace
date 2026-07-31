@@ -1,5 +1,10 @@
 import type { DurableActionJournal, OfflineAction } from '@dawatrace/shared/dispensing/index.js';
-import { fontSize, spacing, statusPalette, surface, text } from '@dawatrace/shared/design-system/index.js';
+import {
+  checkPosClientVersion,
+  getCachedPosClientVersion,
+  type PosClientVersionStatus,
+} from '@dawatrace/shared/operational/index.js';
+import { action, autoColumns, fontSize, spacing, statusPalette, surface, text } from '@dawatrace/shared/design-system/index.js';
 import { useCallback, useEffect, useState } from 'react';
 
 interface RuntimeStatus {
@@ -21,6 +26,11 @@ export interface SyncCentreVisualSnapshot {
   readonly runtime: RuntimeStatus | null;
   readonly clinicalConnected: boolean | null;
   readonly printCounts: { readonly queued: number; readonly retryRequired: number };
+  readonly clientVersion?: PosClientVersionStatus | null;
+}
+
+function localClientVersion(): string {
+  return window.tibatrace?.version ?? '0.0.0';
 }
 
 export function SyncCentre({ apiFetch, deviceId, journal, onOpenPrint, initialSnapshot, autoRefresh = true }: {
@@ -36,6 +46,9 @@ export function SyncCentre({ apiFetch, deviceId, journal, onOpenPrint, initialSn
   const [runtime, setRuntime] = useState<RuntimeStatus | null>(initialSnapshot?.runtime ?? null);
   const [clinicalConnected, setClinicalConnected] = useState<boolean | null>(initialSnapshot?.clinicalConnected ?? null);
   const [printCounts, setPrintCounts] = useState(initialSnapshot?.printCounts ?? { queued: 0, retryRequired: 0 });
+  const [clientVersion, setClientVersion] = useState<PosClientVersionStatus | null>(
+    initialSnapshot?.clientVersion ?? getCachedPosClientVersion(),
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -44,7 +57,12 @@ export function SyncCentre({ apiFetch, deviceId, journal, onOpenPrint, initialSn
   const request = useCallback(async (path: string, init?: RequestInit) => {
     const response = await apiFetch(path, {
       ...init,
-      headers: { Accept: 'application/json', ...(init?.headers ?? {}) },
+      headers: {
+        Accept: 'application/json',
+        'X-POS-Client-Platform': 'WINDOWS',
+        'X-POS-Client-Version': localClientVersion(),
+        ...(init?.headers ?? {}),
+      },
     });
     if (response.ok) return response;
     const payload = (await response.json().catch(() => null)) as { error?: string; detail?: string } | null;
@@ -55,10 +73,15 @@ export function SyncCentre({ apiFetch, deviceId, journal, onOpenPrint, initialSn
     setBusy(true);
     setError('');
     try {
-      const [runtimeResult, clinicalResult, printResult] = await Promise.allSettled([
+      const [runtimeResult, clinicalResult, printResult, versionResult] = await Promise.allSettled([
         request(`/api/pos/shift/registers/runtime/?device_id=${encodeURIComponent(deviceId)}`).then(async (response) => response.json() as Promise<RuntimeStatus>),
         request('/api/pos/clinical-screening/ruleset-version/'),
         request(`/api/pos/dispensing/print-jobs/?device_id=${encodeURIComponent(deviceId)}`).then(async (response) => response.json() as Promise<PrintJobSummary[] | { results?: PrintJobSummary[] }>),
+        checkPosClientVersion({
+          platform: 'WINDOWS',
+          version: localClientVersion(),
+          fetcher: apiFetch,
+        }, { force: true }),
       ]);
       if (runtimeResult.status === 'fulfilled') setRuntime(runtimeResult.value);
       else setRuntime(null);
@@ -72,6 +95,7 @@ export function SyncCentre({ apiFetch, deviceId, journal, onOpenPrint, initialSn
       } else {
         setPrintCounts({ queued: 0, retryRequired: 0 });
       }
+      if (versionResult.status === 'fulfilled') setClientVersion(versionResult.value);
       setEntries(journal?.entries ?? []);
       if (runtimeResult.status === 'rejected' && clinicalResult.status === 'rejected' && printResult.status === 'rejected') {
         throw new Error('No authoritative sync status source is reachable.');
@@ -81,7 +105,7 @@ export function SyncCentre({ apiFetch, deviceId, journal, onOpenPrint, initialSn
     } finally {
       setBusy(false);
     }
-  }, [deviceId, journal, request]);
+  }, [apiFetch, deviceId, journal, request]);
 
   useEffect(() => {
     if (autoRefresh) void refresh();
@@ -113,6 +137,20 @@ export function SyncCentre({ apiFetch, deviceId, journal, onOpenPrint, initialSn
 
   const unknownEntries = entries.filter((entry) => entry.state === 'NEEDS_RECONCILIATION');
   const pendingEntries = entries.filter((entry) => entry.state === 'PENDING' || entry.state === 'IN_FLIGHT');
+  const versionState = clientVersion?.update_required
+    ? 'BLOCKING'
+    : clientVersion?.update_available
+      ? 'ACTION_REQUIRED'
+      : clientVersion
+        ? 'SAFE'
+        : 'ACTION_REQUIRED';
+  const versionDetail = !clientVersion
+    ? 'Daily HQ alignment check has not completed yet.'
+    : clientVersion.update_required
+      ? `HQ requires build ${clientVersion.latest_build} (${clientVersion.latest_version}). This till is on ${clientVersion.client_version || `build ${clientVersion.client_build}`}. ${clientVersion.operations_impact || 'Update before continuing dispensing, cash or clinical work.'}`
+      : clientVersion.update_available
+        ? `HQ published ${clientVersion.latest_version}. ${clientVersion.operations_impact || 'Install the update from HQ till installers when the shift allows.'}`
+        : `Aligned with HQ release ${clientVersion.latest_version || clientVersion.client_version}. Rechecks daily.`;
 
   return (
     <main style={root} aria-label="Sync Centre">
@@ -129,6 +167,7 @@ export function SyncCentre({ apiFetch, deviceId, journal, onOpenPrint, initialSn
       {notice ? <p role="status" style={noticeText}>{notice}</p> : null}
 
       <section style={grid}>
+        <StatusCard title="HQ client alignment" state={versionState} detail={versionDetail} />
         <StatusCard title="Clinical authority" state={clinicalConnected === true ? 'SAFE' : clinicalConnected === false ? 'BLOCKING' : 'ACTION_REQUIRED'} detail={clinicalConnected === true ? 'The server clinical ruleset endpoint is reachable. Offline clinical decisions are not replayed from this screen.' : clinicalConnected === false ? 'Clinical authority could not be reached. Dispensing remains fail-closed.' : 'Checking the clinical authority endpoint.'} />
         <StatusCard title="Operational context" state={runtime?.readiness === 'READY' ? 'SAFE' : runtime ? 'ACTION_REQUIRED' : 'BLOCKING'} detail={runtime ? runtime.notices[0] || `Register status: ${runtime.readiness.toLowerCase()}.` : 'Operational context is unavailable.'} />
         <StatusCard title="Printing" state={printCounts.retryRequired > 0 ? 'ACTION_REQUIRED' : 'SAFE'} detail={printCounts.retryRequired > 0 ? `${printCounts.retryRequired} print job${plural(printCounts.retryRequired)} requires a controlled retry.` : `${printCounts.queued} queued or rendered document${plural(printCounts.queued)} on this device.`} actionLabel="Open Print Centre" onAction={onOpenPrint} />
@@ -147,6 +186,7 @@ export function SyncCentre({ apiFetch, deviceId, journal, onOpenPrint, initialSn
     </main>
   );
 }
+
 
 function StatusCard({ title, state, detail, actionLabel, onAction }: { readonly title: string; readonly state: keyof typeof statusPalette; readonly detail: string; readonly actionLabel?: string; readonly onAction?: () => void }) {
   const palette = statusPalette[state];
@@ -175,7 +215,7 @@ const sectionHeading = { margin: 0, color: text.primary, fontSize: fontSize.sect
 const subheading = { margin: 0, color: text.secondary, lineHeight: 1.5 };
 const errorText = { margin: 0, padding: spacing.md, borderRadius: 8, background: statusPalette.BLOCKING.surface, color: statusPalette.BLOCKING.foreground };
 const noticeText = { margin: 0, padding: spacing.md, borderRadius: 8, background: statusPalette.SAFE.surface, color: statusPalette.SAFE.foreground };
-const grid = { display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: spacing.md };
+const grid = { display: 'grid', gridTemplateColumns: autoColumns(260), gap: spacing.md };
 const statusCard = { display: 'grid', gap: spacing.sm, padding: spacing.lg, border: `1px solid ${surface.border}`, borderTopWidth: 4, borderRadius: 12, background: surface.raised };
 const stateLabel = { margin: 0, fontSize: fontSize.bodyLarge, fontWeight: 700 };
 const journalCard = { display: 'grid', gap: spacing.md, padding: spacing.lg, border: `1px solid ${surface.border}`, borderRadius: 12, background: surface.raised };
@@ -192,4 +232,4 @@ const modalBackdrop = { position: 'fixed' as const, inset: 0, zIndex: 40, displa
 const modalCard = { width: 'min(520px, 100%)', display: 'grid', gap: spacing.md, padding: spacing.xxl, borderRadius: 14, background: surface.raised, boxShadow: '0 22px 60px rgba(0, 0, 0, 0.35)' };
 const keyText = { margin: 0, padding: spacing.sm, overflowWrap: 'anywhere' as const, borderRadius: 8, background: surface.sunken, color: text.primary, fontFamily: 'monospace', fontSize: fontSize.caption };
 const modalActions = { display: 'flex', justifyContent: 'flex-end', gap: spacing.sm };
-const primaryButton = { minHeight: 40, padding: '8px 12px', border: 'none', borderRadius: 8, background: '#12854A', color: '#fff', fontWeight: 700, cursor: 'pointer' };
+const primaryButton = { minHeight: 40, padding: '8px 12px', border: 'none', borderRadius: 8, background: action.primary, color: action.primaryForeground, fontWeight: 700, cursor: 'pointer' };

@@ -1,4 +1,4 @@
-import { fontFamily, fontSize, spacing, statusPalette, surface, text } from '@dawatrace/shared/design-system/index.js';
+import { action, fontFamily, fontSize, spacing, statusPalette, surface, text } from '@dawatrace/shared/design-system/index.js';
 import type { DispensingLineDTO } from '@dawatrace/shared/dispensing/index.js';
 
 import { BlockingReason, StatusBadge } from './StatusBadge.js';
@@ -113,8 +113,8 @@ export function FinalCheckComparison({
               borderRadius: 8,
               minHeight: 48,
               border: 'none',
-              background: canComplete && !mismatch && !busy ? '#12854A' : surface.sunken,
-              color: canComplete && !mismatch && !busy ? '#fff' : text.tertiary,
+              background: canComplete && !mismatch && !busy ? action.primary : surface.sunken,
+              color: canComplete && !mismatch && !busy ? action.primaryForeground : text.tertiary,
               fontSize: fontSize.bodyLarge,
               fontWeight: 600,
               cursor: canComplete && !mismatch && !busy ? 'pointer' : 'not-allowed',
@@ -152,7 +152,11 @@ function LineComparison({ line }: { readonly line: DispensingLineDTO }) {
         {line.supplied_sku}
       </div>
 
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      {/* A prescribed-versus-prepared comparison loses its meaning if the
+          columns reflow, so on a narrow screen the table scrolls sideways
+          inside its own card rather than stacking. */}
+      <div style={{ overflowX: 'auto' }}>
+      <table style={{ width: '100%', minWidth: 340, borderCollapse: 'collapse' }}>
         <thead>
           <tr>
             <th style={headerCell}>Field</th>
@@ -185,6 +189,7 @@ function LineComparison({ line }: { readonly line: DispensingLineDTO }) {
           })}
         </tbody>
       </table>
+      </div>
     </article>
   );
 }
@@ -195,7 +200,7 @@ const headerCell: React.CSSProperties = {
   fontSize: fontSize.meta,
   textTransform: 'uppercase',
   letterSpacing: 0.5,
-  color: '#667085',
+  color: text.tertiary,
   fontWeight: 600,
 };
 
