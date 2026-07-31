@@ -242,6 +242,9 @@ export const action = {
   secondaryBorder: surface.borderStrong,
   disabled: surface.sunken,
   disabledForeground: text.tertiary,
+  /** Selected radio / choice chrome -- teal action, not SAFE completion green. */
+  selectedBorder: '#087765',
+  selectedSurface: statusPalette.PROCESSING.surface,
   danger: statusPalette.BLOCKING.foreground,
   dangerSurface: statusPalette.BLOCKING.surface,
   dangerBorder: statusPalette.BLOCKING.border,
