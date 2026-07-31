@@ -46,3 +46,12 @@ apps/pos-android/.metro-health-check*
 *.apk
 *.keystore
 *.jks
+
+# Windows-side virtualenv (companion to the .venv/ and venv/ rules above).
+# Created by a Windows checkout at D:\DHA; contains no project source.
+.venv-win/
+
+# Stray command-output captures at repository root.
+/seed_output.txt
+/hq_test_output.txt
+/count_output.txt
