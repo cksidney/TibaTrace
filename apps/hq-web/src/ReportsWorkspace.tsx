@@ -392,7 +392,7 @@ export function ReportsWorkspace({
                     <th>Audience</th>
                     <th>Cadence</th>
                     <th>Signal</th>
-                    <th>Download</th>
+                    <th className="reports-download-header">Download export</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -424,19 +424,29 @@ export function ReportsWorkspace({
                             ? <strong>{new Intl.NumberFormat('en-KE').format(metric)}</strong>
                             : <span className="muted-cell">—</span>}
                         </td>
-                        <td>
-                          <div className="reports-download-row" onClick={(event) => event.stopPropagation()}>
-                            {FORMATS.map((item) => (
-                              <button
-                                className={item.id === 'pdf' ? 'primary-button' : 'secondary-button'}
-                                disabled={Boolean(busyId) || Boolean(rangeError)}
-                                key={item.id}
-                                onClick={() => void download(report, item.id)}
-                                type="button"
-                              >
-                                {busyId === `${report.id}:${item.id}` ? '…' : item.label}
-                              </button>
-                            ))}
+                        <td className="reports-download-cell">
+                          <div className="reports-download-menu" onClick={(event) => event.stopPropagation()}>
+                            <select
+                              aria-label={`Export format for ${report.name}`}
+                              className="reports-download-select"
+                              disabled={Boolean(busyId) || Boolean(rangeError)}
+                              onChange={(event) => {
+                                const val = event.target.value as ReportExportFormat;
+                                if (val) {
+                                  void download(report, val);
+                                  event.target.value = '';
+                                }
+                              }}
+                              value=""
+                            >
+                              <option value="" disabled>
+                                {busyId.startsWith(`${report.id}:`) ? 'Downloading…' : '📥 Export as…'}
+                              </option>
+                              <option value="pdf">📄 PDF Document (.pdf)</option>
+                              <option value="csv">📊 CSV Data (.csv)</option>
+                              <option value="excel">📈 Excel Workbook (.xlsx)</option>
+                              <option value="json">⚙️ JSON Format (.json)</option>
+                            </select>
                           </div>
                         </td>
                       </tr>

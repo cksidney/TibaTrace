@@ -5825,23 +5825,103 @@ button.priority-item-button {
   gap: 12px;
 }
 
-.reports-table td strong {
-  display: block;
+.reports-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
 }
 
-.reports-download-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+.reports-table th,
+.reports-table td {
+  vertical-align: middle;
+  padding: 10px 12px;
 }
 
-.reports-download-row .primary-button,
-.reports-download-row .secondary-button,
-.reports-download-panel .primary-button,
-.reports-download-panel .secondary-button {
-  min-height: 30px;
-  padding: 0 10px;
-  font-size: 0.75rem;
+.reports-table th:nth-child(1) {
+  min-width: 200px;
+}
+
+.reports-table th:nth-child(2) {
+  width: 130px;
+}
+
+.reports-table th:nth-child(3) {
+  width: 90px;
+}
+
+.reports-table th:nth-child(4) {
+  width: 80px;
+}
+
+.reports-table th.reports-download-header,
+.reports-table td.reports-download-cell {
+  width: 160px;
+  min-width: 160px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.reports-download-menu {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.reports-download-select {
+  min-height: 32px;
+  height: 32px;
+  padding: 0 28px 0 10px;
+  border: 1px solid var(--teal-700);
+  border-radius: 8px;
+  background: var(--teal-700);
+  color: #ffffff;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: all 150ms ease;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 12px;
+}
+
+.reports-download-select:hover:not(:disabled) {
+  background-color: var(--teal-600);
+  border-color: var(--teal-600);
+  box-shadow: 0 2px 6px rgba(15, 118, 110, 0.25);
+}
+
+.reports-download-select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.reports-download-select option {
+  background: #ffffff;
+  color: var(--ink);
+  font-weight: 600;
+  padding: 6px 10px;
+}
+
+.reports-download-row .primary-button {
+  background: var(--teal-700);
+  border-color: var(--teal-700);
+  color: #ffffff;
+}
+
+.reports-download-row .secondary-button {
+  background: #ffffff;
+  border: 1px solid var(--line);
+  color: var(--ink);
+}
+
+.reports-download-row .secondary-button:hover {
+  background: var(--teal-50);
+  border-color: var(--teal-600);
+  color: var(--teal-700);
 }
 
 .reports-download-panel {
