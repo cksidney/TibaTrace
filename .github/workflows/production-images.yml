@@ -224,15 +224,113 @@ jobs:
               test "$(id -u)" -ne 0 && echo "runs as non-root (uid $(id -u))"
             '
 
-      - name: Record migration plan
+      - name: Resolve deployment baseline
+        id: baseline
+        run: |
+          # The commit currently running in production, read from the deployed
+          # backend image label. Declared explicitly: guessing a branch point is
+          # how a release reports zero migrations while carrying one.
+          baseline="${DEPLOYMENT_BASELINE_SHA:-24a160214114575bdbbb3059b10ad4e323f3daec}"
+          if ! git cat-file -e "${baseline}^{commit}" 2>/dev/null; then
+            echo "::error::deployment baseline $baseline is not a commit in this repository"
+            exit 1
+          fi
+          echo "baseline=$baseline" >> "$GITHUB_OUTPUT"
+          files=$(git diff --name-only --diff-filter=A "$baseline..HEAD" \
+                  -- 'backend/apps/*/migrations/*.py')
+          echo "migrations introduced since $baseline:"
+          echo "${files:-  (none)}"
+          {
+            echo "files<<EOF"
+            echo "$files"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+        env:
+          DEPLOYMENT_BASELINE_SHA: ${{ vars.DEPLOYMENT_BASELINE_SHA }}
+
+      - name: Capture migration plan from the release image
         run: |
           mkdir -p evidence
+          # A writable sqlite path inside the container. No production
+          # credentials, and no `|| true`: a failure here must fail the release.
           docker run --rm \
             -e DJANGO_SETTINGS_MODULE=dawatrace.settings.base \
             -e DAWATRACE_SECRET_KEY=ci-plan-not-a-secret \
+            -e DAWATRACE_DATABASE_URL=sqlite:////tmp/tibatrace-migration-plan.sqlite3 \
             '${{ steps.verify_refs.outputs.backend }}' \
-            sh -c 'python manage.py migrate --plan' > evidence/MIGRATION_PLAN.txt 2>&1 || true
-          tail -n 40 evidence/MIGRATION_PLAN.txt
+            sh -c '
+              set -e
+              python manage.py check
+              python manage.py makemigrations --check --dry-run
+              python manage.py migrate --plan
+            ' > evidence/MIGRATION_PLAN.txt 2> evidence/MIGRATION_PLAN.stderr.txt
+          echo "--- plan ---"; cat evidence/MIGRATION_PLAN.txt
+          if [ -s evidence/MIGRATION_PLAN.stderr.txt ]; then
+            echo "--- stderr ---"; cat evidence/MIGRATION_PLAN.stderr.txt
+          fi
+
+      - name: Reject a poisoned migration plan
+        run: |
+          plan=evidence/MIGRATION_PLAN.txt
+          if [ ! -s "$plan" ]; then
+            echo "::error::MIGRATION_PLAN.txt is empty"; exit 1
+          fi
+          if grep -qiE 'Traceback|OperationalError|Exception|error:|failed|unable to open database' \
+               "$plan" evidence/MIGRATION_PLAN.stderr.txt; then
+            echo "::error::migration plan contains an error; refusing to build evidence"
+            cat "$plan" evidence/MIGRATION_PLAN.stderr.txt
+            exit 1
+          fi
+          echo "migration plan is clean"
+
+      - name: Build structured migration inventory
+        run: |
+          docker run --rm \
+            -e DJANGO_SETTINGS_MODULE=dawatrace.settings.base \
+            -e DAWATRACE_SECRET_KEY=ci-plan-not-a-secret \
+            -e DAWATRACE_DATABASE_URL=sqlite:////tmp/tibatrace-migration-plan.sqlite3 \
+            -e TIBATRACE_NEW_MIGRATION_FILES \
+            -v "$PWD/scripts/migration_evidence.py:/tmp/migration_evidence.py:ro" \
+            -v "$PWD/evidence:/evidence" \
+            '${{ steps.verify_refs.outputs.backend }}' \
+            python /tmp/migration_evidence.py --output /evidence/MIGRATIONS.json
+          cat evidence/MIGRATIONS.json
+        env:
+          TIBATRACE_NEW_MIGRATION_FILES: ${{ steps.baseline.outputs.files }}
+
+      - name: Migration evidence gates
+        run: |
+          python3 - <<'PY'
+          import json, pathlib, subprocess, sys
+
+          inv = json.loads(pathlib.Path("evidence/MIGRATIONS.json").read_text())
+          declared = {f"{m['app']}.{m['migration']}" for m in inv}
+
+          baseline = "${{ steps.baseline.outputs.baseline }}"
+          out = subprocess.run(
+              ["git", "diff", "--name-only", "--diff-filter=A", f"{baseline}..HEAD",
+               "--", "backend/apps/*/migrations/*.py"],
+              capture_output=True, text=True, check=True).stdout
+          in_git = [line.strip() for line in out.splitlines() if line.strip()]
+
+          fail = []
+          if in_git and not inv:
+              fail.append(f"git shows {len(in_git)} new migration(s) but the inventory is empty")
+          if len(in_git) != len(inv):
+              fail.append(f"git shows {len(in_git)} new migration(s), inventory has {len(inv)}")
+          for path in in_git:
+              if not any(m["source_path"] == path for m in inv):
+                  fail.append(f"{path} exists in the release but is absent from the inventory")
+          for m in inv:
+              if m["destructive"]:
+                  fail.append(f"{m['app']}.{m['migration']} is destructive without declaration")
+
+          if fail:
+              for f in fail:
+                  print(f"::error::{f}")
+              sys.exit(1)
+          print(f"migration evidence consistent: {sorted(declared) or 'no migrations'}")
+          PY
 
       - name: Generate SBOMs
         uses: anchore/sbom-action@v0
@@ -282,11 +380,9 @@ jobs:
 
           backend_ref = os.environ["BACKEND_REF"]
           hq_ref = os.environ["HQ_REF"]
-          migrations = [
-              line.strip() for line in
-              pathlib.Path("evidence/MIGRATION_PLAN.txt").read_text().splitlines()
-              if line.strip().startswith("[")
-          ]
+          # Populated from the structured inventory, never from plan text.
+          inventory = json.loads(pathlib.Path("evidence/MIGRATIONS.json").read_text())
+          migrations = [f"{m['app']}.{m['migration']}" for m in inventory]
 
           manifest = {
               "release_version": os.environ["VERSION"],
@@ -310,7 +406,9 @@ jobs:
                   "labels": labels(hq_ref),
                   "sbom": "sbom-hq-web.spdx.json",
               },
+              "deployment_baseline_sha": os.environ["BASELINE"],
               "migrations": migrations,
+              "migration_inventory": inventory,
               "required_env_var_names": [
                   "DAWATRACE_ENV", "DAWATRACE_SECRET_KEY", "DAWATRACE_DATABASE_URL",
                   "DAWATRACE_DATABASE_SSLMODE", "DAWATRACE_REDIS_URL",
@@ -334,6 +432,15 @@ jobs:
                   "hq_image": "tibatrace-hq-web:0.1.0-alpha.1-92282eb-20260729T150744Z",
                   "note": "Local pre-GHCR images retained on the production host.",
               },
+              "package_visibility": {
+                  "state": "public",
+                  "rationale": (
+                      "Deliberate for this release candidate. The repository is "
+                      "public, images carry no runtime secrets, and all production "
+                      "configuration is injected at runtime. Deployment pins "
+                      "immutable digests. Private packages to be reviewed before v1.0."
+                  ),
+              },
               "release_notes": "docs/releases/TIBATRACE_v0.2.0_RC1.md",
           }
           (ev / "RELEASE_MANIFEST.json").write_text(json.dumps(manifest, indent=2) + "\n")
@@ -350,6 +457,7 @@ jobs:
           BUILT: ${{ steps.meta.outputs.built }}
           REF_NAME: ${{ github.ref_name }}
           REPO: ${{ github.repository }}
+          BASELINE: ${{ steps.baseline.outputs.baseline }}
 
       - name: Assemble release evidence
         run: |
