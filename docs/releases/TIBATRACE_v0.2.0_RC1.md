@@ -194,6 +194,35 @@ and confirming detection, then removing them again. **Tracked-source findings: 0
 
 ---
 
+## Build correctness
+
+This release was blocked once before it shipped, by a defect no local check
+could see.
+
+`apps/hq-web/Dockerfile` copied `packages/shared/package.json` but never the
+package's source, and never built it. `hq-web` imports
+`@dawatrace/shared/money.js` — new in this release — which resolves through the
+exports map to `packages/shared/dist/money.js`. `dist/` is gitignored, so in a
+clean container it does not exist, and the build failed on an unresolved import.
+
+The workspace build passed only because a developer machine still held
+`packages/shared/dist` from an earlier run.
+`scripts/validate_workspaces.sh` made that worse by building `apps/` before
+`packages/` — it sorted both trees together, and `apps` sorts first — so no
+workspace build ever produced the shared package first either.
+
+Fixed in three places: the Dockerfile copies and builds `@dawatrace/shared`
+before `hq-web`; `.dockerignore` excludes `packages/**/dist` so a host artefact
+cannot leak into the build context; and the workspace script builds `packages/`
+first. A new CI job, `production-images.yml`, builds both server images from a
+clean checkout for `linux/amd64` on every pull request, on `main`, and on every
+`tibatrace-v*` tag, asserting that neither reports an `unknown` revision and
+that the HQ bundle contains the shared code.
+
+Release images must carry their exact revision label. The HQ image running in
+production today reports `unknown`, which is how the provenance of a live
+component became unverifiable; CI now fails rather than allowing that.
+
 ## Known limitations
 
 **Reports verification is partial.** Server-side PDF export is covered
