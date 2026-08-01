@@ -23,13 +23,12 @@ class HQReportDownloadView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, report_id: str):
-        export_format = (
-            request.data.get("format")
-            or request.query_params.get("format")
-            or "pdf"
-        )
+        export_format = request.data.get("format") or request.query_params.get("format") or "pdf"
         terminal_id = request.data.get("terminal_id") or ""
         terminal_label = request.data.get("terminal_label") or "HQ Web"
+        period_start = request.data.get("start_date_time") or request.query_params.get("from_iso") or ""
+        period_end = request.data.get("end_date_time") or request.query_params.get("to_iso") or ""
+        granularity = request.data.get("granularity") or request.query_params.get("granularity") or ""
         try:
             spec, receipt, body, content_type = create_download(
                 request=request,
@@ -37,6 +36,9 @@ class HQReportDownloadView(APIView):
                 export_format=str(export_format),
                 terminal_id=str(terminal_id),
                 terminal_label=str(terminal_label),
+                period_start=str(period_start),
+                period_end=str(period_end),
+                granularity=str(granularity),
             )
         except LookupError:
             return Response({"detail": "Unknown report."}, status=404)
@@ -45,7 +47,9 @@ class HQReportDownloadView(APIView):
         except PermissionError as exc:
             return Response({"detail": str(exc)}, status=403)
 
-        filename = f"{spec.id}-{receipt.receipt_id[:8]}.{receipt.export_format if receipt.export_format != 'xlsx' else 'csv'}"
+        filename = (
+            f"{spec.id}-{receipt.receipt_id[:8]}.{receipt.export_format if receipt.export_format != 'xlsx' else 'csv'}"
+        )
         response = HttpResponse(body, content_type=content_type)
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
         response["X-Report-Receipt-Id"] = receipt.receipt_id

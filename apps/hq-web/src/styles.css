@@ -5552,6 +5552,121 @@ button.priority-item-button {
   font-variant-numeric: tabular-nums;
 }
 
+.reports-datetime-panel {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid color-mix(in srgb, var(--teal-600) 35%, var(--line));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--panel) 92%, var(--teal-100) 8%);
+}
+
+.reports-datetime-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.reports-datetime-header h3 {
+  margin: 2px 0 0;
+  font-size: 1.05rem;
+  letter-spacing: -0.02em;
+}
+
+.reports-datetime-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border: 1px solid var(--teal-700);
+  border-radius: 999px;
+  background: var(--teal-100);
+  color: var(--teal-700);
+  font-size: 0.78rem;
+  font-weight: 750;
+  max-width: 100%;
+}
+
+.reports-datetime-badge span {
+  overflow-wrap: anywhere;
+}
+
+.reports-datetime-badge svg {
+  width: 14px;
+  height: 14px;
+}
+
+.reports-datetime-body {
+  display: grid;
+  gap: 12px;
+}
+
+.reports-preset-chips {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.reports-field-label {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-right: 4px;
+}
+
+.preset-chip {
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--navy-900);
+  color: var(--ink);
+  font-size: 0.75rem;
+  font-weight: 650;
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.preset-chip:hover {
+  border-color: var(--teal-600);
+  background: var(--teal-50);
+}
+
+.preset-chip.is-active {
+  border-color: var(--teal-700);
+  background: var(--teal-700);
+  color: #ffffff;
+}
+
+.reports-datetime-inputs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.reports-datetime-inputs input[type="datetime-local"],
+.reports-datetime-inputs select {
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--navy-900);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.84rem;
+}
+
+[data-theme="light"] .preset-chip,
+[data-theme="light"] .reports-datetime-inputs input[type="datetime-local"],
+[data-theme="light"] .reports-datetime-inputs select {
+  background: #fff;
+}
+
 .reports-toolbar {
   display: grid;
   grid-template-columns: minmax(0, 1.6fr) minmax(160px, 0.55fr);

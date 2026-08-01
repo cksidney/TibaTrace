@@ -1,4 +1,5 @@
 """Report download assembly, receipt audit and multi-format rendering."""
+
 from __future__ import annotations
 
 import csv
@@ -7,7 +8,7 @@ import io
 import json
 import uuid
 from dataclasses import asdict, dataclass
-from datetime import timezone
+from datetime import datetime, timezone
 from typing import Any
 
 from django.conf import settings
@@ -21,6 +22,7 @@ from apps.platform.reporting.pdf import build_pdf_bytes, qr_matrix
 from apps.tenancy.models import Tenant
 
 SUPPORTED_FORMATS = ("pdf", "csv", "json", "xlsx")
+SUPPORTED_GRANULARITIES = ("HOURLY", "DAILY", "WEEKLY", "MONTHLY", "YEARLY")
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,6 +44,51 @@ class DownloadReceipt:
     checksum_sha256: str
     validation_url: str
     product: str
+    period_start: str = ""
+    period_end: str = ""
+    granularity: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class ReportWindow:
+    period_start: str
+    period_end: str
+    granularity: str
+
+
+def _utc_iso(value: datetime) -> str:
+    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _parse_report_instant(value: str, field_label: str) -> datetime:
+    try:
+        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{field_label} must be a valid ISO 8601 date and time.") from exc
+    if dj_timezone.is_naive(parsed):
+        parsed = dj_timezone.make_aware(parsed, dj_timezone.get_current_timezone())
+    return parsed.astimezone(timezone.utc)
+
+
+def _report_window(period_start: str, period_end: str, granularity: str) -> ReportWindow | None:
+    start_value = str(period_start or "").strip()
+    end_value = str(period_end or "").strip()
+    granularity_value = str(granularity or "").strip().upper()
+    if not start_value and not end_value and not granularity_value:
+        return None
+    if not start_value or not end_value:
+        raise ValueError("Both reporting-window start and end are required.")
+    if granularity_value not in SUPPORTED_GRANULARITIES:
+        raise ValueError(f"Granularity must be one of: {', '.join(SUPPORTED_GRANULARITIES)}.")
+    start = _parse_report_instant(start_value, "Reporting-window start")
+    end = _parse_report_instant(end_value, "Reporting-window end")
+    if start > end:
+        raise ValueError("Reporting-window start must be before or equal to the end.")
+    return ReportWindow(
+        period_start=_utc_iso(start),
+        period_end=_utc_iso(end),
+        granularity=granularity_value,
+    )
 
 
 def catalogue_payload() -> dict[str, Any]:
@@ -122,6 +169,9 @@ def _qr_payload(receipt: DownloadReceipt) -> str:
             "terminal_label": receipt.terminal_label,
             "client_ip": receipt.client_ip,
             "integrity": receipt.checksum_sha256,
+            "period_start": receipt.period_start,
+            "period_end": receipt.period_end,
+            "granularity": receipt.granularity,
             "validate": receipt.validation_url,
         },
         separators=(",", ":"),
@@ -134,12 +184,12 @@ def _integrity_digest(receipt_without_checksum: dict[str, str]) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def _report_rows(spec: ReportSpec, overview: dict[str, Any]) -> list[list[str]]:
-    summary = {
-        item["label"]: item["value"]
-        for item in overview.get("data_summary", [])
-        if isinstance(item, dict)
-    }
+def _report_rows(
+    spec: ReportSpec,
+    overview: dict[str, Any],
+    receipt: DownloadReceipt,
+) -> list[list[str]]:
+    summary = {item["label"]: item["value"] for item in overview.get("data_summary", []) if isinstance(item, dict)}
     attention = overview.get("attention_items") or []
     metrics = overview.get("metrics") or []
 
@@ -153,6 +203,15 @@ def _report_rows(spec: ReportSpec, overview: dict[str, Any]) -> list[list[str]]:
         ["Scope", overview.get("scope_label") or ""],
         ["Generated for", overview.get("user_name") or ""],
     ]
+    if receipt.period_start and receipt.period_end:
+        rows.extend(
+            [
+                ["Reporting window start (UTC)", receipt.period_start],
+                ["Reporting window end (UTC)", receipt.period_end],
+                ["Aggregation granularity", receipt.granularity],
+                ["Data basis", "Authenticated tenant snapshot generated at download time"],
+            ]
+        )
     for label, value in list(summary.items())[:12]:
         rows.append([f"KPI · {label}", str(value)])
     for item in metrics[:8]:
@@ -171,7 +230,7 @@ def _report_rows(spec: ReportSpec, overview: dict[str, Any]) -> list[list[str]]:
                     f"{item.get('value', '')} — {item.get('detail', '')}",
                 ]
             )
-    if len(rows) == 8:
+    if not summary and not metrics and not attention:
         rows.append(["Status", "No transactional rows in current scope for this pack; catalogue shell issued."])
     return rows
 
@@ -183,7 +242,7 @@ def render_report_bytes(
     receipt: DownloadReceipt,
     overview: dict[str, Any],
 ) -> tuple[bytes, str]:
-    rows = _report_rows(spec, overview)
+    rows = _report_rows(spec, overview, receipt)
     qr_data = _qr_payload(receipt)
     matrix = qr_matrix(qr_data)
 
@@ -222,6 +281,10 @@ def render_report_bytes(
         writer.writerow(["Client IP", receipt.client_ip])
         writer.writerow(["Checksum SHA-256", receipt.checksum_sha256])
         writer.writerow(["Validation URL", receipt.validation_url])
+        if receipt.period_start and receipt.period_end:
+            writer.writerow(["Reporting window start (UTC)", receipt.period_start])
+            writer.writerow(["Reporting window end (UTC)", receipt.period_end])
+            writer.writerow(["Aggregation granularity", receipt.granularity])
         writer.writerow([])
         writer.writerows(rows)
         writer.writerow([])
@@ -249,6 +312,10 @@ def render_report_bytes(
         pdf.key_value("Cadence", spec.cadence)
         pdf.key_value("Workspace", receipt.tenant_name or "Platform")
         pdf.key_value("Generated at", receipt.downloaded_at)
+        if receipt.period_start and receipt.period_end:
+            pdf.key_value("Reporting window start (UTC)", receipt.period_start)
+            pdf.key_value("Reporting window end (UTC)", receipt.period_end)
+            pdf.key_value("Aggregation granularity", receipt.granularity)
         pdf.spacer(6)
         pdf.subheading("Report content")
         for row in rows[1:]:
@@ -289,6 +356,9 @@ def create_download(
     export_format: str,
     terminal_id: str = "",
     terminal_label: str = "",
+    period_start: str = "",
+    period_end: str = "",
+    granularity: str = "",
 ) -> tuple[ReportSpec, DownloadReceipt, bytes, str]:
     export_format = (export_format or "pdf").strip().lower()
     if export_format not in SUPPORTED_FORMATS:
@@ -296,6 +366,7 @@ def create_download(
     spec = get_report(report_id)
     if spec is None:
         raise LookupError("Unknown report.")
+    window = _report_window(period_start, period_end, granularity)
 
     tenant_id = getattr(request, "tenant_id", None) or getattr(request.user, "tenant_id", None)
     if not tenant_id:
@@ -327,6 +398,9 @@ def create_download(
         checksum_sha256="",
         validation_url=validation_url,
         product=getattr(settings, "DAWATRACE_PRODUCT_NAME", "TibaTrace"),
+        period_start=window.period_start if window else "",
+        period_end=window.period_end if window else "",
+        granularity=window.granularity if window else "",
     )
     integrity = _integrity_digest(
         {
@@ -339,6 +413,9 @@ def create_download(
             "tenant_id": provisional.tenant_id,
             "terminal_id": provisional.terminal_id,
             "client_ip": provisional.client_ip,
+            "period_start": provisional.period_start,
+            "period_end": provisional.period_end,
+            "granularity": provisional.granularity,
         }
     )
     receipt = DownloadReceipt(**{**asdict(provisional), "checksum_sha256": integrity})
@@ -370,6 +447,9 @@ def create_download(
             "checksum_sha256": receipt.checksum_sha256,
             "content_sha256": hashlib.sha256(body).hexdigest(),
             "validation_url": receipt.validation_url,
+            "period_start": receipt.period_start,
+            "period_end": receipt.period_end,
+            "granularity": receipt.granularity,
         },
     )
     return spec, receipt, body, content_type
@@ -403,5 +483,8 @@ def validate_receipt(receipt_id: str) -> dict[str, Any] | None:
         "client_ip": meta.get("client_ip"),
         "user_agent": meta.get("user_agent"),
         "checksum_sha256": meta.get("checksum_sha256"),
+        "period_start": meta.get("period_start") or "",
+        "period_end": meta.get("period_end") or "",
+        "granularity": meta.get("granularity") or "",
         "outcome": event.outcome,
     }

@@ -1850,6 +1850,7 @@ export async function loadCapabilityMatrix(
 /* ── enterprise reporting ──────────────────────────────────────────────────── */
 
 export type ReportExportFormat = 'pdf' | 'csv' | 'json' | 'xlsx';
+export type ReportGranularity = 'HOURLY' | 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
 
 export interface ReportDownloadReceipt {
   readonly receiptId: string;
@@ -1872,14 +1873,27 @@ function terminalFingerprint(): { terminalId: string; terminalLabel: string } {
   };
 }
 
+export interface ReportFilterOptions {
+  readonly fromIso?: string;
+  readonly toIso?: string;
+  readonly granularity?: ReportGranularity;
+}
+
 export async function downloadEnterpriseReport(
   reportId: string,
   format: ReportExportFormat,
   csrfToken: string,
   tenantId = '',
+  filterOptions?: ReportFilterOptions,
 ): Promise<ReportDownloadReceipt> {
   const terminal = terminalFingerprint();
-  const response = await fetch(`/api/hq/reports/${encodeURIComponent(reportId)}/download/`, {
+  const queryParams = new URLSearchParams();
+  if (filterOptions?.fromIso) queryParams.set('from_iso', filterOptions.fromIso);
+  if (filterOptions?.toIso) queryParams.set('to_iso', filterOptions.toIso);
+  if (filterOptions?.granularity) queryParams.set('granularity', filterOptions.granularity);
+  const queryString = queryParams.toString() ? `?${queryParams.toString()}` : '';
+
+  const response = await fetch(`/api/hq/reports/${encodeURIComponent(reportId)}/download/${queryString}`, {
     method: 'POST',
     credentials: 'include',
     headers: {
@@ -1894,6 +1908,9 @@ export async function downloadEnterpriseReport(
       format,
       terminal_id: terminal.terminalId,
       terminal_label: terminal.terminalLabel,
+      start_date_time: filterOptions?.fromIso || null,
+      end_date_time: filterOptions?.toIso || null,
+      granularity: filterOptions?.granularity || null,
     }),
   });
   if (!response.ok) {

@@ -6,6 +6,8 @@ import {
   type HQOverview,
   type ReportDownloadReceipt,
   type ReportExportFormat,
+  type ReportFilterOptions,
+  type ReportGranularity,
 } from './api.js';
 import { Icon } from './icons.js';
 import {
@@ -40,6 +42,72 @@ const FORMATS: readonly { readonly id: ReportExportFormat; readonly label: strin
 ];
 
 type CategoryFilter = 'ALL' | ReportCategoryId;
+type DatePresetId = 'TODAY' | 'YESTERDAY' | 'THIS_WEEK' | 'THIS_MONTH' | 'LAST_MONTH' | 'THIS_YEAR' | 'CUSTOM';
+
+const DATE_PRESETS: readonly { readonly id: DatePresetId; readonly label: string }[] = [
+  { id: 'TODAY', label: 'Today' },
+  { id: 'YESTERDAY', label: 'Yesterday' },
+  { id: 'THIS_WEEK', label: 'This Week' },
+  { id: 'THIS_MONTH', label: 'This Month' },
+  { id: 'LAST_MONTH', label: 'Last Month' },
+  { id: 'THIS_YEAR', label: 'This Year' },
+  { id: 'CUSTOM', label: 'Custom Range' },
+];
+
+function formatLocalIso(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const yyyy = date.getFullYear();
+  const mm = pad(date.getMonth() + 1);
+  const dd = pad(date.getDate());
+  const hh = pad(date.getHours());
+  const min = pad(date.getMinutes());
+  return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
+}
+
+function calculatePresetRange(preset: DatePresetId): { start: string; end: string } {
+  const now = new Date();
+  if (preset === 'TODAY') {
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+    return { start: formatLocalIso(start), end: formatLocalIso(now) };
+  }
+  if (preset === 'YESTERDAY') {
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0);
+    const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59);
+    return { start: formatLocalIso(start), end: formatLocalIso(end) };
+  }
+  if (preset === 'THIS_WEEK') {
+    const day = now.getDay();
+    const diff = now.getDate() - day + (day === 0 ? -6 : 1);
+    const start = new Date(now.getFullYear(), now.getMonth(), diff, 0, 0, 0);
+    return { start: formatLocalIso(start), end: formatLocalIso(now) };
+  }
+  if (preset === 'THIS_MONTH') {
+    const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
+    return { start: formatLocalIso(start), end: formatLocalIso(now) };
+  }
+  if (preset === 'LAST_MONTH') {
+    const start = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0);
+    const end = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+    return { start: formatLocalIso(start), end: formatLocalIso(end) };
+  }
+  if (preset === 'THIS_YEAR') {
+    const start = new Date(now.getFullYear(), 0, 1, 0, 0, 0);
+    return { start: formatLocalIso(start), end: formatLocalIso(now) };
+  }
+  const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
+  return { start: formatLocalIso(start), end: formatLocalIso(now) };
+}
+
+function reportRangeError(startValue: string, endValue: string): string {
+  if (!startValue || !endValue) return 'Choose both a reporting-window start and end.';
+  const start = new Date(startValue);
+  const end = new Date(endValue);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return 'Choose valid reporting-window dates and times.';
+  }
+  if (start > end) return 'Reporting-window start must be before or equal to the end.';
+  return '';
+}
 
 function useSummaryMap(overview: HQOverview) {
   return useMemo(
@@ -67,6 +135,25 @@ export function ReportsWorkspace({
   const [error, setError] = useState('');
   const [receipt, setReceipt] = useState<ReportDownloadReceipt | null>(null);
   const [validation, setValidation] = useState<Record<string, unknown> | null>(null);
+
+  const [datePreset, setDatePreset] = useState<DatePresetId>('THIS_MONTH');
+  const initialRange = useMemo(() => calculatePresetRange('THIS_MONTH'), []);
+  const [startDateTimeIso, setStartDateTimeIso] = useState(initialRange.start);
+  const [endDateTimeIso, setEndDateTimeIso] = useState(initialRange.end);
+  const [granularity, setGranularity] = useState<ReportGranularity>('DAILY');
+  const rangeError = useMemo(
+    () => reportRangeError(startDateTimeIso, endDateTimeIso),
+    [endDateTimeIso, startDateTimeIso],
+  );
+
+  const applyPreset = (preset: DatePresetId) => {
+    setDatePreset(preset);
+    if (preset !== 'CUSTOM') {
+      const range = calculatePresetRange(preset);
+      setStartDateTimeIso(range.start);
+      setEndDateTimeIso(range.end);
+    }
+  };
 
   const counts = useMemo(() => {
     const byCategory = new Map<ReportCategoryId, number>();
@@ -103,15 +190,25 @@ export function ReportsWorkspace({
   }, [page, safePage]);
 
   const download = async (report: ReportDefinition, exportFormat: ReportExportFormat) => {
+    if (rangeError) {
+      setError(rangeError);
+      return;
+    }
     setBusyId(`${report.id}:${exportFormat}`);
     setError('');
     setValidation(null);
     try {
+      const filterOpts: ReportFilterOptions = {
+        fromIso: new Date(startDateTimeIso).toISOString(),
+        toIso: new Date(endDateTimeIso).toISOString(),
+        granularity,
+      };
       const next = await downloadEnterpriseReport(
         report.id,
         exportFormat,
         csrfToken,
         overview.tenant_id,
+        filterOpts,
       );
       setReceipt(next);
       if (next.receiptId) {
@@ -142,6 +239,82 @@ export function ReportsWorkspace({
           <div><dt>QR validation</dt><dd>On</dd></div>
           <div><dt>Tenant isolation</dt><dd>On</dd></div>
         </dl>
+      </section>
+
+      <section className="panel reports-datetime-panel" aria-label="Reporting window">
+        <header className="reports-datetime-header">
+          <div>
+            <p className="eyebrow"><Icon name="shield" /> Report scope</p>
+            <h3>Reporting window & aggregation</h3>
+            <p className="muted-cell">
+              Record the precise period and aggregation used for this tenant-scoped export and its validation receipt.
+            </p>
+          </div>
+          <div className="reports-datetime-badge">
+            <Icon name="search" />
+            <span>
+              {startDateTimeIso ? new Date(startDateTimeIso).toLocaleString('en-KE', { dateStyle: 'medium', timeStyle: 'short' }) : 'Start'}
+              {' → '}
+              {endDateTimeIso ? new Date(endDateTimeIso).toLocaleString('en-KE', { dateStyle: 'medium', timeStyle: 'short' }) : 'End'}
+            </span>
+          </div>
+        </header>
+
+        <div className="reports-datetime-body">
+          <div className="reports-preset-chips">
+            <span className="reports-field-label">Quick presets</span>
+            {DATE_PRESETS.map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                className={datePreset === preset.id ? 'preset-chip is-active' : 'preset-chip'}
+                onClick={() => applyPreset(preset.id)}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="reports-datetime-inputs">
+            <label className="business-field">
+              <span>Start date & time</span>
+              <input
+                max={endDateTimeIso || undefined}
+                type="datetime-local"
+                value={startDateTimeIso}
+                onChange={(e) => {
+                  setStartDateTimeIso(e.target.value);
+                  setDatePreset('CUSTOM');
+                }}
+              />
+            </label>
+
+            <label className="business-field">
+              <span>End date & time</span>
+              <input
+                min={startDateTimeIso || undefined}
+                type="datetime-local"
+                value={endDateTimeIso}
+                onChange={(e) => {
+                  setEndDateTimeIso(e.target.value);
+                  setDatePreset('CUSTOM');
+                }}
+              />
+            </label>
+
+            <label className="business-field">
+              <span>Aggregation granularity</span>
+              <select value={granularity} onChange={(e) => setGranularity(e.target.value as ReportGranularity)}>
+                <option value="HOURLY">Hourly</option>
+                <option value="DAILY">Daily</option>
+                <option value="WEEKLY">Weekly</option>
+                <option value="MONTHLY">Monthly</option>
+                <option value="YEARLY">Yearly</option>
+              </select>
+            </label>
+          </div>
+          {rangeError ? <p className="business-dialog-error" role="alert">{rangeError}</p> : null}
+        </div>
       </section>
 
       <div className="reports-toolbar">
@@ -256,7 +429,7 @@ export function ReportsWorkspace({
                             {FORMATS.map((item) => (
                               <button
                                 className={item.id === 'pdf' ? 'primary-button' : 'secondary-button'}
-                                disabled={Boolean(busyId)}
+                                disabled={Boolean(busyId) || Boolean(rangeError)}
                                 key={item.id}
                                 onClick={() => void download(report, item.id)}
                                 type="button"
@@ -311,6 +484,18 @@ export function ReportsWorkspace({
                   <dd>{selected.cadence}</dd>
                 </div>
                 <div>
+                  <dt>Reporting window</dt>
+                  <dd>
+                    <strong>
+                      {startDateTimeIso ? new Date(startDateTimeIso).toLocaleString('en-KE', { dateStyle: 'medium', timeStyle: 'short' }) : 'Start'}
+                      {' to '}
+                      {endDateTimeIso ? new Date(endDateTimeIso).toLocaleString('en-KE', { dateStyle: 'medium', timeStyle: 'short' }) : 'End'}
+                    </strong>
+                    <br />
+                    <small className="muted-cell">Granularity: {granularity}</small>
+                  </dd>
+                </div>
+                <div>
                   <dt>Export formats</dt>
                   <dd>PDF · CSV · Excel · JSON — each with unique validation QR / receipt</dd>
                 </div>
@@ -322,7 +507,7 @@ export function ReportsWorkspace({
                   {FORMATS.map((item) => (
                     <button
                       className={item.id === format ? 'primary-button' : 'secondary-button'}
-                      disabled={Boolean(busyId)}
+                      disabled={Boolean(busyId) || Boolean(rangeError)}
                       key={item.id}
                       onClick={() => {
                         setFormat(item.id);
