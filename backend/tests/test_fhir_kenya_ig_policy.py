@@ -1,5 +1,7 @@
 """Policy tests for locked Kenya ePrescription FHIR IG adoption."""
 
+from fhir.resources.patient import Patient as FHIRPatient
+
 from apps.fhir.kenya_ig import (
     KENYA_ERX_IG_VERSION,
     PROFILES,
@@ -8,8 +10,11 @@ from apps.fhir.kenya_ig import (
 from apps.fhir.registry_init import init_registry
 from apps.fhir.services.capability_statement import CapabilityStatementService
 from apps.fhir.services.resource_meta import apply_declared_profiles
-from apps.fhir.services.resource_registry import FHIRResourceRegistry, SearchParameterSpec
-from fhir.resources.patient import Patient as FHIRPatient
+from apps.fhir.services.resource_registry import (
+    FHIRResourceRegistry,
+    ResourceInteraction,
+    ResourceRegistration,
+)
 
 
 def setup_module():
@@ -68,10 +73,7 @@ def test_capability_statement_advertises_smart_and_kenya_ig():
 
 
 def test_search_parameter_spec_infers_reference():
-    spec = SearchParameterSpec(name="subject")
     # bare construction defaults type to string; inference happens when coercing from str
-    from apps.fhir.services.resource_registry import ResourceRegistration, ResourceInteraction
-
     reg = ResourceRegistration(
         resource_type="X",
         converter_class=object,

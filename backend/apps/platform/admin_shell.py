@@ -21,9 +21,9 @@ from apps.medicines.models import (
 from apps.notifications.models import NotificationOutbox
 from apps.organizations.models import Location
 from apps.patients.models import Patient
+from apps.pos_shift.models import RegisterSession
 from apps.practitioners.models import Practitioner
 from apps.prescription.models import ClinicalSubstitution, DispensingLabel, Prescription
-from apps.pos_shift.models import RegisterSession
 from apps.pricing.models import PriceBook
 from apps.procurement.models import (
     GoodsReceipt,

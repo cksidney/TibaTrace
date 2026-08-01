@@ -4,7 +4,6 @@ from apps.fhir.views.allergy_intolerance import AllergyIntoleranceView
 from apps.fhir.views.audit_event import AuditEventView
 from apps.fhir.views.bundle import BundleView
 from apps.fhir.views.capability import CapabilityStatementView
-from apps.fhir.views.smart_configuration import SmartConfigurationView
 from apps.fhir.views.code_system import CodeSystemValidateCodeView, CodeSystemView
 from apps.fhir.views.condition import ConditionView
 from apps.fhir.views.diagnostic_report import DiagnosticReportView
@@ -21,6 +20,7 @@ from apps.fhir.views.organization import OrganizationReadView
 from apps.fhir.views.patient import PatientReadView
 from apps.fhir.views.practitioner import PractitionerReadView
 from apps.fhir.views.practitioner_role import PractitionerRoleReadView
+from apps.fhir.views.smart_configuration import SmartConfigurationView
 from apps.fhir.views.value_set import ValueSetExpandView, ValueSetValidateCodeView, ValueSetView
 
 app_name = "fhir"

@@ -6,7 +6,6 @@ from apps.platform.client_version import evaluate_client_version
 from apps.platform.models import PosRelease
 from apps.tenancy.models import Tenant
 
-
 DIGEST = "a" * 64
 
 

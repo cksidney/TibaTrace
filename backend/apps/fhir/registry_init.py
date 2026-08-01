@@ -49,6 +49,7 @@ from apps.fhir.converters import (
     PractitionerRoleConverter,
     ValueSetConverter,
 )
+from apps.fhir.kenya_ig import profiles_for
 from apps.fhir.services.allergy_intolerance import AllergyIntoleranceLookupService
 from apps.fhir.services.audit_event import AuditEventLookupService
 from apps.fhir.services.code_system import CodeSystemLookupService
@@ -69,7 +70,6 @@ from apps.fhir.services.resource_lookup import (
     PractitionerLookupService,
     PractitionerRoleLookupService,
 )
-from apps.fhir.kenya_ig import profiles_for
 from apps.fhir.services.resource_registry import FHIRResourceRegistry, ResourceInteraction, ResourceRegistration
 from apps.fhir.services.value_set import ValueSetLookupService
 

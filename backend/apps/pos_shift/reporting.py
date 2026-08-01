@@ -29,8 +29,9 @@ from django.db import transaction
 from django.db.models import Max
 from django.utils import timezone
 
-from .cash_control import CashControlService, money
 from apps.core.money import format_money
+
+from .cash_control import CashControlService, money
 from .models import (
     ZERO,
     BusinessDay,

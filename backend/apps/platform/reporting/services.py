@@ -20,7 +20,6 @@ from apps.platform.reporting.catalogue import ReportSpec, get_report, list_repor
 from apps.platform.reporting.pdf import build_pdf_bytes, qr_matrix
 from apps.tenancy.models import Tenant
 
-
 SUPPORTED_FORMATS = ("pdf", "csv", "json", "xlsx")
 
 

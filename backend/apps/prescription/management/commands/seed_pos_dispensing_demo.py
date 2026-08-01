@@ -4,6 +4,13 @@ from decimal import Decimal
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
+from apps.core.demo_seed import (
+    add_demo_seed_arguments,
+    demo_password_notice,
+    ensure_demo_seed_allowed,
+    resolve_demo_password,
+)
+from apps.fhir.kenya_hie import SYSTEM_CLIENT_REGISTRY_ID
 from apps.identity.models import Role, User, UserRole
 from apps.inventory.models import InventoryBatch, InventoryLedgerEntry, InventoryLocation, InventoryReservation
 from apps.inventory.services import InventoryLedgerService
@@ -18,7 +25,6 @@ from apps.medicines.models import (
 from apps.organizations.models import Location, Organization
 from apps.patients.models import Patient, PatientAllergy, PatientIdentifier
 from apps.patients.services import PatientIdentifierProtector
-from apps.fhir.kenya_hie import SYSTEM_CLIENT_REGISTRY_ID
 from apps.pos_shift.models import PosRegister
 from apps.practitioners.models import Practitioner
 from apps.prescription.models import (
@@ -30,12 +36,6 @@ from apps.prescription.models import (
     PosShiftRecord,
     Prescription,
     PrescriptionItem,
-)
-from apps.core.demo_seed import (
-    add_demo_seed_arguments,
-    demo_password_notice,
-    ensure_demo_seed_allowed,
-    resolve_demo_password,
 )
 from apps.tenancy.models import Tenant
 

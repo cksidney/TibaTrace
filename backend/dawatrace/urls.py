@@ -9,6 +9,11 @@ from apps.platform.release_views import (
     PosReleaseDownloadView,
     PosReleaseListView,
 )
+from apps.platform.reporting.views import (
+    HQReportCatalogueView,
+    HQReportDownloadView,
+    HQReportValidateView,
+)
 from apps.platform.views import (
     HQOverviewView,
     HQWorkspaceView,
@@ -16,11 +21,6 @@ from apps.platform.views import (
     PosDemoSeedView,
     health,
     pos_terminal_view,
-)
-from apps.platform.reporting.views import (
-    HQReportCatalogueView,
-    HQReportDownloadView,
-    HQReportValidateView,
 )
 
 urlpatterns = [

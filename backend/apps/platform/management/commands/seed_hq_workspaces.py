@@ -18,20 +18,20 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.audit.models import AuditEvent
+from apps.audit.service import log_audit
+from apps.cds.models import ClinicalKnowledgeRelease
+from apps.clinical.models import ClinicalCondition, ClinicalEncounter, ClinicalObservation
 from apps.core.demo_seed import (
     add_demo_seed_arguments,
     demo_password_notice,
     ensure_demo_seed_allowed,
     resolve_demo_password,
 )
-from apps.audit.service import log_audit
-from apps.cds.models import ClinicalKnowledgeRelease
-from apps.clinical.models import ClinicalCondition, ClinicalEncounter, ClinicalObservation
 from apps.core.tenant_context import reset_current_tenant_id, set_current_tenant_id
 from apps.fhir.models import FHIRIdempotencyRecord
 from apps.identity.models import Role, ServiceAccount, User, UserRole
 from apps.identity.services import UserAdministrationService
-from apps.inventory.models import InventoryBatch, InventoryBalance, InventoryLedgerEntry, InventoryLocation
+from apps.inventory.models import InventoryBalance, InventoryBatch, InventoryLedgerEntry, InventoryLocation
 from apps.inventory.services import InventoryLedgerService, InventoryReceiptService
 from apps.medicines.models import (
     ClinicalMedicinalProduct,

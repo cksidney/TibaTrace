@@ -234,9 +234,10 @@ class PasswordForgotView(APIView):
     throttle_classes = [PasswordResetThrottle]
 
     def post(self, request):
+        import logging
+
         from django.conf import settings
         from django.contrib.auth.tokens import PasswordResetTokenGenerator
-        import logging
 
         serializer = PasswordForgotSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)

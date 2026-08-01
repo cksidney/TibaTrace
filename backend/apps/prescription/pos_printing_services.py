@@ -8,10 +8,10 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 
+from apps.core.money import format_money
 from apps.prescription.models import DispensingLine
 from apps.prescription.pos_printing_models import PosPrintDocument, PosPrintJob
 from apps.prescription.services.clinical_dispensing import _require_capability
-from apps.core.money import format_money
 from apps.workflows.service import emit_event
 
 
