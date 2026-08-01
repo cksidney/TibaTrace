@@ -147,7 +147,26 @@ function JournalEntry({ entry, busy, onReconcile }: { readonly entry: OfflineAct
 }
 
 function ReconciliationModal({ entry, busy, onClose, onConfirm }: { readonly entry: OfflineAction; readonly busy: boolean; readonly onClose: () => void; readonly onConfirm: () => void }) {
-  return <Modal visible transparent animationType="fade" onRequestClose={onClose}><View style={styles.modalBackdrop} accessibilityViewIsModal><View style={styles.modalCard} accessibilityLabel="Authoritative reconciliation"><Text style={styles.kicker}>Authoritative reconciliation</Text><Text style={styles.title}>Query original {entry.type.toLowerCase()} action</Text><Text style={styles.body}>TibaTrace will query the server using this exact idempotency key. It will not resend, cancel or modify the original action.</Text><Text selectable style={styles.key}>{entry.idempotencyKey}</Text><View style={styles.modalActions}><Pressable accessibilityRole="button" disabled={busy} onPress={onClose} style={[styles.secondary, busy && styles.disabled]}><Text style={styles.secondaryLabel}>Back</Text></Pressable><Pressable accessibilityRole="button" disabled={busy} onPress={onConfirm} style={[styles.primary, busy && styles.disabled]}><Text style={styles.primaryLabel}>{busy ? 'Working…' : 'Query server'}</Text></Pressable></View></View></View></Modal>;
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.modalBackdrop} accessibilityViewIsModal onPress={() => !busy && onClose()}>
+        <Pressable style={styles.modalCard} accessibilityLabel="Authoritative reconciliation" onPress={(e) => e.stopPropagation()}>
+          <Text style={styles.kicker}>Authoritative reconciliation</Text>
+          <Text style={styles.title}>Query original {entry.type.toLowerCase()} action</Text>
+          <Text style={styles.body}>TibaTrace will query the server using this exact idempotency key. It will not resend, cancel or modify the original action.</Text>
+          <Text selectable style={styles.key}>{entry.idempotencyKey}</Text>
+          <View style={styles.modalActions}>
+            <Pressable accessibilityRole="button" disabled={busy} onPress={onClose} style={[styles.secondary, busy && styles.disabled]}>
+              <Text style={styles.secondaryLabel}>Back</Text>
+            </Pressable>
+            <Pressable accessibilityRole="button" disabled={busy} onPress={onConfirm} style={[styles.primary, busy && styles.disabled]}>
+              <Text style={styles.primaryLabel}>{busy ? 'Working…' : 'Query server'}</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
 }
 
 function plural(count: number): string { return count === 1 ? '' : 's'; }
@@ -187,8 +206,8 @@ const styles = StyleSheet.create({
   primaryLabel: { color: action.primaryForeground, fontSize: fontSize.caption, fontWeight: '700' },
   disabled: { opacity: 0.55, backgroundColor: surface.sunken },
   progress: { position: 'absolute', top: spacing.lg, right: spacing.lg },
-  modalBackdrop: { flex: 1, justifyContent: 'center', padding: spacing.lg, backgroundColor: 'rgba(5, 18, 42, 0.56)' },
-  modalCard: { gap: spacing.md, padding: spacing.xl, borderRadius: 14, backgroundColor: surface.raised },
+  modalBackdrop: { flex: 1, justifyContent: 'center', padding: spacing.lg, backgroundColor: 'rgba(5, 18, 42, 0.72)' },
+  modalCard: { gap: spacing.md, padding: spacing.xl, borderRadius: 16, backgroundColor: surface.raised, elevation: 12 },
   key: { padding: spacing.sm, borderRadius: 8, backgroundColor: surface.sunken, color: text.primary, fontSize: fontSize.caption, fontFamily: 'monospace' },
   modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm },
 });

@@ -1,5 +1,6 @@
 import { action, deriveStages, fontFamily, fontSize, nextAction, spacing, surface, text, viewportAtMost } from '@dawatrace/shared/design-system/index.js';
-import { useEffect, useMemo, useState } from 'react';
+import type { TimelineEntry } from '@dawatrace/shared/dispensing/index.js';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { ClinicalRail } from './components/tibatrace/ClinicalRail.js';
 import { ClinicalReviewWorkspace, type ClinicalOverrideActionInput } from './components/tibatrace/ClinicalReviewWorkspace.js';
@@ -10,6 +11,8 @@ import { PaymentPanel } from './components/tibatrace/PaymentPanel.js';
 import { PrintCentre } from './components/tibatrace/PrintCentre.js';
 import { RegisterCentre } from './components/tibatrace/RegisterCentre.js';
 import { PrescriptionWorkspace } from './components/tibatrace/PrescriptionWorkspace.js';
+import { EpisodeTimeline } from './components/tibatrace/EpisodeTimeline.js';
+import { TaskQueue } from './components/tibatrace/TaskQueue.js';
 import { RetailWorkspace } from './components/tibatrace/RetailWorkspace.js';
 import { SyncCentre } from './components/tibatrace/SyncCentre.js';
 import type { PatientSummary } from './components/tibatrace/PatientSafetyBanner.js';
@@ -334,7 +337,18 @@ function OperationsConsole({
                 onRefresh={() => void refresh()}
               />
               <div style={{ marginTop: spacing.xl }}>
-                <PrescriptionWorkspace lines={state.selected.lines} />
+                <PrescriptionWorkspace
+                  lines={state.selected.lines}
+                  apiFetch={apiFetch}
+                  episodeId={state.selected.id}
+                  onTransition={() => void refresh()}
+                />
+              </div>
+              <div style={{ marginTop: spacing.xxl }}>
+                <EpisodeTimelineSection
+                  episodeId={state.selected.id}
+                  apiFetch={apiFetch}
+                />
               </div>
               <section id="payment-workspace" style={{ marginTop: spacing.xxl }}>
                 <PaymentPanel
@@ -371,7 +385,13 @@ function OperationsConsole({
             </>
             )
           ) : (
-            <Queue queue={state.queue} busy={state.busy} onSelect={(id) => void select(id)} />
+            <Queue
+              queue={state.queue}
+              busy={state.busy}
+              onSelect={(id) => void select(id)}
+              apiFetch={apiFetch}
+              operator={session.userId}
+            />
           )}
         </main>
 
@@ -823,6 +843,8 @@ function Queue({
   queue,
   busy,
   onSelect,
+  apiFetch,
+  operator,
 }: {
   readonly queue: readonly {
     id: string;
@@ -833,67 +855,146 @@ function Queue({
   }[];
   readonly busy: boolean;
   readonly onSelect: (id: string) => void;
+  readonly apiFetch?: typeof fetch;
+  readonly operator?: string;
 }) {
+  const [tasks, setTasks] = useState<readonly import('@dawatrace/shared/dispensing/index.js').ClinicalTask[]>([]);
+
+  useEffect(() => {
+    if (!apiFetch) return;
+    void apiFetch('/api/pos/clinical-screening/tasks/', { headers: { Accept: 'application/json' } })
+      .then(async (r) => {
+        if (!r.ok) return;
+        const data = await r.json() as { results?: unknown[] } | unknown[];
+        const items = Array.isArray(data) ? data : ((data as { results?: unknown[] }).results ?? []);
+        setTasks(items as import('@dawatrace/shared/dispensing/index.js').ClinicalTask[]);
+      })
+      .catch(() => undefined);
+  }, [apiFetch]);
+
   if (busy && queue.length === 0) {
     return <p style={{ color: text.secondary }}>Loading dispensing queue…</p>;
   }
-  if (queue.length === 0) {
-    return (
-      <div>
-        <h2 style={{ fontSize: fontSize.sectionTitle, margin: 0 }}>No prescriptions waiting</h2>
-        <p style={{ color: text.secondary }}>Scan or search for a prescription to begin.</p>
-      </div>
-    );
-  }
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
-      {queue.map((episode) => (
-        <button
-          key={episode.id}
-          type="button"
-          onClick={() => onSelect(episode.id)}
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: spacing.sm,
-            padding: spacing.md,
-            borderRadius: 10,
-            border: `1px solid ${surface.border}`,
-            background: surface.raised,
-            cursor: 'pointer',
-            fontSize: fontSize.body,
-            minHeight: 48,
-            textAlign: 'left',
-          }}
-        >
-          {/* The patient leads, not the dispensing number.
-              The row showed only the number, so an operator choosing from a
-              queue of several could not tell who was who without opening each
-              one -- on the screen where picking the wrong person is the error
-              that matters most. The Android queue already led with the name.
-              An episode with no name on file says so rather than falling back
-              to the number, which would read as a patient called DEMO-DISP-8001. */}
-          <span style={{ display: 'grid', gap: 2 }}>
-            <span style={{ fontWeight: 600 }}>
-              {episode.patient_name ?? 'Name not recorded'}
-            </span>
-            <span
-              style={{
-                color: text.secondary,
-                fontSize: fontSize.caption,
-                fontVariantNumeric: 'tabular-nums',
-              }}
-            >
-              {episode.patient_number ? `${episode.patient_number} · ` : ''}
-              {episode.dispensing_number}
-            </span>
-          </span>
-          <span style={{ color: text.secondary }}>{episode.status.replace(/_/g, ' ')}</span>
-        </button>
-      ))}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.xl }}>
+      {tasks.length > 0 ? (
+        <div>
+          <TaskQueue
+            tasks={tasks}
+            currentUser={operator}
+            onOpen={(episodeId) => onSelect(episodeId)}
+          />
+        </div>
+      ) : null}
+      <div>
+        <h2 style={{ fontSize: fontSize.sectionTitle, margin: `0 0 ${spacing.md}px` }}>Dispensing queue</h2>
+        {queue.length === 0 ? (
+          <p style={{ color: text.secondary }}>No prescriptions waiting. Scan or search for a prescription to begin.</p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
+            {queue.map((episode) => (
+              <button
+                key={episode.id}
+                type="button"
+                onClick={() => onSelect(episode.id)}
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  flexWrap: 'wrap',
+                  gap: spacing.sm,
+                  padding: spacing.md,
+                  borderRadius: 10,
+                  border: `1px solid ${surface.border}`,
+                  background: surface.raised,
+                  cursor: 'pointer',
+                  fontSize: fontSize.body,
+                  minHeight: 48,
+                  textAlign: 'left',
+                }}
+              >
+                {/* The patient leads, not the dispensing number.
+                    The row showed only the number, so an operator choosing from a
+                    queue of several could not tell who was who without opening each
+                    one -- on the screen where picking the wrong person is the error
+                    that matters most. The Android queue already led with the name.
+                    An episode with no name on file says so rather than falling back
+                    to the number, which would read as a patient called DEMO-DISP-8001. */}
+                <span style={{ display: 'grid', gap: 2 }}>
+                  <span style={{ fontWeight: 600 }}>
+                    {episode.patient_name ?? 'Name not recorded'}
+                  </span>
+                  <span
+                    style={{
+                      color: text.secondary,
+                      fontSize: fontSize.caption,
+                      fontVariantNumeric: 'tabular-nums',
+                    }}
+                  >
+                    {episode.patient_number ? `${episode.patient_number} · ` : ''}
+                    {episode.dispensing_number}
+                  </span>
+                </span>
+                <span style={{ color: text.secondary }}>{episode.status.replace(/_/g, ' ')}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
+}
+
+/**
+ * Fetches and renders the audit timeline for a dispensing episode.
+ *
+ * Loaded on demand: the timeline is not in the episode DTO, and fetching it
+ * eagerly for every episode that opens would add a second round-trip to the
+ * critical path. The section renders a loading placeholder and fills in
+ * once the response arrives.
+ */
+function EpisodeTimelineSection({
+  episodeId,
+  apiFetch,
+}: {
+  readonly episodeId: string;
+  readonly apiFetch: typeof fetch;
+}) {
+  const [entries, setEntries] = useState<readonly TimelineEntry[] | null>(null);
+  const [error, setError] = useState('');
+
+  const load = useCallback(async () => {
+    try {
+      const response = await apiFetch(
+        `/api/pos/dispensing/episodes/${episodeId}/timeline/`,
+        { headers: { Accept: 'application/json' } },
+      );
+      if (!response.ok) { setError(`Timeline unavailable (${response.status}).`); return; }
+      const data = await response.json() as TimelineEntry[] | { results?: TimelineEntry[] };
+      setEntries(Array.isArray(data) ? data : (data.results ?? []));
+    } catch {
+      setError('Timeline could not be loaded.');
+    }
+  }, [apiFetch, episodeId]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  if (error) {
+    return (
+      <section>
+        <h2 style={{ margin: 0, fontSize: fontSize.sectionTitle }}>History</h2>
+        <p style={{ color: text.secondary, fontSize: fontSize.caption }}>{error}</p>
+      </section>
+    );
+  }
+  if (entries === null) {
+    return (
+      <section>
+        <h2 style={{ margin: 0, fontSize: fontSize.sectionTitle }}>History</h2>
+        <p style={{ color: text.secondary, fontSize: fontSize.caption }}>Loading episode history…</p>
+      </section>
+    );
+  }
+  return <EpisodeTimeline entries={entries} />;
 }
 
 function EpisodeWorkspace({

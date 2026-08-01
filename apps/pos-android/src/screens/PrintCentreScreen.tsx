@@ -30,7 +30,7 @@ interface PrintAction {
   readonly job: PosPrintJob;
 }
 
-export function PrintCentreScreen({ apiFetch, deviceId }: { readonly apiFetch: typeof fetch; readonly deviceId: string }) {
+export function PrintCentreScreen({ apiFetch, apiBaseUrl, deviceId }: { readonly apiFetch: typeof fetch; readonly apiBaseUrl?: string; readonly deviceId: string }) {
   const [jobs, setJobs] = useState<readonly PosPrintJob[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -40,14 +40,15 @@ export function PrintCentreScreen({ apiFetch, deviceId }: { readonly apiFetch: t
   const [reason, setReason] = useState('');
 
   const request = useCallback(async (path: string, init?: RequestInit) => {
-    const response = await apiFetch(path, {
+    const url = `${apiBaseUrl ?? ''}${path}`;
+    const response = await apiFetch(url, {
       ...init,
       headers: { Accept: 'application/json', ...(init?.headers ?? {}) },
     });
     if (response.ok) return response;
     const payload = (await response.json().catch(() => null)) as { error?: string; detail?: string } | null;
     throw new Error(payload?.error || payload?.detail || `Print service refused the action (${response.status}).`);
-  }, [apiFetch]);
+  }, [apiFetch, apiBaseUrl]);
 
   const refresh = useCallback(async () => {
     setBusy(true);
@@ -66,6 +67,7 @@ export function PrintCentreScreen({ apiFetch, deviceId }: { readonly apiFetch: t
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
 
   const openAction = (kind: PrintActionKind, job: PosPrintJob) => {
     setNotice('');

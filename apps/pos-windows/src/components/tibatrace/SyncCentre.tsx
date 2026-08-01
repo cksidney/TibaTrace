@@ -200,7 +200,7 @@ function JournalEntry({ entry, busy, onReconcile }: { readonly entry: OfflineAct
 }
 
 function ReconciliationModal({ entry, busy, onClose, onConfirm }: { readonly entry: OfflineAction; readonly busy: boolean; readonly onClose: () => void; readonly onConfirm: () => void }) {
-  return <div role="presentation" style={modalBackdrop}><section role="dialog" aria-modal="true" aria-labelledby="reconciliation-title" style={modalCard}><p style={eyebrow}>Authoritative reconciliation</p><h2 id="reconciliation-title" style={heading}>Query original {entry.type.toLowerCase()} action</h2><p style={subheading}>TibaTrace will query the server using this exact idempotency key. It will not resend, cancel or modify the original action.</p><p style={keyText}>{entry.idempotencyKey}</p><div style={modalActions}><button type="button" disabled={busy} onClick={onClose} style={secondaryButton}>Back</button><button type="button" disabled={busy} onClick={onConfirm} style={primaryButton}>Query server</button></div></section></div>;
+  return <div role="presentation" onClick={(e) => { if (e.target === e.currentTarget && !busy) onClose(); }} style={modalBackdrop}><section role="dialog" aria-modal="true" aria-labelledby="reconciliation-title" style={modalCard}><p style={eyebrow}>Authoritative reconciliation</p><h2 id="reconciliation-title" style={heading}>Query original {entry.type.toLowerCase()} action</h2><p style={subheading}>TibaTrace will query the server using this exact idempotency key. It will not resend, cancel or modify the original action.</p><p style={keyText}>{entry.idempotencyKey}</p><div style={modalActions}><button type="button" disabled={busy} onClick={onClose} style={secondaryButton}>Back</button><button type="button" disabled={busy} onClick={onConfirm} style={primaryButton}>Query server</button></div></section></div>;
 }
 
 function plural(count: number): string { return count === 1 ? '' : 's'; }
@@ -228,8 +228,8 @@ const entryCard = { display: 'grid', gap: spacing.sm, padding: spacing.md, borde
 const entryHeader = { display: 'flex', justifyContent: 'space-between', gap: spacing.md, alignItems: 'flex-start' };
 const statusChip = { display: 'inline-flex', border: '1px solid', borderRadius: 999, padding: '4px 8px', fontSize: fontSize.caption, fontWeight: 700, whiteSpace: 'nowrap' as const };
 const secondaryButton = { minHeight: 38, justifySelf: 'start', padding: '7px 11px', border: `1px solid ${surface.borderStrong}`, borderRadius: 8, background: surface.raised, color: text.primary, fontWeight: 700, cursor: 'pointer' };
-const modalBackdrop = { position: 'fixed' as const, inset: 0, zIndex: 40, display: 'grid', placeItems: 'center', padding: spacing.xl, background: 'rgba(5, 18, 42, 0.56)' };
-const modalCard = { width: 'min(520px, 100%)', display: 'grid', gap: spacing.md, padding: spacing.xxl, borderRadius: 14, background: surface.raised, boxShadow: '0 22px 60px rgba(0, 0, 0, 0.35)' };
+const modalBackdrop = { position: 'fixed' as const, inset: 0, zIndex: 40, display: 'grid', placeItems: 'center', padding: spacing.xl, background: 'rgba(5, 18, 42, 0.68)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' };
+const modalCard = { width: 'min(520px, 100%)', display: 'grid', gap: spacing.md, padding: spacing.xxl, borderRadius: 16, background: surface.raised, boxShadow: '0 28px 75px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.08)' };
 const keyText = { margin: 0, padding: spacing.sm, overflowWrap: 'anywhere' as const, borderRadius: 8, background: surface.sunken, color: text.primary, fontFamily: 'monospace', fontSize: fontSize.caption };
 const modalActions = { display: 'flex', justifyContent: 'flex-end', gap: spacing.sm };
 const primaryButton = { minHeight: 40, padding: '8px 12px', border: 'none', borderRadius: 8, background: action.primary, color: action.primaryForeground, fontWeight: 700, cursor: 'pointer' };

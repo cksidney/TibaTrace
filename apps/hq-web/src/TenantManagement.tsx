@@ -358,9 +358,16 @@ function PharmacyDialog({
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (REASON_REQUIRED.has(dialog.mode) && !fields.reason?.trim()) {
-      setError('A reason is required. It is recorded against the pharmacy permanently.');
-      return;
+    if (REASON_REQUIRED.has(dialog.mode)) {
+      const reasonTrimmed = fields.reason?.trim() ?? '';
+      if (!reasonTrimmed) {
+        setError('A reason is required. It is recorded against the pharmacy permanently.');
+        return;
+      }
+      if (reasonTrimmed.length < 10) {
+        setError('A detailed reason of at least 10 characters is required for this governed transition.');
+        return;
+      }
     }
     setBusy(true);
     setError('');
@@ -458,8 +465,26 @@ function Modal({
   readonly onClose: () => void;
   readonly title: string;
 }) {
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
   return (
-    <div className="business-dialog-backdrop" role="presentation">
+    <div
+      className="business-dialog-backdrop"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
+      role="presentation"
+    >
       <div aria-modal="true" className="business-dialog" role="dialog">
         <header>
           <h2>{title}</h2>

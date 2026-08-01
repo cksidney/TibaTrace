@@ -118,13 +118,30 @@ export function AccessUsersDirectory({ csrfToken, roles, tenantId }: AccessUsers
 
   const onCreate = async (event: FormEvent) => {
     event.preventDefault();
-    setBusyId('create');
     setError('');
     setNotice('');
+
+    const usernameTrimmed = createForm.username.trim();
+    const emailTrimmed = createForm.email.trim();
+
+    if (usernameTrimmed.length < 3) {
+      setError('Username must be at least 3 characters long.');
+      return;
+    }
+    if (emailTrimmed && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrimmed)) {
+      setError('Please enter a valid email address.');
+      return;
+    }
+    if (createForm.role_ids.length === 0) {
+      setError('Please assign at least one role to the new user.');
+      return;
+    }
+
+    setBusyId('create');
     try {
       const created = await createTenantUser(tenantId, csrfToken, {
-        username: createForm.username.trim(),
-        email: createForm.email.trim(),
+        username: usernameTrimmed,
+        email: emailTrimmed,
         first_name: createForm.first_name.trim(),
         last_name: createForm.last_name.trim(),
         role_ids: createForm.role_ids,

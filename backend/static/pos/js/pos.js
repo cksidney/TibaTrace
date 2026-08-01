@@ -1081,6 +1081,20 @@
     if (el) el.classList.add("open");
   }
 
+  document.addEventListener("keydown", function (event) {
+    if (event.key === "Escape") {
+      document.querySelectorAll(".modal-overlay.open").forEach(function (modal) {
+        modal.classList.remove("open");
+      });
+    }
+  });
+
+  document.addEventListener("click", function (event) {
+    if (event.target && event.target.classList && event.target.classList.contains("modal-overlay")) {
+      event.target.classList.remove("open");
+    }
+  });
+
   window.openShiftModal = function openShiftModal() {
     if (state.shift) {
       setText("modal-shift-num", state.shift.shift_number || "—");

@@ -324,6 +324,10 @@ function PosWorkspace({ onLogout }: { readonly onLogout: () => Promise<void> }) 
             canConfirmCollection={effectiveGate.canConfirmCollection}
             onConfirmCollection={() => setScreen('collection')}
             onReviewFinding={() => setScreen('clinical-review')}
+            apiFetch={runtime.session.fetch.bind(runtime.session) as typeof fetch}
+            onTransition={() => {
+              if (episode) void selectEpisode(episode.id);
+            }}
           />
         ) : null}
         {screen === 'clinical-review' && episode && clinicalResult ? (
@@ -522,6 +526,7 @@ function PosWorkspace({ onLogout }: { readonly onLogout: () => Promise<void> }) 
         {screen === 'print' ? (
           <PrintCentreScreen
             apiFetch={runtime.session.fetch.bind(runtime.session) as typeof fetch}
+            apiBaseUrl={runtime.apiBaseUrl}
             deviceId={deviceId}
           />
         ) : null}

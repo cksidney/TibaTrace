@@ -690,8 +690,45 @@ function ProcurementDialog({
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    setBusy(true);
     setError('');
+
+    // Business Logic Validations
+    if (dialog.kind === 'qualification') {
+      if (values.effective_date && values.expiry_date && new Date(values.expiry_date) <= new Date(values.effective_date)) {
+        setError('Licence expiry date must be after effective date.');
+        return;
+      }
+    }
+
+    if (dialog.kind === 'suspend-supplier') {
+      if (!values.reason || values.reason.trim().length < 5) {
+        setError('Suspension reason must be at least 5 characters long.');
+        return;
+      }
+    }
+
+    if (supportsLines(dialog)) {
+      for (const [i, line] of lines.entries()) {
+        if (!line.referenceId) {
+          setError(`Line ${i + 1}: Please select a valid item SKU.`);
+          return;
+        }
+        const qty = Number(line.quantity);
+        if (Number.isNaN(qty) || qty <= 0) {
+          setError(`Line ${i + 1}: Quantity must be greater than zero.`);
+          return;
+        }
+        if (dialog.kind === 'order') {
+          const cost = Number(line.unitCost);
+          if (Number.isNaN(cost) || cost <= 0) {
+            setError(`Line ${i + 1}: Unit cost must be a positive number greater than zero.`);
+            return;
+          }
+        }
+      }
+    }
+
+    setBusy(true);
     try {
       const { path, payload, message } = dialog.kind === 'confirm'
         ? dialog
@@ -705,8 +742,26 @@ function ProcurementDialog({
     }
   };
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !busy) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [busy, onClose]);
+
   return (
-    <div className="business-dialog-backdrop" role="presentation">
+    <div
+      className="business-dialog-backdrop"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !busy) {
+          onClose();
+        }
+      }}
+      role="presentation"
+    >
       <section aria-modal="true" className="business-dialog procurement-dialog" role="dialog">
         <header>
           <div><p className="eyebrow">Procurement workflow</p><h2>{dialogTitle(dialog)}</h2></div>

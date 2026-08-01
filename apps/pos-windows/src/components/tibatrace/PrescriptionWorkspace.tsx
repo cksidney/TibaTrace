@@ -1,8 +1,11 @@
 import { autoColumns, fontFamily, fontSize, spacing, statusPalette, surface, text } from '@dawatrace/shared/design-system/index.js';
 import type { ClinicalStatus } from '@dawatrace/shared/design-system/index.js';
-import type { DispensingLineDTO } from '@dawatrace/shared/dispensing/index.js';
+import type { BatchVerificationResponse, DispensingLineDTO } from '@dawatrace/shared/dispensing/index.js';
+import { useState } from 'react';
 
 import { StatusBadge } from './StatusBadge.js';
+import { BatchVerification } from './BatchVerification.js';
+import { FinalCheckComparison } from './FinalCheck.js';
 
 /**
  * The prescription workspace.
@@ -37,12 +40,19 @@ export function lineStatus(status: string): { status: ClinicalStatus; label: str
 
 export function PrescriptionWorkspace({
   lines,
+  apiFetch,
+  episodeId,
   onSelectLine,
   selectedLineId,
+  onTransition,
 }: {
   readonly lines: readonly DispensingLineDTO[];
+  readonly apiFetch?: typeof fetch;
+  readonly episodeId?: string;
   readonly onSelectLine?: (lineId: string) => void;
   readonly selectedLineId?: string;
+  /** Called after a successful state transition (e.g. CHECKED). */
+  readonly onTransition?: () => void;
 }) {
   if (lines.length === 0) {
     return (
@@ -53,15 +63,93 @@ export function PrescriptionWorkspace({
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.md }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.xxl ?? spacing.xl }}>
       {lines.map((line) => (
-        <MedicineLine
+        <LineSection
           key={line.id}
           line={line}
           selected={selectedLineId === line.id}
-          {...(onSelectLine ? { onSelect: onSelectLine } : {})}
+          apiFetch={apiFetch}
+          episodeId={episodeId}
+          onSelect={onSelectLine}
+          onTransition={onTransition}
         />
       ))}
+    </div>
+  );
+}
+
+function LineSection({
+  line,
+  selected,
+  apiFetch,
+  episodeId,
+  onSelect,
+  onTransition,
+}: {
+  readonly line: DispensingLineDTO;
+  readonly selected: boolean;
+  readonly apiFetch?: typeof fetch;
+  readonly episodeId?: string;
+  readonly onSelect?: (lineId: string) => void;
+  readonly onTransition?: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+
+  const doVerify = apiFetch
+    ? async (skuId: string, batchNumber: string): Promise<BatchVerificationResponse | null> => {
+        const response = await apiFetch('/api/pos/dispensing/episodes/verify-batch/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify({ sku_id: skuId, batch_number: batchNumber }),
+        });
+        if (!response.ok) return null;
+        return response.json() as Promise<BatchVerificationResponse>;
+      }
+    : undefined;
+
+  const doComplete = apiFetch && episodeId
+    ? async () => {
+        setBusy(true);
+        try {
+          const resp = await apiFetch(
+            `/api/pos/dispensing/episodes/${episodeId}/transition-state/`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+              body: JSON.stringify({ new_status: 'CHECKING' }),
+            },
+          );
+          if (resp.ok) onTransition?.();
+        } finally {
+          setBusy(false);
+        }
+      }
+    : undefined;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.md }}>
+      <MedicineLine
+        line={line}
+        selected={selected}
+        onSelect={onSelect}
+      />
+      {line.status === 'AUTHORIZED' && doVerify ? (
+        <BatchVerification
+          expectedSkuId={line.supplied_sku || line.prescribed_sku}
+          busy={busy}
+          onVerify={doVerify}
+        />
+      ) : null}
+      {(line.status === 'PREPARED' || line.status === 'CHECKING') ? (
+        <FinalCheckComparison
+          lines={[line]}
+          canComplete={!!doComplete && line.status === 'PREPARED'}
+          blockedReason=''
+          busy={busy}
+          onComplete={doComplete}
+        />
+      ) : null}
     </div>
   );
 }

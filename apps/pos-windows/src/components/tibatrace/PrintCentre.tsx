@@ -236,7 +236,7 @@ function ActionModal({ action, busy, simulatedOutcome, reason, onOutcomeChange, 
         : 'Cancel job';
   const ready = !busy && (!requiresReason || reason.trim().length > 0);
   return (
-    <div role="presentation" style={modalBackdrop}>
+    <div role="presentation" onClick={(e) => { if (e.target === e.currentTarget && !busy) onClose(); }} style={modalBackdrop}>
       <section role="dialog" aria-modal="true" aria-labelledby="print-action-title" style={modalCard}>
         <p style={eyebrow}>Controlled document action</p>
         <h2 id="print-action-title" style={heading}>{title}</h2>
@@ -304,8 +304,8 @@ const detailText = { margin: 0, color: text.secondary, fontSize: fontSize.captio
 const failureText = { margin: 0, color: statusPalette.BLOCKING.foreground, fontSize: fontSize.caption, lineHeight: 1.45 };
 const actions = { display: 'flex', flexWrap: 'wrap' as const, gap: spacing.sm };
 const secondaryButton = { minHeight: 38, padding: '7px 11px', border: `1px solid ${surface.borderStrong}`, borderRadius: 8, background: surface.raised, color: text.primary, fontWeight: 700, cursor: 'pointer' };
-const modalBackdrop = { position: 'fixed' as const, inset: 0, zIndex: 40, display: 'grid', placeItems: 'center', padding: spacing.xl, background: 'rgba(5, 18, 42, 0.56)' };
-const modalCard = { width: 'min(580px, 100%)', display: 'grid', gap: spacing.md, padding: spacing.xxl, borderRadius: 14, background: surface.raised, boxShadow: '0 22px 60px rgba(0, 0, 0, 0.35)' };
+const modalBackdrop = { position: 'fixed' as const, inset: 0, zIndex: 40, display: 'grid', placeItems: 'center', padding: spacing.xl, background: 'rgba(5, 18, 42, 0.68)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' };
+const modalCard = { width: 'min(580px, 100%)', display: 'grid', gap: spacing.md, padding: spacing.xxl, borderRadius: 16, background: surface.raised, boxShadow: '0 28px 75px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.08)' };
 const choiceGroup = { display: 'grid', gap: spacing.sm, margin: 0, padding: spacing.md, border: `1px solid ${surface.border}`, borderRadius: 8 };
 const fieldLabel = { display: 'grid', gap: spacing.xs, color: text.primary, fontSize: fontSize.caption, fontWeight: 700 };
 const radioLabel = { display: 'flex', gap: spacing.sm, alignItems: 'center', color: text.primary, fontSize: fontSize.body };

@@ -6069,7 +6069,13 @@ function GovernmentCatalogue({
         </div>
       ) : null}
       {priceModal ? (
-        <div className="business-dialog-backdrop" role="presentation">
+        <div
+          className="business-dialog-backdrop"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !priceSubmitting) setPriceModal(null);
+          }}
+          role="presentation"
+        >
           <div aria-modal="true" className="business-dialog" role="dialog" style={{ maxWidth: '460px' }}>
             <header>
               <h2>Create Tenant Price Draft</h2>
@@ -6077,9 +6083,24 @@ function GovernmentCatalogue({
             </header>
             <form onSubmit={async (e) => {
               e.preventDefault();
-              setPriceSubmitting(true);
               setPriceError('');
               setPriceSuccess('');
+              const unitPriceNum = Number(modalUnitPrice);
+              const minPriceNum = modalMinPrice ? Number(modalMinPrice) : 0;
+              if (Number.isNaN(unitPriceNum) || unitPriceNum <= 0) {
+                setPriceError('Unit selling price must be a positive number greater than zero.');
+                return;
+              }
+              if (modalMinPrice && (Number.isNaN(minPriceNum) || minPriceNum < 0)) {
+                setPriceError('Minimum floor price must be a non-negative number.');
+                return;
+              }
+              if (modalMinPrice && minPriceNum > unitPriceNum) {
+                setPriceError(`Minimum floor price (KES ${minPriceNum.toFixed(2)}) cannot exceed unit selling price (KES ${unitPriceNum.toFixed(2)}).`);
+                return;
+              }
+
+              setPriceSubmitting(true);
               try {
                 const draft = await saveTenantPriceDraft(
                   {
@@ -6150,6 +6171,12 @@ function GovernmentCatalogue({
                   value={modalMinPrice}
                 />
               </label>
+
+              {modalUnitPrice && modalMinPrice && Number(modalUnitPrice) >= Number(modalMinPrice) ? (
+                <p className="business-dialog-confirm" style={{ margin: '8px 0', fontSize: '0.8rem' }}>
+                  <Icon name="shield" /> Governed margin window: <strong>KES {(Number(modalUnitPrice) - Number(modalMinPrice)).toFixed(2)}</strong> floor buffer.
+                </p>
+              ) : null}
 
               <label style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '12px 0', fontSize: '0.85rem' }}>
                 <input

@@ -249,7 +249,7 @@ function OverrideLifecycle({
         {['REQUESTED', 'UNDER_REVIEW'].includes(current?.status ?? '') ? <button type="button" disabled={busy} onClick={() => setAction('reject')} style={secondaryButton}>Reject override</button> : null}
         {['APPROVED', 'APPROVED_WITH_CONDITIONS'].includes(current?.status ?? '') ? <button type="button" disabled={busy} onClick={() => setAction('revoke')} style={secondaryButton}>Revoke override</button> : null}
       </div>
-      {action ? <div role="dialog" aria-modal="true" aria-label={actionLabel} style={modalBackdrop}>
+      {action ? <div role="dialog" aria-modal="true" aria-label={actionLabel} onClick={(e) => { if (e.target === e.currentTarget && !busy) setAction(null); }} style={modalBackdrop}>
         <section style={modalCard}>
           <p style={eyebrow}>Controlled clinical action</p>
           <h3 style={sectionHeading}>{actionLabel}</h3>
@@ -324,7 +324,7 @@ const historyCard: React.CSSProperties = { padding: spacing.lg, border: `1px sol
 const historyItem: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: spacing.xs, padding: `${spacing.md}px 0`, borderTop: `1px solid ${surface.border}` };
 const historyMeta: React.CSSProperties = { color: text.tertiary, fontSize: fontSize.caption };
 const overrideActions: React.CSSProperties = { display: 'flex', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.md };
-const modalBackdrop: React.CSSProperties = { position: 'fixed', inset: 0, zIndex: 20, display: 'grid', placeItems: 'center', padding: spacing.lg, background: 'rgba(10, 24, 43, 0.52)' };
-const modalCard: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: spacing.md, width: 'min(560px, 100%)', maxHeight: 'calc(100vh - 48px)', overflowY: 'auto', padding: spacing.xl, borderRadius: 12, background: surface.raised, boxShadow: '0 20px 55px rgba(10, 24, 43, 0.28)' };
+const modalBackdrop: React.CSSProperties = { position: 'fixed', inset: 0, zIndex: 20, display: 'grid', placeItems: 'center', padding: spacing.lg, background: 'rgba(10, 24, 43, 0.65)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' };
+const modalCard: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: spacing.md, width: 'min(560px, 100%)', maxHeight: 'calc(100vh - 48px)', overflowY: 'auto', padding: spacing.xl, borderRadius: 16, background: surface.raised, boxShadow: '0 28px 75px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.08)' };
 const modalActions: React.CSSProperties = { display: 'flex', justifyContent: 'flex-end', gap: spacing.sm };
 const select: React.CSSProperties = { minHeight: 42, padding: `0 ${spacing.sm}px`, border: `1px solid ${surface.borderStrong}`, borderRadius: 8, background: surface.raised, color: text.primary, fontFamily: 'inherit', fontSize: fontSize.body };

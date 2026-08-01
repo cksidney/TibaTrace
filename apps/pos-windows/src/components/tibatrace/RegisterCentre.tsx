@@ -341,7 +341,7 @@ function RegisterActionModal({
     (action.kind !== 'movement' || (Number(amount) > 0 && reasonCode.trim().length > 0));
 
   return (
-    <div role="presentation" style={modalBackdrop}>
+    <div role="presentation" onClick={(e) => { if (e.target === e.currentTarget && !busy) onClose(); }} style={modalBackdrop}>
       <section role="dialog" aria-modal="true" aria-labelledby="register-action-title" style={modalCard}>
         <p style={eyebrow}>Governed register action</p>
         <h2 id="register-action-title" style={heading}>{title}</h2>
@@ -590,8 +590,8 @@ const listItem = { display: 'flex', justifyContent: 'space-between', alignItems:
 const approvedChip = { color: statusPalette.SAFE.foreground, fontSize: fontSize.caption, fontWeight: 700 };
 const empty = { margin: 0, padding: spacing.lg, borderRadius: 8, background: surface.page, color: text.secondary, textAlign: 'center' as const };
 const secondaryButton = { minHeight: 38, padding: '7px 11px', border: `1px solid ${surface.borderStrong}`, borderRadius: 8, background: surface.raised, color: text.primary, fontWeight: 700, cursor: 'pointer' };
-const modalBackdrop = { position: 'fixed' as const, inset: 0, zIndex: 40, display: 'grid', placeItems: 'center', padding: spacing.xl, background: 'rgba(5, 18, 42, 0.56)' };
-const modalCard = { width: 'min(760px, 100%)', maxHeight: 'calc(100vh - 48px)', overflowY: 'auto' as const, display: 'grid', gap: spacing.md, padding: spacing.xxl, borderRadius: 14, background: surface.raised, boxShadow: '0 22px 60px rgba(0, 0, 0, 0.35)' };
+const modalBackdrop = { position: 'fixed' as const, inset: 0, zIndex: 40, display: 'grid', placeItems: 'center', padding: spacing.xl, background: 'rgba(5, 18, 42, 0.68)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' };
+const modalCard = { width: 'min(760px, 100%)', maxHeight: 'calc(100vh - 48px)', overflowY: 'auto' as const, display: 'grid', gap: spacing.md, padding: spacing.xxl, borderRadius: 16, background: surface.raised, boxShadow: '0 28px 75px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.08)' };
 const modalActions = { display: 'flex', justifyContent: 'flex-end', gap: spacing.sm };
 const primaryButton = (enabled: boolean) => ({ minHeight: 40, padding: '8px 12px', border: 'none', borderRadius: 8, background: enabled ? action.primary : surface.sunken, color: enabled ? action.primaryForeground : text.tertiary, fontWeight: 700, cursor: enabled ? 'pointer' : 'not-allowed' });
 const formGrid = { display: 'grid', gridTemplateColumns: autoColumns(220), gap: spacing.md };
