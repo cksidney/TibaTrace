@@ -32,7 +32,7 @@ will ever sign.
 
 | File | Purpose |
 |---|---|
-| `TibaTrace-POS-Setup-1.0.0.exe` | The signed NSIS installer |
+| `TibaTrace-POS-Setup-<version>.exe` | The signed NSIS installer |
 | `tibatrace-windows-signing.cer` | The **public** signing certificate |
 | `Install-TibaTrace.ps1` | Enrols the certificate, verifies, then installs |
 | `SHA256SUMS.txt` | Checksums for every file above |
@@ -106,13 +106,13 @@ reason the private key is held in one place and never distributed.
 Before enrolment — expect a non-`Valid` status:
 
 ```powershell
-Get-AuthenticodeSignature .\TibaTrace-POS-Setup-1.0.0.exe | Format-List Status, SignerCertificate
+Get-AuthenticodeSignature .\TibaTrace-POS-Setup-<version>.exe | Format-List Status, SignerCertificate
 ```
 
 Checksum:
 
 ```powershell
-Get-FileHash .\TibaTrace-POS-Setup-1.0.0.exe -Algorithm SHA256
+Get-FileHash .\TibaTrace-POS-Setup-<version>.exe -Algorithm SHA256
 ```
 
 Compare against `SHA256SUMS.txt`. The same file also verifies under

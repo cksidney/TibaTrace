@@ -51,7 +51,7 @@ if ([string]::IsNullOrWhiteSpace($PackageRoot)) {
 $ExpectedCertificateSha256 = '__PINNED_CERT_SHA256__'
 $ExpectedSignerSha256      = '__PINNED_CERT_SHA256__'
 
-$InstallerName   = 'TibaTrace-POS-Setup-1.0.0.exe'
+$InstallerName   = 'TibaTrace-POS-Setup-__INSTALLER_VERSION__.exe'
 $CertificateName = 'tibatrace-windows-signing.cer'
 $ExpectedSubject = 'CN=Esenai Group Ltd, O=Esenai Group Ltd, C=KE'
 

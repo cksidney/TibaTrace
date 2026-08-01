@@ -332,9 +332,12 @@ jobs:
           $installScript = Get-Content -Raw 'apps/pos-windows/managed-install/Install-TibaTrace.ps1'
           $pin = '${{ steps.export.outputs.cert_sha256 }}'
           $installScript = $installScript.Replace('__PINNED_CERT_SHA256__', $pin)
-          if ($installScript -match '__PINNED_CERT_SHA256__') {
-            Write-Error "Placeholder still present after injection."
-            exit 1
+          $installScript = $installScript.Replace('__INSTALLER_VERSION__', '${{ steps.posver.outputs.version }}')
+          foreach ($placeholder in '__PINNED_CERT_SHA256__', '__INSTALLER_VERSION__') {
+            if ($installScript -match [regex]::Escape($placeholder)) {
+              Write-Error "Placeholder $placeholder still present after injection."
+              exit 1
+            }
           }
           # ASCII: the guide tells operators to run this under Windows PowerShell
           # 5.1, which reads a BOM-less UTF-8 file as ANSI. The script has no
