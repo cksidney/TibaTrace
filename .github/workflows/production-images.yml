@@ -1,13 +1,15 @@
 name: Production Images
 
-# Builds both production server images from a clean checkout, for the
-# architecture production actually runs (linux/amd64).
+# Builds, validates and publishes both production server images.
 #
-# This exists because a release once passed every workspace build and still
-# could not be deployed: apps/hq-web/Dockerfile never copied or built
-# @dawatrace/shared, and `npm run build` succeeded locally only because a
-# developer had a stale packages/shared/dist on disk. A CI runner has no such
-# state, so this job is the check that would have caught it.
+# CI is the only authoritative source of release images. A developer laptop is
+# not: it builds for the wrong architecture, and it once produced a "passing"
+# release that could not be built at all, because stale packages/shared/dist on
+# the host hid a Dockerfile that never built the shared package.
+#
+# On a tibatrace-v* tag this job pushes to GHCR and emits the evidence needed to
+# deploy: immutable digests, SBOMs, build attestations and a release manifest.
+# On pull requests it validates only, and pushes nothing.
 
 on:
   pull_request:
@@ -17,16 +19,27 @@ on:
 
 permissions:
   contents: read
+  packages: write
+  attestations: write
+  id-token: write
+
+env:
+  BACKEND_IMAGE: ghcr.io/${{ github.repository_owner }}/tibatrace-backend
+  HQ_IMAGE: ghcr.io/${{ github.repository_owner }}/tibatrace-hq-web
 
 jobs:
   images:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      backend_digest: ${{ steps.backend.outputs.digest }}
+      hq_digest: ${{ steps.hq.outputs.digest }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Assert no generated dist is present in a clean checkout
-        # The whole point of this job is that the images build without them.
-        # If either ever becomes tracked, the regression guard is worthless.
+        # The point of this job is that the images build without them. If either
+        # ever becomes tracked, the regression guard is worthless.
         run: |
           for d in packages/shared/dist apps/hq-web/dist; do
             if [ -e "$d" ]; then
@@ -36,51 +49,129 @@ jobs:
           done
           echo "no generated dist directories present"
 
-      - uses: docker/setup-buildx-action@v3
-
       - name: Resolve release metadata
         id: meta
         run: |
-          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-          echo "version=$(cat VERSION)" >> "$GITHUB_OUTPUT"
-          echo "built=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+          sha=$(git rev-parse HEAD)
+          version=$(tr -d '[:space:]' < VERSION)
+          {
+            echo "sha=$sha"
+            echo "short_sha=$(git rev-parse --short=8 HEAD)"
+            echo "version=$version"
+            echo "built=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } >> "$GITHUB_OUTPUT"
 
-      - name: Build backend image (linux/amd64)
+          # A release tag must agree with the canonical VERSION file. Drift here
+          # is how an image ends up labelled with a version nobody shipped.
+          case "$GITHUB_REF" in
+            refs/tags/tibatrace-v*)
+              tag_version="${GITHUB_REF#refs/tags/tibatrace-v}"
+              if [ "$tag_version" != "$version" ]; then
+                echo "::error::tag tibatrace-v$tag_version disagrees with VERSION ($version)"
+                exit 1
+              fi
+              echo "release tag matches VERSION ($version)"
+              ;;
+            *) echo "not a release tag; VERSION is $version" ;;
+          esac
+
+      - name: Decide whether to publish
+        id: mode
+        run: |
+          case "$GITHUB_REF" in
+            refs/tags/tibatrace-v*) echo "push=true"  >> "$GITHUB_OUTPUT" ;;
+            *)                      echo "push=false" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: steps.mode.outputs.push == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Immutable tags only. No `latest`: a mutable tag cannot identify what is
+      # running in production six weeks from now.
+      - name: Build and push backend
+        id: backend
         uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/backend.Dockerfile
           platforms: linux/amd64
-          load: true
-          tags: tibatrace-backend:ci
+          push: ${{ steps.mode.outputs.push == 'true' }}
+          load: ${{ steps.mode.outputs.push != 'true' }}
+          tags: |
+            ${{ env.BACKEND_IMAGE }}:${{ steps.meta.outputs.version }}
+            ${{ env.BACKEND_IMAGE }}:sha-${{ steps.meta.outputs.short_sha }}
           build-args: |
             DAWATRACE_VERSION=${{ steps.meta.outputs.version }}
             GIT_SHA=${{ steps.meta.outputs.sha }}
             BUILD_TIME=${{ steps.meta.outputs.built }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.meta.outputs.version }}
+            org.opencontainers.image.revision=${{ steps.meta.outputs.sha }}
+            org.opencontainers.image.created=${{ steps.meta.outputs.built }}
+            com.esenai.tibatrace.release.tag=${{ github.ref_name }}
 
-      - name: Build HQ image (linux/amd64)
+      - name: Build and push HQ
+        id: hq
         uses: docker/build-push-action@v6
         with:
           context: .
           file: apps/hq-web/Dockerfile
           platforms: linux/amd64
-          load: true
-          tags: tibatrace-hq-web:ci
+          push: ${{ steps.mode.outputs.push == 'true' }}
+          load: ${{ steps.mode.outputs.push != 'true' }}
+          tags: |
+            ${{ env.HQ_IMAGE }}:${{ steps.meta.outputs.version }}
+            ${{ env.HQ_IMAGE }}:sha-${{ steps.meta.outputs.short_sha }}
           build-args: |
             DAWATRACE_VERSION=${{ steps.meta.outputs.version }}
             SOURCE_REVISION=${{ steps.meta.outputs.sha }}
             BUILD_TIME=${{ steps.meta.outputs.built }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.meta.outputs.version }}
+            org.opencontainers.image.revision=${{ steps.meta.outputs.sha }}
+            org.opencontainers.image.created=${{ steps.meta.outputs.built }}
+            com.esenai.tibatrace.release.tag=${{ github.ref_name }}
 
-      - name: Assert image labels carry the real revision
+      # Pull the pushed images back by digest so every check below runs against
+      # exactly what landed in the registry, not a local build artefact.
+      - name: Materialise images for verification
+        id: verify_refs
+        run: |
+          if [ "${{ steps.mode.outputs.push }}" = "true" ]; then
+            backend="${{ env.BACKEND_IMAGE }}@${{ steps.backend.outputs.digest }}"
+            hq="${{ env.HQ_IMAGE }}@${{ steps.hq.outputs.digest }}"
+            docker pull -q "$backend"
+            docker pull -q "$hq"
+          else
+            backend="${{ env.BACKEND_IMAGE }}:${{ steps.meta.outputs.version }}"
+            hq="${{ env.HQ_IMAGE }}:${{ steps.meta.outputs.version }}"
+          fi
+          echo "backend=$backend" >> "$GITHUB_OUTPUT"
+          echo "hq=$hq" >> "$GITHUB_OUTPUT"
+
+      - name: Assert architecture and OCI labels
         run: |
           expected='${{ steps.meta.outputs.sha }}'
+          version='${{ steps.meta.outputs.version }}'
           fail=0
-          for image in tibatrace-backend:ci tibatrace-hq-web:ci; do
-            arch=$(docker image inspect "$image" --format '{{.Architecture}}')
-            rev=$(docker image inspect "$image" \
-                  --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')
-            echo "$image: arch=$arch revision=$rev"
-            [ "$arch" = "amd64" ] || { echo "::error::$image is $arch, expected amd64"; fail=1; }
+          for image in '${{ steps.verify_refs.outputs.backend }}' '${{ steps.verify_refs.outputs.hq }}'; do
+            arch=$(docker image inspect "$image" --format '{{.Architecture}}/{{.Os}}')
+            rev=$(docker image inspect "$image" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')
+            ver=$(docker image inspect "$image" --format '{{index .Config.Labels "org.opencontainers.image.version"}}')
+            src=$(docker image inspect "$image" --format '{{index .Config.Labels "org.opencontainers.image.source"}}')
+            echo "$image: arch=$arch version=$ver revision=$rev source=$src"
+            [ "$arch" = "amd64/linux" ] || { echo "::error::$image is $arch, expected amd64/linux"; fail=1; }
+            [ -n "$src" ] || { echo "::error::$image has no image.source label"; fail=1; }
+            [ "$ver" = "$version" ] || { echo "::error::$image version $ver != $version"; fail=1; }
             case "$rev" in
               unknown|"") echo "::error::$image reports revision '$rev'"; fail=1 ;;
               "$expected") ;;
@@ -93,7 +184,7 @@ jobs:
         # Guards the specific regression: hq-web imports @dawatrace/shared
         # subpaths, which only resolve if the image built the shared package.
         run: |
-          docker run --rm --entrypoint sh tibatrace-hq-web:ci -c '
+          docker run --rm --entrypoint sh '${{ steps.verify_refs.outputs.hq }}' -c '
             set -e
             test -d /usr/share/nginx/html/assets
             grep -rql "formatMoney\|KES" /usr/share/nginx/html/assets >/dev/null
@@ -102,7 +193,7 @@ jobs:
 
       - name: HQ container smoke check
         run: |
-          docker run -d --name hq-smoke -p 18080:8080 tibatrace-hq-web:ci
+          docker run -d --name hq-smoke -p 18080:8080 '${{ steps.verify_refs.outputs.hq }}'
           for _ in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:18080/healthz >/dev/null 2>&1; then
               echo "HQ healthz OK"; docker rm -f hq-smoke >/dev/null; exit 0
@@ -119,12 +210,175 @@ jobs:
           docker run --rm \
             -e DJANGO_SETTINGS_MODULE=dawatrace.settings.base \
             -e DAWATRACE_SECRET_KEY=ci-smoke-not-a-secret \
-            tibatrace-backend:ci \
+            '${{ steps.verify_refs.outputs.backend }}' \
             sh -c '
               set -e
               python -c "import qrcode; print(\"qrcode import OK\")"
               python -c "import apps.platform.reporting.pdf; print(\"reporting.pdf import OK\")"
               python -c "import apps.platform.release_storage; print(\"release_storage import OK\")"
+              python -c "
+              from django.conf import settings
+              import django; django.setup()
+              print(\"product version:\", settings.DAWATRACE_VERSION)
+              assert settings.DAWATRACE_VERSION == \"${{ steps.meta.outputs.version }}\", settings.DAWATRACE_VERSION
+              "
               python manage.py check
               test "$(id -u)" -ne 0 && echo "runs as non-root (uid $(id -u))"
             '
+
+      - name: Record migration plan
+        run: |
+          mkdir -p evidence
+          docker run --rm \
+            -e DJANGO_SETTINGS_MODULE=dawatrace.settings.base \
+            -e DAWATRACE_SECRET_KEY=ci-plan-not-a-secret \
+            '${{ steps.verify_refs.outputs.backend }}' \
+            sh -c 'python manage.py migrate --plan' > evidence/MIGRATION_PLAN.txt 2>&1 || true
+          tail -n 40 evidence/MIGRATION_PLAN.txt
+
+      - name: Generate SBOMs
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ steps.verify_refs.outputs.backend }}
+          format: spdx-json
+          output-file: evidence/sbom-backend.spdx.json
+          upload-artifact: false
+
+      - name: Generate HQ SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ steps.verify_refs.outputs.hq }}
+          format: spdx-json
+          output-file: evidence/sbom-hq-web.spdx.json
+          upload-artifact: false
+
+      - name: Attest backend image
+        if: steps.mode.outputs.push == 'true'
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ env.BACKEND_IMAGE }}
+          subject-digest: ${{ steps.backend.outputs.digest }}
+          push-to-registry: true
+
+      - name: Attest HQ image
+        if: steps.mode.outputs.push == 'true'
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ env.HQ_IMAGE }}
+          subject-digest: ${{ steps.hq.outputs.digest }}
+          push-to-registry: true
+
+      - name: Build release manifest
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib, subprocess
+
+          ev = pathlib.Path("evidence"); ev.mkdir(exist_ok=True)
+
+          def labels(ref):
+              out = subprocess.run(
+                  ["docker", "image", "inspect", ref,
+                   "--format", "{{json .Config.Labels}}"],
+                  capture_output=True, text=True, check=True).stdout
+              return json.loads(out)
+
+          backend_ref = os.environ["BACKEND_REF"]
+          hq_ref = os.environ["HQ_REF"]
+          migrations = [
+              line.strip() for line in
+              pathlib.Path("evidence/MIGRATION_PLAN.txt").read_text().splitlines()
+              if line.strip().startswith("[")
+          ]
+
+          manifest = {
+              "release_version": os.environ["VERSION"],
+              "release_tag": os.environ["REF_NAME"],
+              "git_sha": os.environ["SHA"],
+              "build_timestamp": os.environ["BUILT"],
+              "target_architecture": "linux/amd64",
+              "backend": {
+                  "image": os.environ["BACKEND_IMAGE"],
+                  "digest": os.environ.get("BACKEND_DIGEST", ""),
+                  "tags": [f'{os.environ["BACKEND_IMAGE"]}:{os.environ["VERSION"]}',
+                           f'{os.environ["BACKEND_IMAGE"]}:sha-{os.environ["SHORT_SHA"]}'],
+                  "labels": labels(backend_ref),
+                  "sbom": "sbom-backend.spdx.json",
+              },
+              "hq_web": {
+                  "image": os.environ["HQ_IMAGE"],
+                  "digest": os.environ.get("HQ_DIGEST", ""),
+                  "tags": [f'{os.environ["HQ_IMAGE"]}:{os.environ["VERSION"]}',
+                           f'{os.environ["HQ_IMAGE"]}:sha-{os.environ["SHORT_SHA"]}'],
+                  "labels": labels(hq_ref),
+                  "sbom": "sbom-hq-web.spdx.json",
+              },
+              "migrations": migrations,
+              "required_env_var_names": [
+                  "DAWATRACE_ENV", "DAWATRACE_SECRET_KEY", "DAWATRACE_DATABASE_URL",
+                  "DAWATRACE_DATABASE_SSLMODE", "DAWATRACE_REDIS_URL",
+                  "DAWATRACE_CELERY_BROKER_URL", "DAWATRACE_CELERY_RESULT_BACKEND",
+                  "DAWATRACE_ALLOWED_HOSTS", "DAWATRACE_CSRF_TRUSTED_ORIGINS",
+                  "DAWATRACE_OBJECT_SIGNING_KEY", "DAWATRACE_OBJECT_STORAGE_ROOT",
+                  "TIBATRACE_REDIS_PASSWORD", "TIBATRACE_RELEASE_ACCESS_KEY",
+                  "TIBATRACE_RELEASE_SECRET_KEY", "TIBATRACE_RELEASE_BUCKET",
+                  "TIBATRACE_RELEASE_ENDPOINT_URL", "DAWATRACE_IMAGE",
+                  "TIBATRACE_HQ_IMAGE",
+              ],
+              "attestations": {
+                  "type": "github-build-provenance",
+                  "verify": (
+                      "gh attestation verify oci://<image>@<digest> "
+                      f'--repo {os.environ["REPO"]}'
+                  ),
+              },
+              "rollback": {
+                  "backend_image": "tibatrace-backend:0.1.0-alpha.1-24a1602-20260729T144858Z",
+                  "hq_image": "tibatrace-hq-web:0.1.0-alpha.1-92282eb-20260729T150744Z",
+                  "note": "Local pre-GHCR images retained on the production host.",
+              },
+              "release_notes": "docs/releases/TIBATRACE_v0.2.0_RC1.md",
+          }
+          (ev / "RELEASE_MANIFEST.json").write_text(json.dumps(manifest, indent=2) + "\n")
+          print(json.dumps(manifest, indent=2)[:1500])
+          PY
+        env:
+          BACKEND_REF: ${{ steps.verify_refs.outputs.backend }}
+          HQ_REF: ${{ steps.verify_refs.outputs.hq }}
+          BACKEND_DIGEST: ${{ steps.backend.outputs.digest }}
+          HQ_DIGEST: ${{ steps.hq.outputs.digest }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          SHORT_SHA: ${{ steps.meta.outputs.short_sha }}
+          SHA: ${{ steps.meta.outputs.sha }}
+          BUILT: ${{ steps.meta.outputs.built }}
+          REF_NAME: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+
+      - name: Assemble release evidence
+        run: |
+          cp docs/releases/TIBATRACE_v0.2.0_RC1.md evidence/RELEASE_NOTES.md 2>/dev/null || true
+          cp docs/deployment/TIBATRACE_RELEASE_PACKAGING_WORKFLOW.md evidence/DEPLOYMENT_INSTRUCTIONS.md 2>/dev/null || true
+          python3 - <<'PY'
+          import json, pathlib
+          m = json.loads(pathlib.Path("evidence/RELEASE_MANIFEST.json").read_text())
+          lines = [
+              f"release {m['release_version']} ({m['release_tag']})",
+              f"commit  {m['git_sha']}",
+              f"arch    {m['target_architecture']}",
+              "",
+              f"backend {m['backend']['image']}@{m['backend']['digest']}",
+              f"hq-web  {m['hq_web']['image']}@{m['hq_web']['digest']}",
+          ]
+          pathlib.Path("evidence/IMAGE_DIGESTS.txt").write_text("\n".join(lines) + "\n")
+          print("\n".join(lines))
+          PY
+          ( cd evidence && find . -type f ! -name SHA256SUMS -print0 \
+              | sort -z | xargs -0 sha256sum > SHA256SUMS )
+          cat evidence/SHA256SUMS
+
+      - name: Upload release evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-evidence-${{ steps.meta.outputs.version }}-${{ steps.meta.outputs.short_sha }}
+          path: evidence/
+          retention-days: 90
+          if-no-files-found: error
