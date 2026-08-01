@@ -35,7 +35,8 @@ from django.core.management.base import CommandError
 PRODUCTION_ENVIRONMENTS = frozenset({"production", "prod", "live"})
 
 #: Environment variable each demo seeder reads its password from.
-DEMO_PASSWORD_ENV_VAR = "DAWATRACE_DEMO_SEED_PASSWORD"
+# This is the name of the environment variable, never its credential value.
+DEMO_PASSWORD_ENV_VAR = "DAWATRACE_DEMO_SEED_PASSWORD"  # nosec B105
 
 _GENERATED_PASSWORD_LENGTH = 24
 

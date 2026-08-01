@@ -1,14 +1,9 @@
-import { action, autoColumns, fontFamily, fontSize, spacing, statusPalette, surface, text } from '@dawatrace/shared/design-system/index.js';
+import { action, autoColumns, fontSize, spacing, statusPalette, surface, text } from '@dawatrace/shared/design-system/index.js';
 import type { ClinicalStatus } from '@dawatrace/shared/design-system/index.js';
 import {
   canApproveActivationRequest,
-  canTransitionActivationState,
-  evaluateActivationQuota,
-  isPlatformOwnerCapability,
   type PosActivationRequestDTO,
   type PosActivationState,
-  type PosDeviceCredentialDTO,
-  type PosEnrolmentChallenge,
 } from '@dawatrace/shared/dispensing/index.js';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
@@ -37,7 +32,6 @@ export function PosActivationConsole({
   // Platform Owner Action Modals
   const [actionKind, setActionKind] = useState<'APPROVE' | 'REJECT' | 'CLARIFY' | 'SUSPEND' | 'REVOKE' | 'OVERRIDE' | null>(null);
   const [rationale, setRationale] = useState('');
-  const [challenge, setChallenge] = useState<PosEnrolmentChallenge | null>(null);
 
   // New Request Form State (Tenant Admin)
   const [newTenantId, setNewTenantId] = useState('');
@@ -57,42 +51,18 @@ export function PosActivationConsole({
         ? '/api/v1/platform/pos-activations/requests/'
         : '/api/v1/tenant/pos-activations/requests/';
       const response = await apiFetch(endpoint, { headers: { Accept: 'application/json' } });
-      if (response.ok) {
-        const data = await response.json() as PosActivationRequestDTO[] | { results?: PosActivationRequestDTO[] };
-        const items = Array.isArray(data) ? data : (data.results ?? []);
-        setRequests(items);
-      }
+      if (!response.ok) throw new Error(`Activation service returned HTTP ${response.status}.`);
+      const data = await response.json() as PosActivationRequestDTO[] | { results?: PosActivationRequestDTO[] };
+      const items = Array.isArray(data) ? data : (data.results ?? []);
+      setRequests(items);
+      setError('');
     } catch {
-      // Mock / fallback items if endpoint is offline
-      setRequests([
-        {
-          id: 'ACT-REQ-8001',
-          tenantId: 'TENANT-DAWA-01',
-          branchId: 'BRANCH-NAIROBI-HQ',
-          requestedRegister: 'REG-01-DISPENSARY',
-          deviceId: 'DEV-WIN-8821',
-          deviceFingerprint: 'FP-SHA256-99018237465',
-          deviceName: 'POS Terminal Dispensary #1',
-          deviceType: 'DESKTOP_WINDOWS',
-          osName: 'Windows 11 Pro',
-          osVersion: '10.0.22631',
-          appVersion: '1.0.1',
-          requestingUserId: userId,
-          requesterEmailSnapshot: 'pharmacist@dawatrace.co.ke',
-          requesterRole: userRole,
-          businessJustification: 'New operational dispensary counter for peak hours.',
-          requestedPeriodDays: 365,
-          requestedCapabilities: ['clinical_dispensing', 'retail_checkout'],
-          supportingAttachments: [],
-          state: 'SUBMITTED',
-          submittedAt: new Date().toISOString(),
-          correlationId: 'CORR-ACT-8001',
-        },
-      ]);
+      setRequests([]);
+      setError('POS activation service is unavailable. No local or simulated activation data is being used.');
     } finally {
       setBusy(false);
     }
-  }, [apiFetch, isPlatformOwnerContext, userId, userRole]);
+  }, [apiFetch, isPlatformOwnerContext]);
 
   useEffect(() => {
     void refresh();
@@ -131,19 +101,7 @@ export function PosActivationConsole({
         setRationale('');
         void refresh();
       } else {
-        // Fallback demo challenge issue
-        setChallenge({
-          challengeCode: `ENROL-CODE-${Math.floor(100000 + Math.random() * 900000)}`,
-          requestId: selectedRequest.id,
-          tenantId: selectedRequest.tenantId,
-          branchId: selectedRequest.branchId,
-          deviceId: selectedRequest.deviceId,
-          deviceFingerprint: selectedRequest.deviceFingerprint,
-          expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
-          isUsed: false,
-        });
-        setNotice(`Request ${selectedRequest.id} APPROVED. Enrolment challenge issued.`);
-        setActionKind(null);
+        setError(`Approval failed closed (HTTP ${resp.status}). No activation challenge was issued.`);
       }
     } catch {
       setError('Action failed.');
@@ -178,8 +136,7 @@ export function PosActivationConsole({
         setActiveTab('CONSOLE');
         void refresh();
       } else {
-        setNotice('Request queued locally for review.');
-        setActiveTab('CONSOLE');
+        setError(`Activation request was not accepted (HTTP ${resp.status}). Nothing was queued locally.`);
       }
     } catch {
       setError('Failed to submit activation request.');
@@ -359,15 +316,6 @@ export function PosActivationConsole({
                 <strong style={{ fontSize: fontSize.caption, color: text.tertiary, textTransform: 'uppercase' }}>Business Justification</strong>
                 <p style={{ margin: `${spacing.xs}px 0 0`, fontSize: fontSize.body }}>{selectedRequest.businessJustification}</p>
               </div>
-
-              {/* Challenge Display */}
-              {challenge ? (
-                <div style={{ padding: spacing.md, borderRadius: 8, background: statusPalette.SAFE.surface, borderLeft: `4px solid ${statusPalette.SAFE.accent}` }}>
-                  <strong style={{ color: statusPalette.SAFE.foreground, display: 'block' }}>One-Time Device Enrolment Challenge Code Issued</strong>
-                  <code style={{ fontSize: 20, fontWeight: 700, letterSpacing: 2, display: 'block', marginTop: 4 }}>{challenge.challengeCode}</code>
-                  <span style={{ fontSize: fontSize.caption, color: text.secondary }}>Expires: {challenge.expiresAt}</span>
-                </div>
-              ) : null}
 
               {/* Platform Owner Governance Actions */}
               {canApprove ? (

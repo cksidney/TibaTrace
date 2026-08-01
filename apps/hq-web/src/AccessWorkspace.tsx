@@ -936,6 +936,8 @@ export function AccessWorkspace({
             </>
           )}
         </article>
+      ) : null}
+
       {tab === 'activations' ? (
         <article className="panel access-panel">
           <header className="panel-header access-panel-header">
@@ -955,6 +957,19 @@ export function AccessWorkspace({
   );
 }
 
+interface PosActivationSummary {
+  readonly id: string;
+  readonly tenantId: string;
+  readonly branchId: string;
+  readonly register: string;
+  readonly deviceName: string;
+  readonly deviceType: string;
+  readonly deviceFingerprint: string;
+  readonly requester: string;
+  readonly justification: string;
+  readonly state: string;
+}
+
 function PosActivationsPanel({
   tenantId,
   csrfToken,
@@ -966,45 +981,44 @@ function PosActivationsPanel({
   const [search, setSearch] = useState('');
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
+  const [busy, setBusy] = useState(true);
+  const [activations, setActivations] = useState<readonly PosActivationSummary[]>([]);
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
   const [approvalRationale, setApprovalRationale] = useState('');
   const [generatedChallenge, setGeneratedChallenge] = useState<string | null>(null);
 
-  const mockActivations = useMemo(
-    () => [
-      {
-        id: 'ACT-REQ-8001',
-        tenantId,
-        branchId: 'BRANCH-NAIROBI-HQ',
-        register: 'REG-01-DISPENSARY',
-        deviceName: 'POS Terminal Dispensary #1',
-        deviceType: 'DESKTOP_WINDOWS',
-        deviceFingerprint: 'FP-SHA256-99018237465',
-        requester: 'pharmacist@dawatrace.co.ke (TENANT_ADMIN)',
-        justification: 'New operational dispensary counter for peak hours.',
-        state: 'SUBMITTED',
-        submittedAt: new Date().toISOString(),
-      },
-      {
-        id: 'ACT-REQ-8002',
-        tenantId,
-        branchId: 'BRANCH-MOMBASA-01',
-        register: 'REG-02-RETAIL',
-        deviceName: 'Android Handheld Mobile POS',
-        deviceType: 'MOBILE_ANDROID',
-        deviceFingerprint: 'FP-SHA256-11029384756',
-        requester: 'mobile.dispenser@dawatrace.co.ke (BRANCH_MANAGER)',
-        justification: 'Ward dispensing handheld unit.',
-        state: 'ACTIVATED',
-        submittedAt: new Date(Date.now() - 86400000 * 5).toISOString(),
-        activatedAt: new Date(Date.now() - 86400000 * 4).toISOString(),
-      },
-    ],
-    [tenantId],
-  );
+  useEffect(() => {
+    let cancelled = false;
+    setBusy(true);
+    setError('');
+    fetch(`/api/v1/platform/pos-activations/requests/?tenant_id=${encodeURIComponent(tenantId)}`, {
+      credentials: 'same-origin',
+      headers: { Accept: 'application/json' },
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`Activation service returned HTTP ${response.status}.`);
+        const data = await response.json() as PosActivationSummary[] | { results?: PosActivationSummary[] };
+        return Array.isArray(data) ? data : (data.results ?? []);
+      })
+      .then((items) => {
+        if (!cancelled) setActivations(items);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setActivations([]);
+          setError('POS activation service is unavailable. No approval action has been performed.');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setBusy(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [tenantId]);
 
   const filtered = useMemo(() => {
-    return mockActivations.filter((a) => {
+    return activations.filter((a) => {
       const matchFilter = filter === 'ALL' || a.state === filter;
       const matchSearch =
         !search.trim() ||
@@ -1014,19 +1028,42 @@ function PosActivationsPanel({
           .includes(search.trim().toLowerCase());
       return matchFilter && matchSearch;
     });
-  }, [filter, mockActivations, search]);
+  }, [activations, filter, search]);
 
   const activeItem = useMemo(
-    () => mockActivations.find((a) => a.id === selectedRequestId) ?? filtered[0] ?? null,
-    [filtered, mockActivations, selectedRequestId],
+    () => activations.find((a) => a.id === selectedRequestId) ?? filtered[0] ?? null,
+    [activations, filtered, selectedRequestId],
   );
 
-  const handlePlatformApprove = () => {
+  const handlePlatformApprove = async () => {
     if (!activeItem || !approvalRationale.trim()) return;
-    const challenge = `ENROL-CODE-${Math.floor(100000 + Math.random() * 900000)}`;
-    setGeneratedChallenge(challenge);
-    setNotice(`Request ${activeItem.id} APPROVED by Platform Owner. One-time enrolment challenge code generated.`);
-    setApprovalRationale('');
+    setBusy(true);
+    setError('');
+    setNotice('');
+    setGeneratedChallenge(null);
+    try {
+      const response = await fetch(`/api/v1/platform/pos-activations/requests/${encodeURIComponent(activeItem.id)}/approve/`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrfToken,
+        },
+        body: JSON.stringify({ approval_rationale: approvalRationale.trim() }),
+      });
+      if (!response.ok) throw new Error(`Activation service returned HTTP ${response.status}.`);
+      const payload = await response.json() as { challengeCode?: string; challenge_code?: string };
+      const challenge = payload.challengeCode ?? payload.challenge_code;
+      if (!challenge) throw new Error('Activation service did not return a one-time challenge.');
+      setGeneratedChallenge(challenge);
+      setNotice(`Request ${activeItem.id} approved by the Platform Owner.`);
+      setApprovalRationale('');
+    } catch {
+      setError('Approval failed closed. The activation service did not confirm the action.');
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -1071,6 +1108,9 @@ function PosActivationsPanel({
               </tr>
             </thead>
             <tbody>
+              {!busy && filtered.length === 0 ? (
+                <tr><td colSpan={5}>No activation requests are available.</td></tr>
+              ) : null}
               {filtered.map((item) => (
                 <tr key={item.id} className={activeItem?.id === item.id ? 'is-selected' : ''}>
                   <td><code>{item.id}</code></td>
@@ -1133,7 +1173,7 @@ function PosActivationsPanel({
               <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
                 <button
                   className="primary-button"
-                  disabled={!approvalRationale.trim()}
+                  disabled={busy || !approvalRationale.trim()}
                   onClick={handlePlatformApprove}
                   type="button"
                 >

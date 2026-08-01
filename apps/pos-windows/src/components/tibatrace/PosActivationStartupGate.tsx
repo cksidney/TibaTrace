@@ -13,6 +13,7 @@ export function PosActivationStartupGate({
   currentTenantId,
   currentBranchId,
   currentAppVersion,
+  onEnrolChallenge,
   onEnrolSuccess,
   children,
 }: {
@@ -21,6 +22,7 @@ export function PosActivationStartupGate({
   readonly currentTenantId: string;
   readonly currentBranchId: string;
   readonly currentAppVersion: string;
+  readonly onEnrolChallenge?: (challengeCode: string) => Promise<PosDeviceCredentialDTO>;
   readonly onEnrolSuccess?: (credential: PosDeviceCredentialDTO) => void;
   readonly children: React.ReactNode;
 }) {
@@ -41,34 +43,35 @@ export function PosActivationStartupGate({
     return <>{children}</>;
   }
 
-  const handleEnrol = () => {
+  const handleEnrol = async () => {
     if (!challengeInput.trim()) return;
     setBusy(true);
     setEnrolError('');
-
-    // Complete enrolment with challenge code
-    setTimeout(() => {
-      if (challengeInput.trim().startsWith('ENROL-CODE-') || challengeInput.trim().length >= 6) {
-        const mockCredential: PosDeviceCredentialDTO = {
-          activationId: `ACT-${Date.now()}`,
-          tenantId: currentTenantId,
-          branchId: currentBranchId,
-          deviceId: `DEV-${Date.now()}`,
-          deviceFingerprint: currentFingerprint,
-          appVersion: currentAppVersion,
-          minimumRequiredBuild: '1.0.0',
-          state: 'ACTIVATED',
-          issuedAt: new Date().toISOString(),
-          expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
-          signedToken: `TOKEN.SIGNED.${Date.now()}`,
-          isRevoked: false,
-        };
-        onEnrolSuccess?.(mockCredential);
-      } else {
-        setEnrolError('Enrolment challenge code is invalid or expired.');
-      }
+    if (!onEnrolChallenge) {
+      setEnrolError('The authoritative enrolment service is unavailable. Activation remains blocked.');
       setBusy(false);
-    }, 600);
+      return;
+    }
+    try {
+      const issuedCredential = await onEnrolChallenge(challengeInput.trim());
+      const issuedCheck = validatePosStartup({
+        credential: issuedCredential,
+        currentFingerprint,
+        currentTenantId,
+        currentBranchId,
+        currentAppVersion,
+        currentSystemTimeIso: new Date().toISOString(),
+      });
+      if (!issuedCheck.valid) {
+        setEnrolError(`The enrolment service returned an unusable credential: ${issuedCheck.reason}`);
+        return;
+      }
+      onEnrolSuccess?.(issuedCredential);
+    } catch {
+      setEnrolError('Enrolment failed closed. The challenge was not accepted by the activation service.');
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -110,7 +113,7 @@ export function PosActivationStartupGate({
           <button
             type="button"
             disabled={busy || !challengeInput.trim()}
-            onClick={handleEnrol}
+            onClick={() => void handleEnrol()}
             style={{
               padding: '12px 20px',
               borderRadius: 8,

@@ -1,6 +1,6 @@
 {
   "name": "@dawatrace/pos-windows",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "type": "module",
   "description": "TibaTrace POS (Electron) \u2014 clinical dispensing and pharmacy operations console",
@@ -34,7 +34,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.4",
     "electron": "^43.2.0",
-    "electron-builder": "^25.1.8",
+    "electron-builder": "^26.15.3",
     "jsdom": "25.0.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",

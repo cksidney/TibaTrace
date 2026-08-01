@@ -101,7 +101,7 @@ class FHIRReferenceResolver:
                 from apps.fhir.kenya_hie import DEFAULT_HIE_REFERENCE_HOSTS
 
                 allowed_hosts.update(DEFAULT_HIE_REFERENCE_HOSTS)
-            except Exception:
+            except ImportError:
                 pass
             if parsed.hostname not in allowed_hosts:
                 raise FHIRReferenceResolutionError(

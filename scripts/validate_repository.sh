@@ -178,8 +178,8 @@ START_TIME=$(date +%s)
 "${PYTHON}" "${ROOT}/backend/manage.py" seed_pos_clinical_demo --settings=dawatrace.settings.test
 "${PYTHON}" "${ROOT}/backend/manage.py" seed_pos_clinical_demo --settings=dawatrace.settings.test
 "${PYTHON}" "${ROOT}/backend/manage.py" check_pos_clinical_integrity --settings=dawatrace.settings.test
-"${PYTHON}" "${ROOT}/backend/manage.py" seed_pos_dispensing_demo --settings=dawatrace.settings.test
-"${PYTHON}" "${ROOT}/backend/manage.py" seed_pos_dispensing_demo --settings=dawatrace.settings.test
+"${PYTHON}" "${ROOT}/backend/manage.py" seed_pos_dispensing_demo --allow-demo-seed --settings=dawatrace.settings.test
+"${PYTHON}" "${ROOT}/backend/manage.py" seed_pos_dispensing_demo --allow-demo-seed --settings=dawatrace.settings.test
 "${PYTHON}" "${ROOT}/backend/manage.py" check_pos_dispensing_integrity --settings=dawatrace.settings.test
 END_TIME=$(date +%s)
 record_step "clinical_and_tenant_safety_audits" "clinical audits; seed_clinical_dispensing twice; check_clinical_dispensing_integrity; seed_pos_clinical_demo twice; check_pos_clinical_integrity; seed_pos_dispensing_demo twice; check_pos_dispensing_integrity" "true" "PASSED" "0" "$((END_TIME - START_TIME))" "" ""

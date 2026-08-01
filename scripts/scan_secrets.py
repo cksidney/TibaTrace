@@ -88,7 +88,7 @@ TEXT_SUFFIXES = {
     ".yaml",
     ".yml",
 }
-EXCLUDED_PARTS = {".git", ".venv", "__pycache__", "dist", "node_modules", "staticfiles"}
+EXCLUDED_PARTS = {".git", ".venv", ".venv-win", "__pycache__", "dist", "node_modules", "staticfiles"}
 
 
 def scan(root: Path) -> list[dict]:

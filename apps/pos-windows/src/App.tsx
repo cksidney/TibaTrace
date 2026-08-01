@@ -16,7 +16,6 @@ import { TaskQueue } from './components/tibatrace/TaskQueue.js';
 import { RetailWorkspace } from './components/tibatrace/RetailWorkspace.js';
 import { SyncCentre } from './components/tibatrace/SyncCentre.js';
 import { PosActivationConsole } from './components/tibatrace/PosActivationConsole.js';
-import { PosActivationStartupGate } from './components/tibatrace/PosActivationStartupGate.js';
 import type { PatientSummary } from './components/tibatrace/PatientSafetyBanner.js';
 import { BlockingReason } from './components/tibatrace/StatusBadge.js';
 import { WorkflowRibbon } from './components/tibatrace/WorkflowRibbon.js';
@@ -897,7 +896,7 @@ function Queue({
         <div>
           <TaskQueue
             tasks={tasks}
-            currentUser={operator}
+            {...(operator ? { currentUser: operator } : {})}
             onOpen={(episodeId) => onSelect(episodeId)}
           />
         </div>

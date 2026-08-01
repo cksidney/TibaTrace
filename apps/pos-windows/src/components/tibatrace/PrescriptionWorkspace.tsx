@@ -47,12 +47,12 @@ export function PrescriptionWorkspace({
   onTransition,
 }: {
   readonly lines: readonly DispensingLineDTO[];
-  readonly apiFetch?: typeof fetch;
-  readonly episodeId?: string;
-  readonly onSelectLine?: (lineId: string) => void;
-  readonly selectedLineId?: string;
+  readonly apiFetch?: typeof fetch | undefined;
+  readonly episodeId?: string | undefined;
+  readonly onSelectLine?: ((lineId: string) => void) | undefined;
+  readonly selectedLineId?: string | undefined;
   /** Called after a successful state transition (e.g. CHECKED). */
-  readonly onTransition?: () => void;
+  readonly onTransition?: (() => void) | undefined;
 }) {
   if (lines.length === 0) {
     return (
@@ -89,10 +89,10 @@ function LineSection({
 }: {
   readonly line: DispensingLineDTO;
   readonly selected: boolean;
-  readonly apiFetch?: typeof fetch;
-  readonly episodeId?: string;
-  readonly onSelect?: (lineId: string) => void;
-  readonly onTransition?: () => void;
+  readonly apiFetch?: typeof fetch | undefined;
+  readonly episodeId?: string | undefined;
+  readonly onSelect?: ((lineId: string) => void) | undefined;
+  readonly onTransition?: (() => void) | undefined;
 }) {
   const [busy, setBusy] = useState(false);
 
@@ -147,7 +147,7 @@ function LineSection({
           canComplete={!!doComplete && line.status === 'PREPARED'}
           blockedReason=''
           busy={busy}
-          onComplete={doComplete}
+          {...(doComplete ? { onComplete: doComplete } : {})}
         />
       ) : null}
     </div>
@@ -161,7 +161,7 @@ function MedicineLine({
 }: {
   readonly line: DispensingLineDTO;
   readonly selected: boolean;
-  readonly onSelect?: (lineId: string) => void;
+  readonly onSelect?: ((lineId: string) => void) | undefined;
 }) {
   const state = lineStatus(line.status);
   const palette = statusPalette[state.status];
