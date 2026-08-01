@@ -29,9 +29,11 @@ from apps.pos_shift.models import PosRegister
 from apps.practitioners.models import Practitioner
 from apps.prescription.models import (
     DispensingAllocation,
+    DispensingCheck,
     DispensingEpisode,
     DispensingLine,
     DispensingReservation,
+    PatientCounselling,
     PosDeviceHealthRecord,
     PosShiftRecord,
     Prescription,
@@ -478,6 +480,7 @@ class Command(BaseCommand):
                 branch=branch,
                 wh=wh,
                 rph=rph,
+                checker=approver,
                 practitioner=practitioner,
                 dose_form=dose_form,
                 pkg=pkg,
@@ -612,7 +615,7 @@ class Command(BaseCommand):
         if approver is not None:
             UserRole.all_objects.get_or_create(tenant=tenant, user=approver, role=pharmacist_role)
 
-    def _seed_scenario(self, *, tenant, org, branch, wh, rph, practitioner, dose_form, pkg, scenario):
+    def _seed_scenario(self, *, tenant, org, branch, wh, rph, checker, practitioner, dose_form, pkg, scenario):
         patient, _ = Patient.all_objects.update_or_create(
             tenant=tenant,
             internal_reference_id=f"PAT-REF-{scenario['code']}",
@@ -834,6 +837,44 @@ class Command(BaseCommand):
                     ),
                     "status": line_spec.get("line_status", scenario["line_status"]),
                     "prepared_by": rph,
+                },
+            )
+
+        if episode.status in {"SUPPLIED", "PARTIALLY_SUPPLIED"}:
+            DispensingCheck.all_objects.update_or_create(
+                tenant=tenant,
+                episode=episode,
+                defaults={
+                    "checked_by": checker,
+                    "checklist": {
+                        "patient": True,
+                        "medicine": True,
+                        "strength": True,
+                        "dosage_form": True,
+                        "quantity": True,
+                        "batch": True,
+                        "expiry": True,
+                        "instructions": True,
+                        "warnings": True,
+                        "package_integrity": True,
+                    },
+                    "outcome": "PASSED",
+                    "notes": "Seeded independent final-check evidence.",
+                    "checked_at": timezone.now(),
+                },
+            )
+            PatientCounselling.all_objects.update_or_create(
+                tenant=tenant,
+                episode=episode,
+                defaults={
+                    "patient": patient,
+                    "counselling_required": True,
+                    "counselling_completed": True,
+                    "topics": ["administration", "adherence", "storage", "side_effects"],
+                    "warnings_explained": "Demo warnings reviewed with the patient.",
+                    "administration_instructions": scenario["instructions"],
+                    "counselled_by": rph,
+                    "counselled_at": timezone.now(),
                 },
             )
 
