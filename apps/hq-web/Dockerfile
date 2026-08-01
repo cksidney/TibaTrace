@@ -8,8 +8,15 @@ COPY apps/pos-windows/package.json apps/pos-windows/package.json
 COPY packages/shared/package.json packages/shared/package.json
 RUN npm ci --ignore-scripts
 
+# @dawatrace/shared is consumed through its exports map, so hq-web resolves
+# "@dawatrace/shared/money.js" to packages/shared/dist/money.js. dist/ is
+# gitignored and therefore absent from a clean checkout, so the shared package
+# must be built here -- copying its package.json alone is not enough.
+COPY packages/shared packages/shared
+RUN npm run build --workspace @dawatrace/shared
+
 COPY apps/hq-web apps/hq-web
-RUN npm --workspace @dawatrace/hq-web run build
+RUN npm run build --workspace @dawatrace/hq-web
 
 FROM nginx:1.27-alpine
 

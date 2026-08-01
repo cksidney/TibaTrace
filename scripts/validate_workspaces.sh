@@ -18,4 +18,11 @@ process.exit(packageJson.scripts?.[process.argv[2]] ? 0 : 1);
 ' "${package_file}" "${SCRIPT_NAME}"; then
     npm --prefix "${workspace}" run "${SCRIPT_NAME}"
   fi
-done < <(find "${ROOT}/apps" "${ROOT}/packages" -mindepth 2 -maxdepth 2 -name package.json -type f | sort)
+  # packages/ before apps/: the apps import @dawatrace/shared through its
+  # exports map, which resolves into packages/shared/dist. Sorting the two
+  # trees together put apps/hq-web first, so a `build` run succeeded only when
+  # a previous run had left dist on disk -- and failed in a clean container.
+done < <({
+  find "${ROOT}/packages" -mindepth 2 -maxdepth 2 -name package.json -type f | sort
+  find "${ROOT}/apps" -mindepth 2 -maxdepth 2 -name package.json -type f | sort
+})
