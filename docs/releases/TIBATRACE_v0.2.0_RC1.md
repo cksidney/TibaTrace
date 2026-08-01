@@ -223,6 +223,50 @@ Release images must carry their exact revision label. The HQ image running in
 production today reports `unknown`, which is how the provenance of a live
 component became unverifiable; CI now fails rather than allowing that.
 
+## Container registry and package visibility
+
+Release images are built only by GitHub Actions and published to GHCR:
+
+- `ghcr.io/cksidney/tibatrace-backend`
+- `ghcr.io/cksidney/tibatrace-hq-web`
+
+**Both packages are public, and that is a deliberate decision for this release
+candidate**, not an oversight. The repository is public, so the packages
+inherited that visibility. It is acceptable here because:
+
+- the images contain **no runtime secrets** — every production value
+  (`DAWATRACE_SECRET_KEY`, database and Redis URLs, object-storage credentials)
+  is injected at runtime from `/opt/tibatrace/secrets/.env.production`, and none
+  is baked into a layer;
+- the application source is already public in the same repository;
+- production pulls by **immutable digest**, never by tag, so a mutable tag
+  cannot redirect a deployment;
+- **no `latest` tag is published**, so no reference can drift.
+
+Public visibility also removes the need to place any registry credential on the
+production host — there is no read token to provision, store or rotate, and no
+write credential anywhere near production.
+
+**This will be revisited before v1.0.** Private packages plus a fine-grained
+read-only `read:packages` credential on the host is the intended end state.
+
+## Release evidence
+
+Every release publishes a `release-evidence-<version>-<sha>` artifact
+containing `RELEASE_MANIFEST.json`, `MIGRATIONS.json`, `MIGRATION_PLAN.txt`,
+both SPDX SBOMs, `IMAGE_DIGESTS.txt`, release notes, deployment instructions
+and `SHA256SUMS` over all of it. Images are never shipped as tarballs; they
+live in GHCR and are referenced by digest.
+
+Migration evidence is derived from the Django migration graph via
+`scripts/migration_evidence.py`, not by parsing `migrate --plan` text. The rc2
+pipeline showed why: the plan step ran without a writable database, failed, and
+was tolerated by `|| true`, so the manifest recorded `"migrations": []` for a
+release that carries `platform.0002_posrelease_client_alignment`. CI now fails
+closed if the plan is empty or contains an error, if the inventory disagrees
+with the migrations Git shows since the declared deployment baseline, or if a
+destructive migration appears without an explicit declaration.
+
 ## Known limitations
 
 **Reports verification is partial.** Server-side PDF export is covered
