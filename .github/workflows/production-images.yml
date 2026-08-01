@@ -469,7 +469,7 @@ jobs:
                       "immutable digests. Private packages to be reviewed before v1.0."
                   ),
               },
-              "release_notes": "docs/releases/TIBATRACE_v0.2.0_RC8.md",
+              "release_notes": "docs/releases/TIBATRACE_v0.2.0_RC9.md",
           }
           (ev / "RELEASE_MANIFEST.json").write_text(json.dumps(manifest, indent=2) + "\n")
           print(json.dumps(manifest, indent=2)[:1500])
@@ -490,7 +490,7 @@ jobs:
       - name: Assemble release evidence
         if: steps.mode.outputs.push == 'true'
         run: |
-          cp docs/releases/TIBATRACE_v0.2.0_RC8.md evidence/RELEASE_NOTES.md 2>/dev/null || true
+          cp docs/releases/TIBATRACE_v0.2.0_RC9.md evidence/RELEASE_NOTES.md 2>/dev/null || true
           cp docs/deployment/TIBATRACE_RELEASE_PACKAGING_WORKFLOW.md evidence/DEPLOYMENT_INSTRUCTIONS.md 2>/dev/null || true
           python3 - <<'PY'
           import json, pathlib
