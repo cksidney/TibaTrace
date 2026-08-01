@@ -91,10 +91,7 @@ class UserDetailSerializer(serializers.ModelSerializer):
             user=user,
             is_active=True,
         ).select_related("role")
-        return [
-            {"id": str(a.role.id), "code": a.role.code, "name": a.role.name}
-            for a in assignments
-        ]
+        return [{"id": str(a.role.id), "code": a.role.code, "name": a.role.name} for a in assignments]
 
     def get_effective_capabilities(self, user) -> list[str]:
         tenant_id = user.tenant_id or getattr(self.context.get("request"), "tenant_id", None)
@@ -108,17 +105,20 @@ class UserDetailSerializer(serializers.ModelSerializer):
 
 
 class UserCreateSerializer(serializers.Serializer):
-    username = serializers.CharField(max_length=150)
+    username = serializers.RegexField(
+        r"^[\w.@+-]+$",
+        max_length=150,
+        min_length=3,
+        error_messages={"invalid": "Use letters, numbers, and @/./+/-/_ characters only."},
+    )
     email = serializers.EmailField(required=False, allow_blank=True, default="")
-    first_name = serializers.CharField(required=False, allow_blank=True, default="", max_length=150)
-    last_name = serializers.CharField(required=False, allow_blank=True, default="", max_length=150)
+    first_name = serializers.CharField(max_length=150)
+    last_name = serializers.CharField(max_length=150)
     password = serializers.CharField(required=False, allow_blank=True, write_only=True, max_length=256)
     professional_staff_id = serializers.CharField(required=False, allow_blank=True, default="", max_length=120)
     role_ids = serializers.ListField(
         child=serializers.UUIDField(),
-        required=False,
-        allow_empty=True,
-        default=list,
+        allow_empty=False,
     )
     must_change_password = serializers.BooleanField(required=False, default=True)
 

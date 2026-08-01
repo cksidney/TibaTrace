@@ -2,6 +2,7 @@ import pytest
 from django.core.management import call_command
 from rest_framework.test import APIClient
 
+from apps.audit.models import AuditEvent
 from apps.clinical.models import ClinicalCondition, ClinicalObservation
 from apps.fhir.models import FHIRIdempotencyRecord
 from apps.identity.models import Role, User, UserRole
@@ -82,6 +83,21 @@ def test_identity_user_lifecycle_create_suspend_disable_reset_and_roles():
     client = APIClient()
     client.force_authenticate(user=manager)
 
+    invalid = client.post(
+        "/api/identity/users/",
+        {
+            "username": "x",
+            "first_name": "",
+            "last_name": "",
+            "role_ids": [],
+        },
+        format="json",
+        HTTP_X_TENANT_ID=str(tenant.pk),
+    )
+    assert invalid.status_code == 400
+    assert {"username", "first_name", "last_name", "role_ids"}.issubset(invalid.json())
+    assert not User.objects.filter(tenant=tenant, username="x").exists()
+
     created = client.post(
         "/api/identity/users/",
         {
@@ -97,6 +113,7 @@ def test_identity_user_lifecycle_create_suspend_disable_reset_and_roles():
     assert created.status_code == 201
     body = created.json()
     user_id = body["id"]
+    created_temporary_password = body["temporary_password"]
     assert body["account_status"] == "ACTIVE"
     assert body["temporary_password"]
     assert {role["code"] for role in body["assigned_roles"]} == {"OPS"}
@@ -146,6 +163,7 @@ def test_identity_user_lifecycle_create_suspend_disable_reset_and_roles():
     assert reset.status_code == 200
     assert reset.json()["temporary_password"]
     assert reset.json()["must_change_password"] is True
+    reset_temporary_password = reset.json()["temporary_password"]
 
     disabled = client.post(
         f"/api/identity/users/{user_id}/disable/",
@@ -155,3 +173,24 @@ def test_identity_user_lifecycle_create_suspend_disable_reset_and_roles():
     )
     assert disabled.status_code == 200
     assert disabled.json()["account_status"] == "DISABLED"
+
+    audit_events = list(AuditEvent.all_objects.filter(tenant=tenant, object_id=user_id).order_by("created_at"))
+    assert [event.action for event in audit_events] == [
+        "IDENTITY_USER_CREATED",
+        "IDENTITY_USER_SUSPENDED",
+        "IDENTITY_USER_ACTIVE",
+        "IDENTITY_USER_ROLES_UPDATED",
+        "IDENTITY_USER_PASSWORD_RESET",
+        "IDENTITY_USER_DISABLED",
+    ]
+    assert audit_events[0].actor == manager
+    assert audit_events[0].metadata["role_codes"] == ["OPS"]
+    assert audit_events[3].metadata == {
+        "username": "new-operator",
+        "previous_role_codes": ["OPS"],
+        "role_codes": ["RPH"],
+    }
+    audit_metadata = str([event.metadata for event in audit_events])
+    assert "temporary_password" not in audit_metadata
+    assert created_temporary_password not in audit_metadata
+    assert reset_temporary_password not in audit_metadata

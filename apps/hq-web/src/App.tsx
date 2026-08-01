@@ -3334,7 +3334,7 @@ function TenantPricingView({
  * who needs the installer, and tills are what this section is about.
  *
  * The checksum is shown beside every download, not hidden behind a detail view:
- * verifying a 35 MB binary before installing it on a device that takes money is
+ * verifying a release binary before installing it on a device that takes money is
  * the whole reason to publish one.
  */
 function PosDownloads({ csrfToken }: { readonly csrfToken: string }) {
@@ -3343,6 +3343,8 @@ function PosDownloads({ csrfToken }: { readonly csrfToken: string }) {
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedRelease, setSelectedRelease] = useState<PosRelease | null>(null);
+  const [releaseFilter, setReleaseFilter] = useState<'LATEST' | 'WINDOWS' | 'ANDROID' | 'ALL'>('LATEST');
+  const [copiedChecksum, setCopiedChecksum] = useState<string | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -3353,6 +3355,31 @@ function PosDownloads({ csrfToken }: { readonly csrfToken: string }) {
       });
     return () => controller.abort();
   }, []);
+
+  useEffect(() => {
+    if (!selectedRelease) return undefined;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && pending !== selectedRelease.id) setSelectedRelease(null);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [pending, selectedRelease]);
+
+  const latestReleaseIds = useMemo(() => {
+    const latest = new Map<PosRelease['platform'], PosRelease>();
+    for (const release of catalogue?.releases ?? []) {
+      const current = latest.get(release.platform);
+      if (!current || release.build_number > current.build_number) latest.set(release.platform, release);
+    }
+    return new Set([...latest.values()].map((release) => release.id));
+  }, [catalogue]);
+
+  const visibleReleases = useMemo(() => {
+    const releases = catalogue?.releases ?? [];
+    if (releaseFilter === 'LATEST') return releases.filter((release) => latestReleaseIds.has(release.id));
+    if (releaseFilter === 'ALL') return releases;
+    return releases.filter((release) => release.platform === releaseFilter);
+  }, [catalogue, latestReleaseIds, releaseFilter]);
 
   const download = useCallback(
     async (release: PosRelease) => {
@@ -3372,14 +3399,33 @@ function PosDownloads({ csrfToken }: { readonly csrfToken: string }) {
     [csrfToken],
   );
 
+  const copyChecksum = async (release: PosRelease) => {
+    try {
+      await navigator.clipboard.writeText(release.sha256);
+      setCopiedChecksum(release.id);
+      setError(null);
+    } catch {
+      setCopiedChecksum(null);
+      setError('Clipboard access was blocked. Select and copy the checksum manually.');
+    }
+  };
+
   if (failed) return <Unavailable />;
   if (!catalogue) return <p className="muted-cell">Loading installers…</p>;
 
   return (
-    <article className="panel table-panel">
-      <div className="table-toolbar">
-        <PanelHeader eyebrow="Point of sale" title="Till installers" />
-      </div>
+    <article className="panel pos-downloads-panel" id="cash-installers">
+      <header className="pos-downloads-header">
+        <div>
+          <p className="eyebrow">Point of sale</p>
+          <h2>Point of Sale Till Installers</h2>
+          <p>Verified desktop and mobile packages for managed pharmacy terminals.</p>
+        </div>
+        <div className="pos-downloads-delivery">
+          <span className={`status-badge ${catalogue.downloads_available ? 'status-active' : 'status-warning'}`}><i /> {catalogue.downloads_available ? 'Downloads ready' : 'Downloads unavailable'}</span>
+          <small>{catalogue.storage_backend === 'local' ? 'Protected HQ delivery' : 'Short-lived signed links'} · {Math.max(1, Math.round(catalogue.url_ttl_seconds / 60))} min access window</small>
+        </div>
+      </header>
 
       {error ? (
         <p className="auth-error" role="alert" aria-live="assertive">
@@ -3395,39 +3441,75 @@ function PosDownloads({ csrfToken }: { readonly csrfToken: string }) {
       ) : null}
 
       {catalogue.releases.length ? (
-        <div className="table-scroll">
-          <table>
-            <thead><tr><th>Platform</th><th>Version</th><th>Size</th><th>Requires</th><th>SHA-256</th><th>Published</th><th /></tr></thead>
-            <tbody>
-              {catalogue.releases.map((release) => (
-                <tr key={release.id}>
-                  <td><StatusBadge value={release.platform} /></td>
-                  <td>
-                    <strong>{release.version}</strong>
-                    {release.release_notes ? <><br /><small>{release.release_notes}</small></> : null}
-                  </td>
-                  <td><small>{formatBytes(release.size_bytes)}</small></td>
-                  <td><small>{release.minimum_os || '—'}</small></td>
-                  {/* Full digest, not truncated: an operator compares this
-                      against sha256sum output, and half a digest verifies
-                      nothing. */}
-                  <td><code className="digest">{release.sha256}</code></td>
-                  <td><small>{formatDate(release.published_at)}</small></td>
-                  <td>
+        <>
+          <nav aria-label="Installer release filters" className="pos-release-filters segmented">
+            {([
+              ['LATEST', 'Latest'],
+              ['WINDOWS', 'Windows'],
+              ['ANDROID', 'Android'],
+              ['ALL', 'All releases'],
+            ] as const).map(([value, label]) => (
+              <button
+                aria-pressed={releaseFilter === value}
+                className={releaseFilter === value ? 'segmented-option is-active' : 'segmented-option'}
+                key={value}
+                onClick={() => setReleaseFilter(value)}
+                type="button"
+              >
+                {label}
+              </button>
+            ))}
+          </nav>
+          <div className="pos-release-grid">
+            {visibleReleases.map((release) => {
+              const isLatest = latestReleaseIds.has(release.id);
+              return (
+                <section className={`pos-release-card ${isLatest ? 'is-latest' : ''}`} key={release.id}>
+                  <header>
+                    <span className={`pos-platform-mark pos-platform-${release.platform.toLowerCase()}`} aria-hidden="true">
+                      {release.platform === 'WINDOWS' ? 'W' : 'A'}
+                    </span>
+                    <div>
+                      <span className="pos-release-kicker">{release.platform === 'WINDOWS' ? 'Windows till' : 'Android till'}</span>
+                      <h3>Version {release.version}</h3>
+                    </div>
+                    {isLatest ? <span className="status-badge status-active"><i /> Latest</span> : <span className="panel-meta">Previous</span>}
+                  </header>
+
+                  <p className="pos-release-notes">{release.release_notes || 'Validated TibaTrace POS release.'}</p>
+                  {release.operations_impact ? <p className="pos-release-impact"><strong>Operations impact</strong>{release.operations_impact}</p> : null}
+
+                  <dl className="pos-release-facts">
+                    <div><dt>Package</dt><dd>{release.download_filename}</dd></div>
+                    <div><dt>Size</dt><dd>{formatBytes(release.size_bytes)}</dd></div>
+                    <div><dt>Published</dt><dd>{formatDate(release.published_at)}</dd></div>
+                    <div><dt>Minimum OS</dt><dd>{release.minimum_os || 'Not specified'}</dd></div>
+                  </dl>
+
+                  <div className="pos-release-checksum">
+                    <span>SHA-256 integrity checksum</span>
+                    <code>{release.sha256}</code>
+                    <button className="ghost-button" onClick={() => void copyChecksum(release)} type="button">
+                      {copiedChecksum === release.id ? 'Copied' : 'Copy'}
+                    </button>
+                  </div>
+
+                  <footer>
+                    <span>{release.minimum_supported_build > 0 ? `Required below build ${release.minimum_supported_build}` : 'Advisory release'}</span>
                     <button
-                      type="button"
-                      className="secondary-button"
+                      className="primary-button"
                       disabled={!catalogue.downloads_available || pending === release.id}
                       onClick={() => setSelectedRelease(release)}
+                      type="button"
                     >
-                      {pending === release.id ? 'Preparing…' : 'Download'}
+                      {pending === release.id ? 'Preparing…' : 'Review & download'}
                     </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                  </footer>
+                </section>
+              );
+            })}
+          </div>
+        </>
       ) : (
         <EmptyState
           icon="store"
@@ -3440,12 +3522,17 @@ function PosDownloads({ csrfToken }: { readonly csrfToken: string }) {
         <div className="business-dialog-backdrop" role="presentation">
           <section aria-labelledby="pos-download-title" aria-modal="true" className="business-dialog" role="dialog">
             <header>
-              <div><p className="eyebrow">Point of sale release</p><h2 id="pos-download-title">Download installer</h2></div>
+              <div><p className="eyebrow">Verified point of sale release</p><h2 id="pos-download-title">Review installer</h2></div>
               <button aria-label="Close dialog" disabled={pending === selectedRelease.id} onClick={() => setSelectedRelease(null)} type="button"><Icon name="close" /></button>
             </header>
-            <div className="business-dialog-record"><div><code>{selectedRelease.platform}</code><strong>Version {selectedRelease.version}</strong></div></div>
+            <div className="business-dialog-record"><div><code>{selectedRelease.platform} · {formatBytes(selectedRelease.size_bytes)}</code><strong>Version {selectedRelease.version}</strong><small>{selectedRelease.download_filename}</small></div></div>
             <p className="business-dialog-confirm"><Icon name="shield" /> Verify this SHA-256 checksum after download before installing on a device that processes transactions.</p>
-            <label className="business-field"><span>SHA-256</span><code className="digest">{selectedRelease.sha256}</code></label>
+            <div className="pos-download-review-facts">
+              <div><span>Minimum OS</span><strong>{selectedRelease.minimum_os || 'Not specified'}</strong></div>
+              <div><span>Published</span><strong>{formatDate(selectedRelease.published_at)}</strong></div>
+            </div>
+            <label className="business-field"><span>SHA-256</span><code className="pos-download-dialog-digest">{selectedRelease.sha256}</code></label>
+            {selectedRelease.release_notes ? <p className="pos-download-dialog-notes">{selectedRelease.release_notes}</p> : null}
             <footer>
               <button className="secondary-button" disabled={pending === selectedRelease.id} onClick={() => setSelectedRelease(null)} type="button">Cancel</button>
               <button className="primary-button" disabled={pending === selectedRelease.id} onClick={() => void download(selectedRelease)} type="button">{pending === selectedRelease.id ? 'Preparing…' : 'Start secure download'}</button>
@@ -3628,6 +3715,8 @@ function TenantCashControlView({
           onActivate={() => document.getElementById('cash-movements')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
         />
       </section>
+
+      <PosDownloads csrfToken={csrfToken} />
 
       {unclosed.length > 0 ? (
         <article className="panel cash-exception-panel">
@@ -4180,7 +4269,6 @@ function TenantCashControlView({
           </section>
         </div>
       ) : null}
-      <PosDownloads csrfToken={csrfToken} />
     </>
   );
 }
@@ -7419,6 +7507,7 @@ function AccessView({
           serviceAccounts={serviceAccounts}
           sessions={sessions}
           tenantId={tenantId}
+          tenantName={selectableTenants.find((tenant) => tenant.id === tenantId)?.name || overview.tenant_name}
           userRoles={userRoles}
           variances={variances}
         />
@@ -8637,6 +8726,7 @@ function resolveFocusTargetId(view: WorkspaceView, focus: string): string {
       variances: 'cash-variances',
       forced: 'cash-forced',
       movements: 'cash-movements',
+      installers: 'cash-installers',
     },
   };
   return map[view]?.[focus] ?? '';

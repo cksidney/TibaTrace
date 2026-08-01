@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 
 import { AccessUsersDirectory } from './AccessUsersDirectory.js';
 import {
@@ -514,6 +514,7 @@ export function AccessWorkspace({
   serviceAccounts,
   sessions,
   tenantId,
+  tenantName,
   userRoles,
   variances,
 }: {
@@ -527,6 +528,7 @@ export function AccessWorkspace({
   readonly serviceAccounts: readonly ServiceAccountItem[] | null;
   readonly sessions: readonly RegisterSessionSummary[] | null;
   readonly tenantId: string;
+  readonly tenantName: string;
   readonly userRoles: readonly UserRoleGrant[] | null;
   readonly variances: readonly ShiftReportSummary[] | null;
 }) {
@@ -649,7 +651,7 @@ export function AccessWorkspace({
       ) : null}
 
       {tab === 'users' ? (
-        <AccessUsersDirectory csrfToken={csrfToken} roles={roles} tenantId={tenantId} />
+        <AccessUsersDirectory csrfToken={csrfToken} roles={roles} tenantId={tenantId} tenantName={tenantName} />
       ) : null}
 
       {tab === 'roles' ? (
@@ -981,41 +983,43 @@ function PosActivationsPanel({
   const [search, setSearch] = useState('');
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
-  const [busy, setBusy] = useState(true);
+  const [serviceState, setServiceState] = useState<'loading' | 'ready' | 'unavailable'>('loading');
+  const [actionBusy, setActionBusy] = useState<'approve' | 'reject' | ''>('');
   const [activations, setActivations] = useState<readonly PosActivationSummary[]>([]);
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
   const [approvalRationale, setApprovalRationale] = useState('');
   const [generatedChallenge, setGeneratedChallenge] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    setBusy(true);
+  const loadActivationRequests = useCallback(async (signal?: AbortSignal) => {
+    setServiceState('loading');
     setError('');
-    fetch(`/api/v1/platform/pos-activations/requests/?tenant_id=${encodeURIComponent(tenantId)}`, {
-      credentials: 'same-origin',
-      headers: { Accept: 'application/json' },
-    })
-      .then(async (response) => {
-        if (!response.ok) throw new Error(`Activation service returned HTTP ${response.status}.`);
-        const data = await response.json() as PosActivationSummary[] | { results?: PosActivationSummary[] };
-        return Array.isArray(data) ? data : (data.results ?? []);
-      })
-      .then((items) => {
-        if (!cancelled) setActivations(items);
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setActivations([]);
-          setError('POS activation service is unavailable. No approval action has been performed.');
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setBusy(false);
-      });
-    return () => {
-      cancelled = true;
-    };
+    try {
+      const request: RequestInit = {
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
+      };
+      if (signal) request.signal = signal;
+      const response = await fetch(
+        `/api/v1/platform/pos-activations/requests/?tenant_id=${encodeURIComponent(tenantId)}`,
+        request,
+      );
+      if (!response.ok) throw new Error(`Activation service returned HTTP ${response.status}.`);
+      const data = await response.json() as PosActivationSummary[] | { results?: PosActivationSummary[] };
+      const items = Array.isArray(data) ? data : (data.results ?? []);
+      setActivations(items);
+      setServiceState('ready');
+    } catch {
+      if (signal?.aborted) return;
+      setActivations([]);
+      setServiceState('unavailable');
+    }
   }, [tenantId]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadActivationRequests(controller.signal);
+    return () => controller.abort();
+  }, [loadActivationRequests]);
 
   const filtered = useMemo(() => {
     return activations.filter((a) => {
@@ -1035,14 +1039,14 @@ function PosActivationsPanel({
     [activations, filtered, selectedRequestId],
   );
 
-  const handlePlatformApprove = async () => {
+  const handlePlatformDecision = async (decision: 'approve' | 'reject') => {
     if (!activeItem || !approvalRationale.trim()) return;
-    setBusy(true);
+    setActionBusy(decision);
     setError('');
     setNotice('');
     setGeneratedChallenge(null);
     try {
-      const response = await fetch(`/api/v1/platform/pos-activations/requests/${encodeURIComponent(activeItem.id)}/approve/`, {
+      const response = await fetch(`/api/v1/platform/pos-activations/requests/${encodeURIComponent(activeItem.id)}/${decision}/`, {
         method: 'POST',
         credentials: 'same-origin',
         headers: {
@@ -1050,24 +1054,66 @@ function PosActivationsPanel({
           'Content-Type': 'application/json',
           'X-CSRFToken': csrfToken,
         },
-        body: JSON.stringify({ approval_rationale: approvalRationale.trim() }),
+        body: JSON.stringify({ rationale: approvalRationale.trim(), approval_rationale: approvalRationale.trim() }),
       });
       if (!response.ok) throw new Error(`Activation service returned HTTP ${response.status}.`);
-      const payload = await response.json() as { challengeCode?: string; challenge_code?: string };
-      const challenge = payload.challengeCode ?? payload.challenge_code;
-      if (!challenge) throw new Error('Activation service did not return a one-time challenge.');
-      setGeneratedChallenge(challenge);
-      setNotice(`Request ${activeItem.id} approved by the Platform Owner.`);
+      const payload = await response.json().catch(() => ({})) as { challengeCode?: string; challenge_code?: string };
+      if (decision === 'approve') {
+        const challenge = payload.challengeCode ?? payload.challenge_code;
+        if (!challenge) throw new Error('Activation service did not return a one-time challenge.');
+        setGeneratedChallenge(challenge);
+      }
+      setNotice(
+        decision === 'approve'
+          ? `Request ${activeItem.id} approved and an enrolment challenge was issued.`
+          : `Request ${activeItem.id} rejected with an audit rationale.`,
+      );
       setApprovalRationale('');
+      await loadActivationRequests();
     } catch {
-      setError('Approval failed closed. The activation service did not confirm the action.');
+      setError(`${decision === 'approve' ? 'Approval' : 'Rejection'} failed closed. The activation service did not confirm the action.`);
     } finally {
-      setBusy(false);
+      setActionBusy('');
     }
   };
 
+  if (serviceState === 'loading') {
+    return (
+      <div className="activation-service-state" role="status">
+        <span className="activation-service-icon"><Icon name="refresh" /></span>
+        <div><strong>Checking activation authority</strong><p>Connecting to the governed device-enrolment service…</p></div>
+      </div>
+    );
+  }
+
+  if (serviceState === 'unavailable') {
+    return (
+      <div className="activation-service-unavailable" role="status">
+        <div className="activation-service-state">
+          <span className="activation-service-icon"><Icon name="shield" /></span>
+          <div>
+            <span className="status-badge status-warning"><i /> Fail closed</span>
+            <h3>Activation service not connected</h3>
+            <p>Device requests and Platform Owner decisions are disabled. No approval, credential, or challenge has been generated.</p>
+          </div>
+          <button className="secondary-button" onClick={() => void loadActivationRequests()} type="button">Retry connection</button>
+        </div>
+        <div className="activation-policy-grid">
+          <div><strong>Tenant administrators</strong><span>May submit and track requests only after the authoritative service is available.</span></div>
+          <div><strong>Platform Owner</strong><span>Remains the sole authority for approval, suspension, renewal, and revocation.</span></div>
+          <div><strong>POS terminals</strong><span>Remain unenrolled until a signed, single-use challenge is confirmed.</span></div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="access-activations-container">
+      <section aria-label="Activation totals" className="activation-metrics">
+        <div><span>Total requests</span><strong>{activations.length}</strong></div>
+        <div><span>Pending review</span><strong>{activations.filter((item) => item.state === 'SUBMITTED').length}</strong></div>
+        <div><span>Active terminals</span><strong>{activations.filter((item) => item.state === 'ACTIVATED').length}</strong></div>
+      </section>
       <div className="access-users-toolbar">
         <form className="access-users-search" onSubmit={(e) => e.preventDefault()}>
           <label>
@@ -1080,8 +1126,8 @@ function PosActivationsPanel({
           </label>
         </form>
         <label>
-          <span>Status Filter</span>
-          <select value={filter} onChange={(e) => setFilter(e.target.value as any)}>
+          <span>Status filter</span>
+          <select value={filter} onChange={(e) => setFilter(e.target.value as typeof filter)}>
             <option value="ALL">All Activation Statuses</option>
             <option value="SUBMITTED">Pending Review (Submitted)</option>
             <option value="APPROVED">Approved (Enrolment Issued)</option>
@@ -1095,97 +1141,114 @@ function PosActivationsPanel({
       {notice ? <p className="inline-success" role="status">{notice}</p> : null}
       {error ? <p className="inline-alert" role="alert">{error}</p> : null}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: 16, marginTop: 16 }}>
-        <div className="table-scroll">
-          <table className="access-users-table">
-            <thead>
-              <tr>
-                <th scope="col">Request ID</th>
-                <th scope="col">Device / Register</th>
-                <th scope="col">Branch</th>
-                <th scope="col">Status</th>
-                <th scope="col">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {!busy && filtered.length === 0 ? (
-                <tr><td colSpan={5}>No activation requests are available.</td></tr>
-              ) : null}
-              {filtered.map((item) => (
-                <tr key={item.id} className={activeItem?.id === item.id ? 'is-selected' : ''}>
-                  <td><code>{item.id}</code></td>
-                  <td>
-                    <strong>{item.deviceName}</strong>
-                    <small className="muted-cell">{item.register} · {item.deviceType}</small>
-                  </td>
-                  <td><span className="muted-cell">{item.branchId}</span></td>
-                  <td>
-                    <span className={`status-badge status-${item.state === 'ACTIVATED' ? 'active' : item.state === 'SUBMITTED' ? 'warning' : 'suspended'}`}>
-                      <i /> {item.state}
-                    </span>
-                  </td>
-                  <td>
-                    <button
-                      className="ghost-button"
-                      onClick={() => setSelectedRequestId(item.id)}
-                      type="button"
-                    >
-                      Review
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {filtered.length === 0 ? (
+        <div className="activation-empty-state">
+          <span className="activation-service-icon"><Icon name="shield" /></span>
+          <div><strong>No activation requests</strong><p>{search || filter !== 'ALL' ? 'No requests match the current filters.' : 'New tenant requests will appear here for governed review.'}</p></div>
         </div>
+      ) : (
+        <div className="activation-review-layout">
+          <div className="table-scroll">
+            <table className="access-users-table">
+              <thead>
+                <tr>
+                  <th scope="col">Request ID</th>
+                  <th scope="col">Device / Register</th>
+                  <th scope="col">Branch</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((item) => (
+                  <tr key={item.id} className={activeItem?.id === item.id ? 'is-selected' : ''}>
+                    <td><code>{item.id}</code></td>
+                    <td>
+                      <strong>{item.deviceName}</strong>
+                      <small className="muted-cell">{item.register} · {item.deviceType}</small>
+                    </td>
+                    <td><span className="muted-cell">{item.branchId}</span></td>
+                    <td>
+                      <span className={`status-badge status-${item.state === 'ACTIVATED' ? 'active' : item.state === 'SUBMITTED' ? 'warning' : 'suspended'}`}>
+                        <i /> {item.state}
+                      </span>
+                    </td>
+                    <td>
+                      <button
+                        className="ghost-button"
+                        onClick={() => setSelectedRequestId(item.id)}
+                        type="button"
+                      >
+                        Review
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
         {activeItem ? (
-          <div style={{ border: '1px solid var(--surface-border, #CBD5E1)', borderRadius: 10, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <h3 style={{ margin: 0, fontSize: 16 }}>{activeItem.deviceName}</h3>
+          <aside className="activation-review-card">
+            <div className="activation-review-heading">
+              <div><span className="eyebrow">Selected request</span><h3>{activeItem.deviceName}</h3></div>
+              <span className={`status-badge status-${activeItem.state === 'ACTIVATED' ? 'active' : activeItem.state === 'SUBMITTED' ? 'warning' : 'suspended'}`}><i /> {activeItem.state}</span>
+            </div>
             <small className="muted-cell">{activeItem.id} · {activeItem.tenantId}</small>
 
-            <dl style={{ margin: 0, display: 'grid', gap: 6, fontSize: 13 }}>
-              <div><dt style={{ opacity: 0.6 }}>Branch:</dt><dd style={{ margin: 0, fontWeight: 600 }}>{activeItem.branchId}</dd></div>
-              <div><dt style={{ opacity: 0.6 }}>Fingerprint:</dt><dd style={{ margin: 0 }}><code>{activeItem.deviceFingerprint}</code></dd></div>
-              <div><dt style={{ opacity: 0.6 }}>Requester:</dt><dd style={{ margin: 0 }}>{activeItem.requester}</dd></div>
-              <div><dt style={{ opacity: 0.6 }}>Justification:</dt><dd style={{ margin: 0 }}>{activeItem.justification}</dd></div>
+            <dl className="activation-request-details">
+              <div><dt>Branch</dt><dd>{activeItem.branchId}</dd></div>
+              <div><dt>Register</dt><dd>{activeItem.register}</dd></div>
+              <div><dt>Fingerprint</dt><dd><code>{activeItem.deviceFingerprint}</code></dd></div>
+              <div><dt>Requester</dt><dd>{activeItem.requester}</dd></div>
+              <div><dt>Justification</dt><dd>{activeItem.justification}</dd></div>
             </dl>
 
             {generatedChallenge ? (
-              <div style={{ background: '#F0FDF4', border: '1px solid #86EFAC', padding: 12, borderRadius: 8, marginTop: 8 }}>
-                <strong style={{ color: '#166534', fontSize: 12, textTransform: 'uppercase' }}>Enrolment Challenge Issued</strong>
-                <code style={{ display: 'block', fontSize: 18, fontWeight: 'bold', margin: '4px 0', letterSpacing: 1 }}>{generatedChallenge}</code>
+              <div className="activation-challenge">
+                <strong>Enrolment challenge issued</strong>
+                <code>{generatedChallenge}</code>
                 <small className="muted-cell">Single-use challenge code. Valid for 15 minutes.</small>
               </div>
             ) : null}
 
-            <div style={{ borderTop: '1px solid #CBD5E1', paddingTop: 12, marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <strong style={{ fontSize: 12, textTransform: 'uppercase', opacity: 0.7 }}>Platform Owner Action</strong>
-              <label>
-                <span style={{ fontSize: 12 }}>Approval / Action Rationale:</span>
-                <input
-                  onChange={(e) => setApprovalRationale(e.target.value)}
-                  placeholder="Provide audit rationale..."
-                  style={{ width: '100%', padding: '6px 10px', borderRadius: 6, border: '1px solid #94A3B8', marginTop: 4 }}
-                  value={approvalRationale}
-                />
-              </label>
-              <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-                <button
-                  className="primary-button"
-                  disabled={busy || !approvalRationale.trim()}
-                  onClick={handlePlatformApprove}
-                  type="button"
-                >
-                  Approve & Issue Code
-                </button>
-                <button className="secondary-button" type="button">Reject</button>
+            {activeItem.state === 'SUBMITTED' ? (
+              <div className="activation-decision-panel">
+                <strong>Platform Owner decision</strong>
+                <label>
+                  <span>Decision rationale</span>
+                  <textarea
+                    onChange={(e) => setApprovalRationale(e.target.value)}
+                    placeholder="Record the evidence and reason for this decision…"
+                    rows={3}
+                    value={approvalRationale}
+                  />
+                </label>
+                <div className="activation-decision-actions">
+                  <button
+                    className="primary-button"
+                    disabled={Boolean(actionBusy) || !approvalRationale.trim()}
+                    onClick={() => void handlePlatformDecision('approve')}
+                    type="button"
+                  >
+                    {actionBusy === 'approve' ? 'Approving…' : 'Approve & issue code'}
+                  </button>
+                  <button
+                    className="secondary-button"
+                    disabled={Boolean(actionBusy) || !approvalRationale.trim()}
+                    onClick={() => void handlePlatformDecision('reject')}
+                    type="button"
+                  >
+                    {actionBusy === 'reject' ? 'Rejecting…' : 'Reject request'}
+                  </button>
+                </div>
+                <small className="muted-cell">Only users with Platform Owner capability can execute approval actions.</small>
               </div>
-              <small className="muted-cell">Only users with Platform Owner capability can execute approval actions.</small>
-            </div>
-          </div>
+            ) : <p className="activation-decision-complete">This request has already left pending review. Further lifecycle actions remain governed by the activation service.</p>}
+          </aside>
         ) : null}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -7,6 +7,7 @@ import {
   beginCustomerReview,
   createCustomer,
   createInsurer,
+  createTenantUser,
   createStockTransfer,
   dispatchStockTransfer,
   loadSystemHealth,
@@ -125,6 +126,52 @@ describe('heartbeat telemetry', () => {
 });
 
 describe('tenant-scoped directory writes', () => {
+  it('sends the complete Add User payload with tenant and CSRF context', async () => {
+    const createdUser = {
+      id: 'user-1',
+      username: 'jane.wanjiku',
+      assigned_roles: [{ id: 'role-1', code: 'RPH', name: 'Pharmacist' }],
+      temporary_password: 'one-time-secret',
+    };
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(createdUser), {
+        headers: { 'Content-Type': 'application/json' },
+        status: 201,
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await createTenantUser('tenant-123', 'csrf-123', {
+      username: 'jane.wanjiku',
+      email: 'jane@example.com',
+      first_name: 'Jane',
+      last_name: 'Wanjiku',
+      professional_staff_id: 'PPB-12345',
+      role_ids: ['role-1'],
+      must_change_password: true,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/identity/users/',
+      expect.objectContaining({
+        body: JSON.stringify({
+          username: 'jane.wanjiku',
+          email: 'jane@example.com',
+          first_name: 'Jane',
+          last_name: 'Wanjiku',
+          professional_staff_id: 'PPB-12345',
+          role_ids: ['role-1'],
+          must_change_password: true,
+        }),
+        headers: expect.objectContaining({
+          'X-CSRFToken': 'csrf-123',
+          'X-Tenant-ID': 'tenant-123',
+        }),
+        method: 'POST',
+      }),
+    );
+  });
+
   it('sends tenant and CSRF context when creating an insurer', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ id: 'insurer-1' }), {

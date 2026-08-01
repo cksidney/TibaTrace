@@ -17,7 +17,17 @@ interface AccessUsersDirectoryProps {
   readonly csrfToken: string;
   readonly roles: readonly RoleDetail[] | null;
   readonly tenantId: string;
+  readonly tenantName: string;
 }
+
+const EMPTY_CREATE_FORM = {
+  username: '',
+  email: '',
+  first_name: '',
+  last_name: '',
+  professional_staff_id: '',
+  role_ids: [] as string[],
+};
 
 function statusBadge(user: UserDetail) {
   const status = (user.account_status || (user.is_active ? 'ACTIVE' : 'DISABLED')).toUpperCase();
@@ -35,7 +45,7 @@ function displayName(user: UserDetail) {
   return name || user.username;
 }
 
-export function AccessUsersDirectory({ csrfToken, roles, tenantId }: AccessUsersDirectoryProps) {
+export function AccessUsersDirectory({ csrfToken, roles, tenantId, tenantName }: AccessUsersDirectoryProps) {
   const [search, setSearch] = useState('');
   const [appliedSearch, setAppliedSearch] = useState('');
   const [category, setCategory] = useState<UserCategoryFilter>('ALL');
@@ -46,19 +56,30 @@ export function AccessUsersDirectory({ csrfToken, roles, tenantId }: AccessUsers
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [showCreate, setShowCreate] = useState(false);
-  const [createForm, setCreateForm] = useState({
-    username: '',
-    email: '',
-    first_name: '',
-    last_name: '',
-    role_ids: [] as string[],
-  });
+  const [createForm, setCreateForm] = useState(EMPTY_CREATE_FORM);
+  const [createdUser, setCreatedUser] = useState<UserDetail | null>(null);
+  const [credentialCopied, setCredentialCopied] = useState(false);
   const [roleEditorUserId, setRoleEditorUserId] = useState('');
   const [roleDraft, setRoleDraft] = useState<string[]>([]);
 
   useEffect(() => {
     setPage(1);
   }, [tenantId, category, appliedSearch]);
+
+  useEffect(() => {
+    if (!showCreate) return undefined;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && busyId !== 'create') {
+        setShowCreate(false);
+        setCreatedUser(null);
+        setCredentialCopied(false);
+        setError('');
+        setCreateForm(EMPTY_CREATE_FORM);
+      }
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [busyId, showCreate]);
 
   useEffect(() => {
     if (!tenantId) return;
@@ -123,6 +144,8 @@ export function AccessUsersDirectory({ csrfToken, roles, tenantId }: AccessUsers
 
     const usernameTrimmed = createForm.username.trim();
     const emailTrimmed = createForm.email.trim();
+    const firstNameTrimmed = createForm.first_name.trim();
+    const lastNameTrimmed = createForm.last_name.trim();
 
     if (usernameTrimmed.length < 3) {
       setError('Username must be at least 3 characters long.');
@@ -130,6 +153,10 @@ export function AccessUsersDirectory({ csrfToken, roles, tenantId }: AccessUsers
     }
     if (emailTrimmed && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrimmed)) {
       setError('Please enter a valid email address.');
+      return;
+    }
+    if (!firstNameTrimmed || !lastNameTrimmed) {
+      setError('First and last name are required for an accountable staff profile.');
       return;
     }
     if (createForm.role_ids.length === 0) {
@@ -142,24 +169,43 @@ export function AccessUsersDirectory({ csrfToken, roles, tenantId }: AccessUsers
       const created = await createTenantUser(tenantId, csrfToken, {
         username: usernameTrimmed,
         email: emailTrimmed,
-        first_name: createForm.first_name.trim(),
-        last_name: createForm.last_name.trim(),
+        first_name: firstNameTrimmed,
+        last_name: lastNameTrimmed,
+        professional_staff_id: createForm.professional_staff_id.trim(),
         role_ids: createForm.role_ids,
         must_change_password: true,
       });
-      setNotice(
-        created.temporary_password
-          ? `Created ${created.username}. Temporary password: ${created.temporary_password}`
-          : `Created ${created.username}.`,
-      );
-      setShowCreate(false);
-      setCreateForm({ username: '', email: '', first_name: '', last_name: '', role_ids: [] });
+      setCreatedUser(created);
+      setCredentialCopied(false);
+      setNotice(`Created ${created.username} with ${created.assigned_roles.length} assigned role${created.assigned_roles.length === 1 ? '' : 's'}.`);
+      setCreateForm(EMPTY_CREATE_FORM);
       setPage(1);
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not create user.');
     } finally {
       setBusyId('');
+    }
+  };
+
+  const closeCreate = () => {
+    if (busyId === 'create') return;
+    setShowCreate(false);
+    setCreatedUser(null);
+    setCredentialCopied(false);
+    setCreateForm(EMPTY_CREATE_FORM);
+    setError('');
+  };
+
+  const copyTemporaryPassword = async () => {
+    if (!createdUser?.temporary_password) return;
+    try {
+      await navigator.clipboard.writeText(createdUser.temporary_password);
+      setCredentialCopied(true);
+      setError('');
+    } catch {
+      setCredentialCopied(false);
+      setError('Clipboard access was blocked. Select and copy the temporary password manually.');
     }
   };
 
@@ -185,8 +231,19 @@ export function AccessUsersDirectory({ csrfToken, roles, tenantId }: AccessUsers
           <h2>Users & role assignment</h2>
           <p className="muted-cell">Create accounts for this pharmacy and grant them one or more roles.</p>
         </div>
-        <button className="primary-button" onClick={() => setShowCreate((value) => !value)} type="button">
-          {showCreate ? 'Close form' : 'Add user'}
+        <button
+          className="primary-button"
+          disabled={!roles?.length}
+          onClick={() => {
+            setError('');
+            setNotice('');
+            setCreatedUser(null);
+            setCredentialCopied(false);
+            setShowCreate(true);
+          }}
+          type="button"
+        >
+          Add user
         </button>
       </header>
 
@@ -229,72 +286,155 @@ export function AccessUsersDirectory({ csrfToken, roles, tenantId }: AccessUsers
       </div>
 
       {showCreate ? (
-        <form className="access-user-form" onSubmit={onCreate}>
-          <div className="access-user-form-grid">
-            <label>
-              <span>Username</span>
-              <input
-                required
-                onChange={(event) => setCreateForm((current) => ({ ...current, username: event.target.value }))}
-                value={createForm.username}
-              />
-            </label>
-            <label>
-              <span>Email</span>
-              <input
-                onChange={(event) => setCreateForm((current) => ({ ...current, email: event.target.value }))}
-                type="email"
-                value={createForm.email}
-              />
-            </label>
-            <label>
-              <span>First name</span>
-              <input
-                onChange={(event) => setCreateForm((current) => ({ ...current, first_name: event.target.value }))}
-                value={createForm.first_name}
-              />
-            </label>
-            <label>
-              <span>Last name</span>
-              <input
-                onChange={(event) => setCreateForm((current) => ({ ...current, last_name: event.target.value }))}
-                value={createForm.last_name}
-              />
-            </label>
-          </div>
-          <fieldset className="access-role-picker">
-            <legend>Assign roles</legend>
-            <div className="capability-chips">
-              {(roles ?? []).map((role) => {
-                const checked = createForm.role_ids.includes(role.id);
-                return (
-                  <label className={`capability-chip ${checked ? 'is-selected' : ''}`} key={role.id}>
+        <div className="business-dialog-backdrop" role="presentation">
+          <section aria-describedby={createdUser ? undefined : 'add-user-description'} aria-labelledby="add-user-title" aria-modal="true" className="business-dialog access-user-dialog" role="dialog">
+            <header>
+              <div>
+                <p className="eyebrow">Account provisioning</p>
+                <h2 id="add-user-title">Add user to {tenantName}</h2>
+              </div>
+              <button aria-label="Close Add User dialog" disabled={busyId === 'create'} onClick={closeCreate} type="button">
+                <span aria-hidden="true">×</span>
+              </button>
+            </header>
+
+            {createdUser ? (
+              <div className="access-credential-handoff">
+                <div className="access-credential-success" aria-hidden="true">✓</div>
+                <div>
+                  <p className="eyebrow">Account created</p>
+                  <h3>{displayName(createdUser)}</h3>
+                  <p>
+                    <strong>{createdUser.username}</strong> is active and must change this password at first sign-in.
+                  </p>
+                </div>
+                {createdUser.temporary_password ? (
+                  <div className="access-temporary-password">
+                    <span>One-time temporary password</span>
+                    <code>{createdUser.temporary_password}</code>
+                    <button className="secondary-button" onClick={() => void copyTemporaryPassword()} type="button">
+                      {credentialCopied ? 'Copied' : 'Copy password'}
+                    </button>
+                    <small>Copy it now. For security, it will not be shown again after this dialog closes.</small>
+                  </div>
+                ) : null}
+                <dl className="access-provisioning-summary">
+                  <div><dt>Tenant</dt><dd>{tenantName}</dd></div>
+                  <div><dt>Roles</dt><dd>{createdUser.assigned_roles.map((role) => role.code).join(', ')}</dd></div>
+                  <div><dt>Status</dt><dd>Active · password change required</dd></div>
+                </dl>
+                {error ? <p className="business-dialog-error" role="alert">{error}</p> : null}
+                <footer className="access-user-dialog-footer">
+                  <button className="primary-button" onClick={closeCreate} type="button">Done</button>
+                </footer>
+              </div>
+            ) : (
+              <form className="access-user-form" onSubmit={onCreate}>
+                <p className="access-user-dialog-intro" id="add-user-description">
+                  Create an accountable staff identity, then assign the least-privilege roles needed for their work.
+                </p>
+                <div className="access-user-form-grid">
+                  <label>
+                    <span>Username <b>Required</b></span>
                     <input
-                      checked={checked}
-                      onChange={() => {
-                        setCreateForm((current) => ({
-                          ...current,
-                          role_ids: checked
-                            ? current.role_ids.filter((id) => id !== role.id)
-                            : [...current.role_ids, role.id],
-                        }));
-                      }}
-                      type="checkbox"
+                      autoFocus
+                      autoComplete="off"
+                      minLength={3}
+                      required
+                      onChange={(event) => setCreateForm((current) => ({ ...current, username: event.target.value }))}
+                      placeholder="e.g. jane.wanjiku"
+                      value={createForm.username}
                     />
-                    {role.code}
+                    <small>At least 3 characters; unique across TibaTrace.</small>
                   </label>
-                );
-              })}
-            </div>
-          </fieldset>
-          <button className="primary-button" disabled={busyId === 'create'} type="submit">
-            {busyId === 'create' ? 'Creating…' : 'Create user'}
-          </button>
-        </form>
+                  <label>
+                    <span>Email</span>
+                    <input
+                      autoComplete="email"
+                      onChange={(event) => setCreateForm((current) => ({ ...current, email: event.target.value }))}
+                      placeholder="name@pharmacy.co.ke"
+                      type="email"
+                      value={createForm.email}
+                    />
+                    <small>Used for identity recovery and account notices.</small>
+                  </label>
+                  <label>
+                    <span>First name <b>Required</b></span>
+                    <input
+                      autoComplete="given-name"
+                      required
+                      onChange={(event) => setCreateForm((current) => ({ ...current, first_name: event.target.value }))}
+                      value={createForm.first_name}
+                    />
+                  </label>
+                  <label>
+                    <span>Last name <b>Required</b></span>
+                    <input
+                      autoComplete="family-name"
+                      required
+                      onChange={(event) => setCreateForm((current) => ({ ...current, last_name: event.target.value }))}
+                      value={createForm.last_name}
+                    />
+                  </label>
+                  <label className="access-professional-id-field">
+                    <span>Professional staff ID</span>
+                    <input
+                      onChange={(event) => setCreateForm((current) => ({ ...current, professional_staff_id: event.target.value }))}
+                      placeholder="Optional licence or employee identifier"
+                      value={createForm.professional_staff_id}
+                    />
+                    <small>Recommended for pharmacists and regulated clinical staff.</small>
+                  </label>
+                </div>
+                <fieldset className="access-role-picker">
+                  <legend>Assign roles <b>Required</b></legend>
+                  <p>Select at least one role. Permissions are inherited from the role and can be changed later.</p>
+                  <div className="access-role-options">
+                    {(roles ?? []).map((role) => {
+                      const checked = createForm.role_ids.includes(role.id);
+                      return (
+                        <label className={`access-role-option ${checked ? 'is-selected' : ''}`} key={role.id}>
+                          <input
+                            checked={checked}
+                            onChange={() => {
+                              setCreateForm((current) => ({
+                                ...current,
+                                role_ids: checked
+                                  ? current.role_ids.filter((id) => id !== role.id)
+                                  : [...current.role_ids, role.id],
+                              }));
+                            }}
+                            type="checkbox"
+                          />
+                          <span><strong>{role.name}</strong><code>{role.code}</code></span>
+                          <small>{role.capabilities.length} permission{role.capabilities.length === 1 ? '' : 's'}</small>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </fieldset>
+                <div className="access-account-policy">
+                  <strong>Secure first sign-in</strong>
+                  <span>A strong temporary password will be generated. The user must replace it immediately.</span>
+                </div>
+                {error ? <p className="business-dialog-error" role="alert">{error}</p> : null}
+                <footer>
+                  <span>{createForm.role_ids.length} role{createForm.role_ids.length === 1 ? '' : 's'} selected</span>
+                  <div>
+                    <button className="secondary-button" disabled={busyId === 'create'} onClick={closeCreate} type="button">Cancel</button>
+                    <button className="primary-button" disabled={busyId === 'create' || createForm.role_ids.length === 0} type="submit">
+                      {busyId === 'create' ? 'Creating account…' : 'Create user'}
+                    </button>
+                  </div>
+                </footer>
+              </form>
+            )}
+          </section>
+        </div>
       ) : null}
 
       {notice ? <p className="inline-success" role="status">{notice}</p> : null}
-      {error ? <p className="inline-alert" role="alert">{error}</p> : null}
+      {error && !showCreate ? <p className="inline-alert" role="alert">{error}</p> : null}
       {failed ? (
         <p className="inline-alert" role="status">User directory could not be loaded for this tenant.</p>
       ) : null}

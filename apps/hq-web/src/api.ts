@@ -2211,6 +2211,8 @@ export interface PosRelease {
   readonly sha256: string;
   readonly release_notes: string;
   readonly minimum_os: string;
+  readonly minimum_supported_build: number;
+  readonly operations_impact: string;
   readonly published_at: string | null;
   readonly download_filename: string;
 }
@@ -2219,6 +2221,7 @@ export interface PosReleaseCatalogue {
   /** False when object storage is not configured; links are disabled, not broken. */
   readonly downloads_available: boolean;
   readonly url_ttl_seconds: number;
+  readonly storage_backend: 'local' | 's3';
   readonly releases: readonly PosRelease[];
 }
 

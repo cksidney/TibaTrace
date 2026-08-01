@@ -1,4 +1,5 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import transaction
 from django.db.models import Q
 from drf_spectacular.utils import extend_schema
 from rest_framework import generics, status, viewsets
@@ -8,6 +9,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.audit.models import AuditEvent
 from apps.core.permissions import TenantCapabilityPermission, TenantRequired
 from apps.identity.api.serializers import (
     PasswordResetAdminSerializer,
@@ -118,6 +120,19 @@ class UserViewSet(viewsets.GenericViewSet):
     serializer_class = UserDetailSerializer
     pagination_class = IdentityUserPagination
 
+    @staticmethod
+    def _record_identity_audit(*, request, tenant_id, action: str, user: User, metadata: dict) -> None:
+        AuditEvent.all_objects.create(
+            tenant_id=tenant_id,
+            actor=request.user,
+            action=action,
+            model_name="User",
+            object_id=str(user.pk),
+            correlation_id=str(request.headers.get("X-Request-ID") or ""),
+            outcome="SUCCESS",
+            metadata=metadata,
+        )
+
     def get_queryset(self):
         if getattr(self, "swagger_fake_view", False):
             return User.objects.none()
@@ -181,12 +196,35 @@ class UserViewSet(viewsets.GenericViewSet):
         payload.is_valid(raise_exception=True)
         tenant_id = getattr(request, "tenant_id", None) or request.user.tenant_id
         try:
-            user, temporary_password = UserAdministrationService.create_user(
-                tenant_id=tenant_id,
-                **payload.validated_data,
-            )
+            with transaction.atomic():
+                user, temporary_password = UserAdministrationService.create_user(
+                    tenant_id=tenant_id,
+                    **payload.validated_data,
+                )
+                role_codes = list(
+                    UserRole.all_objects.filter(
+                        tenant_id=tenant_id,
+                        user=user,
+                        is_active=True,
+                    ).values_list("role__code", flat=True)
+                )
+                self._record_identity_audit(
+                    request=request,
+                    tenant_id=tenant_id,
+                    action="IDENTITY_USER_CREATED",
+                    user=user,
+                    metadata={
+                        "username": user.username,
+                        "role_codes": sorted(role_codes),
+                        "professional_staff_id_present": bool(user.professional_staff_id),
+                        "must_change_password": user.must_change_password,
+                    },
+                )
         except DjangoValidationError as exc:
-            return Response(exc.message_dict if hasattr(exc, "message_dict") else {"detail": exc.messages}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                exc.message_dict if hasattr(exc, "message_dict") else {"detail": exc.messages},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         body = UserDetailSerializer(user, context={"request": request}).data
         body["temporary_password"] = temporary_password
         return Response(body, status=status.HTTP_201_CREATED)
@@ -198,10 +236,26 @@ class UserViewSet(viewsets.GenericViewSet):
                 {"detail": "You cannot change the status of your own account."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        previous_status = account_status_for(user)
         try:
-            user = mutator(user=user)
+            with transaction.atomic():
+                user = mutator(user=user)
+                self._record_identity_audit(
+                    request=request,
+                    tenant_id=user.tenant_id,
+                    action=f"IDENTITY_USER_{account_status_for(user)}",
+                    user=user,
+                    metadata={
+                        "username": user.username,
+                        "previous_status": previous_status,
+                        "new_status": account_status_for(user),
+                    },
+                )
         except DjangoValidationError as exc:
-            return Response(exc.message_dict if hasattr(exc, "message_dict") else {"detail": exc.messages}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                exc.message_dict if hasattr(exc, "message_dict") else {"detail": exc.messages},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         return Response(UserDetailSerializer(user, context={"request": request}).data)
 
     @action(detail=True, methods=["post"])
@@ -222,12 +276,26 @@ class UserViewSet(viewsets.GenericViewSet):
         payload = PasswordResetAdminSerializer(data=request.data)
         payload.is_valid(raise_exception=True)
         try:
-            user, temporary_password = UserAdministrationService.reset_password(
-                user=user,
-                password=payload.validated_data.get("password") or None,
-            )
+            with transaction.atomic():
+                user, temporary_password = UserAdministrationService.reset_password(
+                    user=user,
+                    password=payload.validated_data.get("password") or None,
+                )
+                self._record_identity_audit(
+                    request=request,
+                    tenant_id=user.tenant_id,
+                    action="IDENTITY_USER_PASSWORD_RESET",
+                    user=user,
+                    metadata={
+                        "username": user.username,
+                        "must_change_password": True,
+                    },
+                )
         except DjangoValidationError as exc:
-            return Response(exc.message_dict if hasattr(exc, "message_dict") else {"detail": exc.messages}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                exc.message_dict if hasattr(exc, "message_dict") else {"detail": exc.messages},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         body = UserDetailSerializer(user, context={"request": request}).data
         body["temporary_password"] = temporary_password
         return Response(body)
@@ -238,14 +306,43 @@ class UserViewSet(viewsets.GenericViewSet):
         payload = UserRoleAssignmentSerializer(data=request.data)
         payload.is_valid(raise_exception=True)
         tenant_id = getattr(request, "tenant_id", None) or request.user.tenant_id
-        try:
-            UserAdministrationService.set_roles(
-                user=user,
+        previous_roles = sorted(
+            UserRole.all_objects.filter(
                 tenant_id=tenant_id,
-                role_ids=payload.validated_data["role_ids"],
-            )
+                user=user,
+                is_active=True,
+            ).values_list("role__code", flat=True)
+        )
+        try:
+            with transaction.atomic():
+                UserAdministrationService.set_roles(
+                    user=user,
+                    tenant_id=tenant_id,
+                    role_ids=payload.validated_data["role_ids"],
+                )
+                current_roles = sorted(
+                    UserRole.all_objects.filter(
+                        tenant_id=tenant_id,
+                        user=user,
+                        is_active=True,
+                    ).values_list("role__code", flat=True)
+                )
+                self._record_identity_audit(
+                    request=request,
+                    tenant_id=tenant_id,
+                    action="IDENTITY_USER_ROLES_UPDATED",
+                    user=user,
+                    metadata={
+                        "username": user.username,
+                        "previous_role_codes": previous_roles,
+                        "role_codes": current_roles,
+                    },
+                )
         except DjangoValidationError as exc:
-            return Response(exc.message_dict if hasattr(exc, "message_dict") else {"detail": exc.messages}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                exc.message_dict if hasattr(exc, "message_dict") else {"detail": exc.messages},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         user.refresh_from_db()
         return Response(UserDetailSerializer(user, context={"request": request}).data)
 
@@ -286,7 +383,11 @@ class CapabilityMatrixView(APIView):
         tenant_id = getattr(request, "tenant_id", None) or request.user.tenant_id
         roles = Role.all_objects.filter(tenant_id=tenant_id, is_active=True) if tenant_id else Role.all_objects.none()
         users = User.objects.filter(tenant_id=tenant_id, is_active=True) if tenant_id else User.objects.none()
-        service_accounts = ServiceAccount.all_objects.filter(tenant_id=tenant_id, is_active=True) if tenant_id else ServiceAccount.all_objects.none()
+        service_accounts = (
+            ServiceAccount.all_objects.filter(tenant_id=tenant_id, is_active=True)
+            if tenant_id
+            else ServiceAccount.all_objects.none()
+        )
 
         matrix = {
             "tenant_id": str(tenant_id or ""),
