@@ -36,6 +36,10 @@ jobs:
       hq_digest: ${{ steps.hq.outputs.digest }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history: the deployment baseline is an older commit, and a
+          # shallow clone cannot see it, so baseline resolution fails.
+          fetch-depth: 0
 
       - name: Assert no generated dist is present in a clean checkout
         # The point of this job is that the images build without them. If either
@@ -74,6 +78,30 @@ jobs:
               ;;
             *) echo "not a release tag; VERSION is $version" ;;
           esac
+
+      - name: Resolve deployment baseline
+        id: baseline
+        run: |
+          # The commit currently running in production, read from the deployed
+          # backend image label. Declared explicitly: guessing a branch point is
+          # how a release reports zero migrations while carrying one.
+          baseline="${DEPLOYMENT_BASELINE_SHA:-24a160214114575bdbbb3059b10ad4e323f3daec}"
+          if ! git cat-file -e "${baseline}^{commit}" 2>/dev/null; then
+            echo "::error::deployment baseline $baseline is not a commit in this repository"
+            exit 1
+          fi
+          echo "baseline=$baseline" >> "$GITHUB_OUTPUT"
+          files=$(git diff --name-only --diff-filter=A "$baseline..HEAD" \
+                  -- 'backend/apps/*/migrations/*.py')
+          echo "migrations introduced since $baseline:"
+          echo "${files:-  (none)}"
+          {
+            echo "files<<EOF"
+            echo "$files"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+        env:
+          DEPLOYMENT_BASELINE_SHA: ${{ vars.DEPLOYMENT_BASELINE_SHA }}
 
       - name: Decide whether to publish
         id: mode
@@ -224,30 +252,6 @@ jobs:
               test "$(id -u)" -ne 0 && echo "runs as non-root (uid $(id -u))"
             '
 
-      - name: Resolve deployment baseline
-        id: baseline
-        run: |
-          # The commit currently running in production, read from the deployed
-          # backend image label. Declared explicitly: guessing a branch point is
-          # how a release reports zero migrations while carrying one.
-          baseline="${DEPLOYMENT_BASELINE_SHA:-24a160214114575bdbbb3059b10ad4e323f3daec}"
-          if ! git cat-file -e "${baseline}^{commit}" 2>/dev/null; then
-            echo "::error::deployment baseline $baseline is not a commit in this repository"
-            exit 1
-          fi
-          echo "baseline=$baseline" >> "$GITHUB_OUTPUT"
-          files=$(git diff --name-only --diff-filter=A "$baseline..HEAD" \
-                  -- 'backend/apps/*/migrations/*.py')
-          echo "migrations introduced since $baseline:"
-          echo "${files:-  (none)}"
-          {
-            echo "files<<EOF"
-            echo "$files"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
-        env:
-          DEPLOYMENT_BASELINE_SHA: ${{ vars.DEPLOYMENT_BASELINE_SHA }}
-
       - name: Capture migration plan from the release image
         run: |
           mkdir -p evidence
@@ -275,7 +279,10 @@ jobs:
           if [ ! -s "$plan" ]; then
             echo "::error::MIGRATION_PLAN.txt is empty"; exit 1
           fi
-          if grep -qiE 'Traceback|OperationalError|Exception|error:|failed|unable to open database' \
+          # Anchored patterns only. Django model names legitimately contain
+          # "Exception" (ClaimReconciliationException), so a substring match
+          # would reject a valid plan.
+          if grep -qE '^Traceback \(most recent call last\)|^[A-Za-z_.]*(Error|Exception): |unable to open database|^SystemCheckError|^CommandError' \
                "$plan" evidence/MIGRATION_PLAN.stderr.txt; then
             echo "::error::migration plan contains an error; refusing to build evidence"
             cat "$plan" evidence/MIGRATION_PLAN.stderr.txt
@@ -290,6 +297,7 @@ jobs:
             -e DAWATRACE_SECRET_KEY=ci-plan-not-a-secret \
             -e DAWATRACE_DATABASE_URL=sqlite:////tmp/tibatrace-migration-plan.sqlite3 \
             -e TIBATRACE_NEW_MIGRATION_FILES \
+            -e PYTHONPATH=/app \
             -v "$PWD/scripts/migration_evidence.py:/tmp/migration_evidence.py:ro" \
             -v "$PWD/evidence:/evidence" \
             '${{ steps.verify_refs.outputs.backend }}' \

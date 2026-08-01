@@ -33,7 +33,7 @@ services:
       context: .
       dockerfile: docker/backend.Dockerfile
       args:
-        DAWATRACE_VERSION: ${DAWATRACE_VERSION:-0.2.0-rc3}
+        DAWATRACE_VERSION: ${DAWATRACE_VERSION:-0.2.0-rc4}
         GIT_SHA: ${GIT_SHA:-unknown}
         BUILD_TIME: ${BUILD_TIME:-unknown}
     environment: &backend-env
