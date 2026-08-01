@@ -19,9 +19,9 @@ and receipt workflows on top of the RC8 Reports release.
   opening a transfer request; and
 - packages document QR data only when supplied with a server-issued SHA-256
   checksum and authoritative HTTPS validation URL—no client-fabricated proof;
-- keeps all four report-export actions aligned in a dedicated table column,
-  with compact PDF, CSV, XLS, and JSON controls and descriptive download
-  tooltips for a clearer high-density Reports workspace.
+- keeps all four report-export actions in a compact, accessible table menu for
+  a clearer high-density Reports workspace while preserving PDF, CSV, XLSX,
+  and JSON downloads.
 
 ## Deployment
 

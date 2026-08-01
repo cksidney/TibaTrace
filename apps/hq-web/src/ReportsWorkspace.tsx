@@ -444,7 +444,7 @@ export function ReportsWorkspace({
                               </option>
                               <option value="pdf">📄 PDF Document (.pdf)</option>
                               <option value="csv">📊 CSV Data (.csv)</option>
-                              <option value="excel">📈 Excel Workbook (.xlsx)</option>
+                              <option value="xlsx">📈 Excel Workbook (.xlsx)</option>
                               <option value="json">⚙️ JSON Format (.json)</option>
                             </select>
                           </div>
