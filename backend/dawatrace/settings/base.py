@@ -8,6 +8,14 @@ BASE_DIR = Path(__file__).resolve().parents[2]
 ROOT_DIR = BASE_DIR.parent
 
 
+def _read_version() -> str:
+    version_file = ROOT_DIR / "VERSION"
+    try:
+        return version_file.read_text(encoding="utf-8").strip() or "0.0.0-unknown"
+    except OSError:
+        return "0.0.0-unknown"
+
+
 def env(name: str, default: str = "") -> str:
     return os.getenv(name, default)
 
@@ -196,7 +204,7 @@ REST_FRAMEWORK = {
 SPECTACULAR_SETTINGS = {
     "TITLE": "DawaTrace API",
     "DESCRIPTION": "Independent pharmacy and healthcare clinical-core API",
-    "VERSION": "0.1.0-alpha.1",
+    "VERSION": _read_version(),
     "SERVE_INCLUDE_SCHEMA": False,
     "ENUM_NAME_OVERRIDES": {
         "QualityStatusEnum": "apps.procurement.models.ReceivedBatch.QualityStatus",
@@ -237,7 +245,13 @@ CELERY_TASK_ROUTES = {"apps.*": {"queue": "dawatrace-clinical"}}
 #: The product version, in one place. The POS shell renders this rather than a
 #: hardcoded badge -- it read "ENTERPRISE DISPENSING v2.5" on the busiest screen
 #: in the product while every app in the repository was 0.1.0-alpha.1.
-DAWATRACE_VERSION = "0.1.0-alpha.1"
+#:
+#: Read from the repository VERSION file, which is canonical: CI derives the
+#: image tags and OCI version label from it, and release directories are named
+#: after it. Hardcoding it here let the running application disagree with the
+#: artefact it was built from. The literal is only a fallback for installs that
+#: ship without the file.
+DAWATRACE_VERSION = _read_version()
 
 FHIR_VERSION = "4.0.1"
 FHIR_IMPLEMENTATION_NAME = "DawaTrace FHIR Gateway"

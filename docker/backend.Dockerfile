@@ -35,6 +35,10 @@ RUN groupadd --system --gid 10001 dawatrace \
 COPY --from=builder /opt/venv /opt/venv
 WORKDIR /app
 COPY --chown=dawatrace:dawatrace backend /app
+# settings.DAWATRACE_VERSION reads ROOT_DIR/VERSION, and ROOT_DIR is the parent
+# of /app here, so the canonical version file has to land at /VERSION or the
+# running application reports 0.0.0-unknown while the image label says otherwise.
+COPY --chown=dawatrace:dawatrace VERSION /VERSION
 
 RUN DAWATRACE_SECRET_KEY=build-only-staticfiles-not-a-secret \
     DAWATRACE_OBJECT_SIGNING_KEY=build-only-staticfiles-not-a-secret \
