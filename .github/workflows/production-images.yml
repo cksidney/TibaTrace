@@ -32,8 +32,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.meta.outputs.version }}
-      backend_digest: ${{ steps.backend.outputs.digest }}
-      hq_digest: ${{ steps.hq.outputs.digest }}
+      backend_digest: ${{ steps.publish.outputs.backend_digest }}
+      hq_digest: ${{ steps.publish.outputs.hq_digest }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -123,15 +123,18 @@ jobs:
 
       # Immutable tags only. No `latest`: a mutable tag cannot identify what is
       # running in production six weeks from now.
-      - name: Build and push backend
+      - name: Build backend image
         id: backend
         uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/backend.Dockerfile
           platforms: linux/amd64
-          push: ${{ steps.mode.outputs.push == 'true' }}
-          load: ${{ steps.mode.outputs.push != 'true' }}
+          # Load only. The push happens after the evidence gates, so a run
+          # that cannot produce valid evidence never publishes an image --
+          # rc2, rc3 and rc4 each left images in GHCR with none attached.
+          push: false
+          load: true
           tags: |
             ${{ env.BACKEND_IMAGE }}:${{ steps.meta.outputs.version }}
             ${{ env.BACKEND_IMAGE }}:sha-${{ steps.meta.outputs.short_sha }}
@@ -146,15 +149,15 @@ jobs:
             org.opencontainers.image.created=${{ steps.meta.outputs.built }}
             com.esenai.tibatrace.release.tag=${{ github.ref_name }}
 
-      - name: Build and push HQ
+      - name: Build HQ image
         id: hq
         uses: docker/build-push-action@v6
         with:
           context: .
           file: apps/hq-web/Dockerfile
           platforms: linux/amd64
-          push: ${{ steps.mode.outputs.push == 'true' }}
-          load: ${{ steps.mode.outputs.push != 'true' }}
+          push: false
+          load: true
           tags: |
             ${{ env.HQ_IMAGE }}:${{ steps.meta.outputs.version }}
             ${{ env.HQ_IMAGE }}:sha-${{ steps.meta.outputs.short_sha }}
@@ -171,20 +174,11 @@ jobs:
 
       # Pull the pushed images back by digest so every check below runs against
       # exactly what landed in the registry, not a local build artefact.
-      - name: Materialise images for verification
+      - name: Resolve local image references
         id: verify_refs
         run: |
-          if [ "${{ steps.mode.outputs.push }}" = "true" ]; then
-            backend="${{ env.BACKEND_IMAGE }}@${{ steps.backend.outputs.digest }}"
-            hq="${{ env.HQ_IMAGE }}@${{ steps.hq.outputs.digest }}"
-            docker pull -q "$backend"
-            docker pull -q "$hq"
-          else
-            backend="${{ env.BACKEND_IMAGE }}:${{ steps.meta.outputs.version }}"
-            hq="${{ env.HQ_IMAGE }}:${{ steps.meta.outputs.version }}"
-          fi
-          echo "backend=$backend" >> "$GITHUB_OUTPUT"
-          echo "hq=$hq" >> "$GITHUB_OUTPUT"
+          echo "backend=${{ env.BACKEND_IMAGE }}:${{ steps.meta.outputs.version }}" >> "$GITHUB_OUTPUT"
+          echo "hq=${{ env.HQ_IMAGE }}:${{ steps.meta.outputs.version }}" >> "$GITHUB_OUTPUT"
 
       - name: Assert architecture and OCI labels
         run: |
@@ -299,9 +293,8 @@ jobs:
             -e TIBATRACE_NEW_MIGRATION_FILES \
             -e PYTHONPATH=/app \
             -v "$PWD/scripts/migration_evidence.py:/tmp/migration_evidence.py:ro" \
-            -v "$PWD/evidence:/evidence" \
             '${{ steps.verify_refs.outputs.backend }}' \
-            python /tmp/migration_evidence.py --output /evidence/MIGRATIONS.json
+            python /tmp/migration_evidence.py --output - > evidence/MIGRATIONS.json
           cat evidence/MIGRATIONS.json
         env:
           TIBATRACE_NEW_MIGRATION_FILES: ${{ steps.baseline.outputs.files }}
@@ -340,7 +333,32 @@ jobs:
           print(f"migration evidence consistent: {sorted(declared) or 'no migrations'}")
           PY
 
+      - name: Publish images
+        id: publish
+        if: steps.mode.outputs.push == 'true'
+        run: |
+          # Only reached once every verification and evidence gate has passed.
+          for ref in \
+            '${{ env.BACKEND_IMAGE }}:${{ steps.meta.outputs.version }}' \
+            '${{ env.BACKEND_IMAGE }}:sha-${{ steps.meta.outputs.short_sha }}' \
+            '${{ env.HQ_IMAGE }}:${{ steps.meta.outputs.version }}' \
+            '${{ env.HQ_IMAGE }}:sha-${{ steps.meta.outputs.short_sha }}'
+          do
+            docker push -q "$ref"
+          done
+          backend_digest=$(docker buildx imagetools inspect \
+            '${{ env.BACKEND_IMAGE }}:${{ steps.meta.outputs.version }}' \
+            --format '{{.Manifest.Digest}}')
+          hq_digest=$(docker buildx imagetools inspect \
+            '${{ env.HQ_IMAGE }}:${{ steps.meta.outputs.version }}' \
+            --format '{{.Manifest.Digest}}')
+          echo "backend_digest=$backend_digest" >> "$GITHUB_OUTPUT"
+          echo "hq_digest=$hq_digest" >> "$GITHUB_OUTPUT"
+          echo "backend $backend_digest"
+          echo "hq-web  $hq_digest"
+
       - name: Generate SBOMs
+        if: steps.mode.outputs.push == 'true'
         uses: anchore/sbom-action@v0
         with:
           image: ${{ steps.verify_refs.outputs.backend }}
@@ -349,6 +367,7 @@ jobs:
           upload-artifact: false
 
       - name: Generate HQ SBOM
+        if: steps.mode.outputs.push == 'true'
         uses: anchore/sbom-action@v0
         with:
           image: ${{ steps.verify_refs.outputs.hq }}
@@ -361,7 +380,7 @@ jobs:
         uses: actions/attest-build-provenance@v2
         with:
           subject-name: ${{ env.BACKEND_IMAGE }}
-          subject-digest: ${{ steps.backend.outputs.digest }}
+          subject-digest: ${{ steps.publish.outputs.backend_digest }}
           push-to-registry: true
 
       - name: Attest HQ image
@@ -369,10 +388,11 @@ jobs:
         uses: actions/attest-build-provenance@v2
         with:
           subject-name: ${{ env.HQ_IMAGE }}
-          subject-digest: ${{ steps.hq.outputs.digest }}
+          subject-digest: ${{ steps.publish.outputs.hq_digest }}
           push-to-registry: true
 
       - name: Build release manifest
+        if: steps.mode.outputs.push == 'true'
         run: |
           python3 - <<'PY'
           import json, os, pathlib, subprocess
@@ -457,8 +477,8 @@ jobs:
         env:
           BACKEND_REF: ${{ steps.verify_refs.outputs.backend }}
           HQ_REF: ${{ steps.verify_refs.outputs.hq }}
-          BACKEND_DIGEST: ${{ steps.backend.outputs.digest }}
-          HQ_DIGEST: ${{ steps.hq.outputs.digest }}
+          BACKEND_DIGEST: ${{ steps.publish.outputs.backend_digest }}
+          HQ_DIGEST: ${{ steps.publish.outputs.hq_digest }}
           VERSION: ${{ steps.meta.outputs.version }}
           SHORT_SHA: ${{ steps.meta.outputs.short_sha }}
           SHA: ${{ steps.meta.outputs.sha }}
@@ -468,6 +488,7 @@ jobs:
           BASELINE: ${{ steps.baseline.outputs.baseline }}
 
       - name: Assemble release evidence
+        if: steps.mode.outputs.push == 'true'
         run: |
           cp docs/releases/TIBATRACE_v0.2.0_RC1.md evidence/RELEASE_NOTES.md 2>/dev/null || true
           cp docs/deployment/TIBATRACE_RELEASE_PACKAGING_WORKFLOW.md evidence/DEPLOYMENT_INSTRUCTIONS.md 2>/dev/null || true
@@ -490,6 +511,7 @@ jobs:
           cat evidence/SHA256SUMS
 
       - name: Upload release evidence
+        if: steps.mode.outputs.push == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: release-evidence-${{ steps.meta.outputs.version }}-${{ steps.meta.outputs.short_sha }}

@@ -106,7 +106,8 @@ def build_inventory(new_files: list[str]) -> list[dict]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--output", required=True, type=Path,
+                        help="Destination path, or '-' for stdout.")
     parser.add_argument(
         "--allow-destructive",
         action="store_true",
@@ -132,10 +133,19 @@ def main() -> int:
             f"destructive migration(s) present without an explicit declaration: {names}"
         )
 
-    args.output.write_text(json.dumps(inventory, indent=2) + "\n", encoding="utf-8")
-    print(f"{len(inventory)} migration(s) recorded in {args.output}")
+    payload = json.dumps(inventory, indent=2) + "\n"
+    if str(args.output) == "-":
+        # Written to stdout so the caller can redirect it. The container runs
+        # as a non-root user and cannot write into a mounted host directory
+        # owned by the CI runner.
+        sys.stdout.write(payload)
+    else:
+        args.output.write_text(payload, encoding="utf-8")
+
+    # Progress goes to stderr so it never contaminates the JSON on stdout.
+    print(f"{len(inventory)} migration(s) recorded", file=sys.stderr)
     for m in inventory:
-        print(f"  {m['app']}.{m['migration']}: {', '.join(m['operation_types'])}")
+        print(f"  {m['app']}.{m['migration']}: {', '.join(m['operation_types'])}", file=sys.stderr)
     return 0
 
 
