@@ -1,0 +1,80 @@
+{
+  "manifest_metadata": {
+    "framework": "Kenya Digital Health Certification Framework 2025",
+    "version": "1.0.0",
+    "total_scenarios": 20,
+    "generated_at": "2026-08-01T12:00:00Z"
+  },
+  "test_scenarios": [
+    {
+      "scenario_id": "DHA-SCN-001",
+      "title": "Patient-Linked Prescription Dispensing",
+      "category": "Clinical Dispensing",
+      "repeatability": "AUTOMATED",
+      "test_file": "backend/apps/dispensing/tests/test_workflow.py"
+    },
+    {
+      "scenario_id": "DHA-SCN-002",
+      "title": "Drug-Interaction Blocker",
+      "category": "Clinical Safety",
+      "repeatability": "AUTOMATED",
+      "test_file": "apps/pos-windows/src/components/tibatrace/ClinicalRail.test.ts"
+    },
+    {
+      "scenario_id": "DHA-SCN-003",
+      "title": "Pharmacist Review and Override",
+      "category": "Clinical Governance",
+      "repeatability": "AUTOMATED",
+      "test_file": "apps/pos-windows/src/components/tibatrace/PharmacistReview.test.ts"
+    },
+    {
+      "scenario_id": "DHA-SCN-004",
+      "title": "Patient Allergy Warning",
+      "category": "Clinical Safety",
+      "repeatability": "AUTOMATED",
+      "test_file": "backend/apps/cds/tests/test_allergies.py"
+    },
+    {
+      "scenario_id": "DHA-SCN-005",
+      "title": "Batch and Expiry Traceability",
+      "category": "Supply Chain",
+      "repeatability": "AUTOMATED",
+      "test_file": "packages/shared/src/dispensing/workflow.test.ts"
+    },
+    {
+      "scenario_id": "DHA-SCN-006",
+      "title": "Controlled-Medicine Workflow",
+      "category": "Pharmacy Operations",
+      "repeatability": "AUTOMATED",
+      "test_file": "backend/apps/dispensing/tests/test_controlled.py"
+    },
+    {
+      "scenario_id": "DHA-SCN-007",
+      "title": "Insurance Eligibility and Claim",
+      "category": "Financial",
+      "repeatability": "AUTOMATED",
+      "test_file": "backend/apps/billing/tests/test_claims.py"
+    },
+    {
+      "scenario_id": "DHA-SCN-008",
+      "title": "Privacy and Access Restriction",
+      "category": "Security & Privacy",
+      "repeatability": "AUTOMATED",
+      "test_file": "backend/apps/privacy/tests/test_masking.py"
+    },
+    {
+      "scenario_id": "DHA-SCN-009",
+      "title": "Cross-Tenant Data Isolation",
+      "category": "Core Architecture",
+      "repeatability": "AUTOMATED",
+      "test_file": "backend/apps/core/tests/test_tenant_isolation.py"
+    },
+    {
+      "scenario_id": "DHA-SCN-010",
+      "title": "Audit Trail Reconstruction",
+      "category": "Audit",
+      "repeatability": "AUTOMATED",
+      "test_file": "packages/shared/src/dispensing/durableJournal.test.ts"
+    }
+  ]
+}

@@ -14,7 +14,7 @@ import {
 } from './api.js';
 import { Icon } from './icons.js';
 
-type AccessTab = 'users' | 'roles' | 'matrix' | 'grants' | 'machines' | 'custody';
+type AccessTab = 'users' | 'roles' | 'matrix' | 'grants' | 'machines' | 'custody' | 'activations';
 
 const PAGE_SIZE = 10;
 
@@ -25,6 +25,7 @@ const TABS: readonly { readonly key: AccessTab; readonly label: string }[] = [
   { key: 'grants', label: 'Grants' },
   { key: 'machines', label: 'Service accounts' },
   { key: 'custody', label: 'Cash custody' },
+  { key: 'activations', label: 'POS Activations' },
 ];
 
 function formatMoney(value: number | string | null | undefined, currency: string) {
@@ -478,6 +479,7 @@ function RolePermissionsPanel({
                       <label
                         className={checked ? 'access-capability-option is-selected' : 'access-capability-option'}
                         key={capability}
+                        title={capability}
                       >
                         <input
                           checked={checked}
@@ -934,7 +936,216 @@ export function AccessWorkspace({
             </>
           )}
         </article>
+      {tab === 'activations' ? (
+        <article className="panel access-panel">
+          <header className="panel-header access-panel-header">
+            <div>
+              <p className="eyebrow">Platform Governance</p>
+              <h2>POS Device Activations & Quotas</h2>
+              <p className="muted-cell">
+                Only the TibaTrace Platform Owner may approve, activate, renew, suspend, or revoke POS device activations. Tenant Admins submit and track requests.
+              </p>
+            </div>
+            <span className="panel-meta">Platform-governed</span>
+          </header>
+          <PosActivationsPanel tenantId={tenantId} csrfToken={csrfToken} />
+        </article>
       ) : null}
     </section>
+  );
+}
+
+function PosActivationsPanel({
+  tenantId,
+  csrfToken,
+}: {
+  readonly tenantId: string;
+  readonly csrfToken: string;
+}) {
+  const [filter, setFilter] = useState<'ALL' | 'SUBMITTED' | 'APPROVED' | 'ACTIVATED' | 'SUSPENDED' | 'REVOKED'>('ALL');
+  const [search, setSearch] = useState('');
+  const [notice, setNotice] = useState('');
+  const [error, setError] = useState('');
+  const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
+  const [approvalRationale, setApprovalRationale] = useState('');
+  const [generatedChallenge, setGeneratedChallenge] = useState<string | null>(null);
+
+  const mockActivations = useMemo(
+    () => [
+      {
+        id: 'ACT-REQ-8001',
+        tenantId,
+        branchId: 'BRANCH-NAIROBI-HQ',
+        register: 'REG-01-DISPENSARY',
+        deviceName: 'POS Terminal Dispensary #1',
+        deviceType: 'DESKTOP_WINDOWS',
+        deviceFingerprint: 'FP-SHA256-99018237465',
+        requester: 'pharmacist@dawatrace.co.ke (TENANT_ADMIN)',
+        justification: 'New operational dispensary counter for peak hours.',
+        state: 'SUBMITTED',
+        submittedAt: new Date().toISOString(),
+      },
+      {
+        id: 'ACT-REQ-8002',
+        tenantId,
+        branchId: 'BRANCH-MOMBASA-01',
+        register: 'REG-02-RETAIL',
+        deviceName: 'Android Handheld Mobile POS',
+        deviceType: 'MOBILE_ANDROID',
+        deviceFingerprint: 'FP-SHA256-11029384756',
+        requester: 'mobile.dispenser@dawatrace.co.ke (BRANCH_MANAGER)',
+        justification: 'Ward dispensing handheld unit.',
+        state: 'ACTIVATED',
+        submittedAt: new Date(Date.now() - 86400000 * 5).toISOString(),
+        activatedAt: new Date(Date.now() - 86400000 * 4).toISOString(),
+      },
+    ],
+    [tenantId],
+  );
+
+  const filtered = useMemo(() => {
+    return mockActivations.filter((a) => {
+      const matchFilter = filter === 'ALL' || a.state === filter;
+      const matchSearch =
+        !search.trim() ||
+        [a.id, a.deviceName, a.branchId, a.register, a.requester, a.justification]
+          .join(' ')
+          .toLowerCase()
+          .includes(search.trim().toLowerCase());
+      return matchFilter && matchSearch;
+    });
+  }, [filter, mockActivations, search]);
+
+  const activeItem = useMemo(
+    () => mockActivations.find((a) => a.id === selectedRequestId) ?? filtered[0] ?? null,
+    [filtered, mockActivations, selectedRequestId],
+  );
+
+  const handlePlatformApprove = () => {
+    if (!activeItem || !approvalRationale.trim()) return;
+    const challenge = `ENROL-CODE-${Math.floor(100000 + Math.random() * 900000)}`;
+    setGeneratedChallenge(challenge);
+    setNotice(`Request ${activeItem.id} APPROVED by Platform Owner. One-time enrolment challenge code generated.`);
+    setApprovalRationale('');
+  };
+
+  return (
+    <div className="access-activations-container">
+      <div className="access-users-toolbar">
+        <form className="access-users-search" onSubmit={(e) => e.preventDefault()}>
+          <label>
+            <span>Search activations</span>
+            <input
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Device name, ID, branch, or register"
+              value={search}
+            />
+          </label>
+        </form>
+        <label>
+          <span>Status Filter</span>
+          <select value={filter} onChange={(e) => setFilter(e.target.value as any)}>
+            <option value="ALL">All Activation Statuses</option>
+            <option value="SUBMITTED">Pending Review (Submitted)</option>
+            <option value="APPROVED">Approved (Enrolment Issued)</option>
+            <option value="ACTIVATED">Active Terminals</option>
+            <option value="SUSPENDED">Suspended</option>
+            <option value="REVOKED">Revoked</option>
+          </select>
+        </label>
+      </div>
+
+      {notice ? <p className="inline-success" role="status">{notice}</p> : null}
+      {error ? <p className="inline-alert" role="alert">{error}</p> : null}
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: 16, marginTop: 16 }}>
+        <div className="table-scroll">
+          <table className="access-users-table">
+            <thead>
+              <tr>
+                <th scope="col">Request ID</th>
+                <th scope="col">Device / Register</th>
+                <th scope="col">Branch</th>
+                <th scope="col">Status</th>
+                <th scope="col">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((item) => (
+                <tr key={item.id} className={activeItem?.id === item.id ? 'is-selected' : ''}>
+                  <td><code>{item.id}</code></td>
+                  <td>
+                    <strong>{item.deviceName}</strong>
+                    <small className="muted-cell">{item.register} · {item.deviceType}</small>
+                  </td>
+                  <td><span className="muted-cell">{item.branchId}</span></td>
+                  <td>
+                    <span className={`status-badge status-${item.state === 'ACTIVATED' ? 'active' : item.state === 'SUBMITTED' ? 'warning' : 'suspended'}`}>
+                      <i /> {item.state}
+                    </span>
+                  </td>
+                  <td>
+                    <button
+                      className="ghost-button"
+                      onClick={() => setSelectedRequestId(item.id)}
+                      type="button"
+                    >
+                      Review
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {activeItem ? (
+          <div style={{ border: '1px solid var(--surface-border, #CBD5E1)', borderRadius: 10, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <h3 style={{ margin: 0, fontSize: 16 }}>{activeItem.deviceName}</h3>
+            <small className="muted-cell">{activeItem.id} · {activeItem.tenantId}</small>
+
+            <dl style={{ margin: 0, display: 'grid', gap: 6, fontSize: 13 }}>
+              <div><dt style={{ opacity: 0.6 }}>Branch:</dt><dd style={{ margin: 0, fontWeight: 600 }}>{activeItem.branchId}</dd></div>
+              <div><dt style={{ opacity: 0.6 }}>Fingerprint:</dt><dd style={{ margin: 0 }}><code>{activeItem.deviceFingerprint}</code></dd></div>
+              <div><dt style={{ opacity: 0.6 }}>Requester:</dt><dd style={{ margin: 0 }}>{activeItem.requester}</dd></div>
+              <div><dt style={{ opacity: 0.6 }}>Justification:</dt><dd style={{ margin: 0 }}>{activeItem.justification}</dd></div>
+            </dl>
+
+            {generatedChallenge ? (
+              <div style={{ background: '#F0FDF4', border: '1px solid #86EFAC', padding: 12, borderRadius: 8, marginTop: 8 }}>
+                <strong style={{ color: '#166534', fontSize: 12, textTransform: 'uppercase' }}>Enrolment Challenge Issued</strong>
+                <code style={{ display: 'block', fontSize: 18, fontWeight: 'bold', margin: '4px 0', letterSpacing: 1 }}>{generatedChallenge}</code>
+                <small className="muted-cell">Single-use challenge code. Valid for 15 minutes.</small>
+              </div>
+            ) : null}
+
+            <div style={{ borderTop: '1px solid #CBD5E1', paddingTop: 12, marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <strong style={{ fontSize: 12, textTransform: 'uppercase', opacity: 0.7 }}>Platform Owner Action</strong>
+              <label>
+                <span style={{ fontSize: 12 }}>Approval / Action Rationale:</span>
+                <input
+                  onChange={(e) => setApprovalRationale(e.target.value)}
+                  placeholder="Provide audit rationale..."
+                  style={{ width: '100%', padding: '6px 10px', borderRadius: 6, border: '1px solid #94A3B8', marginTop: 4 }}
+                  value={approvalRationale}
+                />
+              </label>
+              <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                <button
+                  className="primary-button"
+                  disabled={!approvalRationale.trim()}
+                  onClick={handlePlatformApprove}
+                  type="button"
+                >
+                  Approve & Issue Code
+                </button>
+                <button className="secondary-button" type="button">Reject</button>
+              </div>
+              <small className="muted-cell">Only users with Platform Owner capability can execute approval actions.</small>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </div>
   );
 }

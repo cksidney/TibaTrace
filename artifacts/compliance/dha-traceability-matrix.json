@@ -1,0 +1,292 @@
+{
+  "matrix_metadata": {
+    "framework": "Kenya Digital Health Certification Framework 2025",
+    "version": "1.0.0",
+    "baseline_release_tag": "tibatrace-v0.2.0-rc5",
+    "baseline_commit": "f365e778f9f30ab590bc0481c1ea006bb2664cef",
+    "generated_at": "2026-08-01T12:00:00Z"
+  },
+  "summary": {
+    "total_requirements": 26,
+    "compliant_evidenced": 12,
+    "implemented_not_evidenced": 1,
+    "partially_compliant": 13,
+    "non_compliant": 0,
+    "not_applicable": 0
+  },
+  "matrix_entries": [
+    {
+      "requirement_id": "DHA-FUNC-001",
+      "title": "Unique Patient Identification",
+      "compliance_status": "IMPLEMENTED_NOT_EVIDENCED",
+      "risk_severity": "P1",
+      "components": {
+        "backend_model": "Patient",
+        "service": "PatientIdentityService",
+        "api_endpoint": "GET /api/v1/patients/search/",
+        "ui_surface": "PatientSafetyBanner",
+        "test_file": "backend/apps/patients/tests/test_identity.py"
+      }
+    },
+    {
+      "requirement_id": "DHA-FUNC-002",
+      "title": "E-Prescription State Machine",
+      "compliance_status": "COMPLIANT_EVIDENCED",
+      "risk_severity": "P0",
+      "components": {
+        "backend_model": "DispensingEpisode",
+        "service": "DispensingWorkflow",
+        "api_endpoint": "POST /api/pos/dispensing/episodes/{id}/transition-state/",
+        "ui_surface": "PrescriptionWorkspace",
+        "test_file": "packages/shared/src/dispensing/workflow.test.ts"
+      }
+    },
+    {
+      "requirement_id": "DHA-FUNC-003",
+      "title": "Drug Interaction Alerting",
+      "compliance_status": "COMPLIANT_EVIDENCED",
+      "risk_severity": "P0",
+      "components": {
+        "backend_model": "PosClinicalScreening",
+        "service": "ClinicalInteractionEngine",
+        "api_endpoint": "POST /api/pos/clinical-screening/evaluate/",
+        "ui_surface": "ClinicalRail",
+        "test_file": "apps/pos-windows/src/components/tibatrace/ClinicalRail.test.ts"
+      }
+    },
+    {
+      "requirement_id": "DHA-FUNC-004",
+      "title": "Pharmacist Override Governance",
+      "compliance_status": "COMPLIANT_EVIDENCED",
+      "risk_severity": "P0",
+      "components": {
+        "backend_model": "PosClinicalOverride",
+        "service": "PharmacistReviewService",
+        "api_endpoint": "POST /api/pos/clinical-screening/{id}/pharmacist-review/",
+        "ui_surface": "ClinicalReviewWorkspace",
+        "test_file": "apps/pos-windows/src/components/tibatrace/PharmacistReview.test.ts"
+      }
+    },
+    {
+      "requirement_id": "DHA-FUNC-005",
+      "title": "Controlled Substance Register",
+      "compliance_status": "COMPLIANT_EVIDENCED",
+      "risk_severity": "P0",
+      "components": {
+        "backend_model": "ControlledMedicineRegister",
+        "service": "verify_controlled",
+        "api_endpoint": "POST /api/pos/dispensing/episodes/{id}/verify-controlled/",
+        "ui_surface": "CounsellingAndCollection",
+        "test_file": "backend/apps/dispensing/tests/test_controlled.py"
+      }
+    },
+    {
+      "requirement_id": "DHA-FUNC-006",
+      "title": "Real-Time Claims Integration",
+      "compliance_status": "PARTIALLY_COMPLIANT",
+      "risk_severity": "P1",
+      "components": {
+        "backend_model": "SalesInvoice",
+        "service": "ClaimsExchangeService",
+        "api_endpoint": "POST /api/v1/claims/preauth/",
+        "ui_surface": "HQ Commercial Pricing Workspace",
+        "test_file": "backend/apps/billing/tests/test_claims.py"
+      }
+    },
+    {
+      "requirement_id": "DHA-SEC-001",
+      "title": "Multi-Factor Authentication",
+      "compliance_status": "PARTIALLY_COMPLIANT",
+      "risk_severity": "P1",
+      "components": {
+        "backend_model": "CustomUser",
+        "service": "MFAAuthenticationMiddleware",
+        "api_endpoint": "POST /api/v1/auth/mfa/verify/",
+        "ui_surface": "LoginScreen",
+        "test_file": "backend/apps/accounts/tests/test_mfa.py"
+      }
+    },
+    {
+      "requirement_id": "DHA-SEC-002",
+      "title": "Granular RBAC & Segregation",
+      "compliance_status": "COMPLIANT_EVIDENCED",
+      "risk_severity": "P0",
+      "components": {
+        "backend_model": "UserRole",
+        "service": "HasCapability",
+        "api_endpoint": "All endpoints",
+        "ui_surface": "PermissionGuard",
+        "test_file": "docs/domain/SALES_RBAC_MATRIX.md"
+      }
+    },
+    {
+      "requirement_id": "DHA-SEC-003",
+      "title": "Multi-Tenant Data Isolation",
+      "compliance_status": "COMPLIANT_EVIDENCED",
+      "risk_severity": "P0",
+      "components": {
+        "backend_model": "TenantScopedModel",
+        "service": "TenantMiddleware",
+        "api_endpoint": "X-Tenant-ID Header",
+        "ui_surface": "All workspaces",
+        "test_file": "backend/apps/core/tests/test_tenant_isolation.py"
+      }
+    },
+    {
+      "requirement_id": "DHA-SEC-004",
+      "title": "Data Minimisation & Masking",
+      "compliance_status": "PARTIALLY_COMPLIANT",
+      "risk_severity": "P1",
+      "components": {
+        "backend_model": "PrivacyMaskingEngine",
+        "service": "DataProtectionService",
+        "api_endpoint": "Middleware filter",
+        "ui_surface": "PatientBanner",
+        "test_file": "backend/apps/privacy/tests/test_masking.py"
+      }
+    },
+    {
+      "requirement_id": "DHA-SEC-005",
+      "title": "Append-Only Audit Log",
+      "compliance_status": "COMPLIANT_EVIDENCED",
+      "risk_severity": "P0",
+      "components": {
+        "backend_model": "AuditEvent",
+        "service": "DurableActionJournal",
+        "api_endpoint": "POST /api/v1/audit/events/",
+        "ui_surface": "SyncCentre",
+        "test_file": "packages/shared/src/dispensing/durableJournal.test.ts"
+      }
+    },
+    {
+      "requirement_id": "DHA-INT-001",
+      "title": "HL7 FHIR R4 Conformance",
+      "compliance_status": "COMPLIANT_EVIDENCED",
+      "risk_severity": "P0",
+      "components": {
+        "backend_model": "FHIRGatewayService",
+        "service": "KenyaFHIRSerializer",
+        "api_endpoint": "GET /fhir/r4/MedicationDispense/",
+        "ui_surface": "N/A",
+        "test_file": "docs/fhir/FHIR_CONFORMANCE.md"
+      }
+    },
+    {
+      "requirement_id": "DHA-INT-002",
+      "title": "Standard Terminology Mapping",
+      "compliance_status": "COMPLIANT_EVIDENCED",
+      "risk_severity": "P1",
+      "components": {
+        "backend_model": "MedicineSKU",
+        "service": "eTCDMappingService",
+        "api_endpoint": "GET /api/v1/catalogue/etcd/",
+        "ui_surface": "HQ Procurement Workspace",
+        "test_file": "docs/integrations/KE_ETCD_PRODUCT_CATALOGUE.md"
+      }
+    },
+    {
+      "requirement_id": "TT-MTG-OFFLINE-001",
+      "title": "Governed Offline Framework",
+      "compliance_status": "PARTIALLY_COMPLIANT",
+      "risk_severity": "P0",
+      "components": {
+        "backend_model": "DurableActionJournal",
+        "service": "offlineQueue.ts",
+        "api_endpoint": "Sync endpoints",
+        "ui_surface": "SyncCentre",
+        "test_file": "packages/shared/src/dispensing/offlineQueue.test.ts"
+      }
+    },
+    {
+      "requirement_id": "TT-MTG-GS1-001",
+      "title": "GS1 DataMatrix & AI Parsing",
+      "compliance_status": "PARTIALLY_COMPLIANT",
+      "risk_severity": "P0",
+      "components": {
+        "backend_model": "gs1/parser.ts",
+        "service": "GS1ValidationService",
+        "api_endpoint": "POST /api/v1/gs1/parse/",
+        "ui_surface": "BatchVerification",
+        "test_file": "packages/shared/src/gs1/parser.test.ts"
+      }
+    },
+    {
+      "requirement_id": "TT-MTG-FEFO-001",
+      "title": "Server-Authoritative FEFO",
+      "compliance_status": "COMPLIANT_EVIDENCED",
+      "risk_severity": "P0",
+      "components": {
+        "backend_model": "FEFOAllocationEngine",
+        "service": "InventoryBatch",
+        "api_endpoint": "POST /api/v1/inventory/allocate/",
+        "ui_surface": "PrescriptionWorkspace",
+        "test_file": "packages/shared/src/dispensing/fefo.test.ts"
+      }
+    },
+    {
+      "requirement_id": "TT-MTG-AUDIT-001",
+      "title": "20-Point Audit Metadata",
+      "compliance_status": "COMPLIANT_EVIDENCED",
+      "risk_severity": "P0",
+      "components": {
+        "backend_model": "AuditEvent",
+        "service": "DurableActionJournal",
+        "api_endpoint": "All APIs",
+        "ui_surface": "All surfaces",
+        "test_file": "packages/shared/src/dispensing/telemetry.test.ts"
+      }
+    },
+    {
+      "requirement_id": "TT-MTG-POS-ACT-001",
+      "title": "Exclusive Platform Owner POS Activation Authority",
+      "compliance_status": "COMPLIANT_EVIDENCED",
+      "risk_severity": "P0",
+      "components": {
+        "backend_model": "PosActivationRequest",
+        "service": "isPlatformOwnerCapability",
+        "api_endpoint": "/api/v1/platform/pos-activations/",
+        "ui_surface": "PosActivationConsole",
+        "test_file": "packages/shared/src/dispensing/posActivation.test.ts"
+      }
+    },
+    {
+      "requirement_id": "TT-MTG-POS-ACT-002",
+      "title": "POS Activation Request Lifecycle & Enrolment Challenge",
+      "compliance_status": "COMPLIANT_EVIDENCED",
+      "risk_severity": "P0",
+      "components": {
+        "backend_model": "PosActivationRequest",
+        "service": "canTransitionActivationState",
+        "api_endpoint": "/api/v1/platform/pos-activations/requests/",
+        "ui_surface": "PosActivationConsole",
+        "test_file": "packages/shared/src/dispensing/posActivation.test.ts"
+      }
+    },
+    {
+      "requirement_id": "DHA-SEC-POS-ACT-001",
+      "title": "Fail-Closed POS Startup Gate & Signed Offline Lease",
+      "compliance_status": "COMPLIANT_EVIDENCED",
+      "risk_severity": "P0",
+      "components": {
+        "backend_model": "PosDeviceCredential",
+        "service": "validatePosStartup",
+        "api_endpoint": "Enrolment Endpoints",
+        "ui_surface": "PosActivationStartupGate",
+        "test_file": "packages/shared/src/dispensing/posActivation.test.ts"
+      }
+    },
+    {
+      "requirement_id": "DHA-GOV-POS-ACT-001",
+      "title": "Multi-Tenant Activation Quotas & Immutable Audit Trail",
+      "compliance_status": "COMPLIANT_EVIDENCED",
+      "risk_severity": "P0",
+      "components": {
+        "backend_model": "AuditEvent",
+        "service": "evaluateActivationQuota",
+        "api_endpoint": "/api/v1/platform/pos-activations/quotas/",
+        "ui_surface": "PosActivationConsole",
+        "test_file": "packages/shared/src/dispensing/posActivation.test.ts"
+      }
+    }
+  ]
+}

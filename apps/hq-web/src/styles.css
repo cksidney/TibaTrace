@@ -2018,7 +2018,7 @@ a.compact-stat-link:hover {
 
 .stock-transfer-form-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 14px;
 }
 
@@ -2881,11 +2881,12 @@ tbody tr:hover {
 
 .business-dialog {
   position: relative;
-  width: min(540px, 100%);
+  width: min(640px, 100%);
   max-height: calc(100vh - 48px);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: 24px;
   border: 1px solid var(--line);
   border-radius: 16px;
@@ -4728,28 +4729,40 @@ button.priority-item-button {
 
 .access-capability-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 6px;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
 }
 
 .access-capability-option {
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 32px;
-  padding: 4px 8px;
+  min-height: 36px;
+  padding: 6px 10px;
   border: 1px solid var(--line);
-  border-radius: 7px;
+  border-radius: 8px;
   background: color-mix(in srgb, var(--panel) 94%, #fff);
   cursor: pointer;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.access-capability-option input {
+  flex: 0 0 auto;
 }
 
 .access-capability-option code {
   font-size: 0.75rem;
+  font-weight: 600;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  line-height: 1.25;
+  min-width: 0;
 }
 
 .access-capability-option.is-selected {
-  border-color: color-mix(in srgb, var(--teal-700) 35%, var(--line));
+  border-color: color-mix(in srgb, var(--teal-700) 45%, var(--line));
   background: var(--teal-100);
 }
 
@@ -4821,14 +4834,15 @@ button.priority-item-button {
   display: flex;
   flex-wrap: wrap;
   gap: 5px;
-  max-width: 420px;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 .capability-chip {
   display: inline-flex;
   align-items: center;
   max-width: 100%;
-  padding: 3px 7px;
+  padding: 3px 8px;
   border: 1px solid var(--line);
   border-radius: 999px;
   color: var(--ink);
@@ -4837,6 +4851,8 @@ button.priority-item-button {
   font-weight: 700;
   line-height: 1.3;
   word-break: break-word;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .capability-chip-role {
@@ -4881,6 +4897,10 @@ button.priority-item-button {
 .access-email {
   color: var(--muted);
   font-size: 0.8125rem;
+  word-break: break-all;
+  overflow-wrap: anywhere;
+  max-width: 240px;
+  display: block;
 }
 
 .access-users-panel {
@@ -4945,7 +4965,7 @@ button.priority-item-button {
 
 .access-user-form-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 12px;
 }
 

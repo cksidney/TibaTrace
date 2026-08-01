@@ -15,6 +15,8 @@ import { EpisodeTimeline } from './components/tibatrace/EpisodeTimeline.js';
 import { TaskQueue } from './components/tibatrace/TaskQueue.js';
 import { RetailWorkspace } from './components/tibatrace/RetailWorkspace.js';
 import { SyncCentre } from './components/tibatrace/SyncCentre.js';
+import { PosActivationConsole } from './components/tibatrace/PosActivationConsole.js';
+import { PosActivationStartupGate } from './components/tibatrace/PosActivationStartupGate.js';
 import type { PatientSummary } from './components/tibatrace/PatientSafetyBanner.js';
 import { BlockingReason } from './components/tibatrace/StatusBadge.js';
 import { WorkflowRibbon } from './components/tibatrace/WorkflowRibbon.js';
@@ -91,7 +93,9 @@ function OperationsConsole({
   readonly apiFetch: typeof fetch;
   readonly onLogout: () => Promise<void>;
 }) {
-  const [workspace, setWorkspace] = useState<'clinical' | 'retail' | 'register' | 'print' | 'sync'>('clinical');
+  const [workspace, setWorkspace] = useState<
+    'clinical' | 'retail' | 'register' | 'print' | 'sync' | 'activation'
+  >('clinical');
   const { state, refreshQueue, select, refresh, takePayment, confirmCollection, recordCounselling, journal } =
     usePosWorkflow('/api/pos/dispensing', apiFetch, runtime.offline, session.deviceId);
   // Was `useState<ClinicalSummary | null>(null)` with no setter, so the rail
@@ -286,6 +290,18 @@ function OperationsConsole({
         <PrintCentre apiFetch={apiFetch} deviceId={session.deviceId} />
       ) : workspace === 'sync' ? (
         <SyncCentre apiFetch={apiFetch} deviceId={session.deviceId} journal={journal} onOpenPrint={() => setWorkspace('print')} />
+      ) : workspace === 'activation' ? (
+        <PosActivationConsole
+          apiFetch={apiFetch}
+          userId={session.userId}
+          userRole={session.username === 'platform_owner' ? 'PLATFORM_OWNER' : 'TENANT_ADMIN'}
+          userCapabilities={
+            session.username === 'platform_owner'
+              ? ['platform.pos_activation.review', 'platform.pos_activation.approve', 'platform.pos_activation.activate', 'platform.pos_activation.suspend', 'platform.pos_activation.revoke', 'platform.pos_activation.override_limit']
+              : ['tenant.pos_activation.request', 'tenant.pos_activation.view', 'tenant.pos_activation.withdraw', 'tenant.pos_activation.respond']
+          }
+          isPlatformOwnerContext={session.username === 'platform_owner'}
+        />
       ) : <>
       <PatientSafetyBanner patient={patient} />
       <WorkflowRibbon stages={stages} />
@@ -448,8 +464,8 @@ function Header({
 }: {
   readonly busy: boolean;
   readonly operator: string;
-  readonly workspace: 'clinical' | 'retail' | 'register' | 'print' | 'sync';
-  readonly onWorkspaceChange: (workspace: 'clinical' | 'retail' | 'register' | 'print' | 'sync') => void;
+  readonly workspace: 'clinical' | 'retail' | 'register' | 'print' | 'sync' | 'activation';
+  readonly onWorkspaceChange: (workspace: 'clinical' | 'retail' | 'register' | 'print' | 'sync' | 'activation') => void;
   readonly onLock: () => void;
   readonly onLogout: () => Promise<void>;
 }) {
@@ -497,7 +513,7 @@ function Header({
         </div>
       </div>
       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-        {(['clinical', 'retail', 'register', 'print', 'sync'] as const).map((option) => (
+        {(['clinical', 'retail', 'register', 'print', 'sync', 'activation'] as const).map((option) => (
           <button
             key={option}
             type="button"

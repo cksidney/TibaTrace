@@ -1,0 +1,26 @@
+{
+  "scorecard_metadata": {
+    "framework": "Kenya Digital Health Certification Framework 2025",
+    "evaluation_type": "INTERNAL_EVIDENCE_BASED_ASSESSMENT",
+    "baseline_release_tag": "tibatrace-v0.2.0-rc5",
+    "baseline_commit": "f365e778f9f30ab590bc0481c1ea006bb2664cef",
+    "generated_at": "2026-08-01T12:00:00Z"
+  },
+  "scores": {
+    "core_functional_score": 88.0,
+    "security_privacy_score": 84.0,
+    "interoperability_score": 90.0,
+    "reporting_score": 75.0,
+    "stakeholder_meeting_score": 70.0,
+    "documentation_readiness_score": 82.0,
+    "overall_internal_readiness_score": 81.5
+  },
+  "readiness_decision": "TIBATRACE_CERTIFICATION_READY",
+  "summary_counts": {
+    "total_requirements": 26,
+    "compliant_evidenced": 12,
+    "implemented_not_evidenced": 1,
+    "partially_compliant": 13,
+    "non_compliant": 0
+  }
+}
