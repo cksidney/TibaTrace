@@ -38,6 +38,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Resolve POS Windows version
+        id: posver
+        shell: pwsh
+        run: |
+          # Hardcoding the version here meant every bump broke the build: the
+          # installer was produced as 1.0.1 while later steps still looked for
+          # 1.0.0, and the artefact upload failed with "No files were found".
+          $v = (Get-Content apps/pos-windows/package.json | ConvertFrom-Json).version
+          if (-not $v) { Write-Error 'Could not read version from apps/pos-windows/package.json'; exit 1 }
+          "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "POS Windows version: $v"
+
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -112,7 +124,7 @@ jobs:
         if: github.event_name != 'workflow_dispatch' || inputs.sign
         shell: pwsh
         run: |
-          $exe = 'apps/pos-windows/release/TibaTrace-POS-Setup-1.0.0.exe'
+          $exe = 'apps/pos-windows/release/TibaTrace-POS-Setup-${{ steps.posver.outputs.version }}.exe'
           if (-not (Test-Path $exe)) { Write-Error "Installer not found at $exe"; exit 1 }
 
           $sig = Get-AuthenticodeSignature $exe
@@ -221,7 +233,7 @@ jobs:
           # was deleted two steps ago and is never reopened. X509ContentType::Cert
           # is the DER public certificate: it can verify a signature and cannot
           # create one. There is no code path here that can emit a private key.
-          $exe = 'apps/pos-windows/release/TibaTrace-POS-Setup-1.0.0.exe'
+          $exe = 'apps/pos-windows/release/TibaTrace-POS-Setup-${{ steps.posver.outputs.version }}.exe'
           $cer = 'apps/pos-windows/release/tibatrace-windows-signing.cer'
           $cert = (Get-AuthenticodeSignature $exe).SignerCertificate
           [IO.File]::WriteAllBytes($cer, $cert.Export([Security.Cryptography.X509Certificates.X509ContentType]::Cert))
@@ -252,7 +264,7 @@ jobs:
         shell: pwsh
         run: |
           Set-Location apps/pos-windows/release
-          $exe = 'TibaTrace-POS-Setup-1.0.0.exe'
+          $exe = 'TibaTrace-POS-Setup-${{ steps.posver.outputs.version }}.exe'
           if (-not (Test-Path $exe)) { Write-Host "No installer was produced; nothing to record."; exit 0 }
           $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLower()
 
@@ -267,7 +279,7 @@ jobs:
             product      = 'TibaTrace POS'
             app_id       = 'com.esenai.tibatrace.pos'
             publisher    = 'Esenai Group Ltd'
-            version      = '1.0.0'
+            version      = '${{ steps.posver.outputs.version }}'
             architecture = 'x64'
             installer    = $exe
             sha256       = $hash
@@ -308,7 +320,7 @@ jobs:
           if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
           New-Item -ItemType Directory -Path $stage | Out-Null
 
-          Copy-Item "$release/TibaTrace-POS-Setup-1.0.0.exe" $stage
+          Copy-Item "$release/TibaTrace-POS-Setup-${{ steps.posver.outputs.version }}.exe" $stage
           Copy-Item "$release/tibatrace-windows-signing.cer" $stage
           Copy-Item "$release/release-manifest.json" $stage
           Copy-Item 'apps/pos-windows/managed-install/INSTALLATION-GUIDE.md' $stage
@@ -339,7 +351,7 @@ jobs:
           $lines | Out-File -Encoding ascii SHA256SUMS.txt
           Get-Content SHA256SUMS.txt
 
-          $zip = Join-Path $release 'TibaTrace-POS-Managed-Install-1.0.0.zip'
+          $zip = Join-Path $release 'TibaTrace-POS-Managed-Install-${{ steps.posver.outputs.version }}.zip'
           if (Test-Path $zip) { Remove-Item $zip -Force }
           # CreateFromDirectory rather than Compress-Archive: the installer is
           # ~100 MB and Compress-Archive is pathologically slow at that size.
@@ -371,7 +383,7 @@ jobs:
           Write-Host "Extracted the published ZIP to $work"
           Get-ChildItem $work | Format-Table Name, Length | Out-String | Write-Host
 
-          $exe = Join-Path $work 'TibaTrace-POS-Setup-1.0.0.exe'
+          $exe = Join-Path $work 'TibaTrace-POS-Setup-${{ steps.posver.outputs.version }}.exe'
           $pin = '${{ steps.export.outputs.cert_sha256 }}'
 
           Write-Host "--- BEFORE ENROLMENT ---------------------------------------------"
@@ -445,7 +457,7 @@ jobs:
         with:
           name: tibatrace-pos-windows-installer
           path: |
-            apps/pos-windows/release/TibaTrace-POS-Setup-1.0.0.exe
+            apps/pos-windows/release/TibaTrace-POS-Setup-${{ steps.posver.outputs.version }}.exe
             apps/pos-windows/release/tibatrace-windows-signing.cer
             apps/pos-windows/release/SHA256SUMS.txt
             apps/pos-windows/release/release-manifest.json
@@ -459,8 +471,8 @@ jobs:
           generate_release_notes: true
           make_latest: false
           files: |
-            apps/pos-windows/release/TibaTrace-POS-Managed-Install-1.0.0.zip
-            apps/pos-windows/release/TibaTrace-POS-Setup-1.0.0.exe
+            apps/pos-windows/release/TibaTrace-POS-Managed-Install-${{ steps.posver.outputs.version }}.zip
+            apps/pos-windows/release/TibaTrace-POS-Setup-${{ steps.posver.outputs.version }}.exe
             apps/pos-windows/release/tibatrace-windows-signing.cer
             apps/pos-windows/release/SHA256SUMS.txt
             apps/pos-windows/release/release-manifest.json
