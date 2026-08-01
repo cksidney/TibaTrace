@@ -2016,6 +2016,58 @@ a.compact-stat-link:hover {
   width: min(920px, 100%);
 }
 
+.stock-transfer-prerequisites {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid color-mix(in srgb, var(--amber-700) 42%, var(--line));
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--amber-100) 32%, var(--panel));
+}
+
+.stock-transfer-prerequisites-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.stock-transfer-prerequisites-heading > svg {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--amber-700);
+}
+
+.stock-transfer-prerequisites h3,
+.stock-transfer-prerequisites p {
+  margin: 0;
+}
+
+.stock-transfer-prerequisites h3 {
+  font-size: 0.95rem;
+}
+
+.stock-transfer-prerequisites p,
+.stock-transfer-prerequisites li {
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.stock-transfer-prerequisites ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 21px;
+}
+
+.stock-transfer-prerequisite-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .stock-transfer-form-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));

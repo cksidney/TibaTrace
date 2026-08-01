@@ -1662,6 +1662,10 @@ function InventoryView({
           dialog={dialog}
           locations={locations ?? []}
           onClose={() => setDialog(null)}
+          onOpenInventoryTab={(nextTab) => {
+            setDialog(null);
+            setTab(nextTab);
+          }}
           onSaved={async (message) => {
             setDialog(null);
             setNotice(message);
@@ -1674,7 +1678,31 @@ function InventoryView({
   );
 }
 
-function StockTransfersTab({
+function stockTransferCreateBlockers(
+  balances: readonly HQInventoryBalanceItem[],
+  locations: readonly HQInventoryLocationItem[],
+): readonly string[] {
+  const activeLocations = locations.filter((location) => location.status === 'ACTIVE');
+  const activeLocationIds = new Set(activeLocations.map((location) => location.id));
+  const hasReleasedStock = balances.some((balance) => (
+    activeLocationIds.has(balance.location) && Number(balance.available) > 0
+  ));
+  const blockers: string[] = [];
+
+  if (activeLocations.length < 2) {
+    blockers.push(
+      activeLocations.length === 1
+        ? 'Add one more active inventory location so the transfer has a distinct destination.'
+        : 'Add at least two active inventory locations for source and destination custody.',
+    );
+  }
+  if (!hasReleasedStock) {
+    blockers.push('Release stock into an active source location before adding transfer lines.');
+  }
+  return blockers;
+}
+
+export function StockTransfersTab({
   balances,
   locations,
   onDialog,
@@ -1687,8 +1715,7 @@ function StockTransfersTab({
 }) {
   const activeTransfers = transfers.filter((transfer) => !['RECEIVED', 'CLOSED', 'CANCELLED', 'REJECTED'].includes(transfer.status));
   const inTransit = transfers.filter((transfer) => ['DISPATCHED', 'IN_TRANSIT', 'PARTIALLY_RECEIVED'].includes(transfer.status));
-  const canCreate = locations.filter((location) => location.status === 'ACTIVE').length >= 2
-    && balances.some((balance) => Number(balance.available) > 0);
+  const createBlockers = stockTransferCreateBlockers(balances, locations);
 
   return (
     <>
@@ -1701,8 +1728,9 @@ function StockTransfersTab({
           </p>
         </div>
         <button
+          aria-describedby={createBlockers.length ? 'stock-transfer-prerequisite-summary' : undefined}
+          aria-haspopup="dialog"
           className="primary-button"
-          disabled={!canCreate}
           onClick={() => onDialog({ kind: 'create' })}
           type="button"
         >
@@ -1718,10 +1746,10 @@ function StockTransfersTab({
         <SummaryCard icon="check" label="Received" value={transfers.filter((transfer) => transfer.status === 'RECEIVED').length} detail="Destination acknowledged" tone="teal" />
       </section>
 
-      {!canCreate ? (
-        <div className="inline-alert" role="status">
+      {createBlockers.length ? (
+        <div className="inline-alert" id="stock-transfer-prerequisite-summary" role="status">
           <Icon name="alert" />
-          Configure at least two active inventory locations and release stock before creating a transfer.
+          <span><strong>Setup required before submission.</strong> {createBlockers.join(' ')}</span>
         </div>
       ) : null}
 
@@ -1826,12 +1854,13 @@ function newTransferReference(prefix: string): string {
   return `${prefix}-${token}`;
 }
 
-function StockTransferDialog({
+export function StockTransferDialog({
   balances,
   csrfToken,
   dialog,
   locations,
   onClose,
+  onOpenInventoryTab,
   onSaved,
   tenantId,
 }: {
@@ -1840,10 +1869,14 @@ function StockTransferDialog({
   readonly dialog: Exclude<StockTransferDialogMode, null>;
   readonly locations: readonly HQInventoryLocationItem[];
   readonly onClose: () => void;
+  readonly onOpenInventoryTab: (tab: 'balances' | 'locations') => void;
   readonly onSaved: (message: string) => Promise<void>;
   readonly tenantId: string;
 }) {
   const activeLocations = locations.filter((location) => location.status === 'ACTIVE');
+  const createBlockers = dialog.kind === 'create'
+    ? stockTransferCreateBlockers(balances, locations)
+    : [];
 
   const initialSource = activeLocations.find((location) => balances.some(
     (balance) => balance.location === location.id && Number(balance.available) > 0,
@@ -2012,6 +2045,9 @@ function StockTransferDialog({
     setError('');
     try {
       if (dialog.kind === 'create') {
+        if (createBlockers.length) {
+          throw new Error('Complete the inventory location and released-stock setup before submitting a transfer.');
+        }
         const payload: HQStockTransferDraft = {
           destination_location: destinationLocation,
           document_reference: documentReference.trim(),
@@ -2114,7 +2150,33 @@ function StockTransferDialog({
         </p>
         <form onSubmit={(event) => void submit(event)}>
           {dialog.kind === 'create' ? (
-            <>
+            createBlockers.length ? (
+              <section aria-labelledby="stock-transfer-setup-title" className="stock-transfer-prerequisites" role="status">
+                <div className="stock-transfer-prerequisites-heading">
+                  <Icon name="alert" />
+                  <div>
+                    <h3 id="stock-transfer-setup-title">Complete transfer setup</h3>
+                    <p>The request form is available as soon as custody and released-stock authority are ready.</p>
+                  </div>
+                </div>
+                <ul>
+                  {createBlockers.map((blocker) => <li key={blocker}>{blocker}</li>)}
+                </ul>
+                <div className="stock-transfer-prerequisite-actions">
+                  {activeLocations.length < 2 ? (
+                    <button className="secondary-button" onClick={() => onOpenInventoryTab('locations')} type="button">
+                      Review inventory locations
+                    </button>
+                  ) : null}
+                  {createBlockers.some((blocker) => blocker.startsWith('Release stock')) ? (
+                    <button className="secondary-button" onClick={() => onOpenInventoryTab('balances')} type="button">
+                      Review stock balances
+                    </button>
+                  ) : null}
+                </div>
+              </section>
+            ) : (
+              <>
               <div className="stock-transfer-form-grid">
                 <label className="business-field">
                   <span>Transfer number</span>
@@ -2249,7 +2311,8 @@ function StockTransferDialog({
                   );
                 })}
               </div>
-            </>
+              </>
+            )
           ) : null}
           {dialog.kind === 'receive' ? (
             <div className="stock-transfer-lines">
@@ -2331,10 +2394,10 @@ function StockTransferDialog({
             <button className="secondary-button" disabled={busy} onClick={onClose} type="button">Cancel</button>
             <button
               className="primary-button"
-              disabled={busy || receiptInvalid}
+              disabled={busy || receiptInvalid || createBlockers.length > 0}
               type="submit"
             >
-              {busy ? 'Recording…' : submitLabel}
+              {busy ? 'Recording…' : createBlockers.length ? 'Setup required' : submitLabel}
             </button>
           </footer>
         </form>
