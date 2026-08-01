@@ -216,12 +216,10 @@ jobs:
               python -c "import qrcode; print(\"qrcode import OK\")"
               python -c "import apps.platform.reporting.pdf; print(\"reporting.pdf import OK\")"
               python -c "import apps.platform.release_storage; print(\"release_storage import OK\")"
-              python -c "
-              from django.conf import settings
-              import django; django.setup()
-              print(\"product version:\", settings.DAWATRACE_VERSION)
-              assert settings.DAWATRACE_VERSION == \"${{ steps.meta.outputs.version }}\", settings.DAWATRACE_VERSION
-              "
+              # One line on purpose: a multi-line -c script inside this YAML
+              # block scalar inherits the block indentation and raises
+              # IndentationError before Django is ever reached.
+              python -c "import django; django.setup(); from django.conf import settings; v = settings.DAWATRACE_VERSION; print(\"product version:\", v); assert v == \"${{ steps.meta.outputs.version }}\", v"
               python manage.py check
               test "$(id -u)" -ne 0 && echo "runs as non-root (uid $(id -u))"
             '
