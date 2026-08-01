@@ -1,0 +1,130 @@
+name: Production Images
+
+# Builds both production server images from a clean checkout, for the
+# architecture production actually runs (linux/amd64).
+#
+# This exists because a release once passed every workspace build and still
+# could not be deployed: apps/hq-web/Dockerfile never copied or built
+# @dawatrace/shared, and `npm run build` succeeded locally only because a
+# developer had a stale packages/shared/dist on disk. A CI runner has no such
+# state, so this job is the check that would have caught it.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["tibatrace-v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  images:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assert no generated dist is present in a clean checkout
+        # The whole point of this job is that the images build without them.
+        # If either ever becomes tracked, the regression guard is worthless.
+        run: |
+          for d in packages/shared/dist apps/hq-web/dist; do
+            if [ -e "$d" ]; then
+              echo "::error::$d exists in a clean checkout; the image build would consume it"
+              exit 1
+            fi
+          done
+          echo "no generated dist directories present"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Resolve release metadata
+        id: meta
+        run: |
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "version=$(cat VERSION)" >> "$GITHUB_OUTPUT"
+          echo "built=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - name: Build backend image (linux/amd64)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/backend.Dockerfile
+          platforms: linux/amd64
+          load: true
+          tags: tibatrace-backend:ci
+          build-args: |
+            DAWATRACE_VERSION=${{ steps.meta.outputs.version }}
+            GIT_SHA=${{ steps.meta.outputs.sha }}
+            BUILD_TIME=${{ steps.meta.outputs.built }}
+
+      - name: Build HQ image (linux/amd64)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/hq-web/Dockerfile
+          platforms: linux/amd64
+          load: true
+          tags: tibatrace-hq-web:ci
+          build-args: |
+            DAWATRACE_VERSION=${{ steps.meta.outputs.version }}
+            SOURCE_REVISION=${{ steps.meta.outputs.sha }}
+            BUILD_TIME=${{ steps.meta.outputs.built }}
+
+      - name: Assert image labels carry the real revision
+        run: |
+          expected='${{ steps.meta.outputs.sha }}'
+          fail=0
+          for image in tibatrace-backend:ci tibatrace-hq-web:ci; do
+            arch=$(docker image inspect "$image" --format '{{.Architecture}}')
+            rev=$(docker image inspect "$image" \
+                  --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')
+            echo "$image: arch=$arch revision=$rev"
+            [ "$arch" = "amd64" ] || { echo "::error::$image is $arch, expected amd64"; fail=1; }
+            case "$rev" in
+              unknown|"") echo "::error::$image reports revision '$rev'"; fail=1 ;;
+              "$expected") ;;
+              *) echo "::error::$image revision $rev != $expected"; fail=1 ;;
+            esac
+          done
+          exit $fail
+
+      - name: HQ bundle must contain the shared-package code
+        # Guards the specific regression: hq-web imports @dawatrace/shared
+        # subpaths, which only resolve if the image built the shared package.
+        run: |
+          docker run --rm --entrypoint sh tibatrace-hq-web:ci -c '
+            set -e
+            test -d /usr/share/nginx/html/assets
+            grep -rql "formatMoney\|KES" /usr/share/nginx/html/assets >/dev/null
+          '
+          echo "shared money code present in the emitted bundle"
+
+      - name: HQ container smoke check
+        run: |
+          docker run -d --name hq-smoke -p 18080:8080 tibatrace-hq-web:ci
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:18080/healthz >/dev/null 2>&1; then
+              echo "HQ healthz OK"; docker rm -f hq-smoke >/dev/null; exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::HQ container did not become healthy"
+          docker logs hq-smoke || true
+          docker rm -f hq-smoke >/dev/null
+          exit 1
+
+      - name: Backend container smoke check
+        run: |
+          docker run --rm \
+            -e DJANGO_SETTINGS_MODULE=dawatrace.settings.base \
+            -e DAWATRACE_SECRET_KEY=ci-smoke-not-a-secret \
+            tibatrace-backend:ci \
+            sh -c '
+              set -e
+              python -c "import qrcode; print(\"qrcode import OK\")"
+              python -c "import apps.platform.reporting.pdf; print(\"reporting.pdf import OK\")"
+              python -c "import apps.platform.release_storage; print(\"release_storage import OK\")"
+              python manage.py check
+              test "$(id -u)" -ne 0 && echo "runs as non-root (uid $(id -u))"
+            '
