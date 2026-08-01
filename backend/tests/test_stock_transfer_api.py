@@ -101,6 +101,7 @@ def transfer_world(db):
     sku = CommercialSKU.all_objects.create(
         tenant=tenant,
         sku_code="TRANSFER-SKU",
+        default_barcode="6161100012345",
         display_name="Transfer Brand 10s",
         manufactured_product=manufactured,
         package_definition=package,
@@ -193,6 +194,10 @@ def test_stock_transfer_api_enforces_governed_lifecycle(transfer_world):
     transfer_id = create_response.json()["id"]
     line_id = create_response.json()["lines"][0]["id"]
     assert create_response.json()["status"] == StockTransfer.Status.SUBMITTED
+    assert create_response.json()["lines"][0]["sku_barcode"] == "6161100012345"
+
+    balances = rows(requester_client.get("/api/inventory/balances/", **tenant_header))
+    assert balances[0]["sku_barcode"] == "6161100012345"
 
     self_approval = requester_client.post(
         f"/api/inventory/transfers/{transfer_id}/approve/",

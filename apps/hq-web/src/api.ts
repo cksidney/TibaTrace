@@ -2676,6 +2676,7 @@ export interface HQInventoryBalanceItem {
   readonly location: string;
   readonly sku: string;
   readonly sku_code?: string;
+  readonly sku_barcode?: string;
   readonly sku_name?: string;
   readonly location_name?: string;
   readonly batch_number?: string;
@@ -2742,6 +2743,7 @@ export interface HQStockTransferLine {
   readonly id: string;
   readonly sku: string;
   readonly sku_code: string;
+  readonly sku_barcode: string;
   readonly sku_name: string;
   readonly batch: string | null;
   readonly batch_number: string | null;

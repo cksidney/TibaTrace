@@ -2062,6 +2062,76 @@ a.compact-stat-link:hover {
   color: var(--muted);
 }
 
+.stock-transfer-scan-panel {
+  display: grid;
+  gap: 9px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--teal-600) 32%, var(--line));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--panel) 94%, var(--teal-100) 6%);
+}
+
+.stock-transfer-scan-panel > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.stock-transfer-scan-panel > div:first-child small {
+  color: var(--muted);
+}
+
+.stock-transfer-scan-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--ink);
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+}
+
+.stock-transfer-scan-title svg {
+  width: 15px;
+  height: 15px;
+  color: var(--teal-600);
+}
+
+.stock-transfer-scan-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.stock-transfer-scan-control input {
+  width: 100%;
+  min-width: 0;
+  min-height: 38px;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--navy-900);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.84rem;
+}
+
+[data-theme="light"] .stock-transfer-scan-control input {
+  background: #fff;
+}
+
+.stock-transfer-scan-note {
+  margin: 0;
+  color: var(--teal-600);
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.stock-transfer-scan-note.is-error {
+  color: var(--red-700);
+}
+
 @media (max-width: 900px) {
   /* The four labels do not fit a phone. Scroll the group rather than let it
      stretch the panel and force the whole page sideways. */
@@ -2073,6 +2143,10 @@ a.compact-stat-link:hover {
   .stock-transfer-form-grid,
   .stock-transfer-line,
   .stock-transfer-receipt-line {
+    grid-template-columns: 1fr;
+  }
+
+  .stock-transfer-scan-control {
     grid-template-columns: 1fr;
   }
 }

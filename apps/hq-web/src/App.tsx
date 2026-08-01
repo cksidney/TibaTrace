@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, FormEvent } from 'react';
 
+import {
+  matchInventoryItemByBarcode,
+  verifyGoodsReceiptScan,
+} from '@dawatrace/shared/dispensing/index.js';
+
 import { AccessWorkspace } from './AccessWorkspace.js';
 import { ReportsWorkspace } from './ReportsWorkspace.js';
 import {
@@ -1807,10 +1812,12 @@ interface StockTransferReceiptDraftLine {
   readonly skuCode: string;
   readonly batchId: string;
   readonly batchNumber: string;
+  readonly skuBarcode: string;
   readonly remaining: string;
   readonly quantity: string;
   readonly damaged: string;
   readonly discrepancyReason: string;
+  readonly unit: string;
 }
 
 function newTransferReference(prefix: string): string {
@@ -1837,6 +1844,7 @@ function StockTransferDialog({
   readonly tenantId: string;
 }) {
   const activeLocations = locations.filter((location) => location.status === 'ACTIVE');
+
   const initialSource = activeLocations.find((location) => balances.some(
     (balance) => balance.location === location.id && Number(balance.available) > 0,
   ))?.id ?? activeLocations[0]?.id ?? '';
@@ -1861,29 +1869,130 @@ function StockTransferDialog({
           discrepancyReason: '',
           key: `${line.id}:${allocation.batch_id}`,
           lineId: line.id,
-          quantity: allocation.remaining_quantity,
+          quantity: '0',
           remaining: allocation.remaining_quantity,
+          skuBarcode: line.sku_barcode || '',
           skuCode: line.sku_code,
+          unit: line.unit,
         })))
       : []
   ));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [scanInput, setScanInput] = useState('');
+  const [scanNotice, setScanNotice] = useState('');
+  const [scanFailed, setScanFailed] = useState(false);
+  const [receiveScanInput, setReceiveScanInput] = useState('');
+  const [receiveScanNotice, setReceiveScanNotice] = useState('');
+  const [receiveScanFailed, setReceiveScanFailed] = useState(false);
 
   const availableSkus = useMemo(() => {
-    const bySku = new Map<string, { available: number; code: string; name: string }>();
+    const bySku = new Map<string, {
+      available: number;
+      barcode: string;
+      code: string;
+      name: string;
+    }>();
     balances
       .filter((balance) => balance.location === sourceLocation && Number(balance.available) > 0)
       .forEach((balance) => {
         const current = bySku.get(balance.sku);
         bySku.set(balance.sku, {
           available: (current?.available ?? 0) + Number(balance.available),
+          barcode: balance.sku_barcode || current?.barcode || '',
           code: balance.sku_code || balance.sku,
           name: balance.sku_name || balance.sku_code || 'Stock item',
         });
       });
     return [...bySku.entries()].map(([id, value]) => ({ id, ...value }));
   }, [balances, sourceLocation]);
+
+  const handleScan = (inputVal: string) => {
+    if (!inputVal.trim()) return;
+    const match = matchInventoryItemByBarcode(
+      inputVal,
+      availableSkus.map((sku) => ({ barcode: sku.barcode, id: sku.id, skuCode: sku.code })),
+    );
+    if (match.status !== 'MATCHED' || !match.itemId) {
+      setScanFailed(true);
+      setScanNotice(match.status === 'AMBIGUOUS'
+        ? 'This code maps to more than one released SKU. Correct the catalogue mapping before transfer.'
+        : 'No released stock at the selected source matches this barcode or SKU code.');
+      return;
+    }
+
+    const parsed = match.parsedBarcode;
+    const matched = availableSkus.find((sku) => sku.id === match.itemId)!;
+    const existing = draftLines.find((line) => line.sku === matched.id);
+    const nextQuantity = Number(existing?.quantity || 0) + 1;
+    if (nextQuantity > matched.available) {
+      setScanFailed(true);
+      setScanNotice(`${matched.code} has only ${matched.available} available at this source.`);
+      return;
+    }
+
+    setDraftLines((current) => {
+      if (existing) {
+        return current.map((line) => (
+          line.key === existing.key ? { ...line, quantity: String(nextQuantity) } : line
+        ));
+      }
+      const emptyIndex = current.findIndex((line) => !line.sku);
+      if (emptyIndex >= 0) {
+        return current.map((line, index) => (
+          index === emptyIndex ? { ...line, sku: matched.id, quantity: '1' } : line
+        ));
+      }
+      return [
+        ...current,
+        { key: newTransferReference('LINE'), sku: matched.id, quantity: '1' },
+      ];
+    });
+    const trace = [
+      parsed.batchNumber ? `batch ${parsed.batchNumber}` : '',
+      parsed.expiryDateIso ? `expiry ${parsed.expiryDateIso}` : '',
+    ].filter(Boolean).join(' · ');
+    setScanFailed(false);
+    setScanNotice(
+      `${matched.code} added from ${parsed.format === 'GS1_DATAMATRIX' ? 'GS1 DataMatrix' : 'barcode / SKU'}${trace ? ` · ${trace}` : ''}. Dispatch still allocates the authoritative FEFO batch.`,
+    );
+    setScanInput('');
+  };
+
+  const handleReceiveScan = (inputVal: string) => {
+    if (!inputVal.trim()) return;
+    const verification = verifyGoodsReceiptScan({
+      scannedInput: inputVal,
+      expectedLines: receiptLines.map((l) => ({
+        barcode: l.skuBarcode,
+        lineKey: l.key,
+        skuCode: l.skuCode,
+        expectedQuantity: Number(l.remaining),
+        acceptedQuantity: Number(l.quantity || 0),
+        batchNumber: l.batchNumber,
+      })),
+    });
+
+    if (
+      verification.matchFound
+      && !verification.discrepancyDetected
+      && verification.matchedLineKey
+    ) {
+      setReceiptLines((current) =>
+        current.map((line) =>
+          line.key === verification.matchedLineKey
+            ? { ...line, quantity: String(verification.updatedAcceptedQuantity) }
+            : line
+        )
+      );
+      setReceiveScanFailed(false);
+      setReceiveScanNotice(verification.statusNote);
+      setReceiveScanInput('');
+    } else {
+      setReceiveScanFailed(true);
+      setReceiveScanNotice(verification.statusNote);
+    }
+  };
 
   const updateDraftLine = (key: string, values: Partial<StockTransferDraftLine>) => {
     setDraftLines((current) => current.map((line) => (
@@ -2047,6 +2156,40 @@ function StockTransferDialog({
                 <span>Transfer reason</span>
                 <textarea onChange={(event) => setReason(event.target.value)} placeholder="Why stock is moving and who requested the rebalance" required rows={3} value={reason} />
               </label>
+              <div className="stock-transfer-scan-panel">
+                <div>
+                  <span className="stock-transfer-scan-title"><Icon name="search" /> Scan released stock</span>
+                  <small>GS1 DataMatrix, registered barcode, or exact SKU code</small>
+                </div>
+                <div className="stock-transfer-scan-control">
+                  <input
+                    aria-label="Scan released stock barcode or SKU"
+                    onChange={(e) => setScanInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleScan(scanInput);
+                      }
+                    }}
+                    placeholder="Scan GS1, barcode, or SKU"
+                    type="text"
+                    value={scanInput}
+                  />
+                  <button
+                    className="secondary-button"
+                    disabled={!scanInput.trim()}
+                    onClick={() => handleScan(scanInput)}
+                    type="button"
+                  >
+                    Scan & Add
+                  </button>
+                </div>
+                {scanNotice ? (
+                  <p className={scanFailed ? 'stock-transfer-scan-note is-error' : 'stock-transfer-scan-note'} role={scanFailed ? 'alert' : 'status'}>
+                    {scanNotice}
+                  </p>
+                ) : null}
+              </div>
               <div className="stock-transfer-lines">
                 <div className="stock-transfer-lines-heading">
                   <strong>Stock lines</strong>
@@ -2110,41 +2253,76 @@ function StockTransferDialog({
           ) : null}
           {dialog.kind === 'receive' ? (
             <div className="stock-transfer-lines">
+              <div className="stock-transfer-scan-panel">
+                <div>
+                  <span className="stock-transfer-scan-title"><Icon name="check" /> Verify received stock</span>
+                  <small>Each accepted unit must match the transfer SKU and, when encoded, its batch.</small>
+                </div>
+                <div className="stock-transfer-scan-control">
+                  <input
+                    aria-label="Verify received stock barcode"
+                    onChange={(e) => setReceiveScanInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleReceiveScan(receiveScanInput);
+                      }
+                    }}
+                    placeholder="Scan the received unit"
+                    type="text"
+                    value={receiveScanInput}
+                  />
+                  <button
+                    className="secondary-button"
+                    disabled={!receiveScanInput.trim()}
+                    onClick={() => handleReceiveScan(receiveScanInput)}
+                    type="button"
+                  >
+                    Verify Scan
+                  </button>
+                </div>
+                {receiveScanNotice ? (
+                  <p className={receiveScanFailed ? 'stock-transfer-scan-note is-error' : 'stock-transfer-scan-note'} role={receiveScanFailed ? 'alert' : 'status'}>
+                    {receiveScanNotice}
+                  </p>
+                ) : null}
+              </div>
               {receiptLines.length === 0 ? (
                 <div className="inline-alert" role="status"><Icon name="check" /> No dispatched quantity remains to receive.</div>
               ) : receiptLines.map((line) => (
-                <div className="stock-transfer-receipt-line" key={line.key}>
-                  <div>
-                    <strong>{line.skuCode}</strong>
-                    <small>Batch {line.batchNumber} · {line.remaining} remaining</small>
+                  <div className="stock-transfer-receipt-line" key={line.key}>
+                    <div>
+                      <strong>{line.skuCode}</strong>
+                      <small>Batch {line.batchNumber} · {line.remaining} remaining</small>
+                      <small>Authoritative unit: {line.unit || 'UNIT'}</small>
+                    </div>
+                    <label className="business-field">
+                      <span>Accepted</span>
+                      <input
+                        max={line.remaining}
+                        min="0"
+                        onChange={(event) => updateReceiptLine(line.key, { quantity: event.target.value })}
+                        step="0.0001"
+                        type="number"
+                        value={line.quantity}
+                      />
+                    </label>
+                    <label className="business-field">
+                      <span>Damaged</span>
+                      <input
+                        max={line.remaining}
+                        min="0"
+                        onChange={(event) => updateReceiptLine(line.key, { damaged: event.target.value })}
+                        step="0.0001"
+                        type="number"
+                        value={line.damaged}
+                      />
+                    </label>
+                    <label className="business-field">
+                      <span>Discrepancy note</span>
+                      <input onChange={(event) => updateReceiptLine(line.key, { discrepancyReason: event.target.value })} placeholder="Required when quantities differ" value={line.discrepancyReason} />
+                    </label>
                   </div>
-                  <label className="business-field">
-                    <span>Accepted</span>
-                    <input
-                      max={line.remaining}
-                      min="0"
-                      onChange={(event) => updateReceiptLine(line.key, { quantity: event.target.value })}
-                      step="0.0001"
-                      type="number"
-                      value={line.quantity}
-                    />
-                  </label>
-                  <label className="business-field">
-                    <span>Damaged</span>
-                    <input
-                      max={line.remaining}
-                      min="0"
-                      onChange={(event) => updateReceiptLine(line.key, { damaged: event.target.value })}
-                      step="0.0001"
-                      type="number"
-                      value={line.damaged}
-                    />
-                  </label>
-                  <label className="business-field">
-                    <span>Discrepancy note</span>
-                    <input onChange={(event) => updateReceiptLine(line.key, { discrepancyReason: event.target.value })} placeholder="Required when quantities differ" value={line.discrepancyReason} />
-                  </label>
-                </div>
               ))}
             </div>
           ) : null}

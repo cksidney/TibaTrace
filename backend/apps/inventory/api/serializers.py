@@ -20,11 +20,21 @@ class InventoryLocationSerializer(serializers.ModelSerializer):
     class Meta:
         model = InventoryLocation
         fields = [
-            "id", "branch", "branch_name", "location_code", "name",
-            "location_type", "status", "cold_chain_capability",
-            "controlled_drug_capability", "quarantine_capability",
-            "returns_capability", "damaged_goods_capability",
-            "expiry_hold_capability", "created_at", "updated_at"
+            "id",
+            "branch",
+            "branch_name",
+            "location_code",
+            "name",
+            "location_type",
+            "status",
+            "cold_chain_capability",
+            "controlled_drug_capability",
+            "quarantine_capability",
+            "returns_capability",
+            "damaged_goods_capability",
+            "expiry_hold_capability",
+            "created_at",
+            "updated_at",
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
 
@@ -35,9 +45,16 @@ class InventoryBatchSerializer(serializers.ModelSerializer):
     class Meta:
         model = InventoryBatch
         fields = [
-            "id", "sku", "sku_code", "manufacturer_batch_number",
-            "manufacture_date", "expiry_date", "quality_status",
-            "recall_status", "created_at", "updated_at"
+            "id",
+            "sku",
+            "sku_code",
+            "manufacturer_batch_number",
+            "manufacture_date",
+            "expiry_date",
+            "quality_status",
+            "recall_status",
+            "created_at",
+            "updated_at",
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
 
@@ -54,18 +71,35 @@ class InventoryLedgerEntrySerializer(serializers.ModelSerializer):
     class Meta:
         model = InventoryLedgerEntry
         fields = [
-            "id", "branch", "location", "location_name", "sku", "sku_code",
-            "inventory_batch", "batch_number", "entry_type", "quantity_delta",
-            "unit", "base_quantity_delta", "transaction_timestamp",
-            "effective_timestamp", "source_document_type", "source_document_id",
-            "source_line_id", "idempotency_key", "actor", "reason_code",
-            "notes", "created_at"
+            "id",
+            "branch",
+            "location",
+            "location_name",
+            "sku",
+            "sku_code",
+            "inventory_batch",
+            "batch_number",
+            "entry_type",
+            "quantity_delta",
+            "unit",
+            "base_quantity_delta",
+            "transaction_timestamp",
+            "effective_timestamp",
+            "source_document_type",
+            "source_document_id",
+            "source_line_id",
+            "idempotency_key",
+            "actor",
+            "reason_code",
+            "notes",
+            "created_at",
         ]
         read_only_fields = fields
 
 
 class InventoryBalanceSerializer(serializers.ModelSerializer):
     sku_code = serializers.CharField(source="sku.sku_code", read_only=True)
+    sku_barcode = serializers.CharField(source="sku.default_barcode", read_only=True)
     sku_name = serializers.CharField(source="sku.display_name", read_only=True)
     location_name = serializers.CharField(source="location.name", read_only=True)
     batch_number = serializers.CharField(
@@ -77,10 +111,25 @@ class InventoryBalanceSerializer(serializers.ModelSerializer):
     class Meta:
         model = InventoryBalance
         fields = [
-            "id", "branch", "location", "location_name", "sku", "sku_code",
-            "sku_name", "inventory_batch", "batch_number", "quality_status",
-            "expiry_status", "on_hand", "reserved", "available", "quarantined",
-            "damaged", "expired", "last_calculated_at"
+            "id",
+            "branch",
+            "location",
+            "location_name",
+            "sku",
+            "sku_code",
+            "sku_barcode",
+            "sku_name",
+            "inventory_batch",
+            "batch_number",
+            "quality_status",
+            "expiry_status",
+            "on_hand",
+            "reserved",
+            "available",
+            "quarantined",
+            "damaged",
+            "expired",
+            "last_calculated_at",
         ]
         read_only_fields = fields
 
@@ -97,16 +146,29 @@ class InventoryReservationSerializer(serializers.ModelSerializer):
     class Meta:
         model = InventoryReservation
         fields = [
-            "id", "branch", "source_location", "location_name", "sku",
-            "sku_code", "batch", "batch_number", "requested_quantity",
-            "allocated_quantity", "purpose", "status", "expiry_time",
-            "idempotency_key", "created_at", "updated_at"
+            "id",
+            "branch",
+            "source_location",
+            "location_name",
+            "sku",
+            "sku_code",
+            "batch",
+            "batch_number",
+            "requested_quantity",
+            "allocated_quantity",
+            "purpose",
+            "status",
+            "expiry_time",
+            "idempotency_key",
+            "created_at",
+            "updated_at",
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
 
 
 class StockTransferLineSerializer(serializers.ModelSerializer):
     sku_code = serializers.CharField(source="sku.sku_code", read_only=True)
+    sku_barcode = serializers.CharField(source="sku.default_barcode", read_only=True)
     sku_name = serializers.CharField(source="sku.display_name", read_only=True)
     batch_number = serializers.CharField(
         source="batch.manufacturer_batch_number",
@@ -144,25 +206,17 @@ class StockTransferLineSerializer(serializers.ModelSerializer):
                 inventory_batch_id=batch_id,
                 entry_type=InventoryLedgerEntry.EntryType.TRANSFER_IN,
             )
-            accepted = (
-                receipts.filter(reason_code="TRANSFER_RECEIPT").aggregate(
-                    total=Sum("base_quantity_delta")
-                )["total"]
-                or Decimal("0")
-            )
-            damaged = (
-                receipts.filter(reason_code="TRANSFER_DAMAGE_RECEIPT").aggregate(
-                    total=Sum("base_quantity_delta")
-                )["total"]
-                or Decimal("0")
-            )
+            accepted = receipts.filter(reason_code="TRANSFER_RECEIPT").aggregate(total=Sum("base_quantity_delta"))[
+                "total"
+            ] or Decimal("0")
+            damaged = receipts.filter(reason_code="TRANSFER_DAMAGE_RECEIPT").aggregate(
+                total=Sum("base_quantity_delta")
+            )["total"] or Decimal("0")
             dispatched = -allocation["total"]
             result.append(
                 {
                     "batch_id": str(batch_id),
-                    "batch_number": allocation[
-                        "inventory_batch__manufacturer_batch_number"
-                    ],
+                    "batch_number": allocation["inventory_batch__manufacturer_batch_number"],
                     "dispatched_quantity": str(dispatched),
                     "received_quantity": str(accepted),
                     "damaged_quantity": str(damaged),
@@ -177,6 +231,7 @@ class StockTransferLineSerializer(serializers.ModelSerializer):
             "id",
             "sku",
             "sku_code",
+            "sku_barcode",
             "sku_name",
             "batch",
             "batch_number",
@@ -265,9 +320,7 @@ class StockTransferCreateSerializer(serializers.Serializer):
             )
         sku_ids = [line["sku"] for line in attrs["lines"]]
         if len(sku_ids) != len(set(sku_ids)):
-            raise serializers.ValidationError(
-                {"lines": "Each SKU may appear only once in a transfer request."}
-            )
+            raise serializers.ValidationError({"lines": "Each SKU may appear only once in a transfer request."})
         return attrs
 
 
@@ -289,9 +342,7 @@ class StockTransferReceiptLineSerializer(serializers.Serializer):
 
     def validate(self, attrs):
         if attrs["quantity"] + attrs.get("damaged", Decimal("0")) <= 0:
-            raise serializers.ValidationError(
-                "Record a received or damaged quantity greater than zero."
-            )
+            raise serializers.ValidationError("Record a received or damaged quantity greater than zero.")
         return attrs
 
 

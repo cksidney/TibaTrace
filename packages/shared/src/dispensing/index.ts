@@ -11,3 +11,4 @@ export * from './offlineQueue.js';
 export * from './durableJournal.js';
 export * from './telemetry.js';
 export * from './posActivation.js';
+export * from './barcodeScanner.js';
