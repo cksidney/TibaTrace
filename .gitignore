@@ -55,3 +55,8 @@ apps/pos-android/.metro-health-check*
 /seed_output.txt
 /hq_test_output.txt
 /count_output.txt
+
+# Word export of the end-to-end guide is a build artefact; regenerate with
+# scripts/docs/build_user_guide_docx.js rather than committing a binary that
+# silently drifts from docs/TIBATRACE_USER_GUIDE.md.
+docs/exports/
