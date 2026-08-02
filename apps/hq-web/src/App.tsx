@@ -7,6 +7,7 @@ import {
 } from '@dawatrace/shared/dispensing/index.js';
 
 import { AccessWorkspace } from './AccessWorkspace.js';
+import { IntegrationWorkspace } from './IntegrationWorkspace.js';
 import { ReportsWorkspace } from './ReportsWorkspace.js';
 import {
   activateCustomer,
@@ -181,6 +182,7 @@ type WorkspaceView =
   | 'clinical'
   | 'reports'
   | 'governance'
+  | 'integration'
   | 'access';
 
 interface NavigationItem {
@@ -204,6 +206,7 @@ const navigation: readonly NavigationItem[] = [
   { key: 'clinical', label: 'Clinical governance', caption: 'Safety and standards', icon: 'clinical' },
   { key: 'reports', label: 'Reports', caption: 'Enterprise & security packs', icon: 'docs' },
   { key: 'governance', label: 'System governance', caption: 'Audit, events and documents', icon: 'shield' },
+  { key: 'integration', label: 'National integrations', caption: 'DHA & PPB command centre', icon: 'network' },
   { key: 'access', label: 'Users & access', caption: 'Roles and security', icon: 'users' },
 ];
 
@@ -272,6 +275,11 @@ const viewMeta: Record<WorkspaceView, { readonly eyebrow: string; readonly title
     eyebrow: 'Platform assurance',
     title: 'System governance',
     description: 'Monitor immutable audit records, clinical documents, domain events, notifications and legacy identifier migration.',
+  },
+  integration: {
+    eyebrow: 'National integration governance',
+    title: 'National Integration Command Centre',
+    description: 'Platform Owner workspace for DHA and PPB integration configuration, activation governance, reliability monitoring, and dead-letter queue management.',
   },
   access: {
     eyebrow: 'Identity & control',
@@ -679,6 +687,7 @@ function Dashboard({
           {activeView === 'clinical' ? <ClinicalView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} overview={overview} /> : null}
           {activeView === 'reports' ? <ReportsWorkspace csrfToken={csrfToken} overview={overview} onNavigate={setActiveView} /> : null}
           {activeView === 'governance' ? <GovernanceView data={workspaceData} failed={workspaceFailed} /> : null}
+          {activeView === 'integration' ? <IntegrationWorkspace csrfToken={csrfToken} /> : null}
           {activeView === 'access' ? <AccessView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} overview={overview} /> : null}
         </main>
       </div>

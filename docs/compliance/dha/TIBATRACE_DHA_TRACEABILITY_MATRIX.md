@@ -1,8 +1,9 @@
 # TibaTrace DHA & Stakeholder Requirements Traceability Matrix
 
 **Governing Framework**: Kenya Digital Health Certification Framework 2025  
-**Baseline Release Tag**: `tibatrace-v0.2.0-rc5` (`f365e778f9f30ab590bc0481c1ea006bb2664cef`)  
-**Assessment Date**: 2026-08-01  
+**Baseline Release Tag**: `tibatrace-v0.2.0-rc10` (`2b086c0`)  
+**Integration Branch**: `integration/national-health-regulatory-foundation`  
+**Assessment Date**: 2026-08-02  
 
 ---
 
@@ -15,7 +16,8 @@
 | **Interoperability & FHIR (DHA-INT)** | 2 | 2 | 0 | 0 | 0 | 0 |
 | **Reporting & Analytics (DHA-REPORT)** | 1 | 0 | 0 | 1 | 0 | 0 |
 | **Meeting Notes & Supply Chain (TT-MTG)** | 12 | 3 | 0 | 9 | 0 | 0 |
-| **TOTALS** | **26** | **12** | **1** | **13** | **0** | **0** |
+| **National Integration Foundation (NIF)** | 9 | 0 | 9 | 0 | 0 | 0 |
+| **TOTALS** | **35** | **12** | **10** | **13** | **0** | **0** |
 
 ---
 
@@ -75,3 +77,23 @@
 | **TT-MTG-POS-ACT-002** | Activation Request Lifecycle | Backend state machine (DRAFT -> SUBMITTED -> APPROVED -> ACTIVATED); 1-time challenge | `posActivation.ts`, `canTransitionActivationState` | `/api/v1/platform/pos-activations/requests/` | `PosActivationConsole` | `packages/shared/src/dispensing/posActivation.test.ts` | `COMPLIANT_EVIDENCED` |
 | **DHA-SEC-POS-ACT-001** | Device Trust & Startup Gate | Fail-closed POS launch gate (validates fingerprint, tenant, branch, offline lease) | `validatePosStartup`, `validateOfflineLease` | Enrolment endpoints | `PosActivationStartupGate` | `packages/shared/src/dispensing/posActivation.test.ts` | `COMPLIANT_EVIDENCED` |
 | **DHA-GOV-POS-ACT-001** | Quota Control & Activation Audit | Quota limits per branch; Platform Owner limit override rationale; 19 audit events | `evaluateActivationQuota`, `AuditEvent` | Platform console APIs | `PosActivationConsole` | `packages/shared/src/dispensing/posActivation.test.ts` | `COMPLIANT_EVIDENCED` |
+
+---
+
+### 2.5 National Integration Foundation (NIF)
+
+> **Truth Label Policy**: All entries in this section are labelled with their empirical operational state.
+> `ADAPTER_SCAFFOLDED_NOT_CONNECTED` = code exists, no live connection. Until Platform Owner
+> activation is confirmed and sandbox evidence exists, no entry may carry `COMPLIANT_EVIDENCED`.
+
+| Req ID | Requirement Title | Backend Implementation | Truth Label | Evidence | Compliance Status |
+|---|---|---|---|---|---|
+| **NIF-PHASE-1** | Pharmacy Premises Compliance Reconciliation | `PremisesVerificationRequest`, `PremisesVerificationSnapshot`, `verification_service.py`; management command `reconcile_premises_licences` | `MANUAL_INTERNAL_VERIFICATION` | `backend/apps/pharmacy_network/models.py`, `verification_service.py`, `management/commands/reconcile_premises_licences.py` | `IMPLEMENTED_NOT_EVIDENCED` |
+| **NIF-PHASE-2** | National Provider Integration Platform | `ProviderConfiguration`, `IntegrationMessage`, `IntegrationDeadLetter`, `ProviderActivationRequest`, `activation_governance.py` | `ADAPTER_SCAFFOLDED_NOT_CONNECTED` | `backend/apps/integrations/models.py`, `backend/apps/integrations/apps.py` | `IMPLEMENTED_NOT_EVIDENCED` |
+| **NIF-PHASE-3** | DHA OAuth 2.0 Client | `DhaOAuthClient` (fail-closed, TLS allow-list, credential masking, token digest logging only) | `ADAPTER_SCAFFOLDED_NOT_CONNECTED` | `backend/apps/prescription/providers/oauth_client.py` | `IMPLEMENTED_NOT_EVIDENCED` |
+| **NIF-PHASE-4** | DHA HWR Practitioner Verification | `DhaHwrAdapter`, `HwrVerificationDecision`, risk-based prescribing gate, immutable evidence log | `ADAPTER_SCAFFOLDED_NOT_CONNECTED` | `backend/apps/practitioners/hwr_adapter.py` | `IMPLEMENTED_NOT_EVIDENCED` |
+| **NIF-PHASE-5** | PPB Premises Adapter Contract | `PpbAdapter` (MANUAL_GOVERNED, SANDBOX_MOCK, OFFICIAL_API modes); replaces `NotImplementedError` with explicit truth-labeled mode dispatch | `MANUAL_INTERNAL_VERIFICATION` | `backend/apps/pharmacy_network/ppb_adapter.py` | `IMPLEMENTED_NOT_EVIDENCED` |
+| **NIF-PHASE-6** | Regulatory Product Status Freshness | `PpbProductStatusResult` projection (`CURRENTLY_VERIFIED`, `STALE`, `SUSPENDED`, `WITHDRAWN`, `EXPIRED`, `UNKNOWN`, `MATCH_REQUIRES_REVIEW`, `NOT_FOUND`) | `SNAPSHOT_IMPORTED_STALENESS_GOVERNED` | `backend/apps/pharmacy_network/ppb_adapter.py` | `IMPLEMENTED_NOT_EVIDENCED` |
+| **NIF-PHASE-7** | Regulatory Alerts & Recall Ingestion | `RegulatoryAlert`, `RegulatoryAlertVersion`, `RegulatoryMatchCandidate`, `RegulatoryTenantImpact`, `RegulatoryAction`, `RegulatoryEvidence`, `RegulatoryClosure`; confidence-tier matching, global tenant quarantine, prior-dispense tracing, release workflow | `LOCAL_RECALL_WORKFLOW_NO_REGULATOR_FEED` | `backend/apps/inventory/recalls/models.py`, `backend/apps/inventory/recalls/services.py` | `IMPLEMENTED_NOT_EVIDENCED` |
+| **NIF-PHASE-8** | Integration Reliability Engine | Exponential backoff with jitter, dead-letter queue, circuit breaker (CLOSED/OPEN/HALF_OPEN), rate limits | `ADAPTER_SCAFFOLDED_NOT_CONNECTED` | `backend/apps/integrations/reliability.py` | `IMPLEMENTED_NOT_EVIDENCED` |
+| **NIF-PHASE-9** | HQ Integration Command Centre | `IntegrationWorkspace.tsx` with truth-label cards, activation progress, DLQ management; `national_integration.ts` shared types | `ADAPTER_SCAFFOLDED_NOT_CONNECTED` | `apps/hq-web/src/IntegrationWorkspace.tsx`, `packages/shared/src/dispensing/national_integration.ts` | `IMPLEMENTED_NOT_EVIDENCED` |
