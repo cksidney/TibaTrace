@@ -1,5 +1,10 @@
 # TibaTrace Purchasing, Receiving, Inventory and Warehouse Operations Architecture
 
+> **Superseded by [the TibaTrace End-to-End Guide](TIBATRACE_USER_GUIDE.md) — §3.5 and §5.1 Inventory: FEFO.**
+>
+> Kept for its engineering detail and history. The guide is authoritative
+> for how the system is used; where the two disagree, the guide is right.
+
 ## 1. Overview
 The TibaTrace Purchasing, Receiving, Inventory and Warehouse subsystem provides complete operational endpoint management across multi-tenant, multi-branch community pharmacies, hospital dispensaries, and distribution centers.
 

@@ -1,5 +1,10 @@
 # POS Clinical Workflow Guide
 
+> **Superseded by [the TibaTrace End-to-End Guide](TIBATRACE_USER_GUIDE.md) — §4.2 Dispensing a prescription — clinical screening.**
+>
+> Kept for its engineering detail and history. The guide is authoritative
+> for how the system is used; where the two disagree, the guide is right.
+
 ## Clinical Decision Support and Drug Interaction Banner
 
 TibaTrace uses the CDS backend as the clinical authority. POS clients submit a

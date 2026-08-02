@@ -1,5 +1,10 @@
 # POS payment workflow
 
+> **Superseded by [the TibaTrace End-to-End Guide](TIBATRACE_USER_GUIDE.md) — §4.2 Dispensing a prescription — payment.**
+>
+> Kept for its engineering detail and history. The guide is authoritative
+> for how the system is used; where the two disagree, the guide is right.
+
 **Current release decision:** `POS_UI_UX_BLOCKED`
 
 This guide describes the payment paths that are safe to operate today. It is

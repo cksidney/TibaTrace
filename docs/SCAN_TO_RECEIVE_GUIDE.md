@@ -1,5 +1,10 @@
 # TibaTrace Scan-to-Receive & GRN Runbook
 
+> **Superseded by [the TibaTrace End-to-End Guide](TIBATRACE_USER_GUIDE.md) — §3.5 Suppliers and procurement.**
+>
+> Kept for its engineering detail and history. The guide is authoritative
+> for how the system is used; where the two disagree, the guide is right.
+
 ## 1. Receiving Workflow
 1. **Session Opening**: Receiver opens a `ReceivingSession` referencing an approved Purchase Order and Delivery Note number.
 2. **Barcode Scanning**: Items are scanned via standard GS1 / GTIN / internal barcodes. The system validates:
