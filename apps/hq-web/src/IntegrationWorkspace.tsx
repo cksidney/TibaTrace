@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { CSSProperties } from 'react';
 import type {
   IntegrationProviderCardData,
   IntegrationTruthLabel,
@@ -412,9 +411,50 @@ function ProgrammeGovRules() {
 // ---------------------------------------------------------------------------
 
 export function IntegrationWorkspace({ csrfToken: _csrfToken }: IntegrationWorkspaceProps) {
-  const [providers] = useState<IntegrationProviderCardData[]>(MOCK_PROVIDERS);
+  const [providers, setProviders] = useState<IntegrationProviderCardData[]>(MOCK_PROVIDERS);
   const [activeTab, setActiveTab] = useState<'providers' | 'dlq' | 'rules'>('providers');
   const [deadLetters] = useState<DeadLetterItem[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchWorkspaceData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/nif/platform/providers/', {
+        headers: { 'Accept': 'application/json' },
+      });
+      if (res.status === 403) {
+        setError('Permission denied: Platform Owner capability is required to view national integration providers.');
+        setLoading(false);
+        return;
+      }
+      if (res.ok) {
+        const data = await res.json();
+        const results = Array.isArray(data) ? data : data.results || [];
+        if (results.length > 0) {
+          const mapped: IntegrationProviderCardData[] = results.map((item: any) => ({
+            providerType: item.provider_type || item.providerType,
+            displayName: item.display_name || item.displayName || item.provider_type,
+            activationState: item.activation_state || item.activationState || 'REQUESTED',
+            truthLabel: item.truth_label || item.truthLabel || 'ADAPTER_SCAFFOLDED_NOT_CONNECTED',
+            lastHealthChecked: item.last_health_checked || null,
+            isReachable: item.is_reachable ?? null,
+            pendingDeadLetters: item.pending_dead_letters || 0,
+          }));
+          setProviders(mapped);
+        }
+      }
+    } catch {
+      // Fallback gracefully to scaffolded provider cards when server is unverified
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void fetchWorkspaceData();
+  }, [fetchWorkspaceData]);
 
   const tabs = [
     { key: 'providers' as const, label: 'Provider configurations', icon: '🔗' },
@@ -476,6 +516,18 @@ export function IntegrationWorkspace({ csrfToken: _csrfToken }: IntegrationWorks
           ⚠️ No live national integrations active — Platform Owner approval required for all providers
         </div>
       </div>
+
+      {loading && (
+        <div style={{ padding: '12px', background: 'rgba(74,127,165,0.1)', color: '#7aa2cc', borderRadius: '8px', marginBottom: '16px', fontSize: '12px' }}>
+          ⏳ Fetching platform integration configurations...
+        </div>
+      )}
+
+      {error && (
+        <div style={{ padding: '12px', background: 'rgba(231,76,60,0.1)', color: '#e74c3c', borderRadius: '8px', marginBottom: '16px', fontSize: '12px' }}>
+          ⛔ {error}
+        </div>
+      )}
 
       {/* Summary cards */}
       <ActivationGateSummary providers={providers} />

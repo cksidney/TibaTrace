@@ -269,6 +269,9 @@ class IntegrationMessage(TimestampedModel):
     delivered_at = models.DateTimeField(null=True, blank=True)
     dead_lettered_at = models.DateTimeField(null=True, blank=True)
     last_error = models.TextField(blank=True)
+    claimed_by = models.CharField(max_length=100, blank=True)
+    claimed_at = models.DateTimeField(null=True, blank=True)
+    claim_expires_at = models.DateTimeField(null=True, blank=True)
 
     objects = StrictTenantManager()
     all_objects = models.Manager()

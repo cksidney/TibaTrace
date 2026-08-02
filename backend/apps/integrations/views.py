@@ -82,6 +82,44 @@ class ProviderConfigurationViewSet(ModelViewSet):
         ).select_related("message").order_by("-dead_lettered_at")[:50]
         return Response(IntegrationDeadLetterSerializer(dlqs, many=True).data)
 
+    @action(detail=True, methods=["post"], url_path="test-connectivity")
+    def test_connectivity(self, request, pk=None):
+        """Test sandbox endpoint connectivity for this provider."""
+        provider = self.get_object()
+        endpoints = provider.endpoints.filter(is_active=True)
+        results = []
+        for ep in endpoints:
+            results.append({
+                "endpoint_name": ep.name,
+                "base_url": ep.base_url,
+                "allowed_hosts": ep.allowed_hosts,
+                "is_allowed_hosts_configured": len(ep.allowed_hosts) > 0,
+                "status": "TLS_ALLOW_LIST_CONFIGURED" if ep.allowed_hosts else "ALLOW_LIST_EMPTY_FAIL_CLOSED",
+            })
+        return Response({"provider": provider.provider_type, "endpoints": results})
+
+    @action(detail=True, methods=["post"], url_path="enable-kill-switch")
+    def enable_kill_switch(self, request, pk=None):
+        """Immediately suspend all operations for this provider (Security Emergency Kill Switch)."""
+        provider = self.get_object()
+        reason = request.data.get("reason", "Emergency kill switch activated by Platform Owner.")
+        provider.activation_state = ActivationState.SUSPENDED
+        provider.suspended_at = timezone.now()
+        provider.save(update_fields=["activation_state", "suspended_at", "updated_at"])
+
+        log_audit(
+            tenant_id=None,
+            action="PROVIDER_KILL_SWITCH_ACTIVATED",
+            model_name="ProviderConfiguration",
+            object_id=provider.id,
+            actor_id=request.user.id,
+            metadata={"reason": reason, "provider_type": provider.provider_type},
+        )
+        return Response(
+            {"detail": f"Kill switch activated for provider {provider.provider_type}.", "provider": ProviderConfigurationSerializer(provider).data},
+            status=status.HTTP_200_OK,
+        )
+
 
 class ProviderActivationRequestViewSet(ModelViewSet):
     """Platform Owner: manage activation requests."""

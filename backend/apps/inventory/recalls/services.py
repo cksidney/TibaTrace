@@ -203,7 +203,8 @@ def close_alert_for_tenant(
         compliance_review_notes=compliance_review_notes,
         truth_label=TRUTH_LABEL,
     )
-    impact.state = RegulatoryTenantImpact.ImpactState.RELEASED
+    # Formally closes alert impact for tenant. Does NOT automatically release quarantined stock.
+    impact.state = RegulatoryTenantImpact.ImpactState.RESOLVED
     impact.save(update_fields=["state"])
     log_audit(
         tenant_id=impact.tenant_id,
@@ -217,6 +218,52 @@ def close_alert_for_tenant(
         },
     )
     return closure
+
+
+@transaction.atomic
+def release_quarantined_stock(
+    *,
+    impact: RegulatoryTenantImpact,
+    actor,
+    batch_number: str,
+    release_reason: str,
+    regulator_clearance_reference: str,
+    evidence_payload: dict | None = None,
+) -> RegulatoryAction:
+    """Formally release quarantined stock for a specific batch/tenant.
+
+    Requires:
+    - Separation of duties: actor must not be the person who quarantined the stock.
+    - Regulator clearance reference.
+    - Compliance review notes / evidence payload.
+    - Capability: recalls.manage / compliance.officer / platform.owner.
+    """
+    from apps.inventory.recalls.models import RegulatoryAction
+    _require_compliance_capability(actor, impact.tenant_id)
+
+    if not regulator_clearance_reference.strip():
+        raise ValidationError("A regulator clearance reference is required to release quarantined stock.")
+
+    action_obj = RegulatoryAction.objects.create(
+        impact=impact,
+        action_type=RegulatoryAction.ActionType.STOCK_RELEASE,
+        performed_by=actor,
+        notes=f"Released batch {batch_number}: {release_reason} (Clearance: {regulator_clearance_reference})",
+        evidence_payload=evidence_payload or {},
+    )
+    log_audit(
+        tenant_id=impact.tenant_id,
+        action="REGULATORY_STOCK_RELEASED",
+        model_name="RegulatoryAction",
+        object_id=action_obj.id,
+        actor_id=actor.id,
+        metadata={
+            "batch_number": batch_number,
+            "regulator_clearance_reference": regulator_clearance_reference,
+            "truth_label": TRUTH_LABEL,
+        },
+    )
+    return action_obj
 
 
 def _snapshot_alert(

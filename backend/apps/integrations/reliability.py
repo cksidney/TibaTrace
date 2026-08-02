@@ -113,8 +113,9 @@ def compute_backoff_seconds(attempt_number: int) -> float:
     Formula: min(MAX, BASE * 2^attempt) * uniform(0, 1)
     This produces a bounded, randomised delay that avoids thundering-herd.
     """
+    import secrets
     cap = min(MAX_BACKOFF_SECONDS, BASE_BACKOFF_SECONDS * math.pow(2, attempt_number))
-    return random.uniform(0, cap)  # noqa: S311 -- not cryptographic
+    return secrets.SystemRandom().uniform(0, cap)
 
 
 # ---------------------------------------------------------------------------
@@ -183,3 +184,47 @@ def record_attempt(
 
     message.save()
     return attempt
+
+
+@transaction.atomic
+def claim_pending_messages(
+    *,
+    worker_id: str,
+    batch_size: int = 10,
+    lease_seconds: int = 60,
+) -> list[IntegrationMessage]:
+    """Durable worker queue claiming using select_for_update(skip_locked=True).
+
+    Ensures two worker processes cannot process the same message concurrently.
+    Supports worker crash recovery via claim_expires_at timeout.
+    Circuit breaker state is process-local (in-memory per worker process).
+    """
+    from django.db import models
+    now = timezone.now()
+    lease_expires = now + timedelta(seconds=lease_seconds)
+
+    qs = (
+        IntegrationMessage.all_objects.select_for_update(skip_locked=True)
+        .filter(
+            models.Q(state=IntegrationMessage.MessageState.PENDING)
+            | models.Q(
+                state=IntegrationMessage.MessageState.FAILED,
+                next_retry_at__lte=now,
+            )
+            | models.Q(
+                state=IntegrationMessage.MessageState.IN_FLIGHT,
+                claim_expires_at__lte=now,
+            )
+        )
+        .order_by("created_at")[:batch_size]
+    )
+
+    claimed = list(qs)
+    for msg in claimed:
+        msg.state = IntegrationMessage.MessageState.IN_FLIGHT
+        msg.claimed_by = worker_id
+        msg.claimed_at = now
+        msg.claim_expires_at = lease_expires
+        msg.save(update_fields=["state", "claimed_by", "claimed_at", "claim_expires_at", "updated_at"])
+
+    return claimed
