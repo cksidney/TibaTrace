@@ -4593,7 +4593,7 @@ button.priority-item-button {
   padding: 0 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fff;
+  background: var(--panel);
   font: inherit;
 }
 
@@ -4650,7 +4650,7 @@ button.priority-item-button {
   padding: 0 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fff;
+  background: var(--panel);
 }
 
 .access-search-control input,
@@ -4670,7 +4670,7 @@ button.priority-item-button {
   padding: 0 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fff;
+  background: var(--panel);
 }
 
 .access-pager {
@@ -4714,7 +4714,7 @@ button.priority-item-button {
   padding: 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fff;
+  background: var(--panel);
 }
 
 .access-create-role label {
@@ -4833,7 +4833,7 @@ button.priority-item-button {
   padding: 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fff;
+  background: var(--panel);
 }
 
 .access-capability-group header {
@@ -5660,7 +5660,15 @@ button.priority-item-button {
   padding: 8px 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fff;
+  /* --panel, not #fff. Hardcoded white painted these tiles white in the dark
+     theme too, while `dd` kept the theme's near-white --ink, so the catalogue
+     count, format count and the two isolation flags were invisible -- white on
+     white. The label survived only because `dt` uses --muted. */
+  background: var(--panel);
+}
+
+.reports-kpis dd {
+  color: var(--ink);
 }
 
 .reports-kpis dt {
@@ -5823,7 +5831,7 @@ button.priority-item-button {
   padding: 0 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fff;
+  background: var(--panel);
   font: inherit;
 }
 
@@ -5841,7 +5849,7 @@ button.priority-item-button {
   padding: 0 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fff;
+  background: var(--panel);
   color: inherit;
   cursor: pointer;
 }
@@ -5956,7 +5964,7 @@ button.priority-item-button {
 }
 
 .reports-download-select option {
-  background: #ffffff;
+  background: var(--panel);
   color: var(--ink);
   font-weight: 600;
   padding: 6px 10px;
@@ -5969,7 +5977,7 @@ button.priority-item-button {
 }
 
 .reports-download-row .secondary-button {
-  background: #ffffff;
+  background: var(--panel);
   border: 1px solid var(--line);
   color: var(--ink);
 }
