@@ -58,7 +58,7 @@ class NotificationEventCategory(models.TextChoices):
     DHA_UNAVAILABLE = "DHA_UNAVAILABLE", "DHA System Unavailable"
     PPB_UNAVAILABLE = "PPB_UNAVAILABLE", "PPB System Unavailable"
     HWR_UNAVAILABLE = "HWR_UNAVAILABLE", "DHA HWR System Unavailable"
-    OAUTH_TOKEN_EXPIRY = "OAUTH_TOKEN_EXPIRY", "OAuth Token Expiry Warning"
+    OAUTH_TOKEN_EXPIRY = "OAUTH_TOKEN_EXPIRY", "OAuth Token Expiry Warning"  # not-a-secret: event code
     OAUTH_REFRESH_FAILURE = "OAUTH_REFRESH_FAILURE", "OAuth Refresh Token Failure"
     TLS_CERTIFICATE_EXPIRY = "TLS_CERTIFICATE_EXPIRY", "TLS Certificate Expiry Warning"
     PROVIDER_CERTIFICATE_EXPIRY = "PROVIDER_CERTIFICATE_EXPIRY", "Provider Client Certificate Expiry"

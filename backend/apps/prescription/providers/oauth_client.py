@@ -106,7 +106,7 @@ class DhaOAuthClient:
         client = DhaOAuthClient(
             token_endpoint="https://auth.dha.go.ke/oauth/token",  # must be allow-listed
             client_id_reference="DHA_CLIENT_ID",   # env var / secrets-manager key
-            client_secret_reference="DHA_CLIENT_SECRET",  # env var / secrets-manager key
+            client_secret_reference="DHA_CLIENT_SECRET",  # not-a-secret: environment variable name
             allowed_hosts=["auth.dha.go.ke"],
             expected_issuer="https://auth.dha.go.ke",
             expected_audience="dha-api",
