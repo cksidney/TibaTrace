@@ -39,14 +39,16 @@ logger = logging.getLogger(__name__)
 # Valid activation state transitions (Platform Owner gate)
 VALID_TRANSITIONS = {
     ActivationState.REQUESTED: [ActivationState.UNDER_REVIEW, ActivationState.REJECTED],
-    ActivationState.UNDER_REVIEW: [ActivationState.SANDBOX_CONFIGURED, ActivationState.REJECTED],
-    ActivationState.SANDBOX_CONFIGURED: [ActivationState.SANDBOX_TESTING],
-    ActivationState.SANDBOX_TESTING: [ActivationState.SANDBOX_PASSED, ActivationState.SANDBOX_CONFIGURED],
-    ActivationState.SANDBOX_PASSED: [ActivationState.SECURITY_APPROVED],
-    ActivationState.SECURITY_APPROVED: [ActivationState.PRODUCTION_APPROVED],
-    ActivationState.PRODUCTION_APPROVED: [ActivationState.ACTIVE],
-    ActivationState.ACTIVE: [ActivationState.SUSPENDED, ActivationState.DECOMMISSIONED],
-    ActivationState.SUSPENDED: [ActivationState.ACTIVE, ActivationState.DECOMMISSIONED],
+    ActivationState.UNDER_REVIEW: [ActivationState.SECURITY_REVIEW, ActivationState.SANDBOX_CONFIGURED, ActivationState.REJECTED],
+    ActivationState.SECURITY_REVIEW: [ActivationState.SANDBOX_CONFIGURED, ActivationState.REJECTED],
+    ActivationState.SANDBOX_CONFIGURED: [ActivationState.SANDBOX_TESTING, ActivationState.REJECTED],
+    ActivationState.SANDBOX_TESTING: [ActivationState.SANDBOX_PASSED, ActivationState.SANDBOX_CONFIGURED, ActivationState.REJECTED],
+    ActivationState.SANDBOX_PASSED: [ActivationState.CERTIFICATION_REVIEW, ActivationState.SECURITY_APPROVED, ActivationState.REJECTED],
+    ActivationState.CERTIFICATION_REVIEW: [ActivationState.SECURITY_APPROVED, ActivationState.PRODUCTION_APPROVED, ActivationState.REJECTED],
+    ActivationState.SECURITY_APPROVED: [ActivationState.PRODUCTION_APPROVED, ActivationState.REJECTED],
+    ActivationState.PRODUCTION_APPROVED: [ActivationState.ACTIVE, ActivationState.REJECTED],
+    ActivationState.ACTIVE: [ActivationState.SUSPENDED, ActivationState.REVOKED, ActivationState.DECOMMISSIONED],
+    ActivationState.SUSPENDED: [ActivationState.ACTIVE, ActivationState.REVOKED, ActivationState.DECOMMISSIONED],
 }
 
 

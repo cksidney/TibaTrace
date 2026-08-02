@@ -26,9 +26,12 @@ RELEASE_MIGRATION = "backend/apps/platform/migrations/0002_posrelease_client_ali
 #: The full list of migrations this release introduces over the deployed baseline.
 RELEASE_MIGRATIONS = [
     "backend/apps/integrations/migrations/0001_initial.py",
+    "backend/apps/integrations/migrations/0002_claim_fields.py",
+    "backend/apps/integrations/migrations/0003_activation_state_update.py",
     "backend/apps/integrations/migrations/__init__.py",
     "backend/apps/inventory/recalls/migrations/0001_initial.py",
     "backend/apps/inventory/recalls/migrations/__init__.py",
+    "backend/apps/notifications/migrations/0002_nif_notifications.py",
     "backend/apps/pharmacy_network/migrations/0003_nif_premises_verification.py",
     "backend/apps/platform/migrations/0002_posrelease_client_alignment.py",
 ]
@@ -166,4 +169,15 @@ def test_git_baseline_matches_the_declared_release_migration():
     if result.returncode != 0:
         pytest.skip("baseline commit not present in this checkout")
     added = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+
+    # Also check untracked migration files if working tree is uncommitted
+    untracked = subprocess.run(
+        ["git", "ls-files", "--others", "--exclude-standard", "--", "backend/apps/*/migrations/*.py"],
+        cwd=REPO_ROOT, capture_output=True, text=True,
+    )
+    if untracked.returncode == 0:
+        for u in untracked.stdout.splitlines():
+            if u.strip() and u.strip() not in added:
+                added.append(u.strip())
+
     assert sorted(added) == sorted(RELEASE_MIGRATIONS), added

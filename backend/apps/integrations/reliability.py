@@ -14,12 +14,12 @@ from __future__ import annotations
 
 import logging
 import math
-import random
 import threading
 import time
 from dataclasses import dataclass, field
 from datetime import timedelta
 
+from django.db import transaction
 from django.utils import timezone
 
 from apps.integrations.models import (

@@ -1,10 +1,14 @@
+"""Phase 15 Compliance Reporting Engine & Phase 16 Certification Evidence Engine views."""
 from __future__ import annotations
 
 from django.http import HttpResponse
+from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.platform.reporting.certification_engine import CertificationEvidenceGenerator
+from apps.platform.reporting.compliance_engine import ComplianceReportEngine
 from apps.platform.reporting.services import (
     catalogue_payload,
     create_download,
@@ -71,3 +75,50 @@ class HQReportValidateView(APIView):
         if payload is None:
             return Response({"valid": False, "detail": "Receipt not found."}, status=404)
         return Response(payload)
+
+
+class ComplianceReportView(APIView):
+    """API view to generate Phase 15 Enterprise Compliance Report Packs."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        report_type = request.query_params.get("report_type", "PREMISES").upper()
+        format_type = request.query_params.get("format", "json").lower()
+        tenant_id = getattr(request, "tenant_id", None)
+
+        result = ComplianceReportEngine.generate_report(
+            report_type=report_type,
+            format_type=format_type,
+            tenant_id=tenant_id,
+            actor=request.user,
+        )
+
+        if format_type in ("csv", "excel"):
+            response = HttpResponse(result["content"], content_type="text/csv")
+            response["Content-Disposition"] = f'attachment; filename="{result["filename"]}"'
+            return response
+
+        return HttpResponse(result["content"], content_type="application/json")
+
+
+class CertificationEvidenceView(APIView):
+    """API view to generate Phase 16 Certification Evidence Bundles (JSON/ZIP)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        format_type = request.query_params.get("format", "json").lower()
+
+        if format_type == "zip":
+            zip_bytes, filename = CertificationEvidenceGenerator.export_evidence_zip(
+                operator_name=getattr(request.user, "email", "Platform Operator")
+            )
+            response = HttpResponse(zip_bytes, content_type="application/zip")
+            response["Content-Disposition"] = f'attachment; filename="{filename}"'
+            return response
+
+        package = CertificationEvidenceGenerator.generate_evidence_package(
+            operator_name=getattr(request.user, "email", "Platform Operator")
+        )
+        return Response(package, status=status.HTTP_200_OK)

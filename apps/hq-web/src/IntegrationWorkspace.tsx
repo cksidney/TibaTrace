@@ -412,7 +412,7 @@ function ProgrammeGovRules() {
 
 export function IntegrationWorkspace({ csrfToken: _csrfToken }: IntegrationWorkspaceProps) {
   const [providers, setProviders] = useState<IntegrationProviderCardData[]>(MOCK_PROVIDERS);
-  const [activeTab, setActiveTab] = useState<'providers' | 'dlq' | 'rules'>('providers');
+  const [activeTab, setActiveTab] = useState<'providers' | 'compliance' | 'reports' | 'evidence' | 'dlq' | 'rules'>('providers');
   const [deadLetters] = useState<DeadLetterItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -458,6 +458,9 @@ export function IntegrationWorkspace({ csrfToken: _csrfToken }: IntegrationWorks
 
   const tabs = [
     { key: 'providers' as const, label: 'Provider configurations', icon: '🔗' },
+    { key: 'compliance' as const, label: 'Compliance Dashboard', icon: '📊' },
+    { key: 'reports' as const, label: 'Compliance Reports', icon: '📑' },
+    { key: 'evidence' as const, label: 'Certification Evidence', icon: '📦' },
     { key: 'dlq' as const, label: 'Dead-letter queue', icon: '📭', badge: deadLetters.length },
     { key: 'rules' as const, label: 'Programme governance', icon: '🔒' },
   ];
@@ -590,6 +593,87 @@ export function IntegrationWorkspace({ csrfToken: _csrfToken }: IntegrationWorks
           {providers.map(provider => (
             <ProviderCard key={provider.providerType} provider={provider} />
           ))}
+        </div>
+      )}
+
+      {activeTab === 'compliance' && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '14px' }}>
+          {[
+            { title: 'Pharmacy Premises', value: 'Verified', sub: 'Truth: MANUAL_INTERNAL_VERIFICATION', color: '#27ae60' },
+            { title: 'Practitioner Licences', value: '100% Governed', sub: 'HWR Gated for Controlled Meds', color: '#2980b9' },
+            { title: 'Controlled Med Authority', value: 'Fail-Closed Active', sub: 'STALE / UNAVAILABLE Blocked', color: '#8e44ad' },
+            { title: 'Active Recalls', value: 'Local Workflow', sub: 'NO_REGULATOR_FEED', color: '#e67e22' },
+            { title: 'Quarantined Stock', value: 'Ledger Reserved', sub: 'Append-Only Ledger Integrated', color: '#c0392b' },
+            { title: 'Outstanding Reviews', value: '0 Pending', sub: 'Platform Owner Gate Active', color: '#16a085' },
+          ].map(card => (
+            <div key={card.title} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '12px', padding: '16px' }}>
+              <div style={{ fontSize: '11px', color: '#6b7a8d', marginBottom: '6px' }}>{card.title}</div>
+              <div style={{ fontSize: '20px', fontWeight: 700, color: card.color }}>{card.value}</div>
+              <div style={{ fontSize: '11px', color: '#8894a6', marginTop: '4px' }}>{card.sub}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {activeTab === 'reports' && (
+        <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '14px', padding: '24px' }}>
+          <div style={{ fontWeight: 700, color: '#dde6f0', fontSize: '15px', marginBottom: '12px' }}>
+            Enterprise Compliance Reporting Engine (Phase 15)
+          </div>
+          <div style={{ fontSize: '12px', color: '#6b7a8d', marginBottom: '20px' }}>
+            Download audit-ready compliance report packs in JSON, CSV, Excel, or PDF formats.
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            {[
+              { type: 'PREMISES', label: 'Premises Verification & Licence Report' },
+              { type: 'PRACTITIONERS', label: 'Practitioner Verification & Controlled Authority Report' },
+              { type: 'PROVIDERS', label: 'Provider Platform Uptime & Reliability Report' },
+              { type: 'RECALLS', label: 'Regulatory Recalls & Stock Quarantine Report' },
+              { type: 'COMPLIANCE_READINESS', label: 'DHA & Regulatory Readiness Scorecard' },
+              { type: 'SECURITY_AUDIT', label: 'Security, Activation & Kill Switch Audit' },
+            ].map(r => (
+              <div key={r.type} style={{ background: 'rgba(0,0,0,0.2)', padding: '14px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '12px', color: '#c8d6e8', fontWeight: 500 }}>{r.label}</span>
+                <a
+                  href={`/api/nif/platform/reports/?report_type=${r.type}&format=json`}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ background: 'rgba(74,127,165,0.25)', color: '#7aa2cc', border: '1px solid rgba(74,127,165,0.4)', borderRadius: '6px', padding: '4px 10px', fontSize: '11px', textDecoration: 'none', fontWeight: 600 }}
+                >
+                  Download
+                </a>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'evidence' && (
+        <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '14px', padding: '24px' }}>
+          <div style={{ fontWeight: 700, color: '#dde6f0', fontSize: '15px', marginBottom: '8px' }}>
+            Certification Evidence Engine (Phase 16)
+          </div>
+          <div style={{ fontSize: '12px', color: '#6b7a8d', marginBottom: '16px' }}>
+            Generate and export complete certification evidence bundles containing OpenAPI specs, checksums, test logs, coverage, SBOM, SLSA provenance, and readiness matrices.
+          </div>
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <a
+              href="/api/nif/platform/evidence/?format=json"
+              target="_blank"
+              rel="noreferrer"
+              style={{ background: 'rgba(39,174,96,0.2)', color: '#27ae60', border: '1px solid rgba(39,174,96,0.4)', borderRadius: '8px', padding: '10px 18px', fontSize: '12px', textDecoration: 'none', fontWeight: 600 }}
+            >
+              📄 View Evidence Package (JSON)
+            </a>
+            <a
+              href="/api/nif/platform/evidence/?format=zip"
+              target="_blank"
+              rel="noreferrer"
+              style={{ background: 'rgba(41,128,185,0.2)', color: '#2980b9', border: '1px solid rgba(41,128,185,0.4)', borderRadius: '8px', padding: '10px 18px', fontSize: '12px', textDecoration: 'none', fontWeight: 600 }}
+            >
+              📦 Export Evidence Bundle (ZIP)
+            </a>
+          </div>
         </div>
       )}
 

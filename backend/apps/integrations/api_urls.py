@@ -3,33 +3,19 @@
 Tenant surfaces:
   /api/nif/premises-verifications/          GET (list own)
   /api/nif/premises-verifications/submit/   POST (submit evidence)
+  /api/nif/notifications/                    GET notifications
 
 Platform Owner surfaces:
   /api/nif/platform/premises-verifications/              GET list all
-  /api/nif/platform/premises-verifications/{id}/         GET detail
-  /api/nif/platform/premises-verifications/{id}/review/  POST approve/reject/clarify
-  /api/nif/platform/premises-verifications/{id}/snapshots/ GET audit trail
-
   /api/nif/platform/providers/                       CRUD
-  /api/nif/platform/providers/{id}/health/           GET health history
-  /api/nif/platform/providers/{id}/messages/         GET message queue
-  /api/nif/platform/providers/{id}/dead-letters/     GET DLQ
-
   /api/nif/platform/activations/                     CRUD
-  /api/nif/platform/activations/{id}/advance/        POST advance state
-
   /api/nif/platform/dead-letters/                    GET all DLQ
-  /api/nif/platform/dead-letters/{id}/replay/        POST replay
-
   /api/nif/platform/recalls/                         CRUD alerts
-  /api/nif/platform/recalls/{id}/activate/           POST activate
-  /api/nif/platform/recalls/{id}/versions/           GET versions
-  /api/nif/platform/recalls/{id}/impacts/            GET all impacts
-  /api/nif/platform/recalls/{id}/quarantine/         POST quarantine tenant
-
-  /api/nif/recalls/impacts/                          GET tenant impacts (tenant-scoped)
-  /api/nif/recalls/impacts/{id}/actions/             POST add action
-  /api/nif/recalls/impacts/{id}/close/               POST close with evidence
+  /api/nif/platform/notifications/                   GET all notifications
+  /api/nif/platform/role-preferences/               CRUD role notification preferences
+  /api/nif/platform/regulatory-expiries/             CRUD & evaluate regulatory expiries
+  /api/nif/platform/reports/                         GET compliance reports (CSV, Excel, PDF, JSON)
+  /api/nif/platform/evidence/                        GET certification evidence package (JSON, ZIP)
 """
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
@@ -43,10 +29,19 @@ from apps.inventory.recalls.views import (
     PlatformRegulatoryAlertViewSet,
     TenantRegulatoryImpactViewSet,
 )
+from apps.notifications.views import (
+    IntegrationNotificationViewSet,
+    NotificationRolePreferenceViewSet,
+    RegulatoryExpiryTrackViewSet,
+)
 from apps.pharmacy_network.views_nif import (
     PlatformPremisesVerificationViewSet,
     TenantPremisesVerificationSubmitView,
     TenantPremisesVerificationView,
+)
+from apps.platform.reporting.views import (
+    CertificationEvidenceView,
+    ComplianceReportView,
 )
 
 # Platform Owner router
@@ -76,6 +71,21 @@ platform_router.register(
     PlatformRegulatoryAlertViewSet,
     basename="platform-regulatory-alert",
 )
+platform_router.register(
+    r"notifications",
+    IntegrationNotificationViewSet,
+    basename="platform-notification",
+)
+platform_router.register(
+    r"role-preferences",
+    NotificationRolePreferenceViewSet,
+    basename="platform-role-preference",
+)
+platform_router.register(
+    r"regulatory-expiries",
+    RegulatoryExpiryTrackViewSet,
+    basename="platform-regulatory-expiry",
+)
 
 # Tenant router
 tenant_router = DefaultRouter()
@@ -84,13 +94,21 @@ tenant_router.register(
     TenantRegulatoryImpactViewSet,
     basename="tenant-regulatory-impact",
 )
+tenant_router.register(
+    r"notifications",
+    IntegrationNotificationViewSet,
+    basename="tenant-notification",
+)
 
 urlpatterns = [
     # Tenant surfaces
     path("premises-verifications/", TenantPremisesVerificationView.as_view(), name="tenant-premises-list"),
     path("premises-verifications/submit/", TenantPremisesVerificationSubmitView.as_view(), name="tenant-premises-submit"),
     path("recalls/", include(tenant_router.urls)),
+    path("notifications/", include(tenant_router.urls)),
 
-    # Platform Owner surfaces
+    # Platform Owner & Compliance surfaces
+    path("platform/reports/", ComplianceReportView.as_view(), name="platform-compliance-reports"),
+    path("platform/evidence/", CertificationEvidenceView.as_view(), name="platform-certification-evidence"),
     path("platform/", include(platform_router.urls)),
 ]

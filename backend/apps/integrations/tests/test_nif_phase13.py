@@ -745,9 +745,9 @@ class TestIntegrationMessageStates(TestCase):
         from apps.integrations.models import ActivationState
         states = {c[0] for c in ActivationState.choices}
         required = {
-            "REQUESTED", "UNDER_REVIEW", "SANDBOX_CONFIGURED", "SANDBOX_TESTING",
-            "SANDBOX_PASSED", "SECURITY_APPROVED", "PRODUCTION_APPROVED",
-            "ACTIVE", "SUSPENDED", "DECOMMISSIONED", "REJECTED",
+            "REQUESTED", "UNDER_REVIEW", "SECURITY_REVIEW", "SANDBOX_CONFIGURED", "SANDBOX_TESTING",
+            "SANDBOX_PASSED", "CERTIFICATION_REVIEW", "SECURITY_APPROVED", "PRODUCTION_APPROVED",
+            "ACTIVE", "SUSPENDED", "REVOKED", "DECOMMISSIONED", "REJECTED",
         }
         self.assertEqual(states, required)
 
@@ -801,6 +801,7 @@ class TestTenantIsolation(TestCase):
     def test_premises_verification_snapshot_uses_default_manager(self):
         """Snapshots use StrictTenantManager by default and all_objects for global audit."""
         from django.db import models
+
         from apps.core.models import StrictTenantManager
         from apps.pharmacy_network.models import PremisesVerificationSnapshot
         self.assertIsInstance(

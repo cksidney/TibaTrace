@@ -56,13 +56,16 @@ class ProviderEnvironment(models.TextChoices):
 class ActivationState(models.TextChoices):
     REQUESTED = "REQUESTED", "Activation requested"
     UNDER_REVIEW = "UNDER_REVIEW", "Under Platform Owner review"
+    SECURITY_REVIEW = "SECURITY_REVIEW", "Under security review"
     SANDBOX_CONFIGURED = "SANDBOX_CONFIGURED", "Sandbox configured"
     SANDBOX_TESTING = "SANDBOX_TESTING", "Sandbox testing in progress"
     SANDBOX_PASSED = "SANDBOX_PASSED", "Sandbox tests passed"
+    CERTIFICATION_REVIEW = "CERTIFICATION_REVIEW", "Under certification review"
     SECURITY_APPROVED = "SECURITY_APPROVED", "Security review approved"
     PRODUCTION_APPROVED = "PRODUCTION_APPROVED", "Production approved by Platform Owner"
     ACTIVE = "ACTIVE", "Active"
     SUSPENDED = "SUSPENDED", "Suspended"
+    REVOKED = "REVOKED", "Revoked"
     DECOMMISSIONED = "DECOMMISSIONED", "Decommissioned"
     REJECTED = "REJECTED", "Activation rejected"
 

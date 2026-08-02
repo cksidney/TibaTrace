@@ -19,6 +19,7 @@ from django.utils import timezone
 from apps.audit.service import log_audit
 from apps.inventory.recalls.models import (
     AlertStatus,
+    RegulatoryAction,
     RegulatoryAlert,
     RegulatoryAlertVersion,
     RegulatoryClosure,

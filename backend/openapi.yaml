@@ -4203,6 +4203,232 @@ paths:
               schema:
                 $ref: '#/components/schemas/SubstitutionPolicy'
           description: ''
+  /api/nif/notifications/impacts/:
+    get:
+      operationId: nif_notifications_impacts_list
+      description: 'Tenant: view own regulatory impacts.'
+      tags:
+      - nif
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RegulatoryTenantImpact'
+          description: ''
+  /api/nif/notifications/impacts/{id}/:
+    get:
+      operationId: nif_notifications_impacts_retrieve
+      description: 'Tenant: view own regulatory impacts.'
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this regulatory tenant impact.
+        required: true
+      tags:
+      - nif
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegulatoryTenantImpact'
+          description: ''
+  /api/nif/notifications/impacts/{id}/actions/:
+    post:
+      operationId: nif_notifications_impacts_actions_create
+      description: 'Tenant: view own regulatory impacts.'
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this regulatory tenant impact.
+        required: true
+      tags:
+      - nif
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegulatoryTenantImpact'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RegulatoryTenantImpact'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RegulatoryTenantImpact'
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegulatoryTenantImpact'
+          description: ''
+  /api/nif/notifications/impacts/{id}/close/:
+    post:
+      operationId: nif_notifications_impacts_close_create
+      description: 'Tenant: view own regulatory impacts.'
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this regulatory tenant impact.
+        required: true
+      tags:
+      - nif
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegulatoryTenantImpact'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RegulatoryTenantImpact'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RegulatoryTenantImpact'
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegulatoryTenantImpact'
+          description: ''
+  /api/nif/notifications/notifications/:
+    get:
+      operationId: nif_notifications_notifications_list
+      description: View operational integration notifications.
+      tags:
+      - nif
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/IntegrationNotification'
+          description: ''
+  /api/nif/notifications/notifications/{id}/:
+    get:
+      operationId: nif_notifications_notifications_retrieve
+      description: View operational integration notifications.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this integration notification.
+        required: true
+      tags:
+      - nif
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntegrationNotification'
+          description: ''
+  /api/nif/notifications/notifications/{id}/acknowledge/:
+    post:
+      operationId: nif_notifications_notifications_acknowledge_create
+      description: View operational integration notifications.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this integration notification.
+        required: true
+      tags:
+      - nif
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IntegrationNotification'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/IntegrationNotification'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/IntegrationNotification'
+        required: true
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntegrationNotification'
+          description: ''
+  /api/nif/notifications/notifications/{id}/read/:
+    post:
+      operationId: nif_notifications_notifications_read_create
+      description: View operational integration notifications.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this integration notification.
+        required: true
+      tags:
+      - nif
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IntegrationNotification'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/IntegrationNotification'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/IntegrationNotification'
+        required: true
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntegrationNotification'
+          description: ''
   /api/nif/platform/activations/:
     get:
       operationId: nif_platform_activations_list
@@ -4481,6 +4707,132 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/IntegrationDeadLetter'
+          description: ''
+  /api/nif/platform/evidence/:
+    get:
+      operationId: nif_platform_evidence_retrieve
+      description: API view to generate Phase 16 Certification Evidence Bundles (JSON/ZIP).
+      tags:
+      - nif
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/nif/platform/notifications/:
+    get:
+      operationId: nif_platform_notifications_list
+      description: View operational integration notifications.
+      tags:
+      - nif
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/IntegrationNotification'
+          description: ''
+  /api/nif/platform/notifications/{id}/:
+    get:
+      operationId: nif_platform_notifications_retrieve
+      description: View operational integration notifications.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this integration notification.
+        required: true
+      tags:
+      - nif
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntegrationNotification'
+          description: ''
+  /api/nif/platform/notifications/{id}/acknowledge/:
+    post:
+      operationId: nif_platform_notifications_acknowledge_create
+      description: View operational integration notifications.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this integration notification.
+        required: true
+      tags:
+      - nif
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IntegrationNotification'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/IntegrationNotification'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/IntegrationNotification'
+        required: true
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntegrationNotification'
+          description: ''
+  /api/nif/platform/notifications/{id}/read/:
+    post:
+      operationId: nif_platform_notifications_read_create
+      description: View operational integration notifications.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this integration notification.
+        required: true
+      tags:
+      - nif
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IntegrationNotification'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/IntegrationNotification'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/IntegrationNotification'
+        required: true
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntegrationNotification'
           description: ''
   /api/nif/platform/premises-verifications/:
     get:
@@ -4764,6 +5116,43 @@ paths:
               schema:
                 $ref: '#/components/schemas/ProviderConfiguration'
           description: ''
+  /api/nif/platform/providers/{id}/enable-kill-switch/:
+    post:
+      operationId: nif_platform_providers_enable_kill_switch_create
+      description: Immediately suspend all operations for this provider (Security
+        Emergency Kill Switch).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this provider configuration.
+        required: true
+      tags:
+      - nif
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProviderConfiguration'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ProviderConfiguration'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ProviderConfiguration'
+        required: true
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProviderConfiguration'
+          description: ''
   /api/nif/platform/providers/{id}/health/:
     get:
       operationId: nif_platform_providers_health_retrieve
@@ -4802,6 +5191,42 @@ paths:
         required: true
       tags:
       - nif
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProviderConfiguration'
+          description: ''
+  /api/nif/platform/providers/{id}/test-connectivity/:
+    post:
+      operationId: nif_platform_providers_test_connectivity_create
+      description: Test sandbox endpoint connectivity for this provider.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this provider configuration.
+        required: true
+      tags:
+      - nif
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProviderConfiguration'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ProviderConfiguration'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ProviderConfiguration'
+        required: true
       security:
       - jwtAuth: []
       - cookieAuth: []
@@ -5085,6 +5510,360 @@ paths:
               schema:
                 $ref: '#/components/schemas/RegulatoryAlertDetail'
           description: ''
+  /api/nif/platform/regulatory-expiries/:
+    get:
+      operationId: nif_platform_regulatory_expiries_list
+      description: Manage and evaluate regulatory expiries.
+      tags:
+      - nif
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RegulatoryExpiryTrack'
+          description: ''
+    post:
+      operationId: nif_platform_regulatory_expiries_create
+      description: Manage and evaluate regulatory expiries.
+      tags:
+      - nif
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegulatoryExpiryTrack'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RegulatoryExpiryTrack'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RegulatoryExpiryTrack'
+        required: true
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegulatoryExpiryTrack'
+          description: ''
+  /api/nif/platform/regulatory-expiries/{id}/:
+    get:
+      operationId: nif_platform_regulatory_expiries_retrieve
+      description: Manage and evaluate regulatory expiries.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this regulatory expiry track.
+        required: true
+      tags:
+      - nif
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegulatoryExpiryTrack'
+          description: ''
+    put:
+      operationId: nif_platform_regulatory_expiries_update
+      description: Manage and evaluate regulatory expiries.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this regulatory expiry track.
+        required: true
+      tags:
+      - nif
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegulatoryExpiryTrack'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RegulatoryExpiryTrack'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RegulatoryExpiryTrack'
+        required: true
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegulatoryExpiryTrack'
+          description: ''
+    patch:
+      operationId: nif_platform_regulatory_expiries_partial_update
+      description: Manage and evaluate regulatory expiries.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this regulatory expiry track.
+        required: true
+      tags:
+      - nif
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedRegulatoryExpiryTrack'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedRegulatoryExpiryTrack'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedRegulatoryExpiryTrack'
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegulatoryExpiryTrack'
+          description: ''
+    delete:
+      operationId: nif_platform_regulatory_expiries_destroy
+      description: Manage and evaluate regulatory expiries.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this regulatory expiry track.
+        required: true
+      tags:
+      - nif
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/nif/platform/regulatory-expiries/evaluate/:
+    post:
+      operationId: nif_platform_regulatory_expiries_evaluate_create
+      description: Manage and evaluate regulatory expiries.
+      tags:
+      - nif
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegulatoryExpiryTrack'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RegulatoryExpiryTrack'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RegulatoryExpiryTrack'
+        required: true
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegulatoryExpiryTrack'
+          description: ''
+  /api/nif/platform/reports/:
+    get:
+      operationId: nif_platform_reports_retrieve
+      description: API view to generate Phase 15 Enterprise Compliance Report Packs.
+      tags:
+      - nif
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/nif/platform/role-preferences/:
+    get:
+      operationId: nif_platform_role_preferences_list
+      description: 'Platform Owner / Compliance: manage role notification preferences.'
+      tags:
+      - nif
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/NotificationRolePreference'
+          description: ''
+    post:
+      operationId: nif_platform_role_preferences_create
+      description: 'Platform Owner / Compliance: manage role notification preferences.'
+      tags:
+      - nif
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationRolePreference'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/NotificationRolePreference'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/NotificationRolePreference'
+        required: true
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationRolePreference'
+          description: ''
+  /api/nif/platform/role-preferences/{id}/:
+    get:
+      operationId: nif_platform_role_preferences_retrieve
+      description: 'Platform Owner / Compliance: manage role notification preferences.'
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this notification role preference.
+        required: true
+      tags:
+      - nif
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationRolePreference'
+          description: ''
+    put:
+      operationId: nif_platform_role_preferences_update
+      description: 'Platform Owner / Compliance: manage role notification preferences.'
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this notification role preference.
+        required: true
+      tags:
+      - nif
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationRolePreference'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/NotificationRolePreference'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/NotificationRolePreference'
+        required: true
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationRolePreference'
+          description: ''
+    patch:
+      operationId: nif_platform_role_preferences_partial_update
+      description: 'Platform Owner / Compliance: manage role notification preferences.'
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this notification role preference.
+        required: true
+      tags:
+      - nif
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedNotificationRolePreference'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedNotificationRolePreference'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedNotificationRolePreference'
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationRolePreference'
+          description: ''
+    delete:
+      operationId: nif_platform_role_preferences_destroy
+      description: 'Platform Owner / Compliance: manage role notification preferences.'
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this notification role preference.
+        required: true
+      tags:
+      - nif
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '204':
+          description: No response body
   /api/nif/premises-verifications/:
     get:
       operationId: nif_premises_verifications_retrieve
@@ -5220,6 +5999,120 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RegulatoryTenantImpact'
+          description: ''
+  /api/nif/recalls/notifications/:
+    get:
+      operationId: nif_recalls_notifications_list
+      description: View operational integration notifications.
+      tags:
+      - nif
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/IntegrationNotification'
+          description: ''
+  /api/nif/recalls/notifications/{id}/:
+    get:
+      operationId: nif_recalls_notifications_retrieve
+      description: View operational integration notifications.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this integration notification.
+        required: true
+      tags:
+      - nif
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntegrationNotification'
+          description: ''
+  /api/nif/recalls/notifications/{id}/acknowledge/:
+    post:
+      operationId: nif_recalls_notifications_acknowledge_create
+      description: View operational integration notifications.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this integration notification.
+        required: true
+      tags:
+      - nif
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IntegrationNotification'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/IntegrationNotification'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/IntegrationNotification'
+        required: true
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntegrationNotification'
+          description: ''
+  /api/nif/recalls/notifications/{id}/read/:
+    post:
+      operationId: nif_recalls_notifications_read_create
+      description: View operational integration notifications.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this integration notification.
+        required: true
+      tags:
+      - nif
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IntegrationNotification'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/IntegrationNotification'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/IntegrationNotification'
+        required: true
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntegrationNotification'
           description: ''
   /api/organizations/:
     get:
@@ -15268,26 +16161,32 @@ components:
       enum:
       - REQUESTED
       - UNDER_REVIEW
+      - SECURITY_REVIEW
       - SANDBOX_CONFIGURED
       - SANDBOX_TESTING
       - SANDBOX_PASSED
+      - CERTIFICATION_REVIEW
       - SECURITY_APPROVED
       - PRODUCTION_APPROVED
       - ACTIVE
       - SUSPENDED
+      - REVOKED
       - DECOMMISSIONED
       - REJECTED
       type: string
       description: |-
         * `REQUESTED` - Activation requested
         * `UNDER_REVIEW` - Under Platform Owner review
+        * `SECURITY_REVIEW` - Under security review
         * `SANDBOX_CONFIGURED` - Sandbox configured
         * `SANDBOX_TESTING` - Sandbox testing in progress
         * `SANDBOX_PASSED` - Sandbox tests passed
+        * `CERTIFICATION_REVIEW` - Under certification review
         * `SECURITY_APPROVED` - Security review approved
         * `PRODUCTION_APPROVED` - Production approved by Platform Owner
         * `ACTIVE` - Active
         * `SUSPENDED` - Suspended
+        * `REVOKED` - Revoked
         * `DECOMMISSIONED` - Decommissioned
         * `REJECTED` - Activation rejected
     ActiveSubstance:
@@ -15719,6 +16618,58 @@ components:
         * `BANKING` - Banking
         * `CORRECTION` - Correction
         * `OTHER_AUTHORISED_MOVEMENT` - Other authorised movement
+    CategoryEnum:
+      enum:
+      - DHA_UNAVAILABLE
+      - PPB_UNAVAILABLE
+      - HWR_UNAVAILABLE
+      - OAUTH_TOKEN_EXPIRY
+      - OAUTH_REFRESH_FAILURE
+      - TLS_CERTIFICATE_EXPIRY
+      - PROVIDER_CERTIFICATE_EXPIRY
+      - PREMISES_LICENCE_EXPIRY
+      - SUPERINTENDENT_LICENCE_EXPIRY
+      - PRACTITIONER_LICENCE_EXPIRY
+      - CONTROLLED_MEDICINE_AUTHORITY_EXPIRY
+      - INTEGRATION_ACTIVATION_PENDING
+      - INTEGRATION_ACTIVATION_APPROVED
+      - INTEGRATION_ACTIVATION_REJECTED
+      - PROVIDER_CONNECTIVITY_RESTORED
+      - CIRCUIT_BREAKER_OPENED
+      - CIRCUIT_BREAKER_CLOSED
+      - RETRY_THRESHOLD_EXCEEDED
+      - DEAD_LETTER_THRESHOLD_EXCEEDED
+      - REGULATORY_RECALL_ACTIVATED
+      - REGULATORY_RECALL_ESCALATED
+      - REGULATORY_RECALL_RELEASED
+      - KILL_SWITCH_ACTIVATED
+      - KILL_SWITCH_RELEASED
+      type: string
+      description: |-
+        * `DHA_UNAVAILABLE` - DHA System Unavailable
+        * `PPB_UNAVAILABLE` - PPB System Unavailable
+        * `HWR_UNAVAILABLE` - DHA HWR System Unavailable
+        * `OAUTH_TOKEN_EXPIRY` - OAuth Token Expiry Warning
+        * `OAUTH_REFRESH_FAILURE` - OAuth Refresh Token Failure
+        * `TLS_CERTIFICATE_EXPIRY` - TLS Certificate Expiry Warning
+        * `PROVIDER_CERTIFICATE_EXPIRY` - Provider Client Certificate Expiry
+        * `PREMISES_LICENCE_EXPIRY` - Premises Licence Expiry Warning
+        * `SUPERINTENDENT_LICENCE_EXPIRY` - Superintendent Licence Expiry Warning
+        * `PRACTITIONER_LICENCE_EXPIRY` - Practitioner Licence Expiry Warning
+        * `CONTROLLED_MEDICINE_AUTHORITY_EXPIRY` - Controlled Medicine Authority Expiry
+        * `INTEGRATION_ACTIVATION_PENDING` - Integration Activation Request Pending
+        * `INTEGRATION_ACTIVATION_APPROVED` - Integration Activation Approved
+        * `INTEGRATION_ACTIVATION_REJECTED` - Integration Activation Rejected
+        * `PROVIDER_CONNECTIVITY_RESTORED` - Provider Connectivity Restored
+        * `CIRCUIT_BREAKER_OPENED` - Circuit Breaker Opened
+        * `CIRCUIT_BREAKER_CLOSED` - Circuit Breaker Closed
+        * `RETRY_THRESHOLD_EXCEEDED` - Retry Threshold Exceeded
+        * `DEAD_LETTER_THRESHOLD_EXCEEDED` - Dead Letter Queue Threshold Exceeded
+        * `REGULATORY_RECALL_ACTIVATED` - Regulatory Recall Activated
+        * `REGULATORY_RECALL_ESCALATED` - Regulatory Recall Escalated
+        * `REGULATORY_RECALL_RELEASED` - Regulatory Recall Released
+        * `KILL_SWITCH_ACTIVATED` - Emergency Provider Kill Switch Activated
+        * `KILL_SWITCH_RELEASED` - Emergency Provider Kill Switch Released
     ChannelEnum:
       enum:
       - RETAIL
@@ -17999,18 +18950,6 @@ components:
       - id
       - name
       - updated_at
-    EntityTypeEnum:
-      enum:
-      - SUBSTANCE
-      - CLINICAL_PRODUCT
-      - MANUFACTURED_PRODUCT
-      - SKU
-      type: string
-      description: |-
-        * `SUBSTANCE` - Active Substance
-        * `CLINICAL_PRODUCT` - Clinical Medicinal Product
-        * `MANUFACTURED_PRODUCT` - Manufactured Medicinal Product
-        * `SKU` - Commercial SKU
     EntryTypeEnum:
       enum:
       - RECEIPT
@@ -18480,6 +19419,53 @@ components:
       - message
       - replayed_at
       - replayed_by
+    IntegrationNotification:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        tenant:
+          type: string
+          format: uuid
+          nullable: true
+        category:
+          $ref: '#/components/schemas/CategoryEnum'
+        severity:
+          $ref: '#/components/schemas/SeverityE18Enum'
+        title:
+          type: string
+          maxLength: 200
+        summary:
+          type: string
+        payload: {}
+        is_read:
+          type: boolean
+        read_at:
+          type: string
+          format: date-time
+          nullable: true
+        is_acknowledged:
+          type: boolean
+        acknowledged_at:
+          type: string
+          format: date-time
+          nullable: true
+        truth_label:
+          type: string
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - category
+      - created_at
+      - id
+      - summary
+      - title
+      - truth_label
     InventoryBalance:
       type: object
       properties:
@@ -19580,6 +20566,47 @@ components:
         * `COMPLETE` - Complete
         * `PARTIALLY_REVERSED` - Partially reversed
         * `REVERSED` - Reversed
+    MinimumSeverityEnum:
+      enum:
+      - INFO
+      - WARNING
+      - HIGH
+      - CRITICAL
+      - EMERGENCY
+      type: string
+      description: |-
+        * `INFO` - Information
+        * `WARNING` - Warning
+        * `HIGH` - High Priority
+        * `CRITICAL` - Critical Action Required
+        * `EMERGENCY` - Emergency System Alert
+    NotificationRolePreference:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        role_code:
+          type: string
+          description: e.g. platform.owner, compliance.officer, tenant.admin, pharmacist
+          maxLength: 40
+        category:
+          $ref: '#/components/schemas/CategoryEnum'
+        enabled_channels:
+          description: List of NotificationChannel values enabled for this role &
+            category.
+        minimum_severity:
+          $ref: '#/components/schemas/MinimumSeverityEnum'
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - category
+      - created_at
+      - id
+      - role_code
     OperatorShift:
       type: object
       properties:
@@ -20074,6 +21101,28 @@ components:
           format: date-time
           readOnly: true
         updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+    PatchedNotificationRolePreference:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        role_code:
+          type: string
+          description: e.g. platform.owner, compliance.officer, tenant.admin, pharmacist
+          maxLength: 40
+        category:
+          $ref: '#/components/schemas/CategoryEnum'
+        enabled_channels:
+          description: List of NotificationChannel values enabled for this role &
+            category.
+        minimum_severity:
+          $ref: '#/components/schemas/MinimumSeverityEnum'
+        created_at:
           type: string
           format: date-time
           readOnly: true
@@ -20679,6 +21728,50 @@ components:
           format: date-time
           readOnly: true
         updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+    PatchedRegulatoryExpiryTrack:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        entity_type:
+          $ref: '#/components/schemas/RegulatoryExpiryTrackEntityTypeEnum'
+        entity_id:
+          type: string
+          maxLength: 100
+        tenant:
+          type: string
+          format: uuid
+          nullable: true
+        display_name:
+          type: string
+          maxLength: 200
+        expires_at:
+          type: string
+          format: date
+        last_notified_interval_days:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+          nullable: true
+        is_resolved:
+          type: boolean
+        resolved_at:
+          type: string
+          format: date-time
+          nullable: true
+        resolution_evidence_reference:
+          type: string
+          maxLength: 250
+        truth_label:
+          type: string
+          readOnly: true
+        created_at:
           type: string
           format: date-time
           readOnly: true
@@ -23737,7 +24830,7 @@ components:
           format: uuid
           readOnly: true
         entity_type:
-          $ref: '#/components/schemas/EntityTypeEnum'
+          $ref: '#/components/schemas/ProductIdentifierEntityTypeEnum'
         entity_id:
           type: string
           format: uuid
@@ -23770,6 +24863,18 @@ components:
       - system
       - updated_at
       - value
+    ProductIdentifierEntityTypeEnum:
+      enum:
+      - SUBSTANCE
+      - CLINICAL_PRODUCT
+      - MANUFACTURED_PRODUCT
+      - SKU
+      type: string
+      description: |-
+        * `SUBSTANCE` - Active Substance
+        * `CLINICAL_PRODUCT` - Clinical Medicinal Product
+        * `MANUFACTURED_PRODUCT` - Manufactured Medicinal Product
+        * `SKU` - Commercial SKU
     ProfessionEnum:
       enum:
       - DOCTOR
@@ -25046,6 +26151,74 @@ components:
       - status
       - title
       - truth_label
+    RegulatoryExpiryTrack:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        entity_type:
+          $ref: '#/components/schemas/RegulatoryExpiryTrackEntityTypeEnum'
+        entity_id:
+          type: string
+          maxLength: 100
+        tenant:
+          type: string
+          format: uuid
+          nullable: true
+        display_name:
+          type: string
+          maxLength: 200
+        expires_at:
+          type: string
+          format: date
+        last_notified_interval_days:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+          nullable: true
+        is_resolved:
+          type: boolean
+        resolved_at:
+          type: string
+          format: date-time
+          nullable: true
+        resolution_evidence_reference:
+          type: string
+          maxLength: 250
+        truth_label:
+          type: string
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - display_name
+      - entity_id
+      - entity_type
+      - expires_at
+      - id
+      - truth_label
+    RegulatoryExpiryTrackEntityTypeEnum:
+      enum:
+      - PREMISES_LICENCE
+      - SUPERINTENDENT_LICENCE
+      - PRACTITIONER_LICENCE
+      - CONTROLLED_DRUG_AUTHORITY
+      - OAUTH_CREDENTIAL
+      - PROVIDER_CERTIFICATE
+      type: string
+      description: |-
+        * `PREMISES_LICENCE` - Pharmacy Premises Licence
+        * `SUPERINTENDENT_LICENCE` - Superintendent Pharmacist Licence
+        * `PRACTITIONER_LICENCE` - Practitioner Licence
+        * `CONTROLLED_DRUG_AUTHORITY` - Controlled Medicine Authority
+        * `OAUTH_CREDENTIAL` - OAuth Client Secret / Key
+        * `PROVIDER_CERTIFICATE` - TLS / Client Certificate
     RegulatoryTenantImpact:
       type: object
       properties:
@@ -25963,6 +27136,20 @@ components:
         * `HIGH` - High priority alert
         * `MEDIUM` - Medium priority alert
         * `LOW` - Low priority / informational
+    SeverityE18Enum:
+      enum:
+      - INFO
+      - WARNING
+      - HIGH
+      - CRITICAL
+      - EMERGENCY
+      type: string
+      description: |-
+        * `INFO` - Information
+        * `WARNING` - Warning
+        * `HIGH` - High Priority
+        * `CRITICAL` - Critical Action Required
+        * `EMERGENCY` - Emergency System Alert
     SexEnum:
       enum:
       - MALE
