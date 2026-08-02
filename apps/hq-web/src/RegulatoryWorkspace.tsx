@@ -18,55 +18,60 @@ export function RegulatoryWorkspace({ csrfToken: _csrfToken }: RegulatoryWorkspa
 
   return (
     <div style={{ padding: '0 0 40px' }}>
-      {/* Header */}
+      {/* Header Banner */}
       <div
         style={{
-          background: 'linear-gradient(135deg, rgba(39,174,96,0.15) 0%, rgba(26,35,50,0.8) 100%)',
-          border: '1px solid rgba(39,174,96,0.3)',
+          background: 'var(--panel)',
+          border: '1px solid var(--line)',
           borderRadius: '16px',
           padding: '24px 28px',
           marginBottom: '24px',
+          boxShadow: 'var(--shadow)',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '8px' }}>
-          <div style={{ fontSize: '28px' }}>⚖️</div>
+          <div style={{ fontSize: '32px' }}>⚖️</div>
           <div>
-            <div style={{ fontWeight: 700, fontSize: '20px', color: '#dde6f0' }}>
+            <div style={{ fontWeight: 800, fontSize: '22px', color: 'var(--ink)' }}>
               Kenya Regulatory & Licence Governance Workspace
             </div>
-            <div style={{ fontSize: '12px', color: '#6b7a8d', marginTop: '2px' }}>
+            <div style={{ fontSize: '13px', color: 'var(--muted)', marginTop: '4px' }}>
               Pharmacy and Poisons Board (PPB) · Digital Health Agency (DHA) Compliance Engine
             </div>
           </div>
         </div>
-        <div
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '6px',
-            padding: '4px 12px',
-            background: 'rgba(39,174,96,0.2)',
-            border: '1px solid rgba(39,174,96,0.4)',
-            borderRadius: '6px',
-            fontSize: '11px',
-            color: '#66dd88',
-            fontWeight: 600,
-          }}
-        >
-          🛡️ Internal Compliance Review Active — Truth Label: MANUAL_INTERNAL_VERIFICATION
+        <div style={{ marginTop: '12px' }}>
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 14px',
+              background: 'var(--teal-100)',
+              border: '1px solid var(--teal-700)',
+              borderRadius: '8px',
+              fontSize: '12px',
+              color: 'var(--teal-700)',
+              fontWeight: 700,
+            }}
+          >
+            🛡️ Internal Compliance Review Active — Truth Label: MANUAL_INTERNAL_VERIFICATION
+          </span>
         </div>
       </div>
 
-      {/* Tabs */}
+      {/* Navigation Tabs */}
       <div
         style={{
           display: 'flex',
-          gap: '4px',
-          background: 'rgba(0,0,0,0.2)',
-          borderRadius: '10px',
-          padding: '4px',
-          marginBottom: '20px',
+          gap: '6px',
+          background: 'var(--panel)',
+          border: '1px solid var(--line)',
+          borderRadius: '12px',
+          padding: '6px',
+          marginBottom: '24px',
           width: 'fit-content',
+          boxShadow: 'var(--shadow)',
         }}
       >
         {tabs.map(tab => (
@@ -76,101 +81,151 @@ export function RegulatoryWorkspace({ csrfToken: _csrfToken }: RegulatoryWorkspa
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '6px',
-              padding: '8px 16px',
-              borderRadius: '7px',
+              gap: '8px',
+              padding: '10px 18px',
+              borderRadius: '8px',
               border: 'none',
               cursor: 'pointer',
-              fontSize: '12px',
-              fontWeight: 600,
-              background: activeTab === tab.key ? 'rgba(39,174,96,0.2)' : 'transparent',
-              color: activeTab === tab.key ? '#66dd88' : '#6b7a8d',
+              fontSize: '13px',
+              fontWeight: 700,
+              background: activeTab === tab.key ? 'var(--teal-700)' : 'transparent',
+              color: activeTab === tab.key ? '#ffffff' : 'var(--muted)',
+              transition: 'all 0.15s ease',
             }}
+            type="button"
           >
-            {tab.icon} {tab.label}
+            <span>{tab.icon}</span> {tab.label}
           </button>
         ))}
       </div>
 
       {/* Tab Panels */}
       {activeTab === 'premises' && (
-        <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '14px', padding: '20px' }}>
-          <div style={{ fontWeight: 700, color: '#dde6f0', fontSize: '15px', marginBottom: '12px' }}>
+        <div
+          style={{
+            background: 'var(--panel)',
+            border: '1px solid var(--line)',
+            borderRadius: '16px',
+            padding: '24px',
+            boxShadow: 'var(--shadow)',
+          }}
+        >
+          <div style={{ fontWeight: 700, color: 'var(--ink)', fontSize: '16px', marginBottom: '16px' }}>
             Premises Licences & Superintendent Governance
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '20px' }}>
-            <div style={{ background: 'rgba(0,0,0,0.2)', padding: '14px', borderRadius: '8px' }}>
-              <div style={{ fontSize: '11px', color: '#6b7a8d' }}>Active Verified Premises</div>
-              <div style={{ fontSize: '20px', fontWeight: 700, color: '#27ae60', marginTop: '4px' }}>1 Verified</div>
-              <div style={{ fontSize: '10px', color: '#8894a6', marginTop: '2px' }}>Truth: MANUAL_INTERNAL_VERIFICATION</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '20px' }}>
+            <div style={{ background: 'var(--canvas)', border: '1px solid var(--line)', padding: '18px', borderRadius: '12px' }}>
+              <div style={{ fontSize: '12px', color: 'var(--muted)' }}>Active Verified Premises</div>
+              <div style={{ fontSize: '22px', fontWeight: 800, color: 'var(--teal-700)', marginTop: '4px' }}>1 Verified</div>
+              <div style={{ fontSize: '11px', color: 'var(--muted-2)', marginTop: '4px' }}>Truth: MANUAL_INTERNAL_VERIFICATION</div>
             </div>
-            <div style={{ background: 'rgba(0,0,0,0.2)', padding: '14px', borderRadius: '8px' }}>
-              <div style={{ fontSize: '11px', color: '#6b7a8d' }}>Superintendent Pharmacist</div>
-              <div style={{ fontSize: '14px', fontWeight: 600, color: '#c8d6e8', marginTop: '4px' }}>Dr. Sidney Kibet (Reg #2026-P)</div>
-              <div style={{ fontSize: '10px', color: '#27ae60', marginTop: '2px' }}>Licence Current</div>
+            <div style={{ background: 'var(--canvas)', border: '1px solid var(--line)', padding: '18px', borderRadius: '12px' }}>
+              <div style={{ fontSize: '12px', color: 'var(--muted)' }}>Superintendent Pharmacist</div>
+              <div style={{ fontSize: '15px', fontWeight: 700, color: 'var(--ink)', marginTop: '4px' }}>Dr. Sidney Kibet (Reg #2026-P)</div>
+              <div style={{ fontSize: '11px', color: 'var(--teal-700)', marginTop: '4px', fontWeight: 600 }}>Licence Current</div>
             </div>
-            <div style={{ background: 'rgba(0,0,0,0.2)', padding: '14px', borderRadius: '8px' }}>
-              <div style={{ fontSize: '11px', color: '#6b7a8d' }}>Self-Verification Block</div>
-              <div style={{ fontSize: '14px', fontWeight: 600, color: '#2980b9', marginTop: '4px' }}>Enforced</div>
-              <div style={{ fontSize: '10px', color: '#8894a6', marginTop: '2px' }}>Reviewer must differ from Submitter</div>
+            <div style={{ background: 'var(--canvas)', border: '1px solid var(--line)', padding: '18px', borderRadius: '12px' }}>
+              <div style={{ fontSize: '12px', color: 'var(--muted)' }}>Self-Verification Block</div>
+              <div style={{ fontSize: '15px', fontWeight: 700, color: 'var(--navy-700)', marginTop: '4px' }}>Enforced</div>
+              <div style={{ fontSize: '11px', color: 'var(--muted-2)', marginTop: '4px' }}>Reviewer must differ from Submitter</div>
             </div>
           </div>
         </div>
       )}
 
       {activeTab === 'practitioners' && (
-        <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '14px', padding: '20px' }}>
-          <div style={{ fontWeight: 700, color: '#dde6f0', fontSize: '15px', marginBottom: '12px' }}>
+        <div
+          style={{
+            background: 'var(--panel)',
+            border: '1px solid var(--line)',
+            borderRadius: '16px',
+            padding: '24px',
+            boxShadow: 'var(--shadow)',
+          }}
+        >
+          <div style={{ fontWeight: 700, color: 'var(--ink)', fontSize: '16px', marginBottom: '12px' }}>
             DHA Health Worker Registry (HWR) Practitioner Verification
           </div>
-          <div style={{ fontSize: '12px', color: '#6b7a8d', marginBottom: '16px' }}>
+          <div style={{ fontSize: '13px', color: 'var(--muted)', marginBottom: '16px', lineHeight: 1.5 }}>
             All prescribers and pharmacists are checked against the 11-stage HWR verification lifecycle.
           </div>
-          <div style={{ background: 'rgba(0,0,0,0.2)', padding: '14px', borderRadius: '8px', fontSize: '12px', color: '#c8d6e8' }}>
+          <div style={{ background: 'var(--canvas)', border: '1px solid var(--line)', padding: '16px', borderRadius: '10px', fontSize: '13px', color: 'var(--ink)' }}>
             <strong>Degraded Mode Policy:</strong> PROVIDER_UNAVAILABLE allows routine prescribing under degraded mode audit, but strictly fails closed for controlled medicines.
           </div>
         </div>
       )}
 
       {activeTab === 'controlled' && (
-        <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '14px', padding: '20px' }}>
-          <div style={{ fontWeight: 700, color: '#e74c3c', fontSize: '15px', marginBottom: '12px' }}>
+        <div
+          style={{
+            background: 'var(--panel)',
+            border: '1px solid var(--red-500)',
+            borderRadius: '16px',
+            padding: '24px',
+            boxShadow: 'var(--shadow)',
+          }}
+        >
+          <div style={{ fontWeight: 700, color: 'var(--danger-ink)', fontSize: '16px', marginBottom: '12px' }}>
             Controlled Medicine Dispensing Authority & Gating
           </div>
-          <div style={{ fontSize: '12px', color: '#6b7a8d', lineHeight: 1.6 }}>
+          <div style={{ fontSize: '13px', color: 'var(--muted)', lineHeight: 1.6 }}>
             Controlled medicine dispensing requires active premises verification, verified practitioner licence, and valid controlled drug authority. Any STALE or EXPIRED status automatically blocks dispensing.
           </div>
         </div>
       )}
 
       {activeTab === 'products' && (
-        <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '14px', padding: '20px' }}>
-          <div style={{ fontWeight: 700, color: '#dde6f0', fontSize: '15px', marginBottom: '12px' }}>
+        <div
+          style={{
+            background: 'var(--panel)',
+            border: '1px solid var(--line)',
+            borderRadius: '16px',
+            padding: '24px',
+            boxShadow: 'var(--shadow)',
+          }}
+        >
+          <div style={{ fontWeight: 700, color: 'var(--ink)', fontSize: '16px', marginBottom: '12px' }}>
             PPB Product Register & Status Projection
           </div>
-          <div style={{ fontSize: '12px', color: '#6b7a8d' }}>
+          <div style={{ fontSize: '13px', color: 'var(--muted)', lineHeight: 1.5 }}>
             Products are evaluated for regulatory status (CURRENTLY_VERIFIED, STALE, SUSPENDED, WITHDRAWN, EXPIRED, UNKNOWN).
           </div>
         </div>
       )}
 
       {activeTab === 'recalls' && (
-        <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '14px', padding: '20px' }}>
-          <div style={{ fontWeight: 700, color: '#dde6f0', fontSize: '15px', marginBottom: '12px' }}>
+        <div
+          style={{
+            background: 'var(--panel)',
+            border: '1px solid var(--line)',
+            borderRadius: '16px',
+            padding: '24px',
+            boxShadow: 'var(--shadow)',
+          }}
+        >
+          <div style={{ fontWeight: 700, color: 'var(--ink)', fontSize: '16px', marginBottom: '12px' }}>
             Regulatory Alerts & Recall Ingestion Engine
           </div>
-          <div style={{ fontSize: '12px', color: '#6b7a8d' }}>
+          <div style={{ fontSize: '13px', color: 'var(--muted)', lineHeight: 1.5 }}>
             Workflow: Alert → Affected GTINs → Batches → Branch Quarantine (Append-Only Inventory Ledger) → Actions → Evidence → Release → Closure.
           </div>
         </div>
       )}
 
       {activeTab === 'evidence' && (
-        <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '14px', padding: '20px' }}>
-          <div style={{ fontWeight: 700, color: '#dde6f0', fontSize: '15px', marginBottom: '12px' }}>
+        <div
+          style={{
+            background: 'var(--panel)',
+            border: '1px solid var(--line)',
+            borderRadius: '16px',
+            padding: '24px',
+            boxShadow: 'var(--shadow)',
+          }}
+        >
+          <div style={{ fontWeight: 700, color: 'var(--ink)', fontSize: '16px', marginBottom: '12px' }}>
             Immutable Verification Snapshots & Audit Trail
           </div>
-          <div style={{ fontSize: '12px', color: '#6b7a8d' }}>
+          <div style={{ fontSize: '13px', color: 'var(--muted)', lineHeight: 1.5 }}>
             Snapshots are captured at every state transition and survive tenant suspension for compliance audit purposes.
           </div>
         </div>

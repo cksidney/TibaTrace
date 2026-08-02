@@ -20,82 +20,134 @@ export function GS1Workspace({ csrfToken: _csrfToken }: GS1WorkspaceProps) {
 
   return (
     <div style={{ padding: '0 0 40px' }}>
-      {/* Header */}
+      {/* Header Banner */}
       <div
         style={{
-          background: 'linear-gradient(135deg, rgba(41,128,185,0.2) 0%, rgba(26,35,50,0.8) 100%)',
-          border: '1px solid rgba(41,128,185,0.4)',
+          background: 'var(--panel)',
+          border: '1px solid var(--line)',
           borderRadius: '16px',
           padding: '24px 28px',
           marginBottom: '24px',
+          boxShadow: 'var(--shadow)',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '8px' }}>
-          <div style={{ fontSize: '28px' }}>📦</div>
+          <div style={{ fontSize: '32px' }}>📦</div>
           <div>
-            <div style={{ fontWeight: 700, fontSize: '20px', color: '#dde6f0' }}>
+            <div style={{ fontWeight: 800, fontSize: '22px', color: 'var(--ink)' }}>
               GS1 Global Traceability & GTIN Registry Workspace
             </div>
-            <div style={{ fontSize: '12px', color: '#6b7a8d', marginTop: '2px' }}>
+            <div style={{ fontSize: '13px', color: 'var(--muted)', marginTop: '4px' }}>
               2D DataMatrix · Serialisation · Packaging Hierarchy · Barcode Validation
             </div>
           </div>
         </div>
-        <div
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '6px',
-            padding: '4px 12px',
-            background: 'rgba(41,128,185,0.25)',
-            borderRadius: '6px',
-            fontSize: '11px',
-            color: '#7aa2cc',
-            fontWeight: 600,
-          }}
-        >
-          🌐 Standalone GS1 Enterprise Traceability Engine
+        <div style={{ marginTop: '12px' }}>
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 14px',
+              background: 'var(--cyan-100)',
+              border: '1px solid var(--cyan-700)',
+              borderRadius: '8px',
+              fontSize: '12px',
+              color: 'var(--cyan-700)',
+              fontWeight: 700,
+            }}
+          >
+            🌐 Standalone GS1 Enterprise Traceability Engine
+          </span>
         </div>
       </div>
 
       {/* GTIN Validator Card */}
-      <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '14px', padding: '24px', marginBottom: '24px' }}>
-        <div style={{ fontWeight: 700, color: '#dde6f0', fontSize: '15px', marginBottom: '12px' }}>
+      <div
+        style={{
+          background: 'var(--panel)',
+          border: '1px solid var(--line)',
+          borderRadius: '16px',
+          padding: '24px',
+          marginBottom: '24px',
+          boxShadow: 'var(--shadow)',
+        }}
+      >
+        <div style={{ fontWeight: 700, color: 'var(--ink)', fontSize: '16px', marginBottom: '12px' }}>
           GTIN & Barcode Validation Tool
         </div>
-        <div style={{ display: 'flex', gap: '10px', marginBottom: '16px' }}>
+        <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
           <input
             type="text"
             value={gtinQuery}
             onChange={e => setGtinQuery(e.target.value)}
             placeholder="Enter 14-digit GTIN (e.g. 06164000000000)..."
-            style={{ flex: 1, background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: '#c8d6e8', padding: '10px', fontSize: '13px', outline: 'none' }}
+            style={{
+              flex: 1,
+              background: 'var(--canvas)',
+              border: '1px solid var(--line)',
+              borderRadius: '8px',
+              color: 'var(--ink)',
+              padding: '10px 14px',
+              fontSize: '14px',
+              outline: 'none',
+            }}
           />
           <button
             onClick={handleValidateGTIN}
-            style={{ background: 'rgba(41,128,185,0.3)', border: '1px solid rgba(41,128,185,0.5)', color: '#7aa2cc', borderRadius: '6px', padding: '10px 20px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}
+            style={{
+              background: 'var(--teal-700)',
+              border: 'none',
+              borderRadius: '8px',
+              color: '#ffffff',
+              padding: '10px 22px',
+              fontSize: '13px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              boxShadow: '0 2px 8px rgba(16, 185, 129, 0.25)',
+            }}
+            type="button"
           >
             Validate GTIN
           </button>
         </div>
 
         {validationResult && (
-          <div style={{ padding: '12px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', fontSize: '12px', color: '#c8d6e8' }}>
+          <div
+            style={{
+              padding: '14px 18px',
+              background: 'var(--canvas)',
+              border: '1px solid var(--line)',
+              borderRadius: '10px',
+              fontSize: '13px',
+              fontWeight: 600,
+              color: 'var(--ink)',
+            }}
+          >
             {validationResult}
           </div>
         )}
       </div>
 
       {/* Capabilities Overview */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '14px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
         {[
           { title: 'DataMatrix 2D Scanning', desc: 'Parses GS1 Application Identifiers (01: GTIN, 17: Expiry, 10: Batch, 21: Serial)' },
-          { title: 'Packaging Hierarchy', desc: 'Item Unit -> Inner Pack -> Master Shipper Case -> Pallet aggregation' },
+          { title: 'Packaging Hierarchy', desc: 'Item Unit → Inner Pack → Master Shipper Case → Pallet aggregation' },
           { title: 'Manufacturer Registry', desc: 'Verifies GLN (Global Location Number) and licensed pharmaceutical origin' },
         ].map(item => (
-          <div key={item.title} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '12px', padding: '16px' }}>
-            <div style={{ fontWeight: 600, color: '#dde6f0', fontSize: '13px', marginBottom: '6px' }}>{item.title}</div>
-            <div style={{ fontSize: '11px', color: '#6b7a8d', lineHeight: 1.5 }}>{item.desc}</div>
+          <div
+            key={item.title}
+            style={{
+              background: 'var(--panel)',
+              border: '1px solid var(--line)',
+              borderRadius: '14px',
+              padding: '20px',
+              boxShadow: 'var(--shadow)',
+            }}
+          >
+            <div style={{ fontWeight: 700, color: 'var(--ink)', fontSize: '14px', marginBottom: '6px' }}>{item.title}</div>
+            <div style={{ fontSize: '12px', color: 'var(--muted)', lineHeight: 1.5 }}>{item.desc}</div>
           </div>
         ))}
       </div>

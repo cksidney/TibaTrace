@@ -17,41 +17,45 @@ export function InsuranceWorkspace({ csrfToken: _csrfToken }: InsuranceWorkspace
 
   return (
     <div style={{ padding: '0 0 40px' }}>
-      {/* Header */}
+      {/* Header Banner */}
       <div
         style={{
-          background: 'linear-gradient(135deg, rgba(230,126,34,0.15) 0%, rgba(26,35,50,0.8) 100%)',
-          border: '1px solid rgba(230,126,34,0.3)',
+          background: 'var(--panel)',
+          border: '1px solid var(--line)',
           borderRadius: '16px',
           padding: '24px 28px',
           marginBottom: '24px',
+          boxShadow: 'var(--shadow)',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '8px' }}>
-          <div style={{ fontSize: '28px' }}>🛡️</div>
+          <div style={{ fontSize: '32px' }}>🛡️</div>
           <div>
-            <div style={{ fontWeight: 700, fontSize: '20px', color: '#dde6f0' }}>
+            <div style={{ fontWeight: 800, fontSize: '22px', color: 'var(--ink)' }}>
               Insurance & SHA Claims Integration Workspace
             </div>
-            <div style={{ fontSize: '12px', color: '#6b7a8d', marginTop: '2px' }}>
+            <div style={{ fontSize: '13px', color: 'var(--muted)', marginTop: '4px' }}>
               Social Health Authority (SHA) · Private Health Insurers · Real-time Adjudication
             </div>
           </div>
         </div>
-        <div
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '6px',
-            padding: '4px 12px',
-            background: 'rgba(230,126,34,0.2)',
-            borderRadius: '6px',
-            fontSize: '11px',
-            color: '#f39c12',
-            fontWeight: 600,
-          }}
-        >
-          🔐 SHA / Insurance Provider Adapter — Platform Owner Activation Required
+        <div style={{ marginTop: '12px' }}>
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 14px',
+              background: 'var(--amber-100)',
+              border: '1px solid var(--amber-700)',
+              borderRadius: '8px',
+              fontSize: '12px',
+              color: 'var(--amber-700)',
+              fontWeight: 700,
+            }}
+          >
+            🔐 SHA / Insurance Provider Adapter — Platform Owner Activation Required
+          </span>
         </div>
       </div>
 
@@ -59,12 +63,14 @@ export function InsuranceWorkspace({ csrfToken: _csrfToken }: InsuranceWorkspace
       <div
         style={{
           display: 'flex',
-          gap: '4px',
-          background: 'rgba(0,0,0,0.2)',
-          borderRadius: '10px',
-          padding: '4px',
-          marginBottom: '20px',
+          gap: '6px',
+          background: 'var(--panel)',
+          border: '1px solid var(--line)',
+          borderRadius: '12px',
+          padding: '6px',
+          marginBottom: '24px',
           width: 'fit-content',
+          boxShadow: 'var(--shadow)',
         }}
       >
         {tabs.map(tab => (
@@ -74,73 +80,115 @@ export function InsuranceWorkspace({ csrfToken: _csrfToken }: InsuranceWorkspace
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '6px',
-              padding: '8px 16px',
-              borderRadius: '7px',
+              gap: '8px',
+              padding: '10px 18px',
+              borderRadius: '8px',
               border: 'none',
               cursor: 'pointer',
-              fontSize: '12px',
-              fontWeight: 600,
-              background: activeTab === tab.key ? 'rgba(230,126,34,0.25)' : 'transparent',
-              color: activeTab === tab.key ? '#f39c12' : '#6b7a8d',
+              fontSize: '13px',
+              fontWeight: 700,
+              background: activeTab === tab.key ? 'var(--navy-700)' : 'transparent',
+              color: activeTab === tab.key ? '#ffffff' : 'var(--muted)',
+              transition: 'all 0.15s ease',
             }}
+            type="button"
           >
-            {tab.icon} {tab.label}
+            <span>{tab.icon}</span> {tab.label}
           </button>
         ))}
       </div>
 
       {/* Panels */}
       {activeTab === 'eligibility' && (
-        <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '14px', padding: '20px' }}>
-          <div style={{ fontWeight: 700, color: '#dde6f0', fontSize: '15px', marginBottom: '12px' }}>
+        <div
+          style={{
+            background: 'var(--panel)',
+            border: '1px solid var(--line)',
+            borderRadius: '16px',
+            padding: '24px',
+            boxShadow: 'var(--shadow)',
+          }}
+        >
+          <div style={{ fontWeight: 700, color: 'var(--ink)', fontSize: '16px', marginBottom: '8px' }}>
             Real-Time Member Eligibility Verification
           </div>
-          <div style={{ fontSize: '12px', color: '#6b7a8d' }}>
+          <div style={{ fontSize: '13px', color: 'var(--muted)', lineHeight: 1.5 }}>
             Verify member policy status, co-pay requirements, and benefit cap limits prior to dispensing.
           </div>
         </div>
       )}
 
       {activeTab === 'preauth' && (
-        <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '14px', padding: '20px' }}>
-          <div style={{ fontWeight: 700, color: '#dde6f0', fontSize: '15px', marginBottom: '12px' }}>
+        <div
+          style={{
+            background: 'var(--panel)',
+            border: '1px solid var(--line)',
+            borderRadius: '16px',
+            padding: '24px',
+            boxShadow: 'var(--shadow)',
+          }}
+        >
+          <div style={{ fontWeight: 700, color: 'var(--ink)', fontSize: '16px', marginBottom: '8px' }}>
             Pre-Authorisation Requests & Approval Tracking
           </div>
-          <div style={{ fontSize: '12px', color: '#6b7a8d' }}>
+          <div style={{ fontSize: '13px', color: 'var(--muted)', lineHeight: 1.5 }}>
             Submit and track pre-authorisation requests for high-value specialty medicines and chronic refills.
           </div>
         </div>
       )}
 
       {activeTab === 'claims' && (
-        <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '14px', padding: '20px' }}>
-          <div style={{ fontWeight: 700, color: '#dde6f0', fontSize: '15px', marginBottom: '12px' }}>
+        <div
+          style={{
+            background: 'var(--panel)',
+            border: '1px solid var(--line)',
+            borderRadius: '16px',
+            padding: '24px',
+            boxShadow: 'var(--shadow)',
+          }}
+        >
+          <div style={{ fontWeight: 700, color: 'var(--ink)', fontSize: '16px', marginBottom: '8px' }}>
             Insurance Claims Queue & Batch Submission
           </div>
-          <div style={{ fontSize: '12px', color: '#6b7a8d' }}>
+          <div style={{ fontSize: '13px', color: 'var(--muted)', lineHeight: 1.5 }}>
             Batch claim generation, FHIR Claim resource mapping, and adjudication tracking.
           </div>
         </div>
       )}
 
       {activeTab === 'rejections' && (
-        <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '14px', padding: '20px' }}>
-          <div style={{ fontWeight: 700, color: '#dde6f0', fontSize: '15px', marginBottom: '12px' }}>
+        <div
+          style={{
+            background: 'var(--panel)',
+            border: '1px solid var(--line)',
+            borderRadius: '16px',
+            padding: '24px',
+            boxShadow: 'var(--shadow)',
+          }}
+        >
+          <div style={{ fontWeight: 700, color: 'var(--ink)', fontSize: '16px', marginBottom: '8px' }}>
             Rejection Management & Appeal Workflows
           </div>
-          <div style={{ fontSize: '12px', color: '#6b7a8d' }}>
+          <div style={{ fontSize: '13px', color: 'var(--muted)', lineHeight: 1.5 }}>
             Review rejected claim line items, attach clinical notes, and resubmit appeals.
           </div>
         </div>
       )}
 
       {activeTab === 'remittance' && (
-        <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '14px', padding: '20px' }}>
-          <div style={{ fontWeight: 700, color: '#dde6f0', fontSize: '15px', marginBottom: '12px' }}>
+        <div
+          style={{
+            background: 'var(--panel)',
+            border: '1px solid var(--line)',
+            borderRadius: '16px',
+            padding: '24px',
+            boxShadow: 'var(--shadow)',
+          }}
+        >
+          <div style={{ fontWeight: 700, color: 'var(--ink)', fontSize: '16px', marginBottom: '8px' }}>
             Remittance Advice & Financial Reconciliation
           </div>
-          <div style={{ fontSize: '12px', color: '#6b7a8d' }}>
+          <div style={{ fontSize: '13px', color: 'var(--muted)', lineHeight: 1.5 }}>
             Reconcile electronic remittance advice (ERA) against submitted claims and ledger accounts.
           </div>
         </div>

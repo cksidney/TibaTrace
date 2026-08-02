@@ -21,7 +21,7 @@ const FIELD_LABELS: Record<SearchFieldCategory, { label: string; placeholder: st
   BRAND_NAME: { label: 'Brand Name', placeholder: 'e.g. Augmentin, Panadol...', icon: '💊' },
   GTIN: { label: 'GTIN / GS1', placeholder: '14-digit GTIN e.g. 06164000000000', icon: '📦' },
   BATCH_NUMBER: { label: 'Batch Number', placeholder: 'e.g. BATCH-2026-001', icon: '🏷️' },
-  REGISTRATION_NUMBER: { label: 'PPB Registration No.', placeholder: 'e.g. CTD/12345/2026', icon: '🏛️' },
+  REGISTRATION_NUMBER: { label: 'PPB Reg No.', placeholder: 'e.g. CTD/12345/2026', icon: '🏛️' },
   PATIENT: { label: 'Patient Name / ID', placeholder: 'e.g. John Doe, PAT-001...', icon: '👤' },
   PRESCRIPTION: { label: 'Prescription No.', placeholder: 'e.g. RX-2026-8849', icon: '📋' },
   PRACTITIONER: { label: 'Practitioner / Licence', placeholder: 'e.g. Dr. Kibet, A123456...', icon: '👨‍⚕️' },
@@ -50,33 +50,34 @@ export function FieldSearch({ onSearch }: FieldSearchProps) {
       style={{
         display: 'flex',
         alignItems: 'center',
-        gap: '8px',
-        background: 'rgba(0,0,0,0.25)',
-        border: '1px solid rgba(255,255,255,0.1)',
-        borderRadius: '10px',
-        padding: '6px 12px',
+        gap: '10px',
+        background: 'var(--panel)',
+        border: '1px solid var(--line)',
+        borderRadius: '12px',
+        padding: '8px 14px',
+        boxShadow: 'var(--shadow)',
         width: '100%',
         maxWidth: '780px',
       }}
     >
-      <span style={{ fontSize: '16px' }}>{fieldInfo.icon}</span>
+      <span style={{ fontSize: '18px', display: 'flex', alignItems: 'center' }}>{fieldInfo.icon}</span>
       <select
         value={selectedField}
         onChange={e => setSelectedField(e.target.value as SearchFieldCategory)}
         style={{
-          background: 'rgba(255,255,255,0.06)',
-          border: '1px solid rgba(255,255,255,0.1)',
-          borderRadius: '6px',
-          color: '#7aa2cc',
-          fontSize: '12px',
+          background: 'var(--canvas)',
+          border: '1px solid var(--line)',
+          borderRadius: '8px',
+          color: 'var(--ink)',
+          fontSize: '13px',
           fontWeight: 600,
-          padding: '6px 10px',
+          padding: '8px 12px',
           outline: 'none',
           cursor: 'pointer',
         }}
       >
         {Object.entries(FIELD_LABELS).map(([key, info]) => (
-          <option key={key} value={key} style={{ background: '#1a2332', color: '#c8d6e8' }}>
+          <option key={key} value={key} style={{ background: 'var(--panel)', color: 'var(--ink)' }}>
             {info.label}
           </option>
         ))}
@@ -91,10 +92,10 @@ export function FieldSearch({ onSearch }: FieldSearchProps) {
           flex: 1,
           background: 'transparent',
           border: 'none',
-          color: '#dde6f0',
-          fontSize: '13px',
+          color: 'var(--ink)',
+          fontSize: '14px',
           outline: 'none',
-          padding: '6px 4px',
+          padding: '6px 8px',
         }}
       />
       {query && (
@@ -103,12 +104,13 @@ export function FieldSearch({ onSearch }: FieldSearchProps) {
           style={{
             background: 'transparent',
             border: 'none',
-            color: '#6b7a8d',
+            color: 'var(--muted)',
             cursor: 'pointer',
             fontSize: '14px',
-            padding: '2px 6px',
+            padding: '4px 8px',
           }}
           title="Clear search"
+          type="button"
         >
           ✕
         </button>
@@ -116,15 +118,17 @@ export function FieldSearch({ onSearch }: FieldSearchProps) {
       <button
         onClick={() => onSearch(selectedField, query)}
         style={{
-          background: 'rgba(74,127,165,0.3)',
-          border: '1px solid rgba(74,127,165,0.5)',
-          borderRadius: '6px',
-          color: '#7aa2cc',
-          fontSize: '12px',
+          background: 'var(--teal-700)',
+          border: 'none',
+          borderRadius: '8px',
+          color: '#ffffff',
+          fontSize: '13px',
           fontWeight: 600,
-          padding: '6px 14px',
+          padding: '8px 18px',
           cursor: 'pointer',
+          boxShadow: '0 2px 8px rgba(16, 185, 129, 0.25)',
         }}
+        type="button"
       >
         Search
       </button>

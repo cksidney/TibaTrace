@@ -28,15 +28,15 @@ interface DeadLetterItem {
 // ---------------------------------------------------------------------------
 
 const TRUTH_LABEL_COLORS: Record<IntegrationTruthLabel, { bg: string; text: string; dot: string }> = {
-  ADAPTER_SCAFFOLDED_NOT_CONNECTED: { bg: '#1e2a3a', text: '#7aa2cc', dot: '#4a7fa5' },
-  NOT_CONFIGURED:                   { bg: '#2a1e2a', text: '#cc7ab0', dot: '#a54a8a' },
-  MANUAL_INTERNAL_VERIFICATION:     { bg: '#1e2a1e', text: '#7acc8a', dot: '#4aa560' },
-  SNAPSHOT_IMPORTED_STALENESS_GOVERNED: { bg: '#2a2a1e', text: '#ccc07a', dot: '#a59440' },
-  LOCAL_RECALL_WORKFLOW_NO_REGULATOR_FEED: { bg: '#2a1e1e', text: '#cc8a7a', dot: '#a55040' },
-  MANUAL_VERIFICATION:              { bg: '#1e2a1e', text: '#7acc8a', dot: '#4aa560' },
-  DISABLED_IN_PRODUCTION:           { bg: '#1e1e1e', text: '#888888', dot: '#555555' },
-  SANDBOX_EVIDENCE_ONLY:            { bg: '#1e2228', text: '#7ab8cc', dot: '#4a8ea5' },
-  PPB_API_ACTIVE:                   { bg: '#1e2a1e', text: '#66dd88', dot: '#44bb66' },
+  ADAPTER_SCAFFOLDED_NOT_CONNECTED: { bg: 'var(--navy-100)', text: 'var(--navy-700)', dot: 'var(--navy-700)' },
+  NOT_CONFIGURED:                   { bg: 'var(--violet-100)', text: 'var(--violet-700)', dot: 'var(--violet-700)' },
+  MANUAL_INTERNAL_VERIFICATION:     { bg: 'var(--teal-100)', text: 'var(--teal-700)', dot: 'var(--teal-700)' },
+  SNAPSHOT_IMPORTED_STALENESS_GOVERNED: { bg: 'var(--amber-100)', text: 'var(--amber-700)', dot: 'var(--amber-700)' },
+  LOCAL_RECALL_WORKFLOW_NO_REGULATOR_FEED: { bg: 'var(--red-100)', text: 'var(--danger-ink)', dot: 'var(--red-700)' },
+  MANUAL_VERIFICATION:              { bg: 'var(--teal-100)', text: 'var(--teal-700)', dot: 'var(--teal-700)' },
+  DISABLED_IN_PRODUCTION:           { bg: 'var(--line-soft)', text: 'var(--muted)', dot: 'var(--muted)' },
+  SANDBOX_EVIDENCE_ONLY:            { bg: 'var(--cyan-100)', text: 'var(--cyan-700)', dot: 'var(--cyan-700)' },
+  PPB_API_ACTIVE:                   { bg: 'var(--teal-100)', text: 'var(--teal-700)', dot: 'var(--teal-700)' },
 };
 
 const ACTIVATION_STATE_LABELS: Record<ProviderActivationState, string> = {
@@ -62,7 +62,6 @@ const PROVIDER_ICONS: Record<ProviderType, string> = {
   PPB_RECALLS:           '🔴',
 };
 
-// Mock provider data — truth labels reflect actual state (not operational)
 const MOCK_PROVIDERS: IntegrationProviderCardData[] = [
   {
     providerType: 'DHA_HIE',
@@ -131,24 +130,24 @@ function TruthLabelBadge({ label }: { label: IntegrationTruthLabel }) {
       style={{
         display: 'inline-flex',
         alignItems: 'center',
-        gap: '5px',
-        padding: '3px 9px',
+        gap: '6px',
+        padding: '4px 10px',
         borderRadius: '12px',
-        fontSize: '10px',
-        fontWeight: 600,
+        fontSize: '11px',
+        fontWeight: 700,
         letterSpacing: '0.04em',
         textTransform: 'uppercase',
         background: colors.bg,
         color: colors.text,
-        border: `1px solid ${colors.dot}33`,
+        border: `1px solid ${colors.text}44`,
         whiteSpace: 'nowrap',
       }}
     >
       <span
         style={{
           display: 'inline-block',
-          width: '6px',
-          height: '6px',
+          width: '7px',
+          height: '7px',
           borderRadius: '50%',
           background: colors.dot,
           flexShrink: 0,
@@ -169,24 +168,24 @@ function ActivationProgressBar({ state }: { state: ProviderActivationState }) {
   const progress = isTerminal ? 0 : stepIdx >= 0 ? ((stepIdx + 1) / steps.length) * 100 : 0;
 
   return (
-    <div style={{ marginTop: '10px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
-        <span style={{ fontSize: '11px', color: '#8894a6', fontWeight: 500 }}>
+    <div style={{ marginTop: '12px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+        <span style={{ fontSize: '12px', color: 'var(--muted)', fontWeight: 600 }}>
           Activation stage
         </span>
-        <span style={{ fontSize: '11px', color: '#c8d6e8', fontWeight: 600 }}>
+        <span style={{ fontSize: '12px', color: 'var(--ink)', fontWeight: 700 }}>
           {ACTIVATION_STATE_LABELS[state]}
         </span>
       </div>
-      <div style={{ height: '4px', background: '#1a2332', borderRadius: '2px', overflow: 'hidden' }}>
+      <div style={{ height: '6px', background: 'var(--line-soft)', borderRadius: '3px', overflow: 'hidden' }}>
         <div
           style={{
             height: '100%',
             width: `${isTerminal ? 100 : progress}%`,
             background: isTerminal
-              ? 'linear-gradient(90deg, #c0392b, #e74c3c)'
-              : 'linear-gradient(90deg, #2980b9, #27ae60)',
-            borderRadius: '2px',
+              ? 'var(--red-700)'
+              : 'linear-gradient(90deg, var(--navy-700), var(--teal-700))',
+            borderRadius: '3px',
             transition: 'width 0.6s ease',
           }}
         />
@@ -203,48 +202,49 @@ function ProviderCard({ provider }: { provider: IntegrationProviderCardData }) {
     <div
       className="integration-provider-card"
       style={{
-        background: 'linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%)',
-        border: '1px solid rgba(255,255,255,0.08)',
-        borderRadius: '14px',
-        padding: '20px',
-        backdropFilter: 'blur(8px)',
+        background: 'var(--panel)',
+        border: '1px solid var(--line)',
+        borderRadius: '16px',
+        padding: '22px',
+        boxShadow: 'var(--shadow)',
         transition: 'all 0.2s ease',
         cursor: 'pointer',
       }}
       onClick={() => setExpanded(e => !e)}
     >
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px' }}>
         <div
           style={{
-            width: '42px',
-            height: '42px',
-            borderRadius: '10px',
-            background: 'rgba(255,255,255,0.06)',
+            width: '46px',
+            height: '46px',
+            borderRadius: '12px',
+            background: 'var(--canvas)',
+            border: '1px solid var(--line)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            fontSize: '20px',
+            fontSize: '22px',
             flexShrink: 0,
           }}
         >
           {icon}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 600, color: '#dde6f0', fontSize: '14px', marginBottom: '4px' }}>
+          <div style={{ fontWeight: 800, color: 'var(--ink)', fontSize: '15px', marginBottom: '6px' }}>
             {provider.displayName}
           </div>
           <TruthLabelBadge label={provider.truthLabel} />
           <ActivationProgressBar state={provider.activationState} />
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
           {provider.pendingDeadLetters > 0 && (
             <span
               style={{
-                background: 'rgba(231,76,60,0.2)',
-                color: '#e74c3c',
-                border: '1px solid rgba(231,76,60,0.3)',
+                background: 'var(--red-100)',
+                color: 'var(--danger-ink)',
+                border: '1px solid var(--red-500)',
                 borderRadius: '10px',
-                padding: '2px 8px',
+                padding: '4px 10px',
                 fontSize: '11px',
                 fontWeight: 700,
               }}
@@ -252,7 +252,7 @@ function ProviderCard({ provider }: { provider: IntegrationProviderCardData }) {
               {provider.pendingDeadLetters} DLQ
             </span>
           )}
-          <span style={{ color: '#4a5568', fontSize: '12px' }}>
+          <span style={{ color: 'var(--muted)', fontSize: '12px' }}>
             {expanded ? '▲' : '▼'}
           </span>
         </div>
@@ -261,33 +261,33 @@ function ProviderCard({ provider }: { provider: IntegrationProviderCardData }) {
       {expanded && (
         <div
           style={{
-            marginTop: '16px',
-            paddingTop: '16px',
-            borderTop: '1px solid rgba(255,255,255,0.06)',
+            marginTop: '18px',
+            paddingTop: '18px',
+            borderTop: '1px solid var(--line)',
           }}
         >
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', fontSize: '12px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '13px' }}>
             <div>
-              <div style={{ color: '#6b7a8d', marginBottom: '3px' }}>Provider type</div>
-              <div style={{ color: '#c8d6e8', fontFamily: 'monospace' }}>{provider.providerType}</div>
+              <div style={{ color: 'var(--muted)', marginBottom: '4px' }}>Provider type</div>
+              <div style={{ color: 'var(--ink)', fontFamily: 'monospace', fontWeight: 600 }}>{provider.providerType}</div>
             </div>
             <div>
-              <div style={{ color: '#6b7a8d', marginBottom: '3px' }}>Last health check</div>
-              <div style={{ color: '#c8d6e8' }}>
+              <div style={{ color: 'var(--muted)', marginBottom: '4px' }}>Last health check</div>
+              <div style={{ color: 'var(--ink)', fontWeight: 600 }}>
                 {provider.lastHealthChecked
                   ? new Date(provider.lastHealthChecked).toLocaleString()
                   : 'Never checked'}
               </div>
             </div>
             <div>
-              <div style={{ color: '#6b7a8d', marginBottom: '3px' }}>Reachability</div>
-              <div style={{ color: provider.isReachable == null ? '#4a5568' : provider.isReachable ? '#27ae60' : '#e74c3c' }}>
+              <div style={{ color: 'var(--muted)', marginBottom: '4px' }}>Reachability</div>
+              <div style={{ color: provider.isReachable == null ? 'var(--muted-2)' : provider.isReachable ? 'var(--teal-700)' : 'var(--red-700)', fontWeight: 700 }}>
                 {provider.isReachable == null ? '— not yet probed' : provider.isReachable ? 'Reachable' : 'Unreachable'}
               </div>
             </div>
             <div>
-              <div style={{ color: '#6b7a8d', marginBottom: '3px' }}>Dead-letter queue</div>
-              <div style={{ color: provider.pendingDeadLetters > 0 ? '#e74c3c' : '#27ae60' }}>
+              <div style={{ color: 'var(--muted)', marginBottom: '4px' }}>Dead-letter queue</div>
+              <div style={{ color: provider.pendingDeadLetters > 0 ? 'var(--red-700)' : 'var(--teal-700)', fontWeight: 700 }}>
                 {provider.pendingDeadLetters > 0 ? `${provider.pendingDeadLetters} pending` : 'Clear'}
               </div>
             </div>
@@ -295,19 +295,20 @@ function ProviderCard({ provider }: { provider: IntegrationProviderCardData }) {
 
           <div
             style={{
-              marginTop: '14px',
-              padding: '12px',
-              background: 'rgba(0,0,0,0.2)',
-              borderRadius: '8px',
-              fontSize: '11px',
-              color: '#6b7a8d',
+              marginTop: '16px',
+              padding: '14px',
+              background: 'var(--canvas)',
+              border: '1px solid var(--line)',
+              borderRadius: '10px',
+              fontSize: '12px',
+              color: 'var(--muted)',
               lineHeight: 1.6,
             }}
           >
-            <strong style={{ color: '#7aa2cc' }}>Platform Owner action required</strong> to advance
+            <strong style={{ color: 'var(--navy-700)' }}>Platform Owner action required</strong> to advance
             this integration beyond {ACTIVATION_STATE_LABELS[provider.activationState]}.
             No live traffic will be sent until this provider reaches{' '}
-            <strong style={{ color: '#7aa2cc' }}>ACTIVE</strong> state with approved credentials.
+            <strong style={{ color: 'var(--teal-700)' }}>ACTIVE</strong> state with approved credentials.
           </div>
         </div>
       )}
@@ -325,27 +326,28 @@ function ActivationGateSummary({ providers }: { providers: IntegrationProviderCa
       style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(3, 1fr)',
-        gap: '14px',
+        gap: '16px',
         marginBottom: '28px',
       }}
     >
       {[
-        { label: 'Active integrations', value: active, color: '#27ae60', bg: 'rgba(39,174,96,0.1)' },
-        { label: 'Pending activation', value: pending, color: '#f39c12', bg: 'rgba(243,156,18,0.1)' },
-        { label: 'Blocked / terminal', value: blocked, color: '#e74c3c', bg: 'rgba(231,76,60,0.1)' },
-      ].map(({ label, value, color, bg }) => (
+        { label: 'Active integrations', value: active, color: 'var(--teal-700)', bg: 'var(--teal-50)', border: 'var(--teal-500)' },
+        { label: 'Pending activation', value: pending, color: 'var(--amber-700)', bg: 'var(--amber-100)', border: 'var(--amber-700)' },
+        { label: 'Blocked / terminal', value: blocked, color: 'var(--danger-ink)', bg: 'var(--red-100)', border: 'var(--red-500)' },
+      ].map(({ label, value, color, bg, border }) => (
         <div
           key={label}
           style={{
             background: bg,
-            border: `1px solid ${color}33`,
-            borderRadius: '12px',
-            padding: '16px',
+            border: `1px solid ${border}`,
+            borderRadius: '14px',
+            padding: '20px',
             textAlign: 'center',
+            boxShadow: 'var(--shadow)',
           }}
         >
-          <div style={{ fontSize: '28px', fontWeight: 700, color, lineHeight: 1 }}>{value}</div>
-          <div style={{ fontSize: '11px', color: '#6b7a8d', marginTop: '6px' }}>{label}</div>
+          <div style={{ fontSize: '32px', fontWeight: 800, color, lineHeight: 1 }}>{value}</div>
+          <div style={{ fontSize: '12px', color: 'var(--ink)', fontWeight: 700, marginTop: '8px' }}>{label}</div>
         </div>
       ))}
     </div>
@@ -356,20 +358,21 @@ function ProgrammeGovRules() {
   return (
     <div
       style={{
-        background: 'linear-gradient(135deg, rgba(74,127,165,0.08) 0%, rgba(39,130,120,0.05) 100%)',
-        border: '1px solid rgba(74,127,165,0.2)',
-        borderRadius: '14px',
-        padding: '20px',
+        background: 'var(--panel)',
+        border: '1px solid var(--line)',
+        borderRadius: '16px',
+        padding: '24px',
         marginBottom: '28px',
+        boxShadow: 'var(--shadow)',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
-        <span style={{ fontSize: '18px' }}>🔒</span>
-        <span style={{ fontWeight: 700, color: '#7aa2cc', fontSize: '13px', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+        <span style={{ fontSize: '20px' }}>🔒</span>
+        <span style={{ fontWeight: 800, color: 'var(--ink)', fontSize: '15px' }}>
           Programme Governance Rules (Phase 16 — N1 to N8)
         </span>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', fontSize: '12px', lineHeight: 1.6 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '13px', lineHeight: 1.6 }}>
         {[
           { phase: 'N1', text: 'Premises and superintendent reconciliation' },
           { phase: 'N2', text: 'Provider configuration, activation governance and OAuth foundation' },
@@ -380,25 +383,23 @@ function ProgrammeGovRules() {
           { phase: 'N7', text: 'DHA sandbox and end-to-end certification' },
           { phase: 'N8', text: 'Controlled production activation' },
         ].map(({ phase, text }) => (
-          <div key={phase} style={{ display: 'flex', gap: '8px' }}>
+          <div key={phase} style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
             <span
               style={{
                 display: 'inline-block',
-                minWidth: '26px',
-                height: '18px',
-                lineHeight: '18px',
-                background: 'rgba(74,127,165,0.25)',
-                color: '#7aa2cc',
-                borderRadius: '4px',
-                fontSize: '10px',
-                fontWeight: 700,
+                padding: '3px 8px',
+                background: 'var(--navy-100)',
+                color: 'var(--navy-700)',
+                borderRadius: '6px',
+                fontSize: '11px',
+                fontWeight: 800,
                 textAlign: 'center',
                 flexShrink: 0,
               }}
             >
               {phase}
             </span>
-            <span style={{ color: '#8894a6' }}>{text}</span>
+            <span style={{ color: 'var(--ink)', fontWeight: 500 }}>{text}</span>
           </div>
         ))}
       </div>
@@ -422,7 +423,7 @@ export function IntegrationWorkspace({ csrfToken: _csrfToken }: IntegrationWorks
     setError(null);
     try {
       const res = await fetch('/api/nif/platform/providers/', {
-        headers: { 'Accept': 'application/json' },
+        headers: { Accept: 'application/json' },
       });
       if (res.status === 403) {
         setError('Permission denied: Platform Owner capability is required to view national integration providers.');
@@ -467,67 +468,70 @@ export function IntegrationWorkspace({ csrfToken: _csrfToken }: IntegrationWorks
 
   return (
     <div style={{ padding: '0 0 40px' }}>
-      {/* Header */}
+      {/* Header Banner */}
       <div
         style={{
-          background: 'linear-gradient(135deg, rgba(42,63,84,0.6) 0%, rgba(26,35,50,0.8) 100%)',
-          border: '1px solid rgba(255,255,255,0.07)',
+          background: 'var(--panel)',
+          border: '1px solid var(--line)',
           borderRadius: '16px',
           padding: '24px 28px',
           marginBottom: '24px',
-          backdropFilter: 'blur(12px)',
+          boxShadow: 'var(--shadow)',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '10px' }}>
           <div
             style={{
-              width: '44px',
-              height: '44px',
-              borderRadius: '12px',
-              background: 'linear-gradient(135deg, #1a4a7a, #0d6b6b)',
+              width: '48px',
+              height: '48px',
+              borderRadius: '14px',
+              background: 'var(--teal-100)',
+              border: '1px solid var(--teal-700)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              fontSize: '22px',
+              fontSize: '24px',
             }}
           >
             🏗️
           </div>
           <div>
-            <div style={{ fontWeight: 700, fontSize: '18px', color: '#dde6f0', lineHeight: 1.2 }}>
+            <div style={{ fontWeight: 800, fontSize: '22px', color: 'var(--ink)', lineHeight: 1.2 }}>
               National Integration Command Centre
             </div>
-            <div style={{ fontSize: '12px', color: '#6b7a8d', marginTop: '2px' }}>
+            <div style={{ fontSize: '13px', color: 'var(--muted)', marginTop: '4px' }}>
               Kenya Digital Health Agency · Pharmacy and Poisons Board integrations
             </div>
           </div>
         </div>
-        <div
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '6px',
-            padding: '5px 12px',
-            background: 'rgba(231,76,60,0.12)',
-            border: '1px solid rgba(231,76,60,0.25)',
-            borderRadius: '8px',
-            fontSize: '11px',
-            color: '#e74c3c',
-            fontWeight: 600,
-          }}
-        >
-          ⚠️ No live national integrations active — Platform Owner approval required for all providers
+        <div style={{ marginTop: '12px' }}>
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 14px',
+              background: 'var(--red-100)',
+              border: '1px solid var(--red-500)',
+              borderRadius: '8px',
+              fontSize: '12px',
+              color: 'var(--danger-ink)',
+              fontWeight: 700,
+            }}
+          >
+            ⚠️ No live national integrations active — Platform Owner approval required for all providers
+          </span>
         </div>
       </div>
 
       {loading && (
-        <div style={{ padding: '12px', background: 'rgba(74,127,165,0.1)', color: '#7aa2cc', borderRadius: '8px', marginBottom: '16px', fontSize: '12px' }}>
+        <div style={{ padding: '14px', background: 'var(--cyan-100)', color: 'var(--cyan-700)', border: '1px solid var(--cyan-700)', borderRadius: '10px', marginBottom: '20px', fontSize: '13px', fontWeight: 600 }}>
           ⏳ Fetching platform integration configurations...
         </div>
       )}
 
       {error && (
-        <div style={{ padding: '12px', background: 'rgba(231,76,60,0.1)', color: '#e74c3c', borderRadius: '8px', marginBottom: '16px', fontSize: '12px' }}>
+        <div style={{ padding: '14px', background: 'var(--red-100)', color: 'var(--danger-ink)', border: '1px solid var(--red-500)', borderRadius: '10px', marginBottom: '20px', fontSize: '13px', fontWeight: 600 }}>
           ⛔ {error}
         </div>
       )}
@@ -539,12 +543,14 @@ export function IntegrationWorkspace({ csrfToken: _csrfToken }: IntegrationWorks
       <div
         style={{
           display: 'flex',
-          gap: '4px',
-          background: 'rgba(0,0,0,0.2)',
-          borderRadius: '10px',
-          padding: '4px',
-          marginBottom: '20px',
+          gap: '6px',
+          background: 'var(--panel)',
+          border: '1px solid var(--line)',
+          borderRadius: '12px',
+          padding: '6px',
+          marginBottom: '24px',
           width: 'fit-content',
+          boxShadow: 'var(--shadow)',
         }}
       >
         {tabs.map(tab => (
@@ -555,29 +561,30 @@ export function IntegrationWorkspace({ csrfToken: _csrfToken }: IntegrationWorks
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '6px',
-              padding: '8px 16px',
-              borderRadius: '7px',
+              gap: '8px',
+              padding: '10px 18px',
+              borderRadius: '8px',
               border: 'none',
               cursor: 'pointer',
-              fontSize: '12px',
-              fontWeight: 600,
+              fontSize: '13px',
+              fontWeight: 700,
               transition: 'all 0.15s ease',
-              background: activeTab === tab.key ? 'rgba(74,127,165,0.2)' : 'transparent',
-              color: activeTab === tab.key ? '#7aa2cc' : '#6b7a8d',
+              background: activeTab === tab.key ? 'var(--navy-700)' : 'transparent',
+              color: activeTab === tab.key ? '#ffffff' : 'var(--muted)',
             }}
+            type="button"
           >
-            {tab.icon}
+            <span>{tab.icon}</span>
             {tab.label}
             {tab.badge != null && tab.badge > 0 && (
               <span
                 style={{
-                  background: '#e74c3c',
+                  background: 'var(--red-500)',
                   color: '#fff',
-                  borderRadius: '8px',
-                  padding: '1px 6px',
-                  fontSize: '10px',
-                  fontWeight: 700,
+                  borderRadius: '10px',
+                  padding: '2px 8px',
+                  fontSize: '11px',
+                  fontWeight: 800,
                 }}
               >
                 {tab.badge}
@@ -589,7 +596,7 @@ export function IntegrationWorkspace({ csrfToken: _csrfToken }: IntegrationWorks
 
       {/* Tab content */}
       {activeTab === 'providers' && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
           {providers.map(provider => (
             <ProviderCard key={provider.providerType} provider={provider} />
           ))}
@@ -597,33 +604,33 @@ export function IntegrationWorkspace({ csrfToken: _csrfToken }: IntegrationWorks
       )}
 
       {activeTab === 'compliance' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '14px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
           {[
-            { title: 'Pharmacy Premises', value: 'Verified', sub: 'Truth: MANUAL_INTERNAL_VERIFICATION', color: '#27ae60' },
-            { title: 'Practitioner Licences', value: '100% Governed', sub: 'HWR Gated for Controlled Meds', color: '#2980b9' },
-            { title: 'Controlled Med Authority', value: 'Fail-Closed Active', sub: 'STALE / UNAVAILABLE Blocked', color: '#8e44ad' },
-            { title: 'Active Recalls', value: 'Local Workflow', sub: 'NO_REGULATOR_FEED', color: '#e67e22' },
-            { title: 'Quarantined Stock', value: 'Ledger Reserved', sub: 'Append-Only Ledger Integrated', color: '#c0392b' },
-            { title: 'Outstanding Reviews', value: '0 Pending', sub: 'Platform Owner Gate Active', color: '#16a085' },
+            { title: 'Pharmacy Premises', value: 'Verified', sub: 'Truth: MANUAL_INTERNAL_VERIFICATION', color: 'var(--teal-700)' },
+            { title: 'Practitioner Licences', value: '100% Governed', sub: 'HWR Gated for Controlled Meds', color: 'var(--navy-700)' },
+            { title: 'Controlled Med Authority', value: 'Fail-Closed Active', sub: 'STALE / UNAVAILABLE Blocked', color: 'var(--violet-700)' },
+            { title: 'Active Recalls', value: 'Local Workflow', sub: 'NO_REGULATOR_FEED', color: 'var(--amber-700)' },
+            { title: 'Quarantined Stock', value: 'Ledger Reserved', sub: 'Append-Only Ledger Integrated', color: 'var(--danger-ink)' },
+            { title: 'Outstanding Reviews', value: '0 Pending', sub: 'Platform Owner Gate Active', color: 'var(--teal-700)' },
           ].map(card => (
-            <div key={card.title} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '12px', padding: '16px' }}>
-              <div style={{ fontSize: '11px', color: '#6b7a8d', marginBottom: '6px' }}>{card.title}</div>
-              <div style={{ fontSize: '20px', fontWeight: 700, color: card.color }}>{card.value}</div>
-              <div style={{ fontSize: '11px', color: '#8894a6', marginTop: '4px' }}>{card.sub}</div>
+            <div key={card.title} style={{ background: 'var(--panel)', border: '1px solid var(--line)', borderRadius: '14px', padding: '20px', boxShadow: 'var(--shadow)' }}>
+              <div style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '8px' }}>{card.title}</div>
+              <div style={{ fontSize: '22px', fontWeight: 800, color: card.color }}>{card.value}</div>
+              <div style={{ fontSize: '12px', color: 'var(--muted-2)', marginTop: '6px' }}>{card.sub}</div>
             </div>
           ))}
         </div>
       )}
 
       {activeTab === 'reports' && (
-        <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '14px', padding: '24px' }}>
-          <div style={{ fontWeight: 700, color: '#dde6f0', fontSize: '15px', marginBottom: '12px' }}>
+        <div style={{ background: 'var(--panel)', border: '1px solid var(--line)', borderRadius: '16px', padding: '24px', boxShadow: 'var(--shadow)' }}>
+          <div style={{ fontWeight: 800, color: 'var(--ink)', fontSize: '16px', marginBottom: '8px' }}>
             Enterprise Compliance Reporting Engine (Phase 15)
           </div>
-          <div style={{ fontSize: '12px', color: '#6b7a8d', marginBottom: '20px' }}>
+          <div style={{ fontSize: '13px', color: 'var(--muted)', marginBottom: '20px' }}>
             Download audit-ready compliance report packs in JSON, CSV, Excel, or PDF formats.
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
             {[
               { type: 'PREMISES', label: 'Premises Verification & Licence Report' },
               { type: 'PRACTITIONERS', label: 'Practitioner Verification & Controlled Authority Report' },
@@ -632,13 +639,13 @@ export function IntegrationWorkspace({ csrfToken: _csrfToken }: IntegrationWorks
               { type: 'COMPLIANCE_READINESS', label: 'DHA & Regulatory Readiness Scorecard' },
               { type: 'SECURITY_AUDIT', label: 'Security, Activation & Kill Switch Audit' },
             ].map(r => (
-              <div key={r.type} style={{ background: 'rgba(0,0,0,0.2)', padding: '14px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '12px', color: '#c8d6e8', fontWeight: 500 }}>{r.label}</span>
+              <div key={r.type} style={{ background: 'var(--canvas)', border: '1px solid var(--line)', padding: '16px', borderRadius: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '13px', color: 'var(--ink)', fontWeight: 600 }}>{r.label}</span>
                 <a
                   href={`/api/nif/platform/reports/?report_type=${r.type}&format=json`}
                   target="_blank"
                   rel="noreferrer"
-                  style={{ background: 'rgba(74,127,165,0.25)', color: '#7aa2cc', border: '1px solid rgba(74,127,165,0.4)', borderRadius: '6px', padding: '4px 10px', fontSize: '11px', textDecoration: 'none', fontWeight: 600 }}
+                  style={{ background: 'var(--navy-100)', color: 'var(--navy-700)', border: '1px solid var(--navy-700)', borderRadius: '8px', padding: '6px 14px', fontSize: '12px', textDecoration: 'none', fontWeight: 700 }}
                 >
                   Download
                 </a>
@@ -649,19 +656,19 @@ export function IntegrationWorkspace({ csrfToken: _csrfToken }: IntegrationWorks
       )}
 
       {activeTab === 'evidence' && (
-        <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '14px', padding: '24px' }}>
-          <div style={{ fontWeight: 700, color: '#dde6f0', fontSize: '15px', marginBottom: '8px' }}>
+        <div style={{ background: 'var(--panel)', border: '1px solid var(--line)', borderRadius: '16px', padding: '24px', boxShadow: 'var(--shadow)' }}>
+          <div style={{ fontWeight: 800, color: 'var(--ink)', fontSize: '16px', marginBottom: '8px' }}>
             Certification Evidence Engine (Phase 16)
           </div>
-          <div style={{ fontSize: '12px', color: '#6b7a8d', marginBottom: '16px' }}>
+          <div style={{ fontSize: '13px', color: 'var(--muted)', marginBottom: '20px' }}>
             Generate and export complete certification evidence bundles containing OpenAPI specs, checksums, test logs, coverage, SBOM, SLSA provenance, and readiness matrices.
           </div>
-          <div style={{ display: 'flex', gap: '12px' }}>
+          <div style={{ display: 'flex', gap: '14px' }}>
             <a
               href="/api/nif/platform/evidence/?format=json"
               target="_blank"
               rel="noreferrer"
-              style={{ background: 'rgba(39,174,96,0.2)', color: '#27ae60', border: '1px solid rgba(39,174,96,0.4)', borderRadius: '8px', padding: '10px 18px', fontSize: '12px', textDecoration: 'none', fontWeight: 600 }}
+              style={{ background: 'var(--teal-100)', color: 'var(--teal-700)', border: '1px solid var(--teal-700)', borderRadius: '8px', padding: '10px 20px', fontSize: '13px', textDecoration: 'none', fontWeight: 700 }}
             >
               📄 View Evidence Package (JSON)
             </a>
@@ -669,7 +676,7 @@ export function IntegrationWorkspace({ csrfToken: _csrfToken }: IntegrationWorks
               href="/api/nif/platform/evidence/?format=zip"
               target="_blank"
               rel="noreferrer"
-              style={{ background: 'rgba(41,128,185,0.2)', color: '#2980b9', border: '1px solid rgba(41,128,185,0.4)', borderRadius: '8px', padding: '10px 18px', fontSize: '12px', textDecoration: 'none', fontWeight: 600 }}
+              style={{ background: 'var(--navy-100)', color: 'var(--navy-700)', border: '1px solid var(--navy-700)', borderRadius: '8px', padding: '10px 20px', fontSize: '13px', textDecoration: 'none', fontWeight: 700 }}
             >
               📦 Export Evidence Bundle (ZIP)
             </a>
@@ -680,18 +687,19 @@ export function IntegrationWorkspace({ csrfToken: _csrfToken }: IntegrationWorks
       {activeTab === 'dlq' && (
         <div
           style={{
-            background: 'linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.01) 100%)',
-            border: '1px solid rgba(255,255,255,0.07)',
-            borderRadius: '14px',
-            padding: '32px',
+            background: 'var(--panel)',
+            border: '1px solid var(--line)',
+            borderRadius: '16px',
+            padding: '36px',
             textAlign: 'center',
+            boxShadow: 'var(--shadow)',
           }}
         >
-          <div style={{ fontSize: '36px', marginBottom: '12px' }}>📭</div>
-          <div style={{ color: '#dde6f0', fontWeight: 600, fontSize: '15px', marginBottom: '8px' }}>
+          <div style={{ fontSize: '40px', marginBottom: '12px' }}>📭</div>
+          <div style={{ color: 'var(--ink)', fontWeight: 800, fontSize: '16px', marginBottom: '8px' }}>
             Dead-letter queue is clear
           </div>
-          <div style={{ color: '#6b7a8d', fontSize: '12px', maxWidth: '340px', margin: '0 auto', lineHeight: 1.6 }}>
+          <div style={{ color: 'var(--muted)', fontSize: '13px', maxWidth: '360px', margin: '0 auto', lineHeight: 1.6 }}>
             Integration messages that exhaust all retry attempts will appear here for manual review and replay by the Platform Owner.
           </div>
         </div>
