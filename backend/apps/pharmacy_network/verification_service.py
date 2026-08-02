@@ -33,7 +33,6 @@ from apps.pharmacy_network.models import (
     PremisesVerificationSnapshot,
 )
 
-
 # ---------------------------------------------------------------------------
 # Operational policy enforcement
 # ---------------------------------------------------------------------------

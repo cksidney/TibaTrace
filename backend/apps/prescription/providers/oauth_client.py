@@ -26,7 +26,6 @@ import hashlib
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Any
 from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
@@ -197,10 +196,10 @@ class DhaOAuthClient:
         # Perform the token request. In production, use an httpx or requests
         # client with certificate pinning, mutual TLS, and strict timeout.
         try:
-            import urllib.request
-            import urllib.parse
             import json
             import ssl
+            import urllib.parse
+            import urllib.request
 
             data = urllib.parse.urlencode({
                 "grant_type": "client_credentials",

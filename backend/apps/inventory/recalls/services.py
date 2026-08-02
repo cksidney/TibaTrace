@@ -19,12 +19,10 @@ from django.utils import timezone
 from apps.audit.service import log_audit
 from apps.inventory.recalls.models import (
     AlertStatus,
-    RegulatoryAction,
     RegulatoryAlert,
     RegulatoryAlertVersion,
-    RegulatoryEvidence,
-    RegulatoryTenantImpact,
     RegulatoryClosure,
+    RegulatoryTenantImpact,
 )
 
 logger = logging.getLogger(__name__)
