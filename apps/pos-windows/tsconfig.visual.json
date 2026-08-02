@@ -3,5 +3,11 @@
   "compilerOptions": {
     "types": ["node"]
   },
-  "include": ["visual/**/*.ts", "visual/**/*.tsx", "playwright.config.ts", "vite.visual.config.ts"]
+  "include": [
+    "src/global.d.ts",
+    "visual/**/*.ts",
+    "visual/**/*.tsx",
+    "playwright.config.ts",
+    "vite.visual.config.ts"
+  ]
 }
