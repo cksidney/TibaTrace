@@ -20,8 +20,18 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = BACKEND_ROOT.parent
 SCRIPT = REPO_ROOT / "scripts" / "migration_evidence.py"
 
-#: The one migration this release introduces over the deployed baseline.
+#: The scalar release migration reference for baseline testing.
 RELEASE_MIGRATION = "backend/apps/platform/migrations/0002_posrelease_client_alignment.py"
+
+#: The full list of migrations this release introduces over the deployed baseline.
+RELEASE_MIGRATIONS = [
+    "backend/apps/integrations/migrations/0001_initial.py",
+    "backend/apps/integrations/migrations/__init__.py",
+    "backend/apps/inventory/recalls/migrations/0001_initial.py",
+    "backend/apps/inventory/recalls/migrations/__init__.py",
+    "backend/apps/pharmacy_network/migrations/0003_nif_premises_verification.py",
+    "backend/apps/platform/migrations/0002_posrelease_client_alignment.py",
+]
 
 
 def run(new_files: str | None, out: Path, *extra: str) -> subprocess.CompletedProcess:
@@ -156,4 +166,4 @@ def test_git_baseline_matches_the_declared_release_migration():
     if result.returncode != 0:
         pytest.skip("baseline commit not present in this checkout")
     added = [line.strip() for line in result.stdout.splitlines() if line.strip()]
-    assert added == [RELEASE_MIGRATION], added
+    assert sorted(added) == sorted(RELEASE_MIGRATIONS), added

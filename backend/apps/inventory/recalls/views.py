@@ -125,8 +125,8 @@ class TenantRegulatoryImpactViewSet(ReadOnlyModelViewSet):
     def get_queryset(self):
         tenant_id = getattr(self.request, "tenant_id", None)
         if not tenant_id:
-            return RegulatoryTenantImpact.objects.none()
-        return RegulatoryTenantImpact.objects.filter(tenant_id=tenant_id).select_related("alert")
+            return RegulatoryTenantImpact.all_objects.none()
+        return RegulatoryTenantImpact.all_objects.filter(tenant_id=tenant_id).select_related("alert")
 
     @action(detail=True, methods=["post"], url_path="actions")
     def add_action(self, request, pk=None):

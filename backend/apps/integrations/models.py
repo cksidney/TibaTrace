@@ -36,7 +36,7 @@ from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
-from apps.core.models import TimestampedModel
+from apps.core.models import StrictTenantManager, TimestampedModel
 
 
 class ProviderType(models.TextChoices):
@@ -110,6 +110,8 @@ class ProviderConfiguration(TimestampedModel):
     notes = models.TextField(blank=True)
     #: Versioned configuration metadata (non-secret). e.g. timeout, retry policy, FHIR version.
     configuration = models.JSONField(default=dict, blank=True)
+    objects = models.Manager()
+    all_objects = models.Manager()
 
     class Meta:
         unique_together = [("provider_type", "environment")]
@@ -267,6 +269,9 @@ class IntegrationMessage(TimestampedModel):
     delivered_at = models.DateTimeField(null=True, blank=True)
     dead_lettered_at = models.DateTimeField(null=True, blank=True)
     last_error = models.TextField(blank=True)
+
+    objects = StrictTenantManager()
+    all_objects = models.Manager()
 
     class Meta:
         ordering = ["-created_at"]

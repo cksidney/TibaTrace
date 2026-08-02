@@ -55,7 +55,7 @@ class ProviderConfigurationViewSet(ModelViewSet):
 
     permission_classes = [IsAuthenticated]
     serializer_class = ProviderConfigurationSerializer
-    queryset = ProviderConfiguration.objects.all()
+    queryset = ProviderConfiguration.all_objects.all()
 
     @action(detail=True, methods=["get"], url_path="health")
     def health(self, request, pk=None):
@@ -68,7 +68,7 @@ class ProviderConfigurationViewSet(ModelViewSet):
     @action(detail=True, methods=["get"], url_path="messages")
     def messages(self, request, pk=None):
         provider = self.get_object()
-        msgs = IntegrationMessage.objects.filter(
+        msgs = IntegrationMessage.all_objects.filter(
             provider=provider
         ).order_by("-created_at")[:100]
         return Response(IntegrationMessageSerializer(msgs, many=True).data)

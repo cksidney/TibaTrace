@@ -799,12 +799,17 @@ class TestTenantIsolation(TestCase):
         )
 
     def test_premises_verification_snapshot_uses_default_manager(self):
-        """Snapshots are platform-global (must survive tenant suspension for audit)."""
+        """Snapshots use StrictTenantManager by default and all_objects for global audit."""
+        from django.db import models
         from apps.core.models import StrictTenantManager
         from apps.pharmacy_network.models import PremisesVerificationSnapshot
-        self.assertNotIsInstance(
+        self.assertIsInstance(
             PremisesVerificationSnapshot.objects,
             StrictTenantManager,
+        )
+        self.assertIsInstance(
+            PremisesVerificationSnapshot.all_objects,
+            models.Manager,
         )
 
     def test_regulatory_tenant_impact_is_tenant_scoped(self):

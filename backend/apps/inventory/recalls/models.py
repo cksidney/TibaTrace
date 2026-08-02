@@ -28,7 +28,7 @@ from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
-from apps.core.models import TimestampedModel
+from apps.core.models import StrictTenantManager, TimestampedModel
 
 
 class AlertSeverity(models.TextChoices):
@@ -220,6 +220,9 @@ class RegulatoryTenantImpact(TimestampedModel):
     prior_dispense_trace_required = models.BooleanField(default=False)
     prior_dispense_patient_count = models.IntegerField(default=0)
     notes = models.TextField(blank=True)
+
+    objects = StrictTenantManager()
+    all_objects = models.Manager()
 
     class Meta:
         unique_together = [("alert", "tenant")]

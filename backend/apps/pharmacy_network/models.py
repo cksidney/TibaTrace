@@ -345,9 +345,9 @@ class PremisesVerificationSnapshot(TimestampedModel):
     #: UTC timestamp when this snapshot was captured.
     captured_at = models.DateTimeField()
 
-    # Snapshots are platform-wide (not strictly tenant-scoped) because they must
-    # survive tenant suspension for audit purposes.
-    objects = models.Manager()
+    # Snapshots survive tenant suspension for audit purposes; all_objects provides global audit access.
+    objects = StrictTenantManager()
+    all_objects = models.Manager()
 
     class Meta:
         ordering = ["-captured_at"]
