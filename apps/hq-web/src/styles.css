@@ -5787,7 +5787,11 @@ button.priority-item-button {
   font-size: 0.84rem;
 }
 
-[data-theme="light"] .preset-chip,
+/* :not(.is-active) matters. This selector and `.preset-chip.is-active` both
+   weigh (0,2,0), so the later one won and repainted the selected chip white
+   while its own `color: #ffffff` survived -- the active preset rendered white
+   on white and the selected reporting window was invisible in light mode. */
+[data-theme="light"] .preset-chip:not(.is-active),
 [data-theme="light"] .reports-datetime-inputs input[type="datetime-local"],
 [data-theme="light"] .reports-datetime-inputs select {
   background: #fff;

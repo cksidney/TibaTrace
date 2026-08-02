@@ -10,6 +10,30 @@
     />
     <title>TibaTrace HQ — Health Operations</title>
     <link rel="icon" href="/brand/tibatrace-logo.jpeg" type="image/jpeg" />
+    <script>
+      // Apply the saved theme before the first paint.
+      //
+      // The React state that owns the theme lives in Dashboard, which renders
+      // only after the session and overview have loaded. Sign-in, loading and
+      // error screens return earlier, so data-theme was never set on them and
+      // the CSS fell back to the :root dark tokens -- a user who chose light
+      // was shown a dark sign-in page, and a dark flash on every load.
+      //
+      // Runs synchronously in <head> so the attribute is present before any
+      // styled content is painted. Wrapped because localStorage throws in
+      // some privacy modes, and a theme preference must never break boot.
+      (function () {
+        try {
+          var stored = localStorage.getItem('hq-theme');
+          document.documentElement.setAttribute(
+            'data-theme',
+            stored === 'light' || stored === 'dark' ? stored : 'dark',
+          );
+        } catch (_) {
+          document.documentElement.setAttribute('data-theme', 'dark');
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
