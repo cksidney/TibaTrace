@@ -10,6 +10,7 @@ import json
 import zipfile
 from datetime import timedelta
 from io import BytesIO
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -32,7 +33,10 @@ from apps.notifications.service import (
     emit_integration_notification,
     evaluate_regulatory_expiries,
 )
-from apps.platform.reporting.certification_engine import CertificationEvidenceGenerator
+from apps.platform.reporting.certification_engine import (
+    CertificationEvidenceGenerator,
+    get_current_commit_sha,
+)
 from apps.platform.reporting.compliance_engine import (
     ComplianceReportEngine,
     ComplianceReportType,
@@ -117,10 +121,16 @@ class Phase15ComplianceReportingEngineTests(TestCase):
 
 
 class Phase16CertificationEvidenceEngineTests(TestCase):
+    def test_commit_sha_uses_validated_build_environment(self):
+        sha = "a" * 40
+        with patch.dict("os.environ", {"DAWATRACE_COMMIT_SHA": sha}):
+            self.assertEqual(get_current_commit_sha(), sha)
+
     def test_generate_evidence_package(self):
         package = CertificationEvidenceGenerator.generate_evidence_package("Test Auditor")
         self.assertEqual(package["metadata"]["operator"], "Test Auditor")
         self.assertEqual(package["metadata"]["truth_label"], "MANUAL_INTERNAL_VERIFICATION")
+        self.assertEqual(package["metadata"]["version"], "1.0.0-rc12")
         self.assertIn("openapi_checksum", package)
         self.assertIn("quality_evidence", package)
 

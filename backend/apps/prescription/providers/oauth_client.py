@@ -74,7 +74,7 @@ _TOKEN_CACHE: dict[str, _CachedToken] = {}
 # ---------------------------------------------------------------------------
 
 def _assert_allowed_host(url: str, allowed_hosts: list[str]) -> None:
-    """Raise DhaTlsHostError if the URL host is not in the allow-list.
+    """Raise DhaTlsHostError unless the URL is HTTPS and its host is allowed.
 
     Fail-closed: an empty allow-list means no connections are permitted.
     """
@@ -84,6 +84,10 @@ def _assert_allowed_host(url: str, allowed_hosts: list[str]) -> None:
             "Connection refused (fail-closed)."
         )
     parsed = urlparse(url)
+    if parsed.scheme.lower() != "https":
+        raise DhaTlsHostError("OAuth token endpoints must use HTTPS. Connection refused (fail-closed).")
+    if parsed.username or parsed.password:
+        raise DhaTlsHostError("OAuth token endpoints must not contain user information.")
     host = parsed.hostname or ""
     if host not in allowed_hosts:
         raise DhaTlsHostError(
@@ -193,32 +197,30 @@ class DhaOAuthClient:
         client_id = self._resolve_secret(self._client_id_ref)
         client_secret = self._resolve_secret(self._client_secret_ref)
 
-        # Perform the token request. In production, use an httpx or requests
-        # client with certificate pinning, mutual TLS, and strict timeout.
+        # Perform the token request with TLS verification, a strict timeout,
+        # and redirects disabled so an allow-listed host cannot redirect token
+        # credentials to a different origin.
         try:
-            import json
-            import ssl
-            import urllib.parse
-            import urllib.request
+            import requests
 
-            data = urllib.parse.urlencode({
+            data = {
                 "grant_type": "client_credentials",
                 "client_id": client_id,
                 "client_secret": client_secret,  # noqa: S106 -- sent over TLS only
                 "scope": scope_key,
                 "audience": self._expected_audience,
-            }).encode()
-
-            # Enforce TLS; do not disable certificate verification.
-            ctx = ssl.create_default_context()
-            req = urllib.request.Request(
+            }
+            response = requests.post(
                 self._token_endpoint,
                 data=data,
-                method="POST",
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
+                timeout=15,
+                allow_redirects=False,
             )
-            with urllib.request.urlopen(req, context=ctx, timeout=15) as resp:
-                body = json.loads(resp.read())
+            if 300 <= response.status_code < 400:
+                raise DhaTokenError("OAuth token endpoint redirects are not permitted.")
+            response.raise_for_status()
+            body = response.json()
 
         except Exception as exc:  # noqa: BLE001
             # Never log the exception message directly; it may contain secrets.

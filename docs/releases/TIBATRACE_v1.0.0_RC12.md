@@ -19,13 +19,16 @@ the v1.0 readiness charter. It includes every change since the deployed
   and Android POS.
 - Windows POS `1.0.3` and Android POS `0.1.0-alpha.5`, rebuilt from the exact
   release commit so their shared contracts cannot drift from the server.
+- OAuth token acquisition hardened to require HTTPS, reject embedded user
+  information and refuse cross-origin redirects; certification commit metadata
+  is resolved without launching a subprocess.
 
 ## Database changes
 
 This release introduces additive migrations for:
 
 - `integrations` provider, claim, activation and reliability records;
-- `inventory_recalls` regulatory notices, matches and actions;
+- `recalls` regulatory notices, matches and actions;
 - `pharmacy_network` national-integration premises verification fields; and
 - `notifications` regulated notification delivery records.
 

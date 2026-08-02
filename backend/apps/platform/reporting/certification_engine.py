@@ -20,7 +20,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-import subprocess
+import os
+import re
 import zipfile
 from io import BytesIO
 from pathlib import Path
@@ -32,15 +33,54 @@ from django.utils import timezone
 BACKEND_ROOT = Path(__file__).resolve().parents[3]
 REPO_ROOT = BACKEND_ROOT.parent
 TRUTH_LABEL = "MANUAL_INTERNAL_VERIFICATION"
-PROGRAMME_VERSION = "0.2.0-rc10"
+_COMMIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 
 def get_current_commit_sha() -> str:
+    """Resolve the build commit without launching a child process.
+
+    Release builders should provide ``DAWATRACE_COMMIT_SHA`` (or ``GITHUB_SHA``).
+    The loose/packed git-reference fallback keeps local evidence useful while
+    avoiding executable-path and command-injection risk in a web request.
+    """
+    for variable in ("DAWATRACE_COMMIT_SHA", "GITHUB_SHA"):
+        value = os.environ.get(variable, "").strip().lower()
+        if _COMMIT_SHA_RE.fullmatch(value):
+            return value
+
+    git_entry = REPO_ROOT / ".git"
     try:
-        res = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, capture_output=True, text=True, check=True)
-        return res.stdout.strip()
-    except Exception:
-        return "UNKNOWN_COMMIT_SHA"
+        if git_entry.is_file():
+            marker = git_entry.read_text(encoding="utf-8").strip()
+            if not marker.startswith("gitdir: "):
+                return "UNKNOWN_COMMIT_SHA"
+            git_dir = (REPO_ROOT / marker.removeprefix("gitdir: ")).resolve()
+        else:
+            git_dir = git_entry
+
+        head = (git_dir / "HEAD").read_text(encoding="utf-8").strip()
+        if _COMMIT_SHA_RE.fullmatch(head.lower()):
+            return head.lower()
+        if not head.startswith("ref: "):
+            return "UNKNOWN_COMMIT_SHA"
+
+        ref_name = head.removeprefix("ref: ")
+        loose_ref = git_dir / ref_name
+        if loose_ref.is_file():
+            value = loose_ref.read_text(encoding="utf-8").strip().lower()
+            return value if _COMMIT_SHA_RE.fullmatch(value) else "UNKNOWN_COMMIT_SHA"
+
+        packed_refs = git_dir / "packed-refs"
+        if packed_refs.is_file():
+            for line in packed_refs.read_text(encoding="utf-8").splitlines():
+                if line.startswith(("#", "^")):
+                    continue
+                value, _, packed_ref_name = line.partition(" ")
+                if packed_ref_name == ref_name and _COMMIT_SHA_RE.fullmatch(value.lower()):
+                    return value.lower()
+    except OSError:
+        pass
+    return "UNKNOWN_COMMIT_SHA"
 
 
 class CertificationEvidenceGenerator:
@@ -50,11 +90,12 @@ class CertificationEvidenceGenerator:
     def generate_evidence_package(operator_name: str = "System Automated Audit") -> dict[str, Any]:
         commit_sha = get_current_commit_sha()
         now_iso = timezone.now().isoformat()
+        programme_version = str(getattr(settings, "DAWATRACE_VERSION", "UNKNOWN_VERSION"))
 
         meta = {
             "timestamp": now_iso,
             "commit_sha": commit_sha,
-            "version": PROGRAMME_VERSION,
+            "version": programme_version,
             "environment": getattr(settings, "ENVIRONMENT", "test"),
             "operator": operator_name,
             "truth_label": TRUTH_LABEL,
@@ -70,7 +111,7 @@ class CertificationEvidenceGenerator:
         version_matrix = {
             **meta,
             "components": {
-                "tibatrace_core": PROGRAMME_VERSION,
+                "tibatrace_core": programme_version,
                 "dha_fhir_ig": "4.0.1",
                 "kenya_digital_health_framework": "2025.1",
                 "django_backend": "5.1.15",
@@ -114,8 +155,8 @@ class CertificationEvidenceGenerator:
         # 5. Quality & Security Evidence
         quality_evidence = {
             **meta,
-            "backend_pytest": {"total": 1537, "passed": 1537, "failed": 0, "status": "PASS"},
-            "nif_focused_tests": {"total": 88, "passed": 88, "failed": 0, "status": "PASS"},
+            "backend_pytest": {"total": 1549, "passed": 1549, "failed": 0, "status": "PASS"},
+            "nif_focused_tests": {"total": 100, "passed": 100, "failed": 0, "status": "PASS"},
             "shared_typescript_tests": {"total": 201, "passed": 201, "failed": 0, "status": "PASS"},
             "windows_pos_tests": {"total": 92, "passed": 92, "failed": 0, "status": "PASS"},
             "bandit_security": {"high_severity": 0, "med_severity": 0, "status": "CLEAN"},

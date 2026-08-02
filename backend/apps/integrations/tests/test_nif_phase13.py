@@ -338,6 +338,38 @@ class TestDhaOAuthClientSecurity(TestCase):
         with self.assertRaises((DhaTlsHostError, DhaIntegrationDisabled)):
             client.get_access_token()
 
+    def test_rejects_non_https_token_endpoint(self):
+        """Allow-listed hosts must still use HTTPS."""
+        from apps.prescription.providers.oauth_client import DhaOAuthClient, DhaTlsHostError
+
+        client = DhaOAuthClient(
+            token_endpoint="http://auth.dha.go.ke/oauth/token",
+            client_id_reference="DHA_CLIENT_ID",
+            client_secret_reference="DHA_CLIENT_SECRET",
+            allowed_hosts=["auth.dha.go.ke"],
+            expected_issuer="https://auth.dha.go.ke",
+            expected_audience="dha-api",
+            is_enabled=True,
+        )
+        with self.assertRaises(DhaTlsHostError):
+            client.get_access_token()
+
+    def test_rejects_token_endpoint_with_user_information(self):
+        """Credentials embedded in an OAuth endpoint URL must fail closed."""
+        from apps.prescription.providers.oauth_client import DhaOAuthClient, DhaTlsHostError
+
+        client = DhaOAuthClient(
+            token_endpoint="https://user:password@auth.dha.go.ke/oauth/token",
+            client_id_reference="DHA_CLIENT_ID",
+            client_secret_reference="DHA_CLIENT_SECRET",
+            allowed_hosts=["auth.dha.go.ke"],
+            expected_issuer="https://auth.dha.go.ke",
+            expected_audience="dha-api",
+            is_enabled=True,
+        )
+        with self.assertRaises(DhaTlsHostError):
+            client.get_access_token()
+
     def test_raises_on_missing_credential_reference(self):
         """Missing environment variable must raise DhaIntegrationDisabled."""
         import os
