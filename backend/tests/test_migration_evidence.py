@@ -96,6 +96,31 @@ def test_non_migration_path_fails(tmp_path):
     assert "not a migration path" in result.stderr
 
 
+def test_migrations_package_marker_is_not_a_migration(tmp_path):
+    """A new Django app adds migrations/__init__.py; that is not a migration.
+
+    v1.0.0-rc12 added four apps' migration packages, and the generator rejected
+    the release because Django's loader -- correctly -- had never heard of
+    integrations.__init__.
+    """
+
+    out = tmp_path / "MIGRATIONS.json"
+    result = run(
+        "backend/apps/integrations/migrations/__init__.py\n" + RELEASE_MIGRATION,
+        out,
+    )
+    assert result.returncode == 0, result.stderr
+    entries = json.loads(out.read_text())
+    assert [e["migration"] for e in entries] == ["0002_posrelease_client_alignment"]
+
+
+def test_only_package_markers_yields_empty_inventory(tmp_path):
+    out = tmp_path / "MIGRATIONS.json"
+    result = run("backend/apps/integrations/migrations/__init__.py", out)
+    assert result.returncode == 0, result.stderr
+    assert json.loads(out.read_text()) == []
+
+
 def test_empty_input_produces_empty_inventory_explicitly(tmp_path):
     """An empty list is legitimate only when the caller says so deliberately."""
 

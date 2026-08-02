@@ -123,7 +123,14 @@ def main() -> int:
             "an empty list is how a release reports no migrations when it has one."
         )
 
-    new_files = [line.strip() for line in raw.splitlines() if line.strip()]
+    # A new Django app adds migrations/__init__.py, which git reports as an
+    # added file under migrations/ but which the loader rightly never sees.
+    # Treating it as a migration fails the release for a package marker.
+    new_files = [
+        line.strip()
+        for line in raw.splitlines()
+        if line.strip() and Path(line.strip()).name != "__init__.py"
+    ]
     inventory = build_inventory(new_files)
 
     destructive = [m for m in inventory if m["destructive"]]
