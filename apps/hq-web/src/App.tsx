@@ -7,7 +7,13 @@ import {
 } from '@dawatrace/shared/dispensing/index.js';
 
 import { AccessWorkspace } from './AccessWorkspace.js';
+import { ExecutiveDashboard } from './ExecutiveDashboard.js';
+import { FieldSearch } from './FieldSearch.js';
+import { GS1Workspace } from './GS1Workspace.js';
+import { InsuranceWorkspace } from './InsuranceWorkspace.js';
 import { IntegrationWorkspace } from './IntegrationWorkspace.js';
+import { PlatformOwnerConsole } from './PlatformOwnerConsole.js';
+import { RegulatoryWorkspace } from './RegulatoryWorkspace.js';
 import { ReportsWorkspace } from './ReportsWorkspace.js';
 import {
   activateCustomer,
@@ -170,6 +176,7 @@ import { TenantManagement } from './TenantManagement.js';
 
 type WorkspaceView =
   | 'overview'
+  | 'executive'
   | 'network'
   | 'people'
   | 'catalogue'
@@ -180,9 +187,12 @@ type WorkspaceView =
   | 'cash'
   | 'insurance'
   | 'clinical'
+  | 'regulatory'
+  | 'gs1'
   | 'reports'
   | 'governance'
   | 'integration'
+  | 'platform_owner'
   | 'access';
 
 interface NavigationItem {
@@ -194,20 +204,24 @@ interface NavigationItem {
 
 const navigation: readonly NavigationItem[] = [
   { key: 'overview', label: 'Overview', caption: 'Command centre', icon: 'overview' },
+  { key: 'executive', label: 'Executive Dashboard', caption: '18 Command Centre widgets', icon: 'overview' },
   { key: 'network', label: 'Pharmacy network', caption: 'Tenants and locations', icon: 'network' },
-  { key: 'people', label: 'People & customers', caption: 'Care and commercial records', icon: 'patients' },
+  { key: 'people', label: 'Patients & People', caption: 'Care and commercial records', icon: 'patients' },
   { key: 'catalogue', label: 'Medicine catalogue', caption: 'SKUs and product governance', icon: 'clinical' },
   { key: 'inventory', label: 'Inventory Control', caption: 'Balances, ledger & FEFO', icon: 'inventory' },
   { key: 'operations', label: 'Procurement & Supply', caption: 'Purchase orders & GRN', icon: 'store' },
   { key: 'commerce', label: 'Sales & fulfilment', caption: 'Orders through delivery', icon: 'store' },
   { key: 'pricing', label: 'Pricing', caption: 'Branch price books', icon: 'database' },
-  { key: 'cash', label: 'Cash control', caption: 'Shifts, tills and variances', icon: 'building' },
+  { key: 'cash', label: 'Finance & Cash Control', caption: 'Shifts, tills and variances', icon: 'building' },
   { key: 'insurance', label: 'Insurance & Claims', caption: 'Adjudication & SHA', icon: 'insurance' },
   { key: 'clinical', label: 'Clinical governance', caption: 'Safety and standards', icon: 'clinical' },
+  { key: 'regulatory', label: 'Regulatory Workspace', caption: 'PPB & DHA compliance', icon: 'shield' },
+  { key: 'gs1', label: 'GS1 Traceability', caption: 'GTIN & DataMatrix 2D', icon: 'inventory' },
   { key: 'reports', label: 'Reports', caption: 'Enterprise & security packs', icon: 'docs' },
   { key: 'governance', label: 'System governance', caption: 'Audit, events and documents', icon: 'shield' },
-  { key: 'integration', label: 'National integrations', caption: 'DHA & PPB command centre', icon: 'network' },
-  { key: 'access', label: 'Users & access', caption: 'Roles and security', icon: 'users' },
+  { key: 'integration', label: 'National Integrations', caption: 'DHA & PPB command centre', icon: 'network' },
+  { key: 'platform_owner', label: 'Platform Owner Console', caption: 'Global governance & activations', icon: 'shield' },
+  { key: 'access', label: 'Administration & Users', caption: 'Roles and security', icon: 'users' },
 ];
 
 const viewMeta: Record<WorkspaceView, { readonly eyebrow: string; readonly title: string; readonly description: string }> = {
@@ -215,6 +229,26 @@ const viewMeta: Record<WorkspaceView, { readonly eyebrow: string; readonly title
     eyebrow: 'Operational command centre',
     title: 'Health operations at a glance',
     description: 'A consolidated view of safety, stock, clinical and network signals across the active workspace.',
+  },
+  executive: {
+    eyebrow: 'Executive Command Centre',
+    title: 'Executive Operations & Risk Dashboard',
+    description: 'Real-time visibility across 18 operational, clinical, inventory, financial and regulatory indicators.',
+  },
+  regulatory: {
+    eyebrow: 'Regulatory Compliance Engine',
+    title: 'Regulatory & Licence Governance',
+    description: 'Pharmacy and Poisons Board (PPB) and Digital Health Agency (DHA) premises and practitioner compliance.',
+  },
+  gs1: {
+    eyebrow: 'GS1 Traceability Registry',
+    title: 'GS1 GTIN & Barcode Workspace',
+    description: 'Global 2D DataMatrix serialisation, GTIN lookup, packaging hierarchy and manufacturer verification.',
+  },
+  platform_owner: {
+    eyebrow: 'Platform Owner Console',
+    title: 'Global System & Integration Governance',
+    description: 'Restricted administrative surface for national provider activations, credentials and emergency kill switch controls.',
   },
   network: {
     eyebrow: 'Care network',
@@ -667,6 +701,10 @@ function Dashboard({
             </div>
           </section>
 
+          <div style={{ marginBottom: '20px' }}>
+            <FieldSearch onSearch={(field, query) => console.log('Search field:', field, 'query:', query)} />
+          </div>
+
           {refreshFailed ? (
             <div className="inline-alert" role="status">
               <Icon name="alert" />
@@ -675,6 +713,7 @@ function Dashboard({
           ) : null}
 
           {activeView === 'overview' ? <OverviewView overview={overview} onNavigate={setActiveView} /> : null}
+          {activeView === 'executive' ? <ExecutiveDashboard csrfToken={csrfToken} onNavigate={(tab) => setActiveView((tab.toLowerCase() === 'dispensing' ? 'commerce' : tab.toLowerCase() === 'inventory' ? 'inventory' : tab.toLowerCase() === 'insurance' ? 'insurance' : tab.toLowerCase() === 'regulatory' ? 'regulatory' : tab.toLowerCase() === 'sales' ? 'commerce' : tab.toLowerCase() === 'procurement' ? 'operations' : 'overview') as WorkspaceView)} /> : null}
           {activeView === 'network' ? <NetworkView csrfToken={csrfToken} onChanged={onRefresh} overview={overview} /> : null}
           {activeView === 'people' ? <PeopleView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} /> : null}
           {activeView === 'catalogue' ? <CatalogueView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} overview={overview} /> : null}
@@ -683,11 +722,19 @@ function Dashboard({
           {activeView === 'commerce' ? <CommerceView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} /> : null}
           {activeView === 'pricing' ? <PricingView csrfToken={csrfToken} overview={overview} /> : null}
           {activeView === 'cash' ? <CashControlView csrfToken={csrfToken} overview={overview} /> : null}
-          {activeView === 'insurance' ? <InsuranceView csrfToken={csrfToken} overview={overview} /> : null}
+          {activeView === 'insurance' ? (
+            <div>
+              <InsuranceWorkspace csrfToken={csrfToken} />
+              <InsuranceView csrfToken={csrfToken} overview={overview} />
+            </div>
+          ) : null}
           {activeView === 'clinical' ? <ClinicalView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} overview={overview} /> : null}
+          {activeView === 'regulatory' ? <RegulatoryWorkspace csrfToken={csrfToken} /> : null}
+          {activeView === 'gs1' ? <GS1Workspace csrfToken={csrfToken} /> : null}
           {activeView === 'reports' ? <ReportsWorkspace csrfToken={csrfToken} overview={overview} onNavigate={setActiveView} /> : null}
           {activeView === 'governance' ? <GovernanceView data={workspaceData} failed={workspaceFailed} /> : null}
           {activeView === 'integration' ? <IntegrationWorkspace csrfToken={csrfToken} /> : null}
+          {activeView === 'platform_owner' ? <PlatformOwnerConsole csrfToken={csrfToken} /> : null}
           {activeView === 'access' ? <AccessView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} overview={overview} /> : null}
         </main>
       </div>
