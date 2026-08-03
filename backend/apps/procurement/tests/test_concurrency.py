@@ -80,7 +80,7 @@ class TestGoodsReceiptConcurrency(TransactionTestCase):
             expected_delivery_date=datetime.date.today(),
             creator=self.user,
         )
-        PurchaseOrderService.approve_po(purchase_order=self.po, approver=self.user)
+        PurchaseOrderService.approve_po(purchase_order=self.po, approver=self.approver)
         PurchaseOrderService.send_po(purchase_order=self.po)
 
         self.grn = GoodsReceivingService.start_goods_receipt(

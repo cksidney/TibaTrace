@@ -258,6 +258,19 @@ class PurchaseOrder(TimestampedModel):
     revision_number = models.PositiveIntegerField(default=1)
     status = models.CharField(max_length=32, choices=Status.choices, default=Status.DRAFT, db_index=True)
     approved_at = models.DateTimeField(null=True, blank=True)
+    #: Who raised the order. ProcurementService.create_purchase_order has always
+    #: accepted a created_by argument and silently dropped it, so segregation of
+    #: duties on approval could not be checked at all -- one person could raise
+    #: a purchase order and approve their own commitment.
+    #: Nullable because orders predating this field have no recorded creator;
+    #: backfilling a guess would assert a fact nobody established.
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="created_purchase_orders",
+    )
     approved_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="approved_pos"
     )

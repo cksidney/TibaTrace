@@ -71,7 +71,7 @@ def test_goods_receiving_workflow_and_tolerances():
         expected_delivery_date=datetime.date.today(),
         creator=user,
     )
-    PurchaseOrderService.approve_po(purchase_order=po, approver=user)
+    PurchaseOrderService.approve_po(purchase_order=po, approver=approver)
     PurchaseOrderService.send_po(purchase_order=po)
 
     # 1. Start GRN

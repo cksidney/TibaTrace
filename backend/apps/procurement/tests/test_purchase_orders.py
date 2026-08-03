@@ -74,7 +74,7 @@ def test_purchase_order_creation_and_approval():
     assert po.lines.count() == 1
 
     # Approve PO
-    approved_po = PurchaseOrderService.approve_po(purchase_order=po, approver=user)
+    approved_po = PurchaseOrderService.approve_po(purchase_order=po, approver=approver)
     assert approved_po.status == PurchaseOrder.Status.APPROVED
 
     # Send PO

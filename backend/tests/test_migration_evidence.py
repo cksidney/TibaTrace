@@ -44,6 +44,9 @@ RELEASE_MIGRATIONS = [
     # Stage 2A service closure: segregation of duties on supplier qualifications.
     # Additive only -- four nullable columns, no alteration to existing data.
     "backend/apps/procurement/migrations/0005_supplier_qualification_governance.py",
+    # Stage 2B.1: records who raised a purchase order, so approval segregation
+    # of duties can be enforced. Additive -- one nullable column.
+    "backend/apps/procurement/migrations/0006_purchaseorder_created_by.py",
 ]
 
 

@@ -57,7 +57,7 @@ def test_supplier_return_request():
     PurchaseRequisitionService.submit_requisition(requisition=req)
     PurchaseRequisitionService.approve_requisition(requisition=req, approver=approver)
     po = PurchaseOrderService.create_po_from_requisition(tenant=tenant, po_number="PO-RET", supplier=supplier, requisition=req, ordering_branch=branch, order_date=datetime.date.today(), expected_delivery_date=datetime.date.today(), creator=user)
-    PurchaseOrderService.approve_po(purchase_order=po, approver=user)
+    PurchaseOrderService.approve_po(purchase_order=po, approver=approver)
     PurchaseOrderService.send_po(purchase_order=po)
 
     grn = GoodsReceivingService.start_goods_receipt(tenant=tenant, grn_number="GRN-RET", purchase_order=po, receiving_branch=branch, receiver=user, delivery_note_number="DN-RET")

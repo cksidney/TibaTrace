@@ -224,6 +224,7 @@ class ProcurementService:
             expected_delivery_date=expected_delivery_date or timezone.localdate(),
             currency=currency,
             status=PurchaseOrder.Status.DRAFT,
+            created_by=created_by,
         )
 
         total_gross = decimal.Decimal("0.00")
@@ -454,6 +455,17 @@ class ProcurementService:
 
         if purchase_order.status != PurchaseOrder.Status.DRAFT:
             raise ValidationError(f"Cannot approve PO in status {purchase_order.status}")
+        if approver is None:
+            raise ValidationError("Purchase-order approval requires a named approver.")
+        if (
+            purchase_order.created_by_id
+            and str(purchase_order.created_by_id) == str(getattr(approver, "pk", None))
+        ):
+            # Matches approve_requisition. An approval the raiser can grant
+            # themselves is not a control on a commercial commitment.
+            raise ValidationError(
+                "The person who raised a purchase order cannot approve it."
+            )
 
         purchase_order.status = PurchaseOrder.Status.APPROVED
         purchase_order.approved_by = approver
