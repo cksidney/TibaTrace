@@ -40,6 +40,7 @@ RELEASE_MIGRATIONS = [
     # Stage 2A master data: departments and their memberships. Additive only --
     # two new tables, no alteration to an existing one.
     "backend/apps/organizations/migrations/0002_departments.py",
+    "backend/apps/platform/migrations/0004_demo_story_metadata.py",
 ]
 
 

@@ -51,6 +51,24 @@ class Command(BaseCommand):
         parser.add_argument("--allow-production-demo-seed", action="store_true")
         parser.add_argument("--backup-reference", help="Evidence a backup exists.")
 
+        # Stage 2A
+        parser.add_argument(
+            "--stage", choices=["master-data"],
+            help="Generation stage to execute. Omit to plan only.",
+        )
+        parser.add_argument("--demo-version", help="Dated content version, e.g. 2026.08.03.")
+        parser.add_argument("--scenario-version", help="Plan version, e.g. 1.0.")
+        parser.add_argument(
+            "--manifest-digest",
+            help="The approved manifest digest. Refuses to run if the computed plan differs.",
+        )
+        parser.add_argument("--resume", action="store_true",
+                            help="Continue an interrupted run from its last completed stage.")
+        parser.add_argument("--from-stage", help="First stage to run (A-L).")
+        parser.add_argument("--stop-after-stage", help="Last stage to run (A-L).")
+        parser.add_argument("--output-directory", help="Where evidence artefacts are written.")
+        parser.add_argument("--progress-format", choices=["text", "json"], default="text")
+
         add_demo_seed_arguments(parser)
 
     def handle(self, *args, **options):
@@ -126,13 +144,142 @@ class Command(BaseCommand):
             )
 
         gates.raise_if_blocked()
+
+        if options.get("stage") == "master-data":
+            return self._run_master_data(
+                tenant=tenant, profile=profile, seed=seed, as_of=as_of,
+                manifest=manifest, digest=digest, options=options,
+            )
+
         raise CommandError(
-            "Stage 1 implements planning only: gates, classification, manifest and "
-            "the run record. Transactional generation (patients, inventory, "
-            "prescriptions, sales, claims) is Stage 2 and is deliberately absent, "
-            "so an empty tenant is never mistaken for a successful seed.\n"
-            "Use --dry-run or --validate-only."
+            "Transactional generation (inventory ledger, prescriptions, sales, claims) "
+            "is Stage 2B and is deliberately absent, so an empty tenant is never "
+            "mistaken for a successful seed.\n"
+            "Use --stage=master-data for Stage 2A, or --dry-run / --validate-only."
         )
+
+    # ------------------------------------------------------------------
+    # Stage 2A
+    # ------------------------------------------------------------------
+
+    def _run_master_data(self, *, tenant, profile, seed, as_of, manifest, digest, options):
+        from pathlib import Path
+
+        from apps.core.demo_seed import resolve_demo_password
+        from apps.platform.demo.generation.context import GenerationContext
+        from apps.platform.demo.generation.orchestrator import MasterDataOrchestrator
+        from apps.platform.demo.generation.validation import MasterDataValidator
+        from apps.platform.demo.profiles import DEMO_VERSION, get_master_data_targets
+
+        supplied_digest = options.get("manifest_digest")
+        if supplied_digest and supplied_digest != digest:
+            raise CommandError(
+                "The approved manifest digest does not match the plan this run would "
+                f"produce.\n  approved: {supplied_digest}\n  computed: {digest}\n"
+                "An approval authorises one exact plan. Re-run the dry run and obtain "
+                "approval for the new digest."
+            )
+
+        try:
+            targets = get_master_data_targets(options["scale"])
+        except KeyError as exc:
+            raise CommandError(str(exc)) from None
+
+        # Guarded credential: never generated inline, never printed, never
+        # written to an artefact.
+        password, _generated = resolve_demo_password(
+            allow_generated_fallback=options.get("allow_demo_seed", False)
+        )
+
+        run = self._ensure_run(tenant, profile, seed, as_of, options["scale"], manifest, digest)
+        ctx = GenerationContext(
+            run=run, tenant=tenant, seed=seed, as_of=as_of, targets=targets,
+            demo_password=password,
+        )
+
+        json_progress = options.get("progress_format") == "json"
+
+        def report(message: str):
+            if json_progress:
+                self.stdout.write(json.dumps({"event": "stage", "message": message}))
+            else:
+                self.stdout.write(f"  {message}")
+
+        orchestrator = MasterDataOrchestrator(ctx, progress=report)
+        try:
+            orchestrator.run(
+                from_stage=options.get("from_stage"),
+                stop_after=options.get("stop_after_stage"),
+                resume=options.get("resume", False),
+            )
+        except Exception as exc:
+            run.refresh_from_db()
+            run.failure_reason = f"{type(exc).__name__}: {exc}"[:2000]
+            run.save(update_fields=["failure_reason", "updated_at"])
+            raise CommandError(f"Master-data generation failed: {exc}") from exc
+
+        validation = MasterDataValidator(run=run, tenant=tenant).run_all()
+        orchestrator.finalise()
+
+        directory = Path(
+            options.get("output_directory")
+            or f"demo-evidence/{tenant.slug}/{DEMO_VERSION}/{digest[:12]}"
+        )
+        written = orchestrator.write_artefacts(directory, validation=validation)
+
+        summary = orchestrator.summary()
+        self._print_master_data(summary, validation, written, orchestrator)
+
+        if validation["status"] != "PASS":
+            raise CommandError(
+                f"Master-data validation FAILED with {validation['failure_count']} finding(s). "
+                "The run is not marked complete."
+            )
+        self.stdout.write(self.style.SUCCESS("MASTER_DATA_COMPLETE"))
+
+    def _ensure_run(self, tenant, profile, seed, as_of, scale, manifest, digest):
+        from apps.platform.demo.profiles import DEMO_VERSION
+
+        run, _ = DemoScenarioRun.all_objects.get_or_create(
+            tenant=tenant,
+            profile=profile.key,
+            scenario_version=SCENARIO_VERSION,
+            random_seed=seed,
+            as_of_date=as_of,
+            defaults={
+                "scenario_name": SCENARIO_NAME,
+                "scale": scale,
+                "state": DemoScenarioRun.State.PLANNED,
+            },
+        )
+        run.manifest = manifest
+        run.manifest_digest = digest
+        run.demo_version = DEMO_VERSION
+        run.save(update_fields=["manifest", "manifest_digest", "demo_version", "updated_at"])
+        return run
+
+    def _print_master_data(self, summary, validation, written, orchestrator):
+        self.stdout.write("")
+        self.stdout.write("Master data generated")
+        for key, value in sorted(summary["counts"].items()):
+            if "." not in key:
+                self.stdout.write(f"  {key:38} {value}")
+        if summary["deferred"]:
+            self.stdout.write("")
+            self.stdout.write(self.style.WARNING("Deferred (no authoritative service):"))
+            for entry in summary["deferred"]:
+                self.stdout.write(f"  - {entry['domain']}: needs {entry['required_service']}")
+        self.stdout.write("")
+        status_style = self.style.SUCCESS if validation["status"] == "PASS" else self.style.ERROR
+        self.stdout.write(status_style(f"Validation: {validation['status']}"))
+        for finding in validation["findings"]:
+            if finding["status"] != "PASS":
+                self.stdout.write(f"  {finding['status']}: {finding['check']} — {finding['detail']}")
+        self.stdout.write("")
+        self.stdout.write(f"Artefacts: {len(written)} file(s)")
+        for name in sorted(written):
+            self.stdout.write(f"  {written[name]}")
+        self.stdout.write(f"Total: {orchestrator.timings()['total_seconds']}s")
 
     # ------------------------------------------------------------------
 

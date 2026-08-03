@@ -57,6 +57,20 @@ class DemoScenarioRun(TimestampedModel):
     as_of_date = models.DateField()
     scale = models.CharField(max_length=20, default="small")
 
+    #: Dated content version ("2026.08.03"). Distinct from scenario_version,
+    #: which versions the *plan*: the same plan can be regenerated with newer
+    #: content, and an approval binds to the manifest digest covering both.
+    demo_version = models.CharField(max_length=40, blank=True)
+
+    #: Per-stage progress, keyed by stage id:
+    #:   {"B": {"status": "COMPLETED", "counts": {...}, "seconds": 1.2,
+    #:          "last_key": "...", "error_class": ""}}
+    #: This is what makes --resume safe. Without a durable record of which
+    #: stages finished, resuming means re-running everything and relying on
+    #: idempotency to paper over it, which silently repeats lifecycle
+    #: transitions that are not idempotent (an approval, a verification).
+    stage_progress = models.JSONField(default=dict, blank=True)
+
     state = models.CharField(
         max_length=20, choices=State.choices, default=State.PLANNED, db_index=True
     )
@@ -139,6 +153,27 @@ class DemoScenarioObject(TimestampedModel):
     #: Stable key derived from the seed, so a rerun recognises its own output.
     seed_key = models.CharField(max_length=200, db_index=True)
     branch_reference = models.CharField(max_length=120, blank=True)
+
+    # ---- Business story metadata -------------------------------------------
+    # Kept here rather than on the domain models. A `demo_story_id` column on
+    # Patient or Supplier would put demonstration concerns in the production
+    # schema of every domain the engine touches, and would still not cover
+    # models the engine does not own. Ownership already lives in this table,
+    # so the story lives beside it.
+
+    #: Domain label ("patients", "suppliers"), matching the summary keys.
+    domain = models.CharField(max_length=80, blank=True, db_index=True)
+    #: Generator stage id ("B", "F") -- lets a resume attribute rows to stages.
+    stage = models.CharField(max_length=8, blank=True, db_index=True)
+    #: Narrative identifier, e.g. "NC-MASTER-PATIENT-001".
+    story_id = models.CharField(max_length=80, blank=True, db_index=True)
+    #: Groups objects that only make sense together (a supplier and its
+    #: agreements; a user, their membership and their role assignment).
+    relationship_group = models.CharField(max_length=120, blank=True, db_index=True)
+    #: Why this object exists in the demonstration, in one line.
+    business_purpose = models.CharField(max_length=255, blank=True)
+    #: The deterministic reference this object was looked up by on a rerun.
+    external_reference = models.CharField(max_length=200, blank=True, db_index=True)
 
     #: False for immutable domains -- audit, ledger, clinical decisions and the
     #: rest. Archival supersedes them; nothing deletes them.

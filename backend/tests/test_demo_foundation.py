@@ -409,15 +409,35 @@ def test_rerunning_same_plan_reuses_the_run(db, demo_tenant, settings, tmp_path)
     assert DemoScenarioRun.all_objects.filter(tenant=demo_tenant).count() == 1
 
 
-def test_stage_one_refuses_to_generate_data(db, demo_tenant, settings):
-    """A real run must fail loudly rather than leave an empty tenant."""
+def test_a_run_without_a_stage_refuses_rather_than_doing_nothing(db, demo_tenant, settings):
+    """A real run must fail loudly rather than leave an empty tenant.
+
+    Stage 2A added --stage=master-data. Omitting it still refuses, because a
+    command that silently planned and exited would leave an empty tenant
+    looking like a successful seed -- the failure this guard exists for.
+    """
     settings.DAWATRACE_ENV = "development"
     settings.FHIR_WRITE_INTERACTIONS_ENABLED = False
     settings.DAWATRACE_NOTIFICATIONS_ENABLED = False
-    with pytest.raises(CommandError, match="Stage 1 implements planning only"):
+    with pytest.raises(CommandError, match="Stage 2B"):
         call_command(
             "seed_demo_scenario", tenant_slug=demo_tenant.slug, profile=PILOT.key,
             random_seed=SEED, as_of_date=AS_OF.isoformat(), allow_demo_seed=True,
+        )
+
+
+def test_master_data_stage_refuses_a_digest_that_does_not_match_the_plan(
+    db, demo_tenant, settings
+):
+    """An approval authorises one exact plan, so a stale digest must not run."""
+    settings.DAWATRACE_ENV = "development"
+    settings.FHIR_WRITE_INTERACTIONS_ENABLED = False
+    settings.DAWATRACE_NOTIFICATIONS_ENABLED = False
+    with pytest.raises(CommandError, match="does not match the plan"):
+        call_command(
+            "seed_demo_scenario", tenant_slug=demo_tenant.slug, profile=PILOT.key,
+            random_seed=SEED, as_of_date=AS_OF.isoformat(), allow_demo_seed=True,
+            stage="master-data", manifest_digest="0" * 64,
         )
 
 
