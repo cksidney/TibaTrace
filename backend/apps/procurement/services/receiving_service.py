@@ -318,7 +318,15 @@ class GoodsReceivingService:
         # same received quantity, each find room under the ordered quantity,
         # and both post -- which is how a hundred-unit order becomes a
         # hundred-and-eighty-unit receipt.
-        locked_po_line = PurchaseOrderLine.objects.select_for_update().get(pk=po_line.pk)
+        # all_objects with an explicit tenant filter. `objects` is tenant-strict
+        # and returns nothing unless tenant context is set on the thread, so
+        # this raised DoesNotExist -- and took the over-receipt guard with it --
+        # for every caller outside a request: management commands, Celery tasks,
+        # imports.
+        locked_po_line = (
+            PurchaseOrderLine.all_objects.select_for_update()
+            .get(pk=po_line.pk, tenant_id=po_line.tenant_id)
+        )
 
         already_received = locked_po_line.received_quantity or 0
         if already_received + delivered_quantity > locked_po_line.ordered_quantity:

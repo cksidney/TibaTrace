@@ -75,7 +75,10 @@ class SupplierReturnService:
                 f"return; the receipt rejected or quarantined {eligible}."
             )
 
-        return SupplierReturnLine.objects.create(
+        # all_objects: `objects` is tenant-strict, and a write through a
+        # tenant-filtered queryset depends on thread context this service does
+        # not establish.
+        return SupplierReturnLine.all_objects.create(
             tenant=supplier_return.tenant,
             supplier_return=supplier_return,
             sku=sku,
