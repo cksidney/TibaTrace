@@ -47,6 +47,9 @@ RELEASE_MIGRATIONS = [
     # Stage 2B.1: records who raised a purchase order, so approval segregation
     # of duties can be enforced. Additive -- one nullable column.
     "backend/apps/procurement/migrations/0006_purchaseorder_created_by.py",
+    # Stage 2B.2A: per-batch quality decisions -- inspector, evidence and one
+    # decision per batch. Additive: three nullable columns and a constraint.
+    "backend/apps/procurement/migrations/0007_batch_quality_decision.py",
 ]
 
 

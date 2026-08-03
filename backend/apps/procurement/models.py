@@ -623,15 +623,66 @@ class ReceivingScan(TimestampedModel):
 
 
 class QualityDecision(TimestampedModel):
+    """A quality outcome recorded against one received batch.
+
+    Distinct from ReceivingInspection, which is per *receipt* and applies one
+    decision to every batch under it. Real deliveries are not uniform: one
+    crushed carton on a pallet is the normal case, and a per-receipt verdict
+    cannot say so.
+
+    Recording a decision moves no quantity and does not release. Release is a
+    separate act, because a decision that released as a side effect would make
+    "reviewed" and "available" the same event.
+    """
+
+    class Outcome(models.TextChoices):
+        #: Eligible for a later release operation. Not released.
+        APPROVE_FOR_RELEASE = "APPROVE_FOR_RELEASE", "Approved for release"
+        HOLD_FOR_REVIEW = "HOLD_FOR_REVIEW", "Held for review"
+        REJECT = "REJECT", "Rejected"
+        DAMAGE_HOLD = "DAMAGE_HOLD", "Held: damage"
+        TEMPERATURE_EXCURSION = "TEMPERATURE_EXCURSION", "Held: temperature excursion"
+        DOCUMENTATION_HOLD = "DOCUMENTATION_HOLD", "Held: documentation"
+        NEAR_EXPIRY_HOLD = "NEAR_EXPIRY_HOLD", "Held: near expiry"
+
+    #: Outcomes that permit a later release. Everything else keeps the batch
+    #: unavailable, and REJECT keeps it unavailable permanently.
+    RELEASABLE_OUTCOMES = frozenset({Outcome.APPROVE_FOR_RELEASE})
+
     tenant = models.ForeignKey("tenancy.Tenant", on_delete=models.CASCADE, null=True, blank=True, related_name="+")
     goods_receipt = models.ForeignKey(GoodsReceipt, on_delete=models.CASCADE, related_name="quality_decisions")
     batch = models.ForeignKey(ReceivedBatch, on_delete=models.CASCADE, related_name="+")
     decision = models.CharField(max_length=32, default="RELEASED")
     decision_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
     decision_notes = models.TextField(blank=True, default="")
+    #: Who physically inspected the goods. Separate from decision_by so the
+    #: reviewer and the person who signed off can be checked against each other,
+    #: and both against the receiver. Nullable because rows predating this field
+    #: recorded no inspector.
+    inspector = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="batch_quality_inspections",
+    )
+    #: What the decision was based on. No regulator is contacted, so this
+    #: records internal document review rather than implying a PPB lookup.
+    evidence_reference = models.CharField(max_length=255, blank=True, default="")
+    evidence_basis = models.CharField(max_length=64, blank=True, default="")
 
     objects = StrictTenantManager()
     all_objects = models.Manager()
+
+    class Meta:
+        constraints = [
+            # One decision per batch. A second would make "what did quality
+            # decide?" depend on which row was read first, and release keys off
+            # that answer.
+            models.UniqueConstraint(
+                fields=["tenant", "batch"], name="uq_quality_decision_per_batch"
+            )
+        ]
 
 class ProcurementPolicy(TimestampedModel):
     """Per-tenant procurement rules that are policy rather than law.
