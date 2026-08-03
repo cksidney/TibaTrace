@@ -190,13 +190,12 @@ class CatalogueSelectionService:
             results = [s for s in results if _is_cold_chain(s) == filters.cold_chain]
         if filters.require_identifier:
             with_identifiers = set(
-                ProductIdentifier.all_objects.filter(
-                    entity_type="SKU", entity_id__in=[str(s.pk) for s in results]
+                ProductIdentifier.objects.filter(
+                    entity_type="SKU", entity_id__in=[s.pk for s in results]
                 ).values_list("entity_id", flat=True)
             )
             results = [
-                s for s in results
-                if str(s.pk) in with_identifiers or s.default_barcode
+                s for s in results if s.pk in with_identifiers or s.default_barcode
             ]
         return results
 
@@ -494,12 +493,15 @@ class TenantCatalogueProvisioningService:
             status=CommercialSKU.STATUS_ACTIVE,
         )
         if barcode:
-            ProductIdentifier.all_objects.get_or_create(
+            # ProductIdentifier is global reference data with no tenant column,
+            # so it carries the default manager rather than the tenant-strict
+            # pair. entity_id is a UUIDField; pass the pk, not its string form.
+            ProductIdentifier.objects.get_or_create(
                 entity_type="SKU",
-                entity_id=str(sku.pk),
+                entity_id=sku.pk,
                 system="GTIN",
                 value=barcode,
-                defaults={"is_primary": True},
+                defaults={"is_primary": True, "issuing_authority": "DEMO_SYNTHETIC"},
             )
         emit_event(
             tenant_id=tenant.pk,

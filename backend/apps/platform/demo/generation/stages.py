@@ -768,29 +768,89 @@ class StageGManufacturers(Stage):
             ctx.add_count("manufacturers", 1)
             ctx.add_count(f"manufacturers.country.{country}", 1)
 
-        # The medicine catalogue is global reference data this engine does not
-        # own. Selecting from it requires products to exist; on an empty
-        # database there is nothing to select, and inventing clinical products
-        # to hit a count is explicitly out of scope.
-        self._select_catalogue(ctx)
+        self._provision_catalogue(ctx)
 
-    def _select_catalogue(self, ctx):
-        from apps.medicines.models import CommercialSKU
+    def _provision_catalogue(self, ctx):
+        """List global catalogue products for the tenant, then assort them.
 
-        available = CommercialSKU.all_objects.filter(tenant=ctx.tenant).order_by("pk")
-        count = available.count()
-        if count == 0:
+        The clinical and manufactured products are global reference data this
+        engine reads and never writes. A CommercialSKU is the tenant's own
+        listing of one of them in one pack, so provisioning derives SKUs from
+        (global product x package) pairs -- bounded by what the global
+        catalogue actually holds.
+        """
+        from apps.medicines.models import PackageDefinition
+        from apps.medicines.provisioning import (
+            BranchAssortmentProvisioningService,
+            CatalogueSelectionService,
+            TenantCatalogueProvisioningService,
+        )
+
+        products = list(TenantCatalogueProvisioningService.available_global_products())
+        packages = list(
+            PackageDefinition.objects.filter(is_active=True).order_by("code")
+        )
+        if not products or not packages:
             ctx.defer(
                 domain="medicine_assortment", stage=self.id,
                 reason=(
-                    "No CommercialSKU rows exist for this tenant. Stage 2A selects from the "
-                    "existing catalogue and must not fabricate clinical medicinal products to "
-                    "reach a count; loading the catalogue is a separate, governed activity."
+                    "The global catalogue holds no fit manufactured products or no active "
+                    "package definitions. Stage 2A lists existing global reference data and "
+                    "must not fabricate clinical medicines to reach a count; load the "
+                    "catalogue first (seed_medicine_catalogue or import_ke_etcd_catalogue)."
                 ),
-                required_service="catalogue load (medicines.ClinicalMedicinalProduct / CommercialSKU)",
+                required_service="global catalogue load",
             )
             return
-        ctx.add_count("commercial_skus_available", count)
+
+        wanted = ctx.targets.skus
+        for index, (product, package) in enumerate(
+            [(p, k) for p in products for k in packages]
+        ):
+            if ctx.counts.get("commercial_skus", 0) >= wanted:
+                break
+            reference = f"{REF}-SKU-{product.code}-{package.code}"
+            sku = TenantCatalogueProvisioningService.provision_sku(
+                tenant=ctx.tenant,
+                manufactured_product=product,
+                package_definition=package,
+                sku_code=reference,
+                barcode=syn.synthetic_gtin13(ctx.seed, "sku", reference),
+            )
+            ctx.own(sku, domain="commercial_skus", stage=self.id,
+                    story_id=STORY_CATALOGUE, reference=reference,
+                    purpose=f"{product.brand_name} in {package.description}.",
+                    relationship_group=f"{REF}-CATALOGUE")
+            ctx.add_count("commercial_skus", 1)
+
+        # Deterministic branch assortment. Selection is hash-ranked, so adding a
+        # product to the catalogue does not change which of the others a branch
+        # already carries.
+        selected = CatalogueSelectionService.select_deterministic(
+            tenant=ctx.tenant, count=ctx.counts.get("commercial_skus", 0), seed=ctx.seed,
+        )
+        ctx.put("selected_skus", selected)
+
+        for branch_key in ("cbd", "westlands"):
+            branch = ctx.get(f"site:{branch_key}")
+            # Westlands carries a slightly narrower range, so the two branches
+            # are not identical -- a demo where every branch stocks the same
+            # thing cannot show a transfer or a branch-restricted line.
+            subset = selected if branch_key == "cbd" else selected[: int(len(selected) * 0.85)]
+            provisioned, rejected = BranchAssortmentProvisioningService.provision_many(
+                tenant=ctx.tenant, branch=branch, skus=subset, skip_unfit=True,
+            )
+            for assortment in provisioned:
+                ctx.own(assortment, domain="branch_assortments", stage=self.id,
+                        story_id=STORY_CATALOGUE,
+                        reference=f"{REF}-ASSORT-{branch_key.upper()}-{assortment.sku.sku_code}",
+                        branch_reference=branch.code,
+                        purpose=f"{branch.name} carries this line.",
+                        relationship_group=f"{REF}-CATALOGUE")
+            ctx.add_count(f"branch_assortments.{branch_key}", len(provisioned))
+            ctx.add_count("branch_assortments", len(provisioned))
+            if rejected:
+                ctx.add_count(f"branch_assortments.rejected.{branch_key}", len(rejected))
 
 
 # ---------------------------------------------------------------------------
@@ -871,32 +931,157 @@ class StageHSuppliers(Stage):
             if controlled:
                 ctx.add_count("suppliers.controlled_intended", 1)
 
-        # Qualifications record that a supplier is permitted to supply cold-chain
-        # or controlled lines. SupplierGovernanceService can *verify* a
-        # qualification but cannot create one, and the only creation paths in the
-        # repository are seed commands writing to the ORM directly.
-        ctx.defer(
-            domain="supplier_qualifications", stage=self.id,
-            reason=(
-                "SupplierGovernanceService exposes verify_qualification and "
-                "valid_qualifications but no create/register method. Creating "
-                "SupplierQualification rows directly would bypass the governance the "
-                "service exists to provide, and cold-chain/controlled eligibility is a "
-                "safety rule rather than a label."
-            ),
-            required_service="SupplierGovernanceService.register_qualification",
+        self._qualifications(ctx)
+        self._agreements(ctx)
+
+    #: (qualification type, applies to every supplier?, attribute gate)
+    QUALIFICATIONS = (
+        ("BUSINESS_REGISTRATION", True, None),
+        ("TAX_COMPLIANCE", True, None),
+        ("WHOLESALE_DEALER_LICENCE", True, None),
+        ("GDP_CERTIFICATE", False, "gdp"),
+        ("COLD_CHAIN_AUTHORIZATION", False, "cold"),
+        ("CONTROLLED_DRUG_LICENCE", False, "controlled"),
+    )
+
+    def _qualifications(self, ctx):
+        """Register and verify supplier qualifications.
+
+        Submitter and verifier are deliberately different people: the service
+        refuses self-verification, and the scenario has to demonstrate that
+        rather than work around it.
+        """
+        from datetime import timedelta
+
+        from apps.procurement.services.supplier_qualification_service import (
+            SupplierQualificationService,
         )
-        # Agreements bind a supplier to a product at a price; without an
-        # assorted catalogue there is no product to bind to.
-        ctx.defer(
-            domain="supplier_product_agreements", stage=self.id,
-            reason=(
-                "SupplierProductAgreementService.register_agreement exists, but agreements "
-                "reference commercial SKUs, and the catalogue selection in stage G was "
-                "deferred. This becomes available as soon as the catalogue is loaded."
-            ),
-            required_service="SupplierProductAgreementService.register_agreement (available; blocked on catalogue)",
+
+        submitter = ctx.get("user:procurement")
+        verifier = ctx.get("user:quality")
+
+        for key, _name, status, cold, controlled, _preferred in SUPPLIERS[: ctx.targets.suppliers]:
+            supplier = ctx.get(f"supplier:{key}")
+            if supplier.status in {"SUSPENDED", "DISQUALIFIED", "ARCHIVED"}:
+                # The service refuses these outright; skipping keeps the
+                # suspended supplier in the scenario without a bogus licence.
+                ctx.add_count("suppliers.without_qualifications", 1)
+                continue
+
+            for qualification_type, universal, gate in self.QUALIFICATIONS:
+                if not universal:
+                    if gate == "cold" and not cold:
+                        continue
+                    if gate == "controlled" and not controlled:
+                        continue
+                    if gate == "gdp" and not (cold or controlled):
+                        continue
+
+                reference = f"{REF}-QUAL-{key}-{qualification_type}"
+                # One qualification expires soon, to exercise renewal reporting.
+                horizon = 45 if key == "MEDISEL" else 365 + (
+                    syn.stable_int(ctx.seed, "qual", reference) % 400
+                )
+                qualification = SupplierQualificationService.register_qualification(
+                    tenant=ctx.tenant,
+                    supplier=supplier,
+                    qualification_type=qualification_type,
+                    licence_number=f"{REF}/{qualification_type[:4]}/"
+                                   f"{syn.stable_int(ctx.seed, 'lic', reference) % 100000:05d}",
+                    issuing_authority=_ISSUING_AUTHORITIES[qualification_type],
+                    effective_date=ctx.as_of - timedelta(days=200),
+                    expiry_date=ctx.as_of + timedelta(days=horizon),
+                    submitted_by=submitter,
+                    document_reference=f"{reference}-DOC",
+                )
+                if qualification.verification_status == "PENDING" and key != "PIONEER":
+                    # PIONEER stays pending, so the scenario shows a supplier
+                    # awaiting qualification review.
+                    SupplierQualificationService.verify_qualification(
+                        qualification=qualification, verifier=verifier,
+                        evidence_reference=f"{reference}-EVIDENCE",
+                    )
+                    qualification.refresh_from_db()
+
+                ctx.own(qualification, domain="supplier_qualifications", stage=self.id,
+                        story_id=STORY_SUPPLIER, reference=reference,
+                        purpose=f"{qualification_type} for {supplier.supplier_code}.",
+                        relationship_group=f"{REF}-SUPPLY", reset_eligible=False)
+                ctx.add_count("supplier_qualifications", 1)
+                ctx.add_count(
+                    f"supplier_qualifications.{qualification.verification_status}", 1
+                )
+
+    def _agreements(self, ctx):
+        """Contract a subset of the catalogue to qualified suppliers."""
+        from decimal import Decimal
+
+        from apps.procurement.services.supplier_agreement_service import (
+            SupplierProductAgreementService,
         )
+
+        if not ctx.has("selected_skus"):
+            ctx.defer(
+                domain="supplier_product_agreements", stage=self.id,
+                reason="No catalogue was provisioned in stage G, so there is nothing to contract.",
+                required_service="global catalogue load",
+            )
+            return
+
+        skus = ctx.get("selected_skus")
+        contractable = [
+            k for k, _n, status, _c, _ct, _p in SUPPLIERS[: ctx.targets.suppliers]
+            if status == "APPROVED"
+        ]
+        if not contractable:
+            return
+
+        for index, sku in enumerate(skus):
+            # Two suppliers per SKU where possible, so the demo can show a
+            # preferred supplier and an alternative.
+            for offset in (0, 1):
+                key = contractable[(index + offset) % len(contractable)]
+                supplier = ctx.get(f"supplier:{key}")
+                reference = f"{REF}-AGREE-{key}-{sku.sku_code}"
+                base = Decimal(
+                    str(50 + (syn.stable_int(ctx.seed, "price", reference) % 4500) / 10)
+                )
+                try:
+                    agreement = SupplierProductAgreementService.provision_agreement(
+                        tenant=ctx.tenant, supplier=supplier, sku=sku,
+                        agreed_unit_price=base,
+                        minimum_order_quantity=1 + (
+                            syn.stable_int(ctx.seed, "moq", reference) % 20
+                        ),
+                        lead_time_days=2 + (
+                            syn.stable_int(ctx.seed, "lead", reference) % 12
+                        ),
+                        is_preferred=(offset == 0),
+                    )
+                except Exception:
+                    # A supplier without the controlled or cold-chain licence
+                    # cannot be contracted for that line. That refusal is the
+                    # rule working, so the scenario records it and moves on.
+                    ctx.add_count("agreements_refused_on_qualification", 1)
+                    continue
+
+                ctx.own(agreement, domain="supplier_product_agreements", stage=self.id,
+                        story_id=STORY_SUPPLIER, reference=reference,
+                        purpose=f"{supplier.supplier_code} supplies {sku.sku_code}.",
+                        relationship_group=f"{REF}-SUPPLY")
+                ctx.add_count("supplier_product_agreements", 1)
+
+
+#: Who issues each qualification. Named, but never contacted -- verification is
+#: internal document review and is labelled as such.
+_ISSUING_AUTHORITIES = {
+    "BUSINESS_REGISTRATION": "Business Registration Service",
+    "TAX_COMPLIANCE": "Kenya Revenue Authority",
+    "WHOLESALE_DEALER_LICENCE": "Pharmacy and Poisons Board",
+    "GDP_CERTIFICATE": "Pharmacy and Poisons Board",
+    "COLD_CHAIN_AUTHORIZATION": "Pharmacy and Poisons Board",
+    "CONTROLLED_DRUG_LICENCE": "Pharmacy and Poisons Board",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -925,8 +1110,9 @@ SCHEMES = {
 
 class StageIInsurers(Stage):
     id = "I"
-    label = "Insurers, schemes and plans"
-    requires = ("D",)
+    label = "Insurers, plans, benefits and memberships"
+    # Needs F for the patients it enrols and G for the products it excludes.
+    requires = ("F", "G")
 
     def plan(self, ctx):
         plans = sum(len(p) for schemes in SCHEMES.values() for _, _, p in schemes)
@@ -970,18 +1156,108 @@ class StageIInsurers(Stage):
                             relationship_group=f"{REF}-INSURANCE")
                     ctx.add_count("insurer_plans", 1)
 
-        ctx.defer(
-            domain="insurance_coverage", stage=self.id,
-            reason=(
-                "CoverageService reads and verifies coverage but cannot create it. "
-                "InsuranceMember, InsuranceCoverage, CoverageBenefit, CoverageLimit and "
-                "CoverageExclusion have no creation service anywhere in the repository -- "
-                "the only precedent is seed_insurance_demo.py writing to the ORM directly. "
-                "Patient membership, benefits, limits, co-pay rules and exclusions all "
-                "depend on it."
-            ),
-            required_service="InsuranceCoverageService.enrol_member / add_benefit / add_limit / add_exclusion",
-        )
+        self._benefits(ctx)
+        self._memberships(ctx)
+
+    #: (category, covered, requires preauth, co-pay rule, limit)
+    BENEFITS = (
+        ("OUTPATIENT_MEDICINE", True, False, "FLAT_200", "50000.00"),
+        ("CHRONIC_MEDICINE", True, True, "PERCENT_10", "120000.00"),
+        ("INPATIENT_MEDICINE", True, True, "NONE", "250000.00"),
+        ("CONSUMABLES", True, False, "FLAT_100", "15000.00"),
+        ("OPTICAL", False, False, "", None),
+    )
+
+    def _benefits(self, ctx):
+        from apps.insurance.models import InsurerPlan
+        from apps.insurance.services.authoring import InsuranceBenefitService
+
+        plans = InsurerPlan.all_objects.filter(tenant=ctx.tenant).order_by("code")
+        for plan in plans:
+            for category, covered, preauth, copay, limit in self.BENEFITS:
+                reference = f"{REF}-BENEFIT-{plan.code}-{category}"
+                benefit = InsuranceBenefitService.define_benefit(
+                    plan=plan, category=category, covered=covered,
+                    requires_preauth=preauth if covered else False,
+                    copay_rule=copay,
+                    benefit_limit=limit if covered else None,
+                )
+                ctx.own(benefit, domain="coverage_benefits", stage=self.id,
+                        story_id=STORY_INSURANCE, reference=reference,
+                        purpose=f"{category} on {plan.code}.",
+                        relationship_group=f"{REF}-INSURANCE")
+                ctx.add_count("coverage_benefits", 1)
+
+            # One excluded product per plan, so the demo can show an exclusion
+            # overriding a covered category.
+            if ctx.has("selected_skus") and ctx.get("selected_skus"):
+                skus = ctx.get("selected_skus")
+                sku = skus[syn.stable_int(ctx.seed, "exclusion", plan.code) % len(skus)]
+                exclusion = InsuranceBenefitService.exclude_product(
+                    plan=plan, sku=sku,
+                    reason="Excluded under the demonstration plan's formulary.",
+                )
+                ctx.own(exclusion, domain="coverage_exclusions", stage=self.id,
+                        story_id=STORY_INSURANCE,
+                        reference=f"{REF}-EXCL-{plan.code}-{sku.sku_code}",
+                        purpose="Product excluded despite a covered category.",
+                        relationship_group=f"{REF}-INSURANCE")
+                ctx.add_count("coverage_exclusions", 1)
+
+    def _memberships(self, ctx):
+        """Enrol the insured patients onto plans, deterministically."""
+        from datetime import timedelta
+
+        from apps.insurance.models import InsurerPlan
+        from apps.insurance.services.authoring import InsuranceMembershipService
+        from apps.patients.models import Patient
+
+        plans = list(InsurerPlan.all_objects.filter(tenant=ctx.tenant).order_by("code"))
+        if not plans:
+            return
+
+        insured = [
+            patient for patient in Patient.all_objects.filter(tenant=ctx.tenant)
+            .order_by("internal_reference_id")
+            if (patient.metadata or {}).get("coverage_category") in {"INSURED", "CORPORATE"}
+        ]
+        for index, patient in enumerate(insured):
+            reference = f"{REF}-MEMBER-{index:05d}"
+            plan = plans[syn.stable_int(ctx.seed, "plan", reference) % len(plans)]
+            member = InsuranceMembershipService.register_member(
+                tenant=ctx.tenant,
+                membership_number=f"{REF}-{syn.stable_int(ctx.seed, 'mem', reference) % 10_000_000:07d}",
+                principal_name=f"{patient.first_name} {patient.last_name}",
+                contact_phone=patient.phone,
+                email=patient.email,
+            )
+            ctx.own(member, domain="insurance_members", stage=self.id,
+                    story_id=STORY_INSURANCE, reference=reference,
+                    purpose="Scheme member.", relationship_group=f"{REF}-INSURANCE")
+            ctx.add_count("insurance_members", 1)
+
+            coverage = InsuranceMembershipService.enrol_patient(
+                member=member, patient=patient, plan=plan,
+                valid_from=ctx.as_of - timedelta(days=180),
+                valid_to=ctx.as_of + timedelta(days=185),
+                annual_limit="50000.00",
+                copay_amount="200.00",
+            )
+            ctx.own(coverage, domain="insurance_coverage", stage=self.id,
+                    story_id=STORY_INSURANCE, reference=f"{reference}-COVER",
+                    purpose=f"{patient.patient_number} covered under {plan.code}.",
+                    relationship_group=f"{REF}-INSURANCE")
+            ctx.add_count("insurance_coverage", 1)
+
+            limit = InsuranceMembershipService.set_coverage_limit(
+                coverage=coverage, category="OUTPATIENT_PHARMACY", total_limit="50000.00",
+                reset_date=ctx.as_of + timedelta(days=185),
+            )
+            ctx.own(limit, domain="coverage_limits", stage=self.id,
+                    story_id=STORY_INSURANCE, reference=f"{reference}-LIMIT",
+                    purpose="Outpatient pharmacy limit.",
+                    relationship_group=f"{REF}-INSURANCE")
+            ctx.add_count("coverage_limits", 1)
 
 
 # ---------------------------------------------------------------------------
@@ -991,24 +1267,87 @@ class StageIInsurers(Stage):
 
 class StageJPricing(Stage):
     id = "J"
-    label = "Price books and price entries"
+    label = "Scoped price books and entries"
     requires = ("G",)
 
+    #: (key, code suffix, name, price type, scope, priority)
+    BOOKS = (
+        ("tenant_retail", "RETAIL", "Standard retail price book", "RETAIL", "TENANT", 0),
+        ("cbd", "CBD", "CBD branch price book", "BRANCH_RETAIL", "BRANCH", 10),
+        ("westlands", "WL", "Westlands branch price book", "BRANCH_RETAIL", "BRANCH", 10),
+        ("insurance", "INS", "Insurance tariff", "INSURANCE_TARIFF", "INSURER", 20),
+        ("corporate", "CORP", "Corporate contract price book", "CUSTOMER_CONTRACT",
+         "CUSTOMER_SEGMENT", 15),
+        ("promo", "PROMO", "Seasonal promotion", "PROMOTIONAL", "TENANT", 5),
+    )
+
+    #: Deterministic branch variance, with a reason a manager could defend.
+    VARIANCE = {
+        "tenant_retail": ("1.00", "tenant standard"),
+        "cbd": ("1.05", "higher CBD operating cost"),
+        "westlands": ("0.98", "competitive Westlands segment"),
+        "insurance": ("1.12", "insurer contract tariff"),
+        "corporate": ("0.92", "corporate volume agreement"),
+        "promo": ("0.85", "approved seasonal promotion"),
+    }
+
     def run(self, ctx):
-        # PriceBookVersionService.save_tenant_retail_draft is the only price
-        # book creation path, and it is hardcoded to a TENANT-scoped RETAIL
-        # book. The model supports BRANCH, INSURANCE_TARIFF, CUSTOMER_CONTRACT
-        # and PROMOTIONAL scopes; no service creates them.
-        ctx.defer(
-            domain="price_books", stage=self.id,
-            reason=(
-                "Only PriceBookVersionService.save_tenant_retail_draft exists, which creates "
-                "a TENANT-scoped RETAIL book exclusively. Branch, insurance-tariff, corporate "
-                "and promotional books are supported by PriceBook.ScopeType and PriceType but "
-                "have no service. Pricing also needs assorted SKUs, deferred in stage G."
-            ),
-            required_service="PriceBookVersionService.create_scoped_book (branch/insurer/customer/promotional)",
-        )
+        from decimal import ROUND_HALF_UP, Decimal
+
+        from apps.pricing.authoring import PriceBookService
+
+        if not ctx.has("selected_skus") or not ctx.get("selected_skus"):
+            ctx.defer(
+                domain="price_books", stage=self.id,
+                reason="No catalogue was provisioned in stage G, so there is nothing to price.",
+                required_service="global catalogue load",
+            )
+            return
+
+        skus = ctx.get("selected_skus")
+        # Author and approver must differ; the service refuses otherwise.
+        author = ctx.get("user:ops")
+        approver = ctx.get("user:admin")
+
+        base_prices = {
+            sku: Decimal(
+                str(60 + (syn.stable_int(ctx.seed, "retail", sku.sku_code) % 6000) / 10)
+            ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            for sku in skus
+        }
+
+        for key, suffix, name, price_type, scope, priority in self.BOOKS:
+            multiplier, reason = self.VARIANCE[key]
+            prices = {
+                sku: (price * Decimal(multiplier)).quantize(
+                    Decimal("0.01"), rounding=ROUND_HALF_UP
+                )
+                for sku, price in base_prices.items()
+            }
+            reference = f"{REF}-PB-{suffix}"
+            branch = ctx.get(f"site:{key}") if scope == "BRANCH" else None
+            insurer_id = ""
+            if scope == "INSURER":
+                insurer_id = str(ctx.get("insurer:PRIVA").pk)
+
+            version = PriceBookService.publish_priced_book(
+                tenant=ctx.tenant, code=reference, name=name, prices=prices,
+                author=author, approver=approver, effective_from=ctx.as_of,
+                price_type=price_type, scope_type=scope, priority=priority,
+                branch=branch, insurer_id=insurer_id,
+                customer_segment="CORPORATE" if scope == "CUSTOMER_SEGMENT" else "",
+            )
+            book = version.price_book
+            ctx.own(book, domain="price_books", stage=self.id, story_id=STORY_PRICING,
+                    reference=reference, purpose=f"{name} ({reason}).",
+                    relationship_group=f"{REF}-PRICING")
+            ctx.own(version, domain="price_book_versions", stage=self.id,
+                    story_id=STORY_PRICING, reference=f"{reference}-V{version.version_number}",
+                    purpose=f"Active version of {name}.",
+                    relationship_group=f"{REF}-PRICING", reset_eligible=False)
+            ctx.add_count("price_books", 1)
+            ctx.add_count("price_book_versions", 1)
+            ctx.add_count("price_book_entries", len(prices))
 
 
 # ---------------------------------------------------------------------------
