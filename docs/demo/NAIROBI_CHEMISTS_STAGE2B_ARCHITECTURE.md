@@ -33,11 +33,12 @@ stage would repeat them, so each transition carries its own checkpoint.
 | M4 | Order approval | `approve_purchase_order` |
 | M5 | Revision and release | `revise_purchase_order` / `send_po` |
 | N1 | Goods receipt headers | `GoodsReceivingService.start_goods_receipt` |
+| N2 | Scan session (unposted) | `ReceivingService.open_receiving_session` / `record_scan` |
 | N3 | Batch capture | `receive_batch` |
 | N4 | Receipt closure + boundary assertion | `close_goods_receipt` |
 
-N2 (scan-based receiving sessions) is **not implemented** — see
-`NAIROBI_CHEMISTS_STAGE2B_VALIDATION.md`.
+N2 runs the authoritative scan path and stops: `post_goods_receipt_note` posts
+a GRN into inventory, so it is not called, and the session is left `ACTIVE`.
 
 ---
 

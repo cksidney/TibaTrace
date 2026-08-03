@@ -65,14 +65,45 @@ The existing tenant-manager audit did not catch either manager defect: it scans
 views, serializers and api modules, and service code is outside its scope.
 Widening it is worth considering separately.
 
-## Not delivered in this increment
+## Validator
 
-Stated plainly rather than omitted.
+`ProcurementReceivingValidator` runs eleven checks and is wired into
+`seed_demo_scenario --stage=procurement-receiving`:
 
-| Item | Status |
+| Check | Asserts |
 |---|---|
-| **N2 — scan-based receiving session** | Not implemented. `ReceivingService.open_receiving_session` / `record_scan` / `post_goods_receipt_note` exist and are the authoritative path, but `post_goods_receipt_note` posts a GRN into inventory, which crosses this increment's boundary. Wiring it needs a scan path that stops short of posting. |
-| **`STAGE2B_*.json` artefacts** | Not written. The orchestrator emits the six `MASTER_DATA_*.json` files; renaming them per stage set is straightforward but was not done. Counts above come from direct measurement. |
-| **`validate_demo_scenario` extension** | Not extended for 2B.1. The boundary and coherence checks exist as tests rather than as validator findings. |
+| `tenant_ownership` | every owned object belongs to the scenario tenant |
+| `orders_from_requisitions` | no orphan purchase orders |
+| `order_approval_segregation` | the raiser never approved their own order |
+| `supplier_qualified_at_order_date` | qualifications valid **on the order date**, not today |
+| `delivery_note_uniqueness` | unique per supplier |
+| `received_quantity_coherence` | delivered ≤ ordered; disposition ≤ delivered |
+| `every_batch_is_held` | fully quarantined, zero accepted, none released, none orphaned |
+| `batch_dates` | manufacture precedes expiry; quantity positive |
+| `receiving_sessions_unposted` | no session posted |
+| `no_available_stock` | zero rows across four inventory models |
+| `no_duplicate_references` | no external reference used twice |
 
-None of these affect the data the increment generates or the boundary it holds.
+Clean run: **11 checks, 0 failures**. Four tests prove the validator *fails*
+when a batch is released, an order is self-approved, or a session is posted —
+a validator that only ever passes proves nothing.
+
+## Artefacts
+
+Six files, byte-deterministic, written to `--output-directory`:
+
+```
+STAGE2B_PROCUREMENT_MANIFEST.json
+STAGE2B_RECEIVING_MANIFEST.json
+STAGE2B_BATCH_SUMMARY.json
+STAGE2B_VALIDATION.json
+STAGE2B_COLLISIONS.json
+STAGE2B_TIMINGS.json
+```
+
+Named per stage set because Stage 2A and 2B share an evidence directory and
+both writing `MASTER_DATA_*.json` meant one overwrote the other.
+
+`STAGE2B_BATCH_SUMMARY.json` carries no on-hand, available or reserved figure.
+Stage 2B.1 creates no inventory, and a quantity in a batch report would read as
+stock.
