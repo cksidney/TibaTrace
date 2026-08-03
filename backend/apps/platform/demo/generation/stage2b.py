@@ -32,11 +32,15 @@ from apps.procurement.models import (
     PurchaseRequisition,
     PurchaseRequisitionLine,
     ReceivedBatch,
+    ReceivingSession,
     Supplier,
     SupplierProductAgreement,
 )
 from apps.procurement.services.procurement_service import ProcurementService
-from apps.procurement.services.receiving_service import GoodsReceivingService
+from apps.procurement.services.receiving_service import (
+    GoodsReceivingService,
+    ReceivingService,
+)
 from apps.procurement.services.supplier_qualification_service import (
     COLD_CHAIN_QUALIFICATION,
     CONTROLLED_DRUG_QUALIFICATION,
@@ -526,7 +530,109 @@ class StageN1GoodsReceipts(Stage):
 
 
 # ---------------------------------------------------------------------------
-# N2 / N3 — batch capture
+# N2 — scan-based receiving session
+# ---------------------------------------------------------------------------
+
+
+class StageN2ReceivingSession(Stage):
+    """Exercise the scan-to-receive path, and stop before it posts.
+
+    `ReceivingService` is the authoritative scan path: open a session, scan each
+    carton, then post. This stage runs the first two and deliberately not the
+    third -- `post_goods_receipt_note` writes a GRN into inventory, which is
+    exactly the boundary this increment holds. Running it here would create
+    available stock no quality release authorised.
+
+    The session is therefore left ACTIVE with its scans recorded, which is also
+    what a real receiving bay looks like mid-delivery.
+    """
+
+    id = "N2"
+    label = "Scan-based receiving session (unposted)"
+    requires = ("N1",)
+
+    def rehydrate(self, ctx):
+        StageN1GoodsReceipts().rehydrate(ctx)
+
+    def run(self, ctx):
+        receipts = _receipts(ctx)
+        if not receipts:
+            return
+        receiver = ctx.get("user:receiving")
+        warehouse = ctx.get("site:warehouse")
+
+        # One session, on the first receipt's order. The scan path is a
+        # capability to demonstrate, not a second way to receive everything.
+        receipt_index, receipt = receipts[0]
+        reference = f"{REF}-RCVSESSION-{receipt_index:03d}"
+        if ctx.owned_reference(ReceivingSession, reference) is not None:
+            ctx.note_reuse("receiving_sessions", reference)
+            ctx.add_count("receiving_sessions", 1)
+            return
+
+        order = receipt.purchase_order
+        session = ReceivingService.open_receiving_session(
+            tenant=ctx.tenant,
+            purchase_order=order,
+            branch=warehouse,
+            delivery_note_number=f"{receipt.delivery_note_number}-SCAN",
+            received_by=receiver,
+        )
+        ctx.own(session, domain="receiving_sessions", stage=self.id,
+                story_id=STORY_RECEIVING, reference=reference,
+                branch_reference=warehouse.code,
+                purpose="Scan-to-receive session, left unposted at the Stage 2B.1 boundary.",
+                relationship_group=f"{REF}-RECEIVE-{receipt_index:03d}")
+        ctx.add_count("receiving_sessions", 1)
+
+        lines = list(
+            PurchaseOrderLine.all_objects.filter(
+                tenant=ctx.tenant, purchase_order=order
+            ).select_related("sku").order_by("sku__sku_code")
+        )
+        for line_index, po_line in enumerate(lines):
+            sku = po_line.sku
+            scan_reference = f"{reference}-SCAN-{line_index:02d}"
+            # record_scan refuses an expiry on or before today, so scanned stock
+            # is always dated forward of the run's as-of date.
+            expiry = ctx.as_of + timedelta(
+                days=180 + syn.stable_int(ctx.seed, "scanexp", scan_reference) % 540
+            )
+            try:
+                scan = ReceivingService.record_scan(
+                    session=session,
+                    sku=sku,
+                    # No GTIN is invented: the scanned barcode is whatever the
+                    # SKU already carries, and empty where it carries none.
+                    scanned_barcode=sku.default_barcode or "",
+                    batch_number=(
+                        f"SCAN-{syn.stable_int(ctx.seed, 'scanbatch', scan_reference) % 1_000_000:06d}"
+                    ),
+                    expiry_date=expiry,
+                    scanned_quantity=max(1, po_line.ordered_quantity // 4),
+                )
+            except ValidationError:
+                ctx.add_count("receiving_scans_refused", 1)
+                continue
+            ctx.own(scan, domain="receiving_scans", stage=self.id,
+                    story_id=STORY_RECEIVING, reference=scan_reference,
+                    branch_reference=warehouse.code,
+                    purpose=f"Scanned carton of {sku.sku_code}.",
+                    relationship_group=f"{REF}-RECEIVE-{receipt_index:03d}")
+            ctx.add_count("receiving_scans", 1)
+
+        # Left ACTIVE on purpose: posting is Stage 2B.2.
+        session.refresh_from_db()
+        if session.status != "ACTIVE":
+            raise ValidationError(
+                f"Receiving session {session.session_number} is {session.status}. "
+                "Stage 2B.1 leaves sessions unposted; posting writes stock."
+            )
+        ctx.stage_results[self.id].last_key = reference
+
+
+# ---------------------------------------------------------------------------
+# N3 — batch capture
 # ---------------------------------------------------------------------------
 
 
@@ -696,6 +802,7 @@ STAGE_2B_1: tuple[Stage, ...] = (
     StageM4PurchaseOrderApproval(),
     StageM5PurchaseOrderRelease(),
     StageN1GoodsReceipts(),
+    StageN2ReceivingSession(),
     StageN3BatchCapture(),
     StageN4ReceiptClosure(),
 )
