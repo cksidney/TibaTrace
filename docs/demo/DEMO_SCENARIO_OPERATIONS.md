@@ -1,8 +1,12 @@
 # Demo Scenario Engine — Operations
 
-**Stage 1.** Planning only: designation, classification, gates, manifest. No
-transactional data is generated yet, and the engine says so loudly rather than
-leaving an empty tenant that looks like a success.
+**Stage 1.** Planning only: designation, classification, gates, manifest.
+
+**Stage 2A** (master data) is implemented — see
+[NAIROBI_CHEMISTS_MASTER_DATA.md](NAIROBI_CHEMISTS_MASTER_DATA.md). It generates
+governed master data only. Transactional history remains Stage 2B and the
+engine still refuses it loudly rather than leaving an empty tenant that looks
+like a success.
 
 ---
 
