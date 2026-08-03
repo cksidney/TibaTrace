@@ -10,11 +10,21 @@ import json
 import zipfile
 from datetime import timedelta
 from io import BytesIO
+from pathlib import Path
 from unittest.mock import patch
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
+
+#: The repository VERSION file is the canonical release version: CI derives
+#: image tags and the OCI version label from it, settings read it into
+#: DAWATRACE_VERSION, and drf-spectacular publishes it as the OpenAPI version.
+#: Asserting against it rather than a literal is deliberate -- this test
+#: previously pinned "1.0.0-rc12" and began failing the moment the release
+#: moved on, because a hardcoded expectation is a second source of truth.
+VERSION_FILE = Path(settings.BASE_DIR).parent / "VERSION"
 
 from apps.integrations.gateway import NationalIntegrationGateway
 from apps.integrations.models import (
@@ -130,9 +140,25 @@ class Phase16CertificationEvidenceEngineTests(TestCase):
         package = CertificationEvidenceGenerator.generate_evidence_package("Test Auditor")
         self.assertEqual(package["metadata"]["operator"], "Test Auditor")
         self.assertEqual(package["metadata"]["truth_label"], "MANUAL_INTERNAL_VERIFICATION")
-        self.assertEqual(package["metadata"]["version"], "1.0.0-rc12")
         self.assertIn("openapi_checksum", package)
         self.assertIn("quality_evidence", package)
+
+    def test_evidence_version_matches_the_canonical_version_file(self):
+        """Certification evidence must name the release it was built from.
+
+        The evidence package is handed to an auditor, so a version that
+        disagrees with the artefact misattributes the evidence. Reading the
+        VERSION file rather than settings makes this catch a settings drift
+        too, instead of comparing the engine against its own input.
+        """
+        canonical = VERSION_FILE.read_text(encoding="utf-8").strip()
+        self.assertTrue(canonical, "VERSION file is empty")
+        self.assertNotIn(canonical, {"UNKNOWN_VERSION", "0.0.0-unknown"})
+
+        package = CertificationEvidenceGenerator.generate_evidence_package("Test Auditor")
+        self.assertEqual(package["metadata"]["version"], canonical)
+        self.assertEqual(settings.DAWATRACE_VERSION, canonical)
+        self.assertEqual(settings.SPECTACULAR_SETTINGS["VERSION"], canonical)
 
     def test_export_evidence_zip(self):
         zip_bytes, filename = CertificationEvidenceGenerator.export_evidence_zip("Test Auditor")
