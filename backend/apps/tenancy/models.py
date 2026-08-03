@@ -44,6 +44,24 @@ class Tenant(TimestampedModel):
     time_zone = models.CharField(max_length=64, default="Africa/Nairobi")
     metadata = models.JSONField(default=dict, blank=True)
 
+    #: Whether this tenant may be populated by the demo scenario engine.
+    #:
+    #: A real field rather than a metadata key, because its entire job is to gate
+    #: an operation that writes fabricated trading history into a tenant. A JSON
+    #: key can be set by anything that touches metadata; this cannot, and it is
+    #: queryable, so a safety gate can assert on it.
+    #:
+    #: Defaults False and is never flipped by a migration. Designation is a
+    #: deliberate, audited act -- see the `designate_demo_tenant` command, which
+    #: requires the tenant's exact id, slug and name before it will proceed.
+    is_demo = models.BooleanField(
+        default=False,
+        help_text=(
+            "Designated demonstration tenant. Permits the demo scenario engine to "
+            "write synthetic data. Never set by migration; use designate_demo_tenant."
+        ),
+    )
+
     class Meta:
         ordering = ["name", "id"]
 

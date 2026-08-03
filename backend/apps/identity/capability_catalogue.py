@@ -17,6 +17,15 @@ CAPABILITY_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
         ),
     ),
     (
+        "Platform governance",
+        (
+            # Designating a demo tenant, and approving a demo seed against one,
+            # are Platform Owner acts: they permit fabricated trading history to
+            # be written into a real tenant.
+            "platform.demo.govern",
+        ),
+    ),
+    (
         "Inventory",
         (
             "inventory.read",

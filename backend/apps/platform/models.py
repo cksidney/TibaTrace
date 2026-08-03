@@ -87,3 +87,13 @@ class PosRelease(TimestampedModel):
         if self.sha256:
             self.sha256 = self.sha256.strip().lower()
         return super().save(*args, **kwargs)
+
+
+# Demo scenario ownership models live in apps/platform/demo/models.py for
+# cohesion, but Django only discovers <app>/models.py -- importing them here
+# registers them under the `platform` app label.
+from apps.platform.demo.models import (  # noqa: E402,F401  (re-export for discovery)
+    DemoScenarioObject,
+    DemoScenarioRun,
+    DemoSeedApproval,
+)

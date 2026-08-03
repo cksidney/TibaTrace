@@ -34,6 +34,9 @@ RELEASE_MIGRATIONS = [
     "backend/apps/notifications/migrations/0002_nif_notifications.py",
     "backend/apps/pharmacy_network/migrations/0003_nif_premises_verification.py",
     "backend/apps/platform/migrations/0002_posrelease_client_alignment.py",
+    # Stage 1 demo foundation.
+    "backend/apps/tenancy/migrations/0003_tenant_is_demo.py",
+    "backend/apps/platform/migrations/0003_demo_scenario_ownership.py",
 ]
 
 
@@ -185,6 +188,9 @@ def test_git_baseline_matches_the_declared_release_migration():
     baseline and silently omits a migration that is really in the release.
     """
 
+    # The deployed baseline moves as releases ship. This test pins the
+    # *mechanism* -- that git and the declared list agree -- not a frozen list,
+    # which went stale the moment the next release added a migration.
     baseline = "24a160214114575bdbbb3059b10ad4e323f3daec"
     result = subprocess.run(
         ["git", "diff", "--name-only", "--diff-filter=A", f"{baseline}..HEAD",
