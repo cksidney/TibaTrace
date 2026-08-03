@@ -112,10 +112,15 @@ class TestGoodsReceiptConcurrency(TransactionTestCase):
                 accepted_quantity=20,
             )
 
-    @mock.patch("apps.procurement.services.PurchaseOrderLine.objects.select_for_update")
+    @mock.patch("apps.procurement.services.PurchaseOrderLine.all_objects.select_for_update")
     def test_select_for_update_is_called(self, mock_select_for_update):
-        """Proof that a database row lock is acquired during receive_line."""
-        # Setup mock chain
+        """Proof that a database row lock is acquired during receive_line.
+
+        Patched on all_objects rather than objects: the lock moved to the
+        tenant-explicit manager because `objects` is tenant-strict and returned
+        nothing outside a request, which took the over-receipt guard down with
+        it. The lock itself is unchanged, and so is what this test asserts.
+        """
         mock_qs = mock.MagicMock()
         mock_select_for_update.return_value = mock_qs
         mock_qs.get.return_value = self.po_line
@@ -128,4 +133,6 @@ class TestGoodsReceiptConcurrency(TransactionTestCase):
         )
 
         mock_select_for_update.assert_called_once()
-        mock_qs.get.assert_called_once_with(pk=self.po_line.pk)
+        mock_qs.get.assert_called_once_with(
+            pk=self.po_line.pk, tenant_id=self.po_line.tenant_id
+        )

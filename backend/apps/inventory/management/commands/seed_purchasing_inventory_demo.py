@@ -139,9 +139,9 @@ class Command(BaseCommand):
             supplier=supplier,
             ordering_branch=branch1,
             lines_data=[{"sku": sku, "quantity": 100, "unit_cost": Decimal("250.00")}],
-            created_by=None,
+            created_by=receiver,
         )
-        ProcurementService.approve_purchase_order(purchase_order=po, approver=None)
+        ProcurementService.approve_purchase_order(purchase_order=po, approver=inspector)
         # Goods cannot be received against an order the supplier never got.
         ProcurementService.send_po(purchase_order=po)
 

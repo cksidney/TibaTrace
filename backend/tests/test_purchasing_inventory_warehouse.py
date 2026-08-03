@@ -103,12 +103,12 @@ class TestPurchasingInventoryWarehouse:
             supplier=self.supplier,
             ordering_branch=self.branch1,
             lines_data=[{"sku": self.sku, "quantity": 50, "unit_cost": Decimal("100.00")}],
-            created_by=None,
+            created_by=self.receiver,
         )
         assert po.status == PurchaseOrder.Status.DRAFT
         assert po.total_gross == Decimal("5000.00")
 
-        ProcurementService.approve_purchase_order(purchase_order=po, approver=None)
+        ProcurementService.approve_purchase_order(purchase_order=po, approver=self.inspector)
         assert po.status == PurchaseOrder.Status.APPROVED
 
     def test_scan_to_receive_and_grn_posting(self):
@@ -117,9 +117,9 @@ class TestPurchasingInventoryWarehouse:
             supplier=self.supplier,
             ordering_branch=self.branch1,
             lines_data=[{"sku": self.sku, "quantity": 20, "unit_cost": Decimal("150.00")}],
-            created_by=None,
+            created_by=self.receiver,
         )
-        ProcurementService.approve_purchase_order(purchase_order=po, approver=None)
+        ProcurementService.approve_purchase_order(purchase_order=po, approver=self.inspector)
         # Receiving is refused for an order that was never sent: goods cannot
         # arrive against a commitment the supplier has not been given.
         ProcurementService.send_po(purchase_order=po)

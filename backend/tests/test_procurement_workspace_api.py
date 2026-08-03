@@ -163,6 +163,9 @@ def test_procurement_workspace_runs_procure_to_stock_lifecycle(client, django_us
     )
     assert approved_requisition.status_code == 200
 
+    # The buyer raises the order; the approver signs it off. Raising and
+    # approving as one user is refused, which is the point of the control.
+    client.force_login(requester)
     order_response = client.post(
         "/api/procurement/purchase-orders/",
         {
@@ -188,6 +191,7 @@ def test_procurement_workspace_runs_procure_to_stock_lifecycle(client, django_us
     order_line_id = order["lines"][0]["id"]
     assert order["total_gross"] == "2500.00"
 
+    client.force_login(approver)
     assert client.post(
         f"/api/procurement/purchase-orders/{order_id}/approve/",
         content_type="application/json",

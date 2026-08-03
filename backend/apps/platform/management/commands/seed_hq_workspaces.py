@@ -1067,7 +1067,7 @@ class Command(BaseCommand):
                 supplier=supplier,
                 requisition=requisition,
                 ordering_branch=branch,
-                creator=supervisor,
+                creator=operator,
                 po_number="HQ-DEMO-PO-COMPLETE",
                 expected_delivery_date=today + timedelta(days=5),
                 lines_data=[
@@ -1174,7 +1174,7 @@ class Command(BaseCommand):
                 supplier=supplier,
                 requisition=open_requisition,
                 ordering_branch=branch,
-                creator=supervisor,
+                creator=operator,
                 po_number="HQ-DEMO-PO-OPEN",
                 expected_delivery_date=today + timedelta(days=5),
                 lines_data=[
