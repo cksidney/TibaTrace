@@ -166,23 +166,46 @@ pending) is not representable. One tenant holds one premises licence.
 
 ---
 
+## Catalogue ceiling — read this before expecting 300–500 SKUs
+
+A `CommercialSKU` is a tenant's listing of a **global** manufactured product in
+a particular pack. Stage 2A lists from the global catalogue and never writes
+clinical or manufactured products: inventing a clinical medicine to reach a
+count would put a product into clinical decision support that no regulator
+authorised.
+
+The global catalogue in this repository (`seed_medicine_catalogue`) holds
+**30 manufactured products and 3 active package definitions**, so the ceiling
+is **90 SKUs**. The pilot target of 300–500 is not reachable from it.
+
+Reaching 300–500 needs a larger real catalogue loaded first. `import_ke_etcd_catalogue`
+exists and imports the Kenya eTCD product catalogue, but it populates the
+legacy global `Medicine` model rather than the
+ClinicalMedicinalProduct → ManufacturedMedicinalProduct → CommercialSKU chain,
+so it does not feed this path today. Bridging the two is a separate,
+reviewable piece of work.
+
+Everything else in the pilot profile is met.
+
+---
+
 ## Deferred domains
 
-Where a domain has no creation service, the stage records a deferral and
-continues. It does not write the rows itself: that would skip the validation,
-audit and lifecycle rules the service exists to enforce, and the result would
-be indistinguishable in the summary from data that had been governed properly.
+One domain remains deferred, and it is not a service gap:
 
-| Domain | Blocked on |
+| Domain | Why |
 |---|---|
-| `medicine_assortment` | No `CommercialSKU` rows for the tenant. Stage 2A selects from the catalogue; it must not fabricate clinical products to reach a count. |
-| `supplier_qualifications` | `SupplierGovernanceService` can verify a qualification but not create one. |
-| `supplier_product_agreements` | Service exists; blocked on the catalogue above. |
-| `insurance_coverage` | `CoverageService` reads and verifies only. No service creates `InsuranceMember`, `InsuranceCoverage`, `CoverageBenefit`, `CoverageLimit` or `CoverageExclusion`. |
-| `price_books` | Only `save_tenant_retail_draft` exists, hardcoded to TENANT/RETAIL. Branch, insurer, corporate and promotional books have no service. |
-| `premises_profile` | `PharmacyProfile` comes from tenant onboarding, not this engine. |
+| `premises_profile` | `PharmacyProfile` is created by tenant onboarding (`PharmacyOnboardingService`), not by this engine. A tenant without one gets no premises record rather than a fabricated licence. |
 
-Each is listed in `MASTER_DATA_SUMMARY.json` with the service it needs.
+The five service gaps from the previous increment are **closed**:
+
+| Domain | Service now used |
+|---|---|
+| `medicine_assortment` | `TenantCatalogueProvisioningService`, `CatalogueSelectionService`, `BranchAssortmentProvisioningService` |
+| `supplier_qualifications` | `SupplierQualificationService` |
+| `supplier_product_agreements` | `SupplierProductAgreementService.provision_agreement` |
+| `insurance_coverage` | `InsuranceBenefitService`, `InsuranceMembershipService` |
+| `price_books` | `PriceBookService` |
 
 ---
 
