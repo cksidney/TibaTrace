@@ -35,6 +35,28 @@ ARTEFACTS = (
     "MASTER_DATA_KPIS.json",
 )
 
+#: Artefact filenames per stage set. Stage 2B's evidence answers different
+#: questions from Stage 2A's, and writing both under MASTER_DATA_* names would
+#: make one overwrite the other in a shared evidence directory.
+STAGE_2B_ARTEFACTS = {
+    "manifest": "STAGE2B_PROCUREMENT_MANIFEST.json",
+    "summary": "STAGE2B_RECEIVING_MANIFEST.json",
+    "batches": "STAGE2B_BATCH_SUMMARY.json",
+    "validation": "STAGE2B_VALIDATION.json",
+    "collisions": "STAGE2B_COLLISIONS.json",
+    "timings": "STAGE2B_TIMINGS.json",
+}
+
+MASTER_DATA_ARTEFACTS = {
+    "manifest": "MASTER_DATA_MANIFEST.json",
+    "summary": "MASTER_DATA_SUMMARY.json",
+    "batches": None,
+    "validation": "MASTER_DATA_VALIDATION.json",
+    "collisions": "MASTER_DATA_COLLISIONS.json",
+    "timings": "MASTER_DATA_TIMINGS.json",
+    "kpis": "MASTER_DATA_KPIS.json",
+}
+
 
 def canonical_digest(payload) -> str:
     """SHA-256 over canonical JSON.
@@ -49,7 +71,8 @@ def canonical_digest(payload) -> str:
 class MasterDataOrchestrator:
     """Runs the master-data stages for one scenario run."""
 
-    def __init__(self, ctx: GenerationContext, *, progress=None, stages=None):
+    def __init__(self, ctx: GenerationContext, *, progress=None, stages=None,
+                 artefact_names=None):
         self.ctx = ctx
         self.progress = progress or (lambda message: None)
         self.started_at = None
@@ -60,6 +83,7 @@ class MasterDataOrchestrator:
         self.stages = tuple(stages) if stages is not None else STAGES
         self.stages_by_id = {stage.id: stage for stage in self.stages}
         self.stage_order = tuple(stage.id for stage in self.stages)
+        self.artefact_names = artefact_names or MASTER_DATA_ARTEFACTS
 
     # -- planning ----------------------------------------------------------
 
@@ -241,15 +265,48 @@ class MasterDataOrchestrator:
             "deferred_domains": len(self.ctx.deferred),
         }
 
+    def batch_summary(self) -> dict:
+        """Batch-shaped evidence for Stage 2B.
+
+        Reports what was received and how it is held. Deliberately carries no
+        on-hand or available figure: Stage 2B.1 creates no inventory, and a
+        quantity here would read as stock.
+        """
+        counts = self.ctx.counts
+        return {
+            "note": "Received batches only. Nothing here is available to promise; "
+                    "Stage 2B.1 posts no ledger entries and creates no balances.",
+            "received_batches": counts.get("received_batches", 0),
+            "goods_receipt_lines": counts.get("goods_receipt_lines", 0),
+            "cold_chain": counts.get("received_batches.cold_chain", 0),
+            "controlled": counts.get("received_batches.controlled", 0),
+            "near_expiry": counts.get("received_batches.near_expiry", 0),
+            "by_delivery_shape": {
+                key.split(".")[-1]: value
+                for key, value in sorted(counts.items())
+                if key.startswith("received_batches.shape.")
+            },
+            "refused": counts.get("batches_refused", 0),
+            "receiving_sessions": counts.get("receiving_sessions", 0),
+            "receiving_scans": counts.get("receiving_scans", 0),
+            "quality_status": "PENDING_INSPECTION, fully quarantined",
+        }
+
     def write_artefacts(self, directory: Path, *, validation: dict) -> dict[str, str]:
         directory.mkdir(parents=True, exist_ok=True)
+        builders = {
+            "manifest": self.manifest,
+            "summary": self.summary,
+            "batches": self.batch_summary,
+            "validation": lambda: validation,
+            "collisions": self.collisions,
+            "timings": self.timings,
+            "kpis": self.kpis,
+        }
         payloads = {
-            "MASTER_DATA_MANIFEST.json": self.manifest(),
-            "MASTER_DATA_SUMMARY.json": self.summary(),
-            "MASTER_DATA_VALIDATION.json": validation,
-            "MASTER_DATA_COLLISIONS.json": self.collisions(),
-            "MASTER_DATA_TIMINGS.json": self.timings(),
-            "MASTER_DATA_KPIS.json": self.kpis(),
+            filename: builders[key]()
+            for key, filename in self.artefact_names.items()
+            if filename is not None and key in builders
         }
         written = {}
         for name, payload in payloads.items():

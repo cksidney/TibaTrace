@@ -317,3 +317,239 @@ class MasterDataValidator:
             "failure_count": len(failures),
             "findings": [f.as_dict() for f in self.findings],
         }
+
+
+# ---------------------------------------------------------------------------
+# Stage 2B.1 — procurement and receiving
+# ---------------------------------------------------------------------------
+
+#: Models that would mean stock became available. Stage 2B.1 must own none.
+STAGE_2B1_FORBIDDEN = (
+    ("inventory_ledger_entries", "inventory", "InventoryLedgerEntry"),
+    ("inventory_balances", "inventory", "InventoryBalance"),
+    ("inventory_batches", "inventory", "InventoryBatch"),
+    ("inventory_reservations", "inventory", "InventoryReservation"),
+)
+
+
+class ProcurementReceivingValidator(MasterDataValidator):
+    """Validates Stage 2B.1.
+
+    The load-bearing checks are the ones that prove stock did *not* become
+    available. A procurement history that looks complete while a batch has been
+    released, or a ledger entry written, would read as success in every count.
+    """
+
+    def check_orders_derive_from_requisitions(self):
+        from apps.procurement.models import PurchaseOrder
+
+        orders = PurchaseOrder.all_objects.filter(tenant=self.tenant)
+        orphans = [o.po_number for o in orders if o.originating_requisition_id is None]
+        if orphans:
+            self._fail("orders_from_requisitions",
+                       f"{len(orphans)} order(s) with no requisition: {orphans[:5]}")
+        else:
+            self._ok("orders_from_requisitions",
+                     f"{orders.count()} order(s), each from a requisition")
+
+    def check_order_approval_segregation(self):
+        """The raiser of an order may not be its approver."""
+        from apps.procurement.models import PurchaseOrder
+
+        breaches = [
+            o.po_number
+            for o in PurchaseOrder.all_objects.filter(tenant=self.tenant)
+            if o.created_by_id and o.approved_by_id
+            and str(o.created_by_id) == str(o.approved_by_id)
+        ]
+        if breaches:
+            self._fail("order_approval_segregation",
+                       f"raiser approved their own order: {breaches[:5]}")
+        else:
+            self._ok("order_approval_segregation", "no order was self-approved")
+
+    def check_supplier_qualifications_at_order_date(self):
+        from apps.procurement.models import PurchaseOrder
+        from apps.procurement.services.supplier_governance_service import (
+            SupplierGovernanceService,
+        )
+
+        bad = []
+        for order in PurchaseOrder.all_objects.filter(
+            tenant=self.tenant
+        ).select_related("supplier"):
+            reasons = SupplierGovernanceService.ineligibility_reasons(
+                supplier=order.supplier, on_date=order.order_date
+            )
+            if reasons:
+                bad.append(f"{order.po_number}: {reasons[0]}")
+        if bad:
+            self._fail("supplier_qualified_at_order_date", "; ".join(bad[:3]))
+        else:
+            self._ok("supplier_qualified_at_order_date",
+                     "every order's supplier was qualified on its order date")
+
+    def check_delivery_note_uniqueness(self):
+        from apps.procurement.models import GoodsReceipt
+
+        seen: dict[tuple, str] = {}
+        duplicates = []
+        for receipt in GoodsReceipt.all_objects.filter(
+            tenant=self.tenant
+        ).order_by("grn_number"):
+            key = (str(receipt.supplier_id), receipt.delivery_note_number)
+            if key in seen:
+                duplicates.append(f"{receipt.grn_number} reuses {seen[key]}")
+            seen[key] = receipt.grn_number
+        if duplicates:
+            self._fail("delivery_note_uniqueness", "; ".join(duplicates[:3]))
+        else:
+            self._ok("delivery_note_uniqueness",
+                     f"{len(seen)} delivery note(s), unique per supplier")
+
+    def check_received_quantity_coherence(self):
+        from apps.procurement.models import GoodsReceiptLine
+
+        over = []
+        for line in GoodsReceiptLine.all_objects.filter(
+            tenant=self.tenant
+        ).select_related("po_line"):
+            if line.delivered_quantity > line.po_line.ordered_quantity:
+                over.append(str(line.pk))
+            total = (
+                (line.accepted_quantity or 0)
+                + (line.quarantined_quantity or 0)
+                + (line.rejected_quantity or 0)
+            )
+            if total > line.delivered_quantity:
+                over.append(f"{line.pk} disposition exceeds delivery")
+        if over:
+            self._fail("received_quantity_coherence", f"{len(over)} incoherent line(s)")
+        else:
+            self._ok("received_quantity_coherence", "delivered never exceeds ordered")
+
+    def check_every_batch_is_held(self):
+        """The Stage 2B.1 boundary, asserted on quantity rather than status."""
+        from django.db.models import F
+
+        from apps.procurement.models import ReceivedBatch
+
+        batches = ReceivedBatch.all_objects.filter(tenant=self.tenant)
+        released = batches.filter(
+            quality_status=ReceivedBatch.QualityStatus.RELEASED
+        ).count()
+        accepted = batches.filter(accepted_quantity__gt=0).count()
+        unheld = batches.exclude(quarantined_quantity=F("received_quantity")).count()
+        orphan = batches.filter(grn_line__isnull=True).count()
+
+        problems = []
+        if released:
+            problems.append(f"{released} released")
+        if accepted:
+            problems.append(f"{accepted} with accepted units")
+        if unheld:
+            problems.append(f"{unheld} not fully quarantined")
+        if orphan:
+            problems.append(f"{orphan} with no receipt line")
+        if problems:
+            self._fail("every_batch_is_held", "; ".join(problems))
+        else:
+            self._ok("every_batch_is_held",
+                     f"{batches.count()} batch(es) fully held, none released")
+
+    def check_batch_dates(self):
+        from apps.procurement.models import ReceivedBatch
+
+        bad = [
+            b.manufacturer_batch_number
+            for b in ReceivedBatch.all_objects.filter(tenant=self.tenant)
+            if b.received_quantity <= 0
+            or (b.manufacture_date and b.manufacture_date >= b.expiry_date)
+        ]
+        if bad:
+            self._fail("batch_dates", f"{len(bad)} batch(es) with incoherent dates")
+        else:
+            self._ok("batch_dates", "manufacture precedes expiry on every batch")
+
+    def check_no_available_stock(self):
+        """Nothing this run owns may have become available to promise."""
+        offenders = []
+        checked = 0
+        for label, app_label, model_name in STAGE_2B1_FORBIDDEN:
+            try:
+                model = django_apps.get_model(app_label, model_name)
+            except LookupError:
+                self._skip(f"no_{label}", f"{app_label}.{model_name} not present")
+                continue
+            checked += 1
+            content_type = ContentType.objects.get_for_model(model)
+            owned = DemoScenarioObject.all_objects.filter(
+                run=self.run, content_type=content_type
+            ).count()
+            direct = model.all_objects.filter(tenant=self.tenant).count()
+            if owned or direct:
+                offenders.append(f"{label}=owned:{owned},present:{direct}")
+        if offenders:
+            self._fail("no_available_stock", "; ".join(offenders))
+        else:
+            self._ok("no_available_stock",
+                     f"zero rows across {checked} inventory model(s)")
+
+    def check_receiving_sessions_unposted(self):
+        from apps.procurement.models import ReceivingSession
+
+        posted = ReceivingSession.all_objects.filter(
+            tenant=self.tenant
+        ).exclude(status="ACTIVE")
+        if posted.exists():
+            self._fail("receiving_sessions_unposted",
+                       f"{posted.count()} session(s) posted; posting writes stock")
+        else:
+            self._ok("receiving_sessions_unposted",
+                     f"{ReceivingSession.all_objects.filter(tenant=self.tenant).count()} "
+                     "session(s), none posted")
+
+    def check_no_duplicate_idempotency_keys(self):
+        """Two owned objects sharing a reference means a replay created a second."""
+        references = list(
+            DemoScenarioObject.all_objects.filter(run=self.run)
+            .exclude(external_reference="")
+            .values_list("external_reference", flat=True)
+        )
+        duplicates = {r for r in references if references.count(r) > 1}
+        if duplicates:
+            self._fail("no_duplicate_references",
+                       f"{len(duplicates)} reference(s) used twice")
+        else:
+            self._ok("no_duplicate_references",
+                     f"{len(references)} owned object(s), each uniquely referenced")
+
+    def run_all(self) -> dict:
+        checks = (
+            self.check_tenant_ownership,
+            self.check_orders_derive_from_requisitions,
+            self.check_order_approval_segregation,
+            self.check_supplier_qualifications_at_order_date,
+            self.check_delivery_note_uniqueness,
+            self.check_received_quantity_coherence,
+            self.check_every_batch_is_held,
+            self.check_batch_dates,
+            self.check_receiving_sessions_unposted,
+            self.check_no_available_stock,
+            self.check_no_duplicate_idempotency_keys,
+        )
+        for check in checks:
+            try:
+                check()
+            except Exception as exc:
+                self._fail(check.__name__, f"{type(exc).__name__}: {exc}")
+
+        failures = [f for f in self.findings if f.status == "FAIL"]
+        return {
+            "run": str(self.run.pk),
+            "tenant": self.tenant.slug,
+            "stage": "2B.1-procurement-receiving",
+            "status": "FAIL" if failures else "PASS",
+            "failure_count": len(failures),
+            "findings": [f.as_dict() for f in self.findings],
+        }

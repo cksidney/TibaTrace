@@ -205,10 +205,13 @@ class Command(BaseCommand):
             else:
                 self.stdout.write(f"  {message}")
 
-        if options["stage"] == "procurement-receiving":
+        is_stage_2b = options["stage"] == "procurement-receiving"
+        if is_stage_2b:
+            from apps.platform.demo.generation.orchestrator import STAGE_2B_ARTEFACTS
             from apps.platform.demo.generation.stage2b import STAGE_2B_1
 
             stage_set = STAGE_2B_1
+            artefact_names = STAGE_2B_ARTEFACTS
             # Stage 2B builds on master data, so its handles must be present
             # before the first procurement stage runs.
             from apps.platform.demo.generation.stages import STAGES as MASTER_STAGES
@@ -217,8 +220,11 @@ class Command(BaseCommand):
                 stage.rehydrate(ctx)
         else:
             stage_set = None
+            artefact_names = None
 
-        orchestrator = MasterDataOrchestrator(ctx, progress=report, stages=stage_set)
+        orchestrator = MasterDataOrchestrator(
+            ctx, progress=report, stages=stage_set, artefact_names=artefact_names
+        )
         try:
             orchestrator.run(
                 from_stage=options.get("from_stage"),
@@ -231,7 +237,16 @@ class Command(BaseCommand):
             run.save(update_fields=["failure_reason", "updated_at"])
             raise CommandError(f"Master-data generation failed: {exc}") from exc
 
-        validation = MasterDataValidator(run=run, tenant=tenant).run_all()
+        # Stage 2B validates a different thing: not "is the master data
+        # coherent" but "did anything become available to promise".
+        if is_stage_2b:
+            from apps.platform.demo.generation.validation import (
+                ProcurementReceivingValidator,
+            )
+
+            validation = ProcurementReceivingValidator(run=run, tenant=tenant).run_all()
+        else:
+            validation = MasterDataValidator(run=run, tenant=tenant).run_all()
         orchestrator.finalise()
 
         directory = Path(
