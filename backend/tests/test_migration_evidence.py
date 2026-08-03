@@ -41,6 +41,9 @@ RELEASE_MIGRATIONS = [
     # two new tables, no alteration to an existing one.
     "backend/apps/organizations/migrations/0002_departments.py",
     "backend/apps/platform/migrations/0004_demo_story_metadata.py",
+    # Stage 2A service closure: segregation of duties on supplier qualifications.
+    # Additive only -- four nullable columns, no alteration to existing data.
+    "backend/apps/procurement/migrations/0005_supplier_qualification_governance.py",
 ]
 
 

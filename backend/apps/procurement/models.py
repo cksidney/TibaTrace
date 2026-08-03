@@ -97,6 +97,25 @@ class SupplierQualification(TimestampedModel):
     verified_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="verified_qualifications"
     )
+    #: Who put the qualification forward. Required for segregation of duties:
+    #: without it, "the reviewer must differ from the submitter" cannot be
+    #: checked at all, and a single user could register a controlled-drug
+    #: licence and then verify their own evidence.
+    #: Nullable because rows predating this field have no recorded submitter --
+    #: backfilling a guess would assert a fact nobody established.
+    submitted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="submitted_qualifications",
+    )
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    #: Why a qualification was rejected or revoked. Immutable once written.
+    decision_reason = models.TextField(blank=True, default="")
+    #: How the evidence was checked. No regulator is contacted, so this records
+    #: MANUAL_INTERNAL_VERIFICATION rather than implying a PPB lookup.
+    verification_basis = models.CharField(max_length=64, blank=True, default="")
 
     objects = StrictTenantManager()
     all_objects = models.Manager()
