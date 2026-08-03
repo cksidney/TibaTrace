@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import decimal
 
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 from django.utils import timezone
 
@@ -342,3 +342,115 @@ class BranchAssortmentService:
             payload={"location_id": str(location.pk)},
         )
         return assortment
+
+
+class ManufacturerRegistrationService:
+    """Registers the manufacturers that products are attributed to.
+
+    `Manufacturer` carries a scope constraint: a row is either global
+    (tenant NULL, is_global True) or tenant-owned (tenant set, is_global
+    False), never both and never neither. Nothing enforced that pairing before
+    a row reached the database, so a caller could set `is_global` on a
+    tenant-owned manufacturer and get a constraint violation naming a check
+    rather than the mistake.
+    """
+
+    @staticmethod
+    @transaction.atomic
+    def register_tenant_manufacturer(
+        *,
+        tenant,
+        code: str,
+        legal_name: str,
+        country: str = "",
+        trading_name: str = "",
+        regulator_identifier: str = "",
+        actor=None,
+    ) -> Manufacturer:
+        """Register a manufacturer owned by one tenant.
+
+        Idempotent on (tenant, code), matching the partial unique constraint.
+        """
+        code = str(code or "").strip()
+        legal_name = str(legal_name or "").strip()
+        if not code:
+            raise ValidationError("A manufacturer requires a code.")
+        if not legal_name:
+            raise ValidationError("A manufacturer requires a legal name.")
+        if tenant is None:
+            raise ValidationError(
+                "A tenant manufacturer requires a tenant. Use "
+                "register_global_manufacturer for catalogue-wide entries."
+            )
+
+        existing = Manufacturer.all_objects.filter(tenant=tenant, code=code).first()
+        if existing is not None:
+            return existing
+
+        return Manufacturer.all_objects.create(
+            tenant=tenant,
+            is_global=False,
+            code=code,
+            legal_name=legal_name,
+            trading_name=trading_name,
+            country=country,
+            regulator_identifier=regulator_identifier,
+            is_active=True,
+        )
+
+    @staticmethod
+    @transaction.atomic
+    def register_global_manufacturer(
+        *,
+        code: str,
+        legal_name: str,
+        country: str = "",
+        trading_name: str = "",
+        regulator_identifier: str = "",
+        actor=None,
+    ) -> Manufacturer:
+        """Register a manufacturer visible to every tenant.
+
+        Global rows are shared reference data, so this is deliberately separate
+        from the tenant path: creating one is a catalogue-wide act.
+        """
+        code = str(code or "").strip()
+        legal_name = str(legal_name or "").strip()
+        if not code:
+            raise ValidationError("A manufacturer requires a code.")
+        if not legal_name:
+            raise ValidationError("A manufacturer requires a legal name.")
+
+        existing = Manufacturer.all_objects.filter(
+            tenant__isnull=True, is_global=True, code=code
+        ).first()
+        if existing is not None:
+            return existing
+
+        return Manufacturer.all_objects.create(
+            tenant=None,
+            is_global=True,
+            code=code,
+            legal_name=legal_name,
+            trading_name=trading_name,
+            country=country,
+            regulator_identifier=regulator_identifier,
+            is_active=True,
+        )
+
+    @staticmethod
+    @transaction.atomic
+    def deactivate(*, manufacturer: Manufacturer, actor, reason: str) -> Manufacturer:
+        """Stop new products being attributed to a manufacturer.
+
+        Existing products keep their attribution: a manufacturer ceasing to
+        trade does not change who made the stock already on the shelf.
+        """
+        if actor is None:
+            raise PermissionDenied("Deactivating a manufacturer requires a named actor.")
+        if not str(reason or "").strip():
+            raise ValidationError("Deactivating a manufacturer requires a reason.")
+
+        manufacturer.is_active = False
+        manufacturer.save(update_fields=["is_active", "updated_at"])
+        return manufacturer
