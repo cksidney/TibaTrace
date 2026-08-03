@@ -312,7 +312,10 @@ def test_resume_does_not_repeat_completed_transitions(procured, monkeypatch):
         _rehydrated(tenant, run), progress=messages.append, stages=stage2b.STAGE_2B_1
     ).run(resume=True)
 
-    assert len([m for m in messages if "rehydrated" in m]) == 6
+    # Derived, not hardcoded: everything except the two stages whose progress
+    # was cleared must be rehydrated rather than re-run.
+    expected = len(stage2b.STAGE_2B_1) - 2
+    assert len([m for m in messages if "rehydrated" in m]) == expected
     assert PurchaseOrderRevision.all_objects.filter(tenant=tenant).count() == (
         revisions_before
     )
@@ -373,3 +376,160 @@ def test_generation_is_deterministic_across_tenants(db):
         )
     assert shapes[0] == shapes[1]
     assert shapes[0], "no batches were generated"
+
+
+# ---------------------------------------------------------------------------
+# N2 — the scan path, stopped before it posts
+# ---------------------------------------------------------------------------
+
+
+def test_the_scan_path_runs_and_is_left_unposted(procured):
+    """ReceivingService can post a GRN into inventory. This stage must not.
+
+    open_receiving_session and record_scan write no stock; only
+    post_goods_receipt_note does. The session is therefore left ACTIVE, which
+    is also what a receiving bay looks like mid-delivery.
+    """
+    from apps.procurement.models import ReceivingScan, ReceivingSession
+
+    tenant, *_ = procured
+    sessions = ReceivingSession.all_objects.filter(tenant=tenant)
+    assert sessions.count() >= 1
+    assert sessions.exclude(status="ACTIVE").count() == 0, "a session was posted"
+    assert ReceivingScan.all_objects.filter(tenant=tenant).exists()
+
+    # And posting it would have created stock, which is why it was not called.
+    assert InventoryLedgerEntry.all_objects.filter(tenant=tenant).count() == 0
+
+
+def test_scans_never_invent_a_barcode(procured):
+    """No GTIN is fabricated: a SKU without one is scanned with an empty code."""
+    from apps.procurement.models import ReceivingScan
+
+    tenant, *_ = procured
+    for scan in ReceivingScan.all_objects.filter(tenant=tenant).select_related("sku"):
+        assert scan.scanned_barcode == (scan.sku.default_barcode or "")
+
+
+def test_scanned_expiry_must_be_in_the_future(procured):
+    """record_scan refuses expired stock; the generator never offers it any."""
+    from apps.procurement.models import ReceivingScan
+
+    tenant, *_ = procured
+    for scan in ReceivingScan.all_objects.filter(tenant=tenant):
+        assert scan.expiry_date > AS_OF
+
+
+# ---------------------------------------------------------------------------
+# The Stage 2B.1 validator
+# ---------------------------------------------------------------------------
+
+
+def test_the_validator_passes_a_clean_run(procured):
+    from apps.platform.demo.generation.validation import ProcurementReceivingValidator
+
+    tenant, run, *_ = procured
+    result = ProcurementReceivingValidator(run=run, tenant=tenant).run_all()
+    failures = [f for f in result["findings"] if f["status"] == "FAIL"]
+    assert result["status"] == "PASS", failures
+    assert result["stage"] == "2B.1-procurement-receiving"
+
+
+def test_the_validator_catches_a_released_batch(procured):
+    """The check that matters: released stock is available stock."""
+    from apps.platform.demo.generation.validation import ProcurementReceivingValidator
+    from apps.procurement.models import ReceivedBatch
+
+    tenant, run, *_ = procured
+    batch = ReceivedBatch.all_objects.filter(tenant=tenant).order_by("pk").first()
+    batch.quality_status = ReceivedBatch.QualityStatus.RELEASED
+    batch.accepted_quantity = batch.received_quantity
+    batch.quarantined_quantity = 0
+    batch.save(update_fields=[
+        "quality_status", "accepted_quantity", "quarantined_quantity",
+    ])
+
+    result = ProcurementReceivingValidator(run=run, tenant=tenant).run_all()
+    assert result["status"] == "FAIL"
+    finding = next(f for f in result["findings"] if f["check"] == "every_batch_is_held")
+    assert finding["status"] == "FAIL"
+    assert "released" in finding["detail"]
+
+
+def test_the_validator_catches_a_self_approved_order(procured):
+    from apps.platform.demo.generation.validation import ProcurementReceivingValidator
+
+    tenant, run, *_ = procured
+    order = PurchaseOrder.all_objects.filter(tenant=tenant).order_by("po_number").first()
+    order.approved_by = order.created_by
+    order.save(update_fields=["approved_by"])
+
+    result = ProcurementReceivingValidator(run=run, tenant=tenant).run_all()
+    finding = next(
+        f for f in result["findings"] if f["check"] == "order_approval_segregation"
+    )
+    assert finding["status"] == "FAIL"
+
+
+def test_the_validator_catches_a_posted_receiving_session(procured):
+    from apps.platform.demo.generation.validation import ProcurementReceivingValidator
+    from apps.procurement.models import ReceivingSession
+
+    tenant, run, *_ = procured
+    session = ReceivingSession.all_objects.filter(tenant=tenant).first()
+    session.status = "POSTED"
+    session.save(update_fields=["status"])
+
+    result = ProcurementReceivingValidator(run=run, tenant=tenant).run_all()
+    finding = next(
+        f for f in result["findings"] if f["check"] == "receiving_sessions_unposted"
+    )
+    assert finding["status"] == "FAIL"
+
+
+# ---------------------------------------------------------------------------
+# Artefacts
+# ---------------------------------------------------------------------------
+
+
+def test_stage_2b_artefacts_are_written_under_their_own_names(procured, tmp_path):
+    """Stage 2A and 2B share an evidence directory; names must not collide."""
+    from apps.platform.demo.generation.orchestrator import STAGE_2B_ARTEFACTS
+    from apps.platform.demo.generation.validation import ProcurementReceivingValidator
+
+    tenant, run, ctx, _o = procured
+    orchestrator = MasterDataOrchestrator(
+        ctx, stages=stage2b.STAGE_2B_1, artefact_names=STAGE_2B_ARTEFACTS
+    )
+    validation = ProcurementReceivingValidator(run=run, tenant=tenant).run_all()
+
+    written = orchestrator.write_artefacts(tmp_path / "one", validation=validation)
+    assert set(written) == {
+        "STAGE2B_PROCUREMENT_MANIFEST.json",
+        "STAGE2B_RECEIVING_MANIFEST.json",
+        "STAGE2B_BATCH_SUMMARY.json",
+        "STAGE2B_VALIDATION.json",
+        "STAGE2B_COLLISIONS.json",
+        "STAGE2B_TIMINGS.json",
+    }
+
+    orchestrator.write_artefacts(tmp_path / "two", validation=validation)
+    for name in written:
+        assert (tmp_path / "one" / name).read_bytes() == (
+            tmp_path / "two" / name
+        ).read_bytes(), f"{name} is not byte-deterministic"
+
+
+def test_the_batch_summary_reports_no_stock_figure(procured):
+    """A quantity in the batch summary would read as available stock."""
+    from apps.platform.demo.generation.orchestrator import STAGE_2B_ARTEFACTS
+
+    _t, _r, ctx, _o = procured
+    summary = MasterDataOrchestrator(
+        ctx, stages=stage2b.STAGE_2B_1, artefact_names=STAGE_2B_ARTEFACTS
+    ).batch_summary()
+
+    assert summary["received_batches"] > 0
+    assert "PENDING_INSPECTION" in summary["quality_status"]
+    forbidden = {"on_hand", "available", "reserved", "balance", "stock_value"}
+    assert not (forbidden & set(summary))

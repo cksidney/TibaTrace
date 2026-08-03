@@ -95,7 +95,11 @@ class Command(BaseCommand):
 
         # 10. Clinical decision missing from audit
         for dec in PosClinicalDecision.all_objects.filter(tenant=tenant):
-            has_audit = PosClinicalAuditEvent.objects.filter(
+            # all_objects, like every other query in this checker. `objects` is
+            # tenant-strict and this command sets no thread-local context, so
+            # the lookup returned nothing and .exists() was always False --
+            # reporting *every* clinical decision as missing its audit event.
+            has_audit = PosClinicalAuditEvent.all_objects.filter(
                 tenant=tenant, screening=dec.screening, event_type__in=['FINDING_RESOLVED', 'OVERRIDE_RECORDED']
             ).exists()
             if not has_audit:

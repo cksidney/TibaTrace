@@ -232,3 +232,182 @@ class TestTheGuardItselfWorks:
     def test_it_scans_a_non_empty_set_of_modules(self):
         # If the discovery glob broke, every assertion above would still pass.
         assert len(api_modules()) > 5
+
+
+# ---------------------------------------------------------------------------
+# Service-layer audit
+#
+# The API audit above scans views, serializers and api modules. Stage 2B.1
+# found two defects it could not see, both in service code:
+#
+#   * receive_line locked the purchase-order line through the strict manager,
+#     so outside a request the lock raised DoesNotExist -- and took the
+#     over-receipt guard down with it.
+#   * returns_service wrote through the same manager.
+#
+# Services run from every context: a request, a management command, a Celery
+# task, an importer. That makes them the *most* exposed layer, and it was the
+# one nothing scanned.
+# ---------------------------------------------------------------------------
+
+#: Only read-shaped calls are flagged. `Model.objects.create(...)` inserts a
+#: row; the manager's filter does not apply to an insert, so it is inconsistent
+#: rather than broken. A read returns an empty queryset and the caller believes
+#: the data is not there -- which is the failure that matters.
+READ_METHODS = frozenset(
+    {
+        "filter", "get", "exclude", "exists", "count", "first", "last", "all",
+        "aggregate", "values", "values_list", "select_for_update",
+        "get_or_create", "update_or_create", "update", "delete",
+    }
+)
+
+#: Modules that establish tenant context before querying. Every management
+#: command in this repository that reads through the strict manager calls
+#: set_current_tenant_id first, which makes the use correct -- flagging them
+#: would be a guard that cries wolf, and those get ignored.
+TENANT_CONTEXT_SETTER = "set_current_tenant_id"
+
+
+def service_layer_modules() -> list[pathlib.Path]:
+    """Every module that runs outside, or independently of, a request."""
+    found: list[pathlib.Path] = []
+    for path in APPS.rglob("*.py"):
+        if any(part in EXEMPT_PARTS for part in path.parts):
+            continue
+        parts, name = path.parts, path.name
+        is_service = (
+            "services" in parts
+            or name == "services.py"
+            or name.endswith(("_service.py", "_services.py"))
+            or name in {"provisioning.py", "authoring.py", "onboarding.py"}
+        )
+        is_worker = "commands" in parts or name in {"tasks.py", "signals.py"}
+        is_generator = "generation" in parts
+        if is_service or is_worker or is_generator:
+            found.append(path)
+    return sorted(found)
+
+
+def unscoped_service_reads(path: pathlib.Path, scoped: set[str] | None = None):
+    """Read-shaped strict-manager calls in a module with no tenant context."""
+    scoped = scoped if scoped is not None else tenant_scoped_model_names()
+    try:
+        source = path.read_text()
+        tree = ast.parse(source)
+    except (SyntaxError, OSError):
+        return []
+    if TENANT_CONTEXT_SETTER in source:
+        return []
+
+    uses: list[tuple[int, str]] = []
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)):
+            continue
+        if node.func.attr not in READ_METHODS:
+            continue
+        receiver = node.func.value
+        if not (isinstance(receiver, ast.Attribute) and receiver.attr == "objects"):
+            continue
+        model = ast.unparse(receiver).rsplit(".objects", 1)[0].split(".")[-1]
+        if model in scoped:
+            uses.append((node.lineno, f"{model}.objects.{node.func.attr}"))
+    return uses
+
+
+def service_offenders() -> dict[str, list[str]]:
+    found: dict[str, list[str]] = {}
+    scoped = tenant_scoped_model_names()
+    for path in service_layer_modules():
+        relative = str(path.relative_to(APPS.parent))
+        if relative in REVIEWED:
+            continue
+        for line, expression in unscoped_service_reads(path, scoped):
+            found.setdefault(relative, []).append(f"{relative}:{line}  {expression}")
+    return found
+
+
+class TestServiceCodeDoesNotReadThroughTheStrictManager:
+    def test_no_unscoped_service_layer_reads(self):
+        """Empty, and it should stay that way.
+
+        Three were present when this guard was written -- two in
+        medicines.services and one in inventory.recalls.services, all
+        get_or_create or update_or_create whose lookup half matched nothing
+        without tenant context and then collided with a unique constraint on
+        the create. All three are fixed; the list is nil.
+        """
+        offenders = service_offenders()
+        assert offenders == {}, (
+            "service-layer code reads through the tenant-strict manager:\n"
+            + "\n".join(sorted(line for lines in offenders.values() for line in lines))
+        )
+
+    def test_the_audit_covers_more_than_the_api_layer(self):
+        """Guards the scope itself: a narrowed glob would silently pass."""
+        modules = {str(p.relative_to(APPS.parent)) for p in service_layer_modules()}
+        assert any("services" in m for m in modules), "services not scanned"
+        assert any("commands" in m for m in modules), "management commands not scanned"
+        assert any("generation" in m for m in modules), "demo generators not scanned"
+        assert len(modules) > 50, f"only {len(modules)} modules scanned"
+
+    # -- regression fixtures ------------------------------------------------
+
+    def test_it_catches_a_planted_service_read(self, tmp_path):
+        planted = tmp_path / "billing_service.py"
+        planted.write_text(
+            "def charge(invoice_id):\n"
+            "    return Invoice.objects.filter(pk=invoice_id).first()\n"
+        )
+        assert unscoped_service_reads(planted, {"Invoice"})
+
+    def test_it_catches_a_planted_get_or_create(self, tmp_path):
+        """The exact shape of the three defects this guard was written for."""
+        planted = tmp_path / "services.py"
+        planted.write_text(
+            "def ensure(tenant, code):\n"
+            "    return Widget.objects.get_or_create(tenant=tenant, code=code)\n"
+        )
+        assert unscoped_service_reads(planted, {"Widget"})
+
+    def test_it_catches_a_planted_select_for_update(self, tmp_path):
+        """The receive_line defect: a lock that returns nothing and raises."""
+        planted = tmp_path / "receiving_service.py"
+        planted.write_text(
+            "def lock(pk):\n"
+            "    return OrderLine.objects.select_for_update().get(pk=pk)\n"
+        )
+        assert unscoped_service_reads(planted, {"OrderLine"})
+
+    def test_it_ignores_a_create(self, tmp_path):
+        """An insert is unaffected by the manager's filter."""
+        planted = tmp_path / "services.py"
+        planted.write_text(
+            "def make(tenant):\n    return Widget.objects.create(tenant=tenant)\n"
+        )
+        assert unscoped_service_reads(planted, {"Widget"}) == []
+
+    def test_it_ignores_a_module_that_establishes_tenant_context(self, tmp_path):
+        """Every management command here sets context before reading."""
+        planted = tmp_path / "check_something.py"
+        planted.write_text(
+            "from apps.core.tenancy import set_current_tenant_id\n"
+            "def run(tenant):\n"
+            "    set_current_tenant_id(tenant.id)\n"
+            "    return Widget.objects.filter(active=True)\n"
+        )
+        assert unscoped_service_reads(planted, {"Widget"}) == []
+
+    def test_it_ignores_all_objects(self, tmp_path):
+        planted = tmp_path / "services.py"
+        planted.write_text(
+            "def read(tenant):\n"
+            "    return Widget.all_objects.filter(tenant=tenant)\n"
+        )
+        assert unscoped_service_reads(planted, {"Widget"}) == []
+
+    def test_it_ignores_a_model_without_a_strict_manager(self, tmp_path):
+        """User and Tenant carry plain managers; flagging them cries wolf."""
+        planted = tmp_path / "services.py"
+        planted.write_text("def read():\n    return User.objects.filter(is_active=True)\n")
+        assert unscoped_service_reads(planted, {"Widget"}) == []

@@ -139,7 +139,11 @@ def quarantine_tenant_stock(
     In production, this must also trigger blocking flags on inventory batch records.
     """
     _require_compliance_capability(actor, tenant_id)
-    impact, _ = RegulatoryTenantImpact.objects.get_or_create(
+    # all_objects: the lookup half of get_or_create runs through the
+    # tenant-strict queryset and matches nothing without thread-local
+    # context, then falls through to a create that collides with the
+    # unique constraint. tenant_id is already in the kwargs.
+    impact, _ = RegulatoryTenantImpact.all_objects.get_or_create(
         alert=alert,
         tenant_id=tenant_id,
         defaults={

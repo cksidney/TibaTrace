@@ -306,7 +306,12 @@ class SubstitutionPolicyService:
         reason_required: bool = True,
         actor=None,
     ) -> SubstitutionPolicy:
-        policy, _ = SubstitutionPolicy.objects.update_or_create(
+        # all_objects: the lookup half of get_or_create runs through the
+        # manager's queryset, which is tenant-strict and matches nothing
+        # without thread-local context. It would then fall through to a
+        # create and collide with the unique constraint -- an idempotent
+        # call that works exactly once. Tenant is already in the kwargs.
+        policy, _ = SubstitutionPolicy.all_objects.update_or_create(
             tenant=tenant,
             substitution_group=substitution_group,
             defaults={
@@ -329,7 +334,12 @@ class BranchAssortmentService:
     @staticmethod
     @transaction.atomic
     def enable_sku_for_branch(*, tenant, location, sku: CommercialSKU, actor=None) -> BranchAssortment:
-        assortment, _ = BranchAssortment.objects.update_or_create(
+        # all_objects: the lookup half of get_or_create runs through the
+        # manager's queryset, which is tenant-strict and matches nothing
+        # without thread-local context. It would then fall through to a
+        # create and collide with the unique constraint -- an idempotent
+        # call that works exactly once. Tenant is already in the kwargs.
+        assortment, _ = BranchAssortment.all_objects.update_or_create(
             tenant=tenant,
             location=location,
             sku=sku,
