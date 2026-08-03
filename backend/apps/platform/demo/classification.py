@@ -30,6 +30,8 @@ INSPECTED_MODELS: tuple[tuple[str, str, str, bool], ...] = (
     ("roles", "identity", "Role", False),
     ("locations", "organizations", "Location", False),
     ("organizations", "organizations", "Organization", False),
+    ("departments", "organizations", "Department", False),
+    ("department_memberships", "organizations", "DepartmentMembership", False),
     ("practitioners", "practitioners", "Practitioner", False),
     ("patients", "patients", "Patient", False),
     ("commercial_skus", "medicines", "CommercialSKU", False),

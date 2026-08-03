@@ -25,11 +25,19 @@ from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 
 from apps.organizations.models import (
+    Department,
+    DepartmentMembership,
     Location,
     LocationIdentifier,
     Organization,
     OrganizationIdentifier,
 )
+
+#: Key under which a user's primary department is mirrored into `User.metadata`.
+#: `identity.AttributePolicy` matches conditions against that dict, so this is
+#: the name a policy writes in `{"user_metadata": {...}}`. Changing it silently
+#: disarms every policy that scopes a capability to a department.
+DEPARTMENT_METADATA_KEY = "department"
 
 #: Site kinds this service understands. `Location.location_type` is a free
 #: CharField, so this list is guidance rather than a database constraint --
@@ -275,3 +283,234 @@ class SiteProvisioningService:
         return LocationIdentifier.all_objects.create(
             tenant=site.tenant, location=site, system=system, value=value
         )
+
+
+class DepartmentProvisioningService:
+    """Creates departments and assigns staff to them.
+
+    The load-bearing rule is a negative one: nothing in this service grants a
+    capability. Assigning somebody to the dispensary does not let them dispense;
+    that requires a role. The service mirrors the primary department into
+    `User.metadata` so `identity.AttributePolicy` can *restrict* a capability to
+    a department, which is a narrowing, never a widening.
+    """
+
+    @staticmethod
+    @transaction.atomic
+    def provision_department(
+        *,
+        tenant,
+        site: Location,
+        code: str,
+        name: str,
+        department_type: str = Department.TYPE_DISPENSARY,
+        metadata: dict | None = None,
+        actor=None,
+    ) -> Department:
+        """Create a department within a site, or return the existing one.
+
+        Idempotent on (tenant, site, code), matching the unique constraint.
+        """
+        code = str(code or "").strip()
+        name = str(name or "").strip()
+        if not code:
+            raise ValidationError("A department requires a code.")
+        if not name:
+            raise ValidationError("A department requires a name.")
+        if site is None:
+            raise ValidationError("A department requires a site.")
+        if site.tenant_id != tenant.id:
+            raise ValidationError(
+                "The site belongs to a different tenant than the department being "
+                "provisioned. A department cannot cross a tenant boundary."
+            )
+        known_types = {value for value, _ in Department.TYPE_CHOICES}
+        if department_type not in known_types:
+            raise ValidationError(
+                f"Unknown department type {department_type!r}. Known: {', '.join(sorted(known_types))}"
+            )
+
+        existing = Department.all_objects.filter(tenant=tenant, site=site, code=code).first()
+        if existing is not None:
+            return existing
+
+        return Department.all_objects.create(
+            tenant=tenant,
+            site=site,
+            code=code,
+            name=name,
+            department_type=department_type,
+            status=STATUS_ACTIVE,
+            metadata=metadata or {},
+        )
+
+    @staticmethod
+    @transaction.atomic
+    def provision_standard_departments(
+        *, tenant, site: Location, prefix: str, include_wholesale: bool = False,
+        include_cold_chain: bool = False, actor=None,
+    ) -> dict[str, Department]:
+        """Create the departments a working pharmacy site has.
+
+        Dispensary, retail, stores and administration exist wherever medicines
+        are handled. Wholesale and cold chain are separately licensed and
+        equipped, so they are opt-in rather than assumed.
+        """
+        planned = {
+            "dispensary": (f"{prefix}-DISP", "Dispensary", Department.TYPE_DISPENSARY),
+            "retail": (f"{prefix}-RETAIL", "Retail counter", Department.TYPE_RETAIL),
+            "stores": (f"{prefix}-STORES", "Stores", Department.TYPE_STORES),
+            "administration": (f"{prefix}-ADMIN", "Administration", Department.TYPE_ADMINISTRATION),
+        }
+        if include_wholesale:
+            planned["wholesale"] = (f"{prefix}-WHSL", "Wholesale", Department.TYPE_WHOLESALE)
+        if include_cold_chain:
+            planned["cold_chain"] = (f"{prefix}-COLD", "Cold chain", Department.TYPE_COLD_CHAIN)
+
+        created: dict[str, Department] = {}
+        for key, (code, name, kind) in planned.items():
+            created[key] = DepartmentProvisioningService.provision_department(
+                tenant=tenant, site=site, code=code, name=name,
+                department_type=kind, actor=actor,
+            )
+        return created
+
+    @staticmethod
+    @transaction.atomic
+    def assign_member(
+        *, department: Department, user, is_primary: bool = False, actor=None
+    ) -> DepartmentMembership:
+        """Place a user in a department.
+
+        Grants nothing. If the user needs to be able to do something in the
+        department, they need a role that carries the capability.
+
+        Idempotent on (tenant, department, user); calling again with
+        `is_primary=True` promotes an existing membership rather than raising.
+        """
+        if user is None:
+            raise ValidationError("A department membership requires a user.")
+        if user.tenant_id != department.tenant_id:
+            raise ValidationError("A user can only join a department in their own tenant.")
+        if department.status != STATUS_ACTIVE:
+            raise ValidationError(
+                f"Department {department.code} is {department.status}; it cannot take members."
+            )
+
+        membership = DepartmentMembership.all_objects.filter(
+            tenant_id=department.tenant_id, department=department, user=user
+        ).first()
+        if membership is None:
+            membership = DepartmentMembership.all_objects.create(
+                tenant_id=department.tenant_id,
+                department=department,
+                user=user,
+                is_primary=False,
+                is_active=True,
+            )
+        elif not membership.is_active:
+            membership.is_active = True
+            membership.save(update_fields=["is_active", "updated_at"])
+
+        if is_primary:
+            DepartmentProvisioningService.set_primary_department(
+                user=user, department=department, actor=actor
+            )
+            membership.refresh_from_db()
+        return membership
+
+    @staticmethod
+    @transaction.atomic
+    def set_primary_department(*, user, department: Department, actor=None) -> DepartmentMembership:
+        """Make one of a user's departments the primary one.
+
+        Demotes any other primary first: the partial unique constraint permits
+        exactly one, so writing this one first would hit the constraint rather
+        than replace it. The code is mirrored into `User.metadata` under
+        `DEPARTMENT_METADATA_KEY` for attribute policies to read.
+        """
+        if user.tenant_id != department.tenant_id:
+            raise ValidationError("A user can only join a department in their own tenant.")
+
+        membership = DepartmentMembership.all_objects.filter(
+            tenant_id=department.tenant_id, department=department, user=user, is_active=True
+        ).first()
+        if membership is None:
+            raise ValidationError(
+                "The user is not an active member of that department. Assign them first."
+            )
+
+        DepartmentMembership.all_objects.filter(
+            tenant_id=department.tenant_id, user=user, is_primary=True
+        ).exclude(pk=membership.pk).update(is_primary=False)
+
+        membership.is_primary = True
+        membership.save(update_fields=["is_primary", "updated_at"])
+
+        metadata = dict(user.metadata or {})
+        metadata[DEPARTMENT_METADATA_KEY] = department.code
+        user.metadata = metadata
+        user.save(update_fields=["metadata"])
+        return membership
+
+    @staticmethod
+    @transaction.atomic
+    def remove_member(*, department: Department, user, actor, reason: str) -> None:
+        """Remove a user from a department.
+
+        Deactivates rather than deletes, so that "who was in the dispensary when
+        this was dispensed?" stays answerable. If the department was primary,
+        the mirrored metadata is cleared -- a stale department in `User.metadata`
+        would keep satisfying an attribute policy after the person left it.
+        """
+        if actor is None:
+            raise PermissionDenied("Removing a department member requires a named actor.")
+        if not str(reason or "").strip():
+            raise ValidationError("Removing a department member requires a reason.")
+
+        membership = DepartmentMembership.all_objects.filter(
+            tenant_id=department.tenant_id, department=department, user=user
+        ).first()
+        if membership is None:
+            return
+
+        was_primary = membership.is_primary
+        membership.is_active = False
+        membership.is_primary = False
+        membership.save(update_fields=["is_active", "is_primary", "updated_at"])
+
+        if was_primary:
+            metadata = dict(user.metadata or {})
+            metadata.pop(DEPARTMENT_METADATA_KEY, None)
+            user.metadata = metadata
+            user.save(update_fields=["metadata"])
+
+    @staticmethod
+    @transaction.atomic
+    def close_department(*, department: Department, actor, reason: str) -> Department:
+        """Close a department without deleting it.
+
+        Refuses while staff remain assigned: a closed department holding active
+        members leaves people attached to a unit that no longer exists, and any
+        attribute policy scoped to it keeps matching.
+        """
+        if actor is None:
+            raise PermissionDenied("Closing a department requires a named actor.")
+        if not str(reason or "").strip():
+            raise ValidationError("Closing a department requires a reason.")
+
+        remaining = DepartmentMembership.all_objects.filter(
+            tenant_id=department.tenant_id, department=department, is_active=True
+        ).count()
+        if remaining:
+            raise ValidationError(
+                f"Department {department.code} still has {remaining} active member(s). "
+                "Remove them before closing it."
+            )
+
+        metadata = dict(department.metadata or {})
+        metadata["closure"] = {"reason": reason, "closed_by": getattr(actor, "username", "")}
+        department.status = STATUS_CLOSED
+        department.metadata = metadata
+        department.save(update_fields=["status", "metadata", "updated_at"])
+        return department

@@ -37,6 +37,9 @@ RELEASE_MIGRATIONS = [
     # Stage 1 demo foundation.
     "backend/apps/tenancy/migrations/0003_tenant_is_demo.py",
     "backend/apps/platform/migrations/0003_demo_scenario_ownership.py",
+    # Stage 2A master data: departments and their memberships. Additive only --
+    # two new tables, no alteration to an existing one.
+    "backend/apps/organizations/migrations/0002_departments.py",
 ]
 
 

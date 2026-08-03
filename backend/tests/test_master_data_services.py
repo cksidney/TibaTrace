@@ -19,13 +19,16 @@ import pytest
 from django.core.exceptions import PermissionDenied, ValidationError
 
 from apps.audit.models import AuditEvent
-from apps.identity.models import User
+from apps.identity.models import AttributePolicy, Role, User, UserRole
 from apps.insurance.models import Insurer
 from apps.insurance.services.onboarding import InsurerOnboardingService
 from apps.inventory.location_services import InventoryLocationProvisioningService
 from apps.inventory.models import InventoryLocation
 from apps.medicines.services import ManufacturerRegistrationService
+from apps.organizations.models import Department, DepartmentMembership
 from apps.organizations.services import (
+    DEPARTMENT_METADATA_KEY,
+    DepartmentProvisioningService,
     OrganizationProvisioningService,
     SiteProvisioningService,
 )
@@ -482,3 +485,210 @@ def test_suspending_an_insurer_keeps_the_relationship(db, tenant, actor):
     InsurerOnboardingService.suspend_insurer(insurer=ins, actor=actor, reason="contract lapsed")
     ins.refresh_from_db()
     assert ins.status == Insurer.Status.SUSPENDED
+
+
+# --------------------------------------------------------------------------
+# Departments
+#
+# A department is an organisational unit, not a permission. The first test
+# below is the one that matters: if it ever fails, there are two independent
+# paths to a capability and no single answer to "what can this person do?".
+# --------------------------------------------------------------------------
+
+
+def test_department_membership_grants_no_capabilities(db, tenant, branch):
+    """The whole design rests on this. Membership must never widen access."""
+    member = User.objects.create(username="counter-staff", tenant=tenant)
+    dispensary = DepartmentProvisioningService.provision_department(
+        tenant=tenant, site=branch, code="MAIN-DISP", name="Dispensary",
+        department_type=Department.TYPE_DISPENSARY,
+    )
+    before = member.effective_capabilities(tenant_id=tenant.id)
+    DepartmentProvisioningService.assign_member(department=dispensary, user=member)
+    member.refresh_from_db()
+    after = member.effective_capabilities(tenant_id=tenant.id)
+
+    assert before == after == set()
+    assert member.has_capability("dispensing.dispense", tenant_id=tenant.id) is False
+
+
+def test_attribute_policy_can_deny_on_the_mirrored_department(db, tenant, branch):
+    """Departments narrow access through the ABAC that already exists."""
+    role = Role.objects.create(
+        tenant=tenant, code="PHARM", name="Pharmacist",
+        capabilities=["dispensing.dispense"],
+    )
+    member = User.objects.create(username="pharmacist-a", tenant=tenant)
+    UserRole.objects.create(tenant=tenant, user=member, role=role)
+
+    retail = DepartmentProvisioningService.provision_department(
+        tenant=tenant, site=branch, code="MAIN-RETAIL", name="Retail counter",
+        department_type=Department.TYPE_RETAIL,
+    )
+    DepartmentProvisioningService.assign_member(
+        department=retail, user=member, is_primary=True,
+    )
+    member.refresh_from_db()
+    assert member.metadata[DEPARTMENT_METADATA_KEY] == "MAIN-RETAIL"
+    assert member.has_capability("dispensing.dispense", tenant_id=tenant.id) is True
+
+    # A policy denying the capability to retail staff must now bite, using the
+    # mirrored key and no new mechanism.
+    AttributePolicy.objects.create(
+        tenant=tenant, code="NO-DISPENSE-AT-RETAIL", capability="dispensing.dispense",
+        effect=AttributePolicy.EFFECT_DENY,
+        conditions={"user_metadata": {DEPARTMENT_METADATA_KEY: "MAIN-RETAIL"}},
+    )
+    member.refresh_from_db()
+    assert member.has_capability("dispensing.dispense", tenant_id=tenant.id) is False
+
+
+def test_removing_a_member_clears_the_mirrored_department(db, tenant, branch, actor):
+    """A stale department would keep satisfying a policy after they left it."""
+    member = User.objects.create(username="mover", tenant=tenant)
+    dept = DepartmentProvisioningService.provision_department(
+        tenant=tenant, site=branch, code="MAIN-STORES", name="Stores",
+        department_type=Department.TYPE_STORES,
+    )
+    DepartmentProvisioningService.assign_member(department=dept, user=member, is_primary=True)
+    member.refresh_from_db()
+    assert member.metadata[DEPARTMENT_METADATA_KEY] == "MAIN-STORES"
+
+    DepartmentProvisioningService.remove_member(
+        department=dept, user=member, actor=actor, reason="transferred",
+    )
+    member.refresh_from_db()
+    assert DEPARTMENT_METADATA_KEY not in member.metadata
+
+
+def test_department_provisioning_is_idempotent(db, tenant, branch):
+    a = DepartmentProvisioningService.provision_department(
+        tenant=tenant, site=branch, code="D-1", name="Dispensary",
+    )
+    b = DepartmentProvisioningService.provision_department(
+        tenant=tenant, site=branch, code="D-1", name="Dispensary",
+    )
+    assert a.pk == b.pk
+
+
+def test_membership_assignment_is_idempotent(db, tenant, branch):
+    member = User.objects.create(username="repeat-member", tenant=tenant)
+    dept = DepartmentProvisioningService.provision_department(
+        tenant=tenant, site=branch, code="D-2", name="Dispensary",
+    )
+    a = DepartmentProvisioningService.assign_member(department=dept, user=member)
+    b = DepartmentProvisioningService.assign_member(department=dept, user=member)
+    assert a.pk == b.pk
+
+
+def test_department_cannot_cross_a_tenant_boundary(db, tenant, other_tenant, branch):
+    with pytest.raises(ValidationError, match="different tenant"):
+        DepartmentProvisioningService.provision_department(
+            tenant=other_tenant, site=branch, code="D-X", name="Wrong tenant",
+        )
+
+
+def test_user_cannot_join_a_department_in_another_tenant(db, tenant, other_tenant, branch):
+    outsider = User.objects.create(username="outsider", tenant=other_tenant)
+    dept = DepartmentProvisioningService.provision_department(
+        tenant=tenant, site=branch, code="D-3", name="Dispensary",
+    )
+    with pytest.raises(ValidationError, match="their own tenant"):
+        DepartmentProvisioningService.assign_member(department=dept, user=outsider)
+
+
+def test_unknown_department_type_is_refused(db, tenant, branch):
+    with pytest.raises(ValidationError, match="Unknown department type"):
+        DepartmentProvisioningService.provision_department(
+            tenant=tenant, site=branch, code="D-4", name="X", department_type="CANTEEN",
+        )
+
+
+def test_only_one_primary_department_per_user(db, tenant, branch):
+    """Switching primary demotes the old one rather than hitting the constraint."""
+    member = User.objects.create(username="dual-role", tenant=tenant)
+    first = DepartmentProvisioningService.provision_department(
+        tenant=tenant, site=branch, code="D-5", name="Dispensary",
+    )
+    second = DepartmentProvisioningService.provision_department(
+        tenant=tenant, site=branch, code="D-6", name="Retail", department_type=Department.TYPE_RETAIL,
+    )
+    DepartmentProvisioningService.assign_member(department=first, user=member, is_primary=True)
+    DepartmentProvisioningService.assign_member(department=second, user=member, is_primary=True)
+
+    primaries = DepartmentMembership.all_objects.filter(
+        tenant=tenant, user=member, is_primary=True, is_active=True
+    )
+    assert primaries.count() == 1
+    assert primaries.first().department_id == second.pk
+    member.refresh_from_db()
+    assert member.metadata[DEPARTMENT_METADATA_KEY] == "D-6"
+
+
+def test_primary_requires_existing_membership(db, tenant, branch):
+    member = User.objects.create(username="not-a-member", tenant=tenant)
+    dept = DepartmentProvisioningService.provision_department(
+        tenant=tenant, site=branch, code="D-7", name="Dispensary",
+    )
+    with pytest.raises(ValidationError, match="not an active member"):
+        DepartmentProvisioningService.set_primary_department(user=member, department=dept)
+
+
+def test_closing_a_department_refuses_while_staff_remain(db, tenant, branch, actor):
+    member = User.objects.create(username="still-there", tenant=tenant)
+    dept = DepartmentProvisioningService.provision_department(
+        tenant=tenant, site=branch, code="D-8", name="Dispensary",
+    )
+    DepartmentProvisioningService.assign_member(department=dept, user=member)
+
+    with pytest.raises(ValidationError, match="still has 1 active member"):
+        DepartmentProvisioningService.close_department(
+            department=dept, actor=actor, reason="merged into retail",
+        )
+
+    DepartmentProvisioningService.remove_member(
+        department=dept, user=member, actor=actor, reason="reassigned",
+    )
+    DepartmentProvisioningService.close_department(
+        department=dept, actor=actor, reason="merged into retail",
+    )
+    dept.refresh_from_db()
+    assert dept.status == "CLOSED"
+
+
+def test_a_closed_department_cannot_take_members(db, tenant, branch, actor):
+    member = User.objects.create(username="late-joiner", tenant=tenant)
+    dept = DepartmentProvisioningService.provision_department(
+        tenant=tenant, site=branch, code="D-9", name="Dispensary",
+    )
+    DepartmentProvisioningService.close_department(
+        department=dept, actor=actor, reason="closed",
+    )
+    with pytest.raises(ValidationError, match="cannot take members"):
+        DepartmentProvisioningService.assign_member(department=dept, user=member)
+
+
+def test_removal_and_closure_require_actor_and_reason(db, tenant, branch, actor):
+    dept = DepartmentProvisioningService.provision_department(
+        tenant=tenant, site=branch, code="D-10", name="Dispensary",
+    )
+    with pytest.raises(PermissionDenied):
+        DepartmentProvisioningService.close_department(department=dept, actor=None, reason="x")
+    with pytest.raises(ValidationError, match="reason"):
+        DepartmentProvisioningService.close_department(department=dept, actor=actor, reason="")
+
+
+def test_standard_departments_cover_a_working_site(db, tenant, branch):
+    made = DepartmentProvisioningService.provision_standard_departments(
+        tenant=tenant, site=branch, prefix="MAIN",
+    )
+    assert {"dispensary", "retail", "stores", "administration"} == set(made)
+    assert "wholesale" not in made
+    assert "cold_chain" not in made
+
+    licensed = DepartmentProvisioningService.provision_standard_departments(
+        tenant=tenant, site=branch, prefix="FULL",
+        include_wholesale=True, include_cold_chain=True,
+    )
+    assert licensed["wholesale"].department_type == Department.TYPE_WHOLESALE
+    assert licensed["cold_chain"].department_type == Department.TYPE_COLD_CHAIN
