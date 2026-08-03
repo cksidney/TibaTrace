@@ -66,6 +66,11 @@ def world(db):
     sku = CommercialSKU.all_objects.create(
         tenant=tenant, sku_code="SKU-R", display_name="Amoxil 500mg",
         manufactured_product=manufactured, package_definition=pack,
+        # Explicitly ACTIVE. CommercialSKU defaults to DRAFT, and agreements now
+        # refuse a SKU that is not active -- these tests are about *supplier*
+        # status, so the product needs to be one a buyer could really contract
+        # for rather than relying on an unset default.
+        status=CommercialSKU.STATUS_ACTIVE,
     )
     return {"tenant": tenant, "branch": branch, "sku": sku}
 

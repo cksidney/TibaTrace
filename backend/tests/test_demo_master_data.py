@@ -9,6 +9,7 @@ So the suite asserts what must *not* happen at least as hard as what must.
 
 from __future__ import annotations
 
+import io
 from datetime import date
 
 import pytest
@@ -568,12 +569,57 @@ def test_kpis_report_no_transactional_measures(generated):
 
 
 def test_summary_records_what_could_not_be_generated(generated):
-    """Deferrals must be visible, not silently absent from the counts."""
+    """Deferrals must be visible, not silently absent from the counts.
+
+    The fixture seeds no global medicine catalogue, so stage G legitimately
+    defers -- Stage 2A lists from the global catalogue and must not fabricate
+    clinical products to reach a count. Every deferral must name the service it
+    needs, so a reader can tell a gap from an omission.
+    """
     _t, _r, _c, orchestrator = generated
     summary = orchestrator.summary()
     domains = {entry["domain"] for entry in summary["deferred"]}
-    assert "insurance_coverage" in domains
-    assert "supplier_qualifications" in domains
+    assert "medicine_assortment" in domains
     for entry in summary["deferred"]:
         assert entry["required_service"]
         assert entry["reason"]
+
+
+def test_with_a_catalogue_loaded_no_closed_gap_is_still_deferred(db):
+    """The five service gaps are closed, so these must generate, not defer.
+
+    Behavioural rather than a source scan: if a coverage, qualification or
+    pricing service stopped being reachable, the generator would quietly fall
+    back to deferring and the summary would still look orderly.
+    """
+    from django.core.management import call_command
+
+    call_command("seed_medicine_catalogue", stdout=io.StringIO())
+
+    tenant = _tenant(slug="closedgaps")
+    run = _run(tenant)
+    ctx = _context(tenant, run)
+    orchestrator = MasterDataOrchestrator(ctx)
+    orchestrator.run()
+
+    deferred = {entry["domain"] for entry in orchestrator.summary()["deferred"]}
+    for closed in (
+        "medicine_assortment",
+        "supplier_qualifications",
+        "supplier_product_agreements",
+        "insurance_coverage",
+        "price_books",
+    ):
+        assert closed not in deferred, f"{closed} is still deferred"
+
+    assert ctx.counts["commercial_skus"] > 0
+    assert ctx.counts["branch_assortments"] > 0
+    assert ctx.counts["supplier_qualifications"] > 0
+    assert ctx.counts["supplier_product_agreements"] > 0
+    assert ctx.counts["insurance_coverage"] > 0
+    assert ctx.counts["price_books"] == 6
+
+    validation = MasterDataValidator(run=run, tenant=tenant).run_all()
+    assert validation["status"] == "PASS", [
+        f for f in validation["findings"] if f["status"] == "FAIL"
+    ]
