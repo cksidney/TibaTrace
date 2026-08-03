@@ -24,7 +24,7 @@ from apps.platform.demo.profiles import (
 )
 
 from .context import CollisionError, GenerationContext
-from .stages import STAGE_ORDER, STAGES, STAGES_BY_ID
+from .stages import STAGES
 
 ARTEFACTS = (
     "MASTER_DATA_MANIFEST.json",
@@ -49,18 +49,24 @@ def canonical_digest(payload) -> str:
 class MasterDataOrchestrator:
     """Runs the master-data stages for one scenario run."""
 
-    def __init__(self, ctx: GenerationContext, *, progress=None):
+    def __init__(self, ctx: GenerationContext, *, progress=None, stages=None):
         self.ctx = ctx
         self.progress = progress or (lambda message: None)
         self.started_at = None
         self.finished_at = None
+        # Which stage set to run. Defaults to Stage 2A master data; Stage 2B
+        # passes its own. Injected rather than imported so a run cannot execute
+        # a stage set it was not asked for.
+        self.stages = tuple(stages) if stages is not None else STAGES
+        self.stages_by_id = {stage.id: stage for stage in self.stages}
+        self.stage_order = tuple(stage.id for stage in self.stages)
 
     # -- planning ----------------------------------------------------------
 
     def plan(self) -> dict:
         """Planned counts, without touching the database."""
         planned: dict[str, int] = {}
-        for stage in STAGES:
+        for stage in self.stages:
             for key, value in stage.plan(self.ctx).items():
                 planned[key] = planned.get(key, 0) + value
         return planned
@@ -88,7 +94,8 @@ class MasterDataOrchestrator:
             },
             "planned_counts": dict(sorted(self.plan().items())),
             "stages": [
-                {"id": s.id, "label": s.label, "requires": list(s.requires)} for s in STAGES
+                {"id": s.id, "label": s.label, "requires": list(s.requires)}
+                for s in self.stages
             ],
             "forbidden_domains": dict(sorted(STAGE_2A_FORBIDDEN_DOMAINS.items())),
         }
@@ -147,14 +154,14 @@ class MasterDataOrchestrator:
         return self.summary()
 
     def _select(self, from_stage, stop_after) -> list:
-        order = list(STAGE_ORDER)
+        order = list(self.stage_order)
+        if from_stage and from_stage not in self.stages_by_id:
+            raise KeyError(f"Unknown stage {from_stage!r}. Known: {', '.join(order)}")
+        if stop_after and stop_after not in self.stages_by_id:
+            raise KeyError(f"Unknown stage {stop_after!r}. Known: {', '.join(order)}")
         start = order.index(from_stage) if from_stage else 0
         end = order.index(stop_after) + 1 if stop_after else len(order)
-        if from_stage and from_stage not in STAGES_BY_ID:
-            raise KeyError(f"Unknown stage {from_stage!r}. Known: {', '.join(order)}")
-        if stop_after and stop_after not in STAGES_BY_ID:
-            raise KeyError(f"Unknown stage {stop_after!r}. Known: {', '.join(order)}")
-        return [STAGES_BY_ID[s] for s in order[start:end]]
+        return [self.stages_by_id[s] for s in order[start:end]]
 
     # -- artefacts ---------------------------------------------------------
 

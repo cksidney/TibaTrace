@@ -53,7 +53,7 @@ class Command(BaseCommand):
 
         # Stage 2A
         parser.add_argument(
-            "--stage", choices=["master-data"],
+            "--stage", choices=["master-data", "procurement-receiving"],
             help="Generation stage to execute. Omit to plan only.",
         )
         parser.add_argument("--demo-version", help="Dated content version, e.g. 2026.08.03.")
@@ -145,7 +145,7 @@ class Command(BaseCommand):
 
         gates.raise_if_blocked()
 
-        if options.get("stage") == "master-data":
+        if options.get("stage") in {"master-data", "procurement-receiving"}:
             return self._run_master_data(
                 tenant=tenant, profile=profile, seed=seed, as_of=as_of,
                 manifest=manifest, digest=digest, options=options,
@@ -205,7 +205,20 @@ class Command(BaseCommand):
             else:
                 self.stdout.write(f"  {message}")
 
-        orchestrator = MasterDataOrchestrator(ctx, progress=report)
+        if options["stage"] == "procurement-receiving":
+            from apps.platform.demo.generation.stage2b import STAGE_2B_1
+
+            stage_set = STAGE_2B_1
+            # Stage 2B builds on master data, so its handles must be present
+            # before the first procurement stage runs.
+            from apps.platform.demo.generation.stages import STAGES as MASTER_STAGES
+
+            for stage in MASTER_STAGES:
+                stage.rehydrate(ctx)
+        else:
+            stage_set = None
+
+        orchestrator = MasterDataOrchestrator(ctx, progress=report, stages=stage_set)
         try:
             orchestrator.run(
                 from_stage=options.get("from_stage"),
