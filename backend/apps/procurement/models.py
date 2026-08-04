@@ -400,6 +400,7 @@ class ReceivedBatch(TimestampedModel):
     class QualityStatus(models.TextChoices):
         PENDING_INSPECTION = "PENDING_INSPECTION", "Pending Inspection"
         QUARANTINED = "QUARANTINED", "Quarantined"
+        PARTIALLY_RELEASED = "PARTIALLY_RELEASED", "Partially Released"
         RELEASED = "RELEASED", "Released"
         REJECTED = "REJECTED", "Rejected"
         RETURN_PENDING = "RETURN_PENDING", "Return Pending"

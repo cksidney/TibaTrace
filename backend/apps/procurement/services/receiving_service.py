@@ -539,29 +539,88 @@ class GoodsReceivingService:
 
     @staticmethod
     @transaction.atomic
-    def release_batch(*, batch, released_by=None, actor=None, reason="", quantity=None):
-        """Move quarantined stock into accepted, released stock.
+    def release_batch(
+        *,
+        batch: ReceivedBatch,
+        released_by=None,
+        actor=None,
+        reason="",
+        quantity=None,
+        as_of=None,
+        receiving_location=None,
+    ) -> ReceivedBatch:
+        """Move quarantined stock into accepted, released stock under strict quality gates.
 
-        Authority is checked before anything else. Quality release is the step
-        that turns goods nobody has vouched for into goods a pharmacist may
-        dispense, and §24 restricts it to authorised quality users -- a
-        receiver releasing their own delivery is exactly the separation the
-        control exists to enforce.
-
-        Refuses to release more than was received. Releasing stock that never
-        arrived is how a receipt starts disagreeing with the shelf.
+        Refuses unless ALL conditions are met:
+        - GoodsReceipt exists
+        - ReceivingInspection exists
+        - QualityDecision exists and is_releasable() == True
+        - Batch not expired
+        - Batch not recalled
+        - Supplier qualification valid
+        - Storage location compatible (controlled/cold-chain capabilities)
         """
-        # Callers name this actor or released_by depending on which workflow
-        # they came from; either identifies the person, which is what matters.
+        from apps.audit.service import log_audit
+        from apps.medicines.provisioning import _is_cold_chain, _is_controlled
+        from apps.procurement.models import QualityDecision, ReceivingInspection
+        from apps.procurement.services.batch_quality_service import BatchQualityDecisionService
+        from apps.procurement.services.supplier_governance_service import SupplierGovernanceService
+
         releaser = released_by or actor
         if releaser is None:
             raise ValidationError("Quality release requires a named releaser.")
 
         if not _may_release_quality(releaser):
-            raise ValidationError(
-                "Actor lacks quality-release authority. Quality release is "
-                "restricted to authorised quality users."
+            log_audit(
+                tenant_id=batch.tenant_id,
+                action="BATCH_QUALITY_RELEASE_REFUSED",
+                model_name="ReceivedBatch",
+                object_id=batch.pk,
+                actor_id=getattr(releaser, "id", None),
+                metadata={"reason": "NO_QUALITY_RELEASE_AUTHORITY"},
             )
+            raise ValidationError("Actor lacks quality-release authority.")
+
+        receipt = getattr(batch.grn_line, "goods_receipt", None)
+        if receipt is None:
+            raise ValidationError("Goods receipt does not exist for this batch.")
+
+        inspection = ReceivingInspection.all_objects.filter(
+            tenant=batch.tenant, goods_receipt=receipt
+        ).first()
+        if inspection is None:
+            raise ValidationError("Receiving inspection does not exist for this goods receipt.")
+
+        decision = QualityDecision.all_objects.filter(
+            tenant=batch.tenant, batch=batch
+        ).first()
+        if decision is None:
+            raise ValidationError(f"No quality decision recorded for batch {batch.manufacturer_batch_number}.")
+
+        if not BatchQualityDecisionService.is_releasable(batch=batch):
+            raise ValidationError(
+                f"Batch {batch.manufacturer_batch_number} has decision {decision.decision} "
+                "which is not releasable."
+            )
+
+        as_of_date = as_of or timezone.localdate()
+        if batch.expiry_date <= as_of_date:
+            raise ValidationError(f"Batch {batch.manufacturer_batch_number} is expired ({batch.expiry_date}).")
+
+        if getattr(batch, "recall_status", "NONE") != "NONE":
+            raise ValidationError(f"Batch {batch.manufacturer_batch_number} is subject to a regulatory recall.")
+
+        reasons = SupplierGovernanceService.ineligibility_reasons(
+            supplier=receipt.supplier, on_date=receipt.goods_receipt_date
+        )
+        if reasons:
+            raise ValidationError(f"Supplier {receipt.supplier.name} is ineligible: {reasons[0]}")
+
+        if receiving_location is not None:
+            if _is_controlled(batch.sku) and not receiving_location.controlled_drug_capability:
+                raise ValidationError(f"Controlled SKU {batch.sku.sku_code} requires a controlled vault location.")
+            if _is_cold_chain(batch.sku) and not receiving_location.cold_chain_capability:
+                raise ValidationError(f"Cold-chain SKU {batch.sku.sku_code} requires a cold room location.")
 
         already_released = batch.accepted_quantity or 0
         outstanding = (batch.received_quantity or 0) - already_released
@@ -580,10 +639,14 @@ class GoodsReceivingService:
 
         batch.accepted_quantity = already_released + quantity
         batch.quarantined_quantity = max(0, (batch.quarantined_quantity or 0) - quantity)
-        # Fully released only when nothing is left awaiting a decision; a
-        # part-release leaves the batch quarantined, because the rest still is.
+
         if batch.accepted_quantity >= (batch.received_quantity or 0):
             batch.quality_status = ReceivedBatch.QualityStatus.RELEASED
+        elif batch.accepted_quantity > 0:
+            batch.quality_status = ReceivedBatch.QualityStatus.PARTIALLY_RELEASED
+        else:
+            batch.quality_status = ReceivedBatch.QualityStatus.QUARANTINED
+
         batch.save(update_fields=[
             "accepted_quantity", "quarantined_quantity", "quality_status", "updated_at",
         ])
@@ -592,4 +655,18 @@ class GoodsReceivingService:
         line.quarantined_quantity = max(0, (line.quarantined_quantity or 0) - quantity)
         line.accepted_quantity = (line.accepted_quantity or 0) + quantity
         line.save(update_fields=["quarantined_quantity", "accepted_quantity", "updated_at"])
+
+        log_audit(
+            tenant_id=batch.tenant_id,
+            action="BATCH_QUALITY_RELEASED",
+            model_name="ReceivedBatch",
+            object_id=batch.pk,
+            actor_id=getattr(releaser, "id", None),
+            metadata={
+                "batch": batch.manufacturer_batch_number,
+                "released_quantity": quantity,
+                "accepted_quantity": batch.accepted_quantity,
+                "quality_status": batch.quality_status,
+            },
+        )
         return batch
