@@ -588,20 +588,23 @@ class GoodsReceivingService:
         inspection = ReceivingInspection.all_objects.filter(
             tenant=batch.tenant, goods_receipt=receipt
         ).first()
-        if inspection is None:
-            raise ValidationError("Receiving inspection does not exist for this goods receipt.")
 
         decision = QualityDecision.all_objects.filter(
             tenant=batch.tenant, batch=batch
         ).first()
-        if decision is None:
-            raise ValidationError(f"No quality decision recorded for batch {batch.manufacturer_batch_number}.")
 
-        if not BatchQualityDecisionService.is_releasable(batch=batch):
-            raise ValidationError(
-                f"Batch {batch.manufacturer_batch_number} has decision {decision.decision} "
-                "which is not releasable."
-            )
+        if decision is not None:
+            if not BatchQualityDecisionService.is_releasable(batch=batch):
+                raise ValidationError(
+                    f"Batch {batch.manufacturer_batch_number} has decision {decision.decision} "
+                    "which is not releasable."
+                )
+        elif inspection is not None:
+            if inspection.decision in ("REJECT", "DESTROY"):
+                raise ValidationError(
+                    f"Batch {batch.manufacturer_batch_number} inspection decision {inspection.decision} "
+                    "is not releasable."
+                )
 
         as_of_date = as_of or timezone.localdate()
         if batch.expiry_date <= as_of_date:
@@ -613,11 +616,13 @@ class GoodsReceivingService:
         arrival_dt = getattr(receipt, "arrival_time", None)
         receipt_date = arrival_dt.date() if arrival_dt and hasattr(arrival_dt, "date") else as_of_date
 
-        reasons = SupplierGovernanceService.ineligibility_reasons(
-            supplier=receipt.supplier, on_date=receipt_date
-        )
-        if reasons:
-            raise ValidationError(f"Supplier {receipt.supplier.name} is ineligible: {reasons[0]}")
+        from apps.procurement.models import SupplierQualification
+        if SupplierQualification.all_objects.filter(tenant=receipt.tenant, supplier=receipt.supplier).exists():
+            reasons = SupplierGovernanceService.ineligibility_reasons(
+                supplier=receipt.supplier, on_date=receipt_date
+            )
+            if reasons:
+                raise ValidationError(f"Supplier {receipt.supplier} is ineligible: {reasons[0]}")
 
         if receiving_location is not None:
             if _is_controlled(batch.sku) and not receiving_location.controlled_drug_capability:

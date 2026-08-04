@@ -50,6 +50,8 @@ RELEASE_MIGRATIONS = [
     # Stage 2B.2A: per-batch quality decisions -- inspector, evidence and one
     # decision per batch. Additive: three nullable columns and a constraint.
     "backend/apps/procurement/migrations/0007_batch_quality_decision.py",
+    # Stage 2B.2B: partially released quality status choices.
+    "backend/apps/procurement/migrations/0008_alter_receivedbatch_quality_status.py",
 ]
 
 
