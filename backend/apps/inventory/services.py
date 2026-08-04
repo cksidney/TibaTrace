@@ -477,6 +477,51 @@ class InventoryReservationService:
 
     @staticmethod
     @transaction.atomic
+    def expire_reservation(*, reservation, actor=None):
+        if reservation.status not in [InventoryReservation.Status.PENDING, InventoryReservation.Status.ALLOCATED]:
+            raise ValidationError("Only pending or allocated reservations can be expired.")
+
+        reservation.status = InventoryReservation.Status.EXPIRED
+        reservation.save()
+
+        ledger_entries = InventoryLedgerEntry.all_objects.filter(
+            tenant=reservation.tenant,
+            source_document_type="RESERVATION",
+            source_document_id=str(reservation.pk),
+            entry_type=InventoryLedgerEntry.EntryType.RESERVATION
+        )
+
+        for entry in ledger_entries:
+            InventoryLedgerService.post_entry(
+                tenant=entry.tenant,
+                branch=entry.branch,
+                location=entry.location,
+                sku=entry.sku,
+                inventory_batch=entry.inventory_batch,
+                entry_type=InventoryLedgerEntry.EntryType.RESERVATION_RELEASE,
+                quantity_delta=entry.quantity_delta,
+                unit=entry.unit,
+                base_quantity_delta=entry.base_quantity_delta,
+                effective_timestamp=reservation.updated_at,
+                source_document_type="RESERVATION_EXPIRED",
+                source_document_id=str(reservation.pk),
+                idempotency_key=f"expire-{entry.idempotency_key}",
+                actor=actor,
+                reason_code="RESERVATION_EXPIRED",
+            )
+
+        emit_event(
+            tenant_id=str(reservation.tenant.pk),
+            aggregate_type="InventoryReservation",
+            aggregate_id=str(reservation.pk),
+            event_type="InventoryReservationExpired",
+            payload={"sku_id": str(reservation.sku.pk)},
+        )
+
+        return reservation
+
+    @staticmethod
+    @transaction.atomic
     def fulfill_reservation(
         *,
         reservation,
@@ -923,6 +968,51 @@ class StockTransferService:
             payload={},
         )
         return transfer
+
+    @staticmethod
+    @transaction.atomic
+    def reject_transfer(*, transfer, actor, reason=""):
+        transfer = StockTransfer.all_objects.select_for_update().get(
+            tenant=transfer.tenant, pk=transfer.pk
+        )
+        if transfer.status != StockTransfer.Status.SUBMITTED:
+            raise ValidationError("Only submitted transfers can be rejected.")
+        transfer.status = StockTransfer.Status.REJECTED
+        transfer.reason = reason or transfer.reason
+        transfer.save(update_fields=["status", "reason", "updated_at"])
+        emit_event(
+            tenant_id=str(transfer.tenant.pk),
+            aggregate_type="StockTransfer",
+            aggregate_id=str(transfer.pk),
+            event_type="StockTransferRejected",
+            payload={"reason": reason},
+        )
+        return transfer
+
+    @staticmethod
+    @transaction.atomic
+    def cancel_transfer(*, transfer, actor, reason=""):
+        transfer = StockTransfer.all_objects.select_for_update().get(
+            tenant=transfer.tenant, pk=transfer.pk
+        )
+        if transfer.status not in (
+            StockTransfer.Status.DRAFT,
+            StockTransfer.Status.SUBMITTED,
+            StockTransfer.Status.APPROVED,
+        ):
+            raise ValidationError("Dispatched or received transfers cannot be cancelled.")
+        transfer.status = StockTransfer.Status.CANCELLED
+        transfer.reason = reason or transfer.reason
+        transfer.save(update_fields=["status", "reason", "updated_at"])
+        emit_event(
+            tenant_id=str(transfer.tenant.pk),
+            aggregate_type="StockTransfer",
+            aggregate_id=str(transfer.pk),
+            event_type="StockTransferCancelled",
+            payload={"reason": reason},
+        )
+        return transfer
+
 
 class InventoryAdjustmentService:
     @staticmethod

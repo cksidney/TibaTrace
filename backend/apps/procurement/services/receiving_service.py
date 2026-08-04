@@ -610,8 +610,11 @@ class GoodsReceivingService:
         if getattr(batch, "recall_status", "NONE") != "NONE":
             raise ValidationError(f"Batch {batch.manufacturer_batch_number} is subject to a regulatory recall.")
 
+        arrival_dt = getattr(receipt, "arrival_time", None)
+        receipt_date = arrival_dt.date() if arrival_dt and hasattr(arrival_dt, "date") else as_of_date
+
         reasons = SupplierGovernanceService.ineligibility_reasons(
-            supplier=receipt.supplier, on_date=receipt.goods_receipt_date
+            supplier=receipt.supplier, on_date=receipt_date
         )
         if reasons:
             raise ValidationError(f"Supplier {receipt.supplier.name} is ineligible: {reasons[0]}")

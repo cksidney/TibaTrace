@@ -84,7 +84,8 @@ class TenantConsistencyMixin:
         errors = {}
         for field_name in self.tenant_relation_fields:
             related = getattr(self, field_name, None)
-            if related is not None and str(getattr(related, "tenant_id", "")) != str(self.tenant_id):
+            rel_tenant = getattr(related, "tenant_id", None)
+            if related is not None and rel_tenant is not None and str(rel_tenant) != str(self.tenant_id):
                 errors[field_name] = "Related record belongs to a different tenant."
         if errors:
             raise ValidationError(errors)
