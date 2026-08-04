@@ -51,9 +51,9 @@ class Command(BaseCommand):
         parser.add_argument("--allow-production-demo-seed", action="store_true")
         parser.add_argument("--backup-reference", help="Evidence a backup exists.")
 
-        # Stage 2A
+        # Stage 2A / Stage 2B
         parser.add_argument(
-            "--stage", choices=["master-data", "procurement-receiving"],
+            "--stage", choices=["master-data", "procurement-receiving", "procurement-quality"],
             help="Generation stage to execute. Omit to plan only.",
         )
         parser.add_argument("--demo-version", help="Dated content version, e.g. 2026.08.03.")
@@ -145,7 +145,7 @@ class Command(BaseCommand):
 
         gates.raise_if_blocked()
 
-        if options.get("stage") in {"master-data", "procurement-receiving"}:
+        if options.get("stage") in {"master-data", "procurement-receiving", "procurement-quality"}:
             return self._run_master_data(
                 tenant=tenant, profile=profile, seed=seed, as_of=as_of,
                 manifest=manifest, digest=digest, options=options,
@@ -155,11 +155,12 @@ class Command(BaseCommand):
             "Transactional generation (inventory ledger, prescriptions, sales, claims) "
             "is Stage 2B and is deliberately absent, so an empty tenant is never "
             "mistaken for a successful seed.\n"
-            "Use --stage=master-data for Stage 2A, or --dry-run / --validate-only."
+            "Use --stage=master-data for Stage 2A, --stage=procurement-receiving for Stage 2B.1, "
+            "--stage=procurement-quality for Stage 2B.2A, or --dry-run / --validate-only."
         )
 
     # ------------------------------------------------------------------
-    # Stage 2A
+    # Stage 2A / 2B
     # ------------------------------------------------------------------
 
     def _run_master_data(self, *, tenant, profile, seed, as_of, manifest, digest, options):
@@ -205,12 +206,16 @@ class Command(BaseCommand):
             else:
                 self.stdout.write(f"  {message}")
 
-        is_stage_2b = options["stage"] == "procurement-receiving"
-        if is_stage_2b:
+        stage_name = options.get("stage")
+        is_stage_2b1 = stage_name == "procurement-receiving"
+        is_stage_2b2a = stage_name == "procurement-quality"
+
+        if is_stage_2b1 or is_stage_2b2a:
             from apps.platform.demo.generation.orchestrator import STAGE_2B_ARTEFACTS
             from apps.platform.demo.generation.stage2b import STAGE_2B_1
+            from apps.platform.demo.generation.stage2b2 import STAGE_2B_2A
 
-            stage_set = STAGE_2B_1
+            stage_set = STAGE_2B_1 + STAGE_2B_2A if is_stage_2b2a else STAGE_2B_1
             artefact_names = STAGE_2B_ARTEFACTS
             # Stage 2B builds on master data, so its handles must be present
             # before the first procurement stage runs.
@@ -239,7 +244,11 @@ class Command(BaseCommand):
 
         # Stage 2B validates a different thing: not "is the master data
         # coherent" but "did anything become available to promise".
-        if is_stage_2b:
+        if is_stage_2b2a:
+            from apps.platform.demo.generation.validation import QualityValidator
+
+            validation = QualityValidator(run=run, tenant=tenant).run_all()
+        elif is_stage_2b1:
             from apps.platform.demo.generation.validation import (
                 ProcurementReceivingValidator,
             )
@@ -247,6 +256,7 @@ class Command(BaseCommand):
             validation = ProcurementReceivingValidator(run=run, tenant=tenant).run_all()
         else:
             validation = MasterDataValidator(run=run, tenant=tenant).run_all()
+
         orchestrator.finalise()
 
         directory = Path(

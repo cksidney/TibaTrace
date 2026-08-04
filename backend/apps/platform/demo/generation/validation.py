@@ -553,3 +553,134 @@ class ProcurementReceivingValidator(MasterDataValidator):
             "failure_count": len(failures),
             "findings": [f.as_dict() for f in self.findings],
         }
+
+
+class QualityValidator(ProcurementReceivingValidator):
+    """Validates Stage 2B.2A (quality inspections and quality decisions)."""
+
+    def check_quality_inspections(self):
+        from apps.procurement.models import GoodsReceipt, ReceivingInspection
+
+        receipts = GoodsReceipt.all_objects.filter(tenant=self.tenant)
+        inspections = ReceivingInspection.all_objects.filter(tenant=self.tenant)
+
+        if inspections.count() < receipts.count():
+            self._fail(
+                "quality_inspections",
+                f"{receipts.count()} receipt(s) present, but only {inspections.count()} inspection(s)"
+            )
+            return
+
+        bad_decisions = inspections.exclude(decision=ReceivingInspection.Decision.QUARANTINE).count()
+        if bad_decisions:
+            self._fail("quality_inspections", f"{bad_decisions} inspection(s) not QUARANTINE")
+            return
+
+        segregation_breaches = []
+        for insp in inspections.select_related("goods_receipt"):
+            if insp.inspector_id and insp.goods_receipt.received_by_id and str(insp.inspector_id) == str(insp.goods_receipt.received_by_id):
+                segregation_breaches.append(insp.goods_receipt.grn_number)
+
+        if segregation_breaches:
+            self._fail("quality_inspections", f"segregation breach: inspector equals receiver on {segregation_breaches[:3]}")
+        else:
+            self._ok("quality_inspections", f"{inspections.count()} inspection(s) recorded with QUARANTINE, segregation maintained")
+
+    def check_quality_decisions(self):
+        from apps.procurement.models import QualityDecision, ReceivedBatch
+
+        batches = ReceivedBatch.all_objects.filter(tenant=self.tenant)
+        decisions = QualityDecision.all_objects.filter(tenant=self.tenant)
+
+        batch_count = batches.count()
+        decision_count = decisions.count()
+
+        if decision_count != batch_count:
+            self._fail(
+                "quality_decisions",
+                f"{batch_count} received batch(es), but {decision_count} quality decision(s)"
+            )
+            return
+
+        bad_segregation = []
+        bad_basis = []
+        expired_approved = []
+        for d in decisions.select_related("batch", "goods_receipt"):
+            receiver_id = str(d.goods_receipt.received_by_id) if d.goods_receipt.received_by_id else None
+            inspector_id = str(d.inspector_id) if d.inspector_id else None
+            approver_id = str(d.decision_by_id) if d.decision_by_id else None
+
+            if approver_id and (approver_id == receiver_id or approver_id == inspector_id):
+                bad_segregation.append(d.batch.manufacturer_batch_number)
+
+            if d.evidence_basis != "MANUAL_INTERNAL_QUALITY_REVIEW":
+                bad_basis.append(d.batch.manufacturer_batch_number)
+
+            if d.decision == QualityDecision.Outcome.APPROVE_FOR_RELEASE and d.batch.expiry_date <= self.run.as_of_date:
+                expired_approved.append(d.batch.manufacturer_batch_number)
+
+        if bad_segregation:
+            self._fail("quality_decisions_segregation", f"approver conflict on: {bad_segregation[:3]}")
+        else:
+            self._ok("quality_decisions_segregation", "decision makers independent of receivers and inspectors")
+
+        if bad_basis:
+            self._fail("quality_decisions_truth_label", f"invalid basis on: {bad_basis[:3]}")
+        else:
+            self._ok("quality_decisions_truth_label", "all decisions carry MANUAL_INTERNAL_QUALITY_REVIEW")
+
+        if expired_approved:
+            self._fail("quality_decisions_expired_approved", f"expired batches approved: {expired_approved[:3]}")
+        else:
+            self._ok("quality_decisions_expired_approved", "no expired batch approved for release")
+
+        self._ok("quality_decisions", f"{decision_count} batch quality decision(s) recorded across all received batches")
+
+    def run_all(self) -> dict:
+        checks = (
+            self.check_tenant_ownership,
+            self.check_orders_derive_from_requisitions,
+            self.check_order_approval_segregation,
+            self.check_supplier_qualifications_at_order_date,
+            self.check_delivery_note_uniqueness,
+            self.check_received_quantity_coherence,
+            self.check_every_batch_is_held,
+            self.check_batch_dates,
+            self.check_receiving_sessions_unposted,
+            self.check_no_available_stock,
+            self.check_no_duplicate_idempotency_keys,
+            self.check_quality_inspections,
+            self.check_quality_decisions,
+        )
+        for check in checks:
+            try:
+                check()
+            except Exception as exc:
+                self._fail(check.__name__, f"{type(exc).__name__}: {exc}")
+
+        failures = [f for f in self.findings if f.status == "FAIL"]
+        return {
+            "run": str(self.run.pk),
+            "tenant": self.tenant.slug,
+            "stage": "2B.2A-quality-decisions",
+            "status": "FAIL" if failures else "PASS",
+            "failure_count": len(failures),
+            "findings": [f.as_dict() for f in self.findings],
+        }
+
+
+def validate_demo_scenario(run, tenant, stage: str = "auto") -> dict:
+    """Validate a demo scenario run based on its completed stage."""
+    from apps.procurement.models import QualityDecision, ReceivedBatch
+
+    if stage == "quality" or (
+        stage == "auto" and QualityDecision.all_objects.filter(tenant=tenant).exists()
+    ):
+        return QualityValidator(run=run, tenant=tenant).run_all()
+    elif stage == "procurement" or (
+        stage == "auto" and ReceivedBatch.all_objects.filter(tenant=tenant).exists()
+    ):
+        return ProcurementReceivingValidator(run=run, tenant=tenant).run_all()
+    else:
+        return MasterDataValidator(run=run, tenant=tenant).run_all()
+
