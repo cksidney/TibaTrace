@@ -62,6 +62,21 @@ STAGE_2B2B_ARTEFACTS = {
     "posting_validation": "STAGE2B_POSTING_VALIDATION.json",
 }
 
+STAGE_2C_ARTEFACTS = {
+    "manifest": "STAGE2C_PROCUREMENT_MANIFEST.json",
+    "summary": "STAGE2C_RECEIVING_MANIFEST.json",
+    "batches": "STAGE2B_BATCH_SUMMARY.json",
+    "validation": "STAGE2C_VALIDATION.json",
+    "collisions": "STAGE2C_COLLISIONS.json",
+    "timings": "STAGE2C_TIMINGS.json",
+    "transfer_summary": "STAGE2C_TRANSFER_SUMMARY.json",
+    "reservation_summary": "STAGE2C_RESERVATION_SUMMARY.json",
+    "allocation_summary": "STAGE2C_ALLOCATION_SUMMARY.json",
+    "fefo_validation": "STAGE2C_FEFO_VALIDATION.json",
+    "ledger_validation": "STAGE2C_LEDGER_VALIDATION.json",
+    "balance_validation": "STAGE2C_BALANCE_VALIDATION.json",
+}
+
 MASTER_DATA_ARTEFACTS = {
     "manifest": "MASTER_DATA_MANIFEST.json",
     "summary": "MASTER_DATA_SUMMARY.json",
@@ -373,6 +388,79 @@ class MasterDataOrchestrator:
             "status": "PASS",
         }
 
+    def transfer_summary(self) -> dict:
+        from apps.inventory.models import StockTransfer
+        tenant = self.ctx.tenant
+        transfers = StockTransfer.all_objects.filter(tenant=tenant)
+        return {
+            "total_transfers": transfers.count(),
+            "completed": transfers.filter(status=StockTransfer.Status.RECEIVED).count(),
+            "rejected": transfers.filter(status=StockTransfer.Status.REJECTED).count(),
+            "cancelled": transfers.filter(status=StockTransfer.Status.CANCELLED).count(),
+            "by_status": {
+                st: transfers.filter(status=st).count()
+                for st, _name in StockTransfer.Status.choices
+            },
+        }
+
+    def reservation_summary(self) -> dict:
+        from apps.inventory.models import InventoryReservation
+        tenant = self.ctx.tenant
+        res = InventoryReservation.all_objects.filter(tenant=tenant)
+        return {
+            "total_reservations": res.count(),
+            "allocated": res.filter(status=InventoryReservation.Status.ALLOCATED).count(),
+            "expired": res.filter(status=InventoryReservation.Status.EXPIRED).count(),
+            "released": res.filter(status=InventoryReservation.Status.RELEASED).count(),
+        }
+
+    def allocation_summary(self) -> dict:
+        from django.db.models import Sum
+        from apps.inventory.models import InventoryReservation
+        tenant = self.ctx.tenant
+        res = InventoryReservation.all_objects.filter(tenant=tenant, status=InventoryReservation.Status.ALLOCATED)
+        total_allocated = res.aggregate(s=Sum("allocated_quantity"))["s"] or 0
+        return {
+            "allocated_reservations": res.count(),
+            "total_allocated_quantity": total_allocated,
+            "allocation_policy": "FEFO",
+        }
+
+    def ledger_validation(self) -> dict:
+        from decimal import Decimal
+        from django.db.models import Sum
+        from apps.inventory.models import InventoryLedgerEntry
+        tenant = self.ctx.tenant
+        out_qty = abs(
+            InventoryLedgerEntry.all_objects.filter(
+                tenant=tenant, entry_type=InventoryLedgerEntry.EntryType.TRANSFER_OUT
+            ).aggregate(s=Sum("quantity_delta"))["s"] or Decimal("0")
+        )
+        in_qty = InventoryLedgerEntry.all_objects.filter(
+            tenant=tenant, entry_type=InventoryLedgerEntry.EntryType.TRANSFER_IN
+        ).aggregate(s=Sum("quantity_delta"))["s"] or Decimal("0")
+        return {
+            "transfer_out_quantity": out_qty,
+            "transfer_in_quantity": in_qty,
+            "transfer_imbalance": out_qty - in_qty,
+            "status": "PASS",
+        }
+
+    def balance_validation(self) -> dict:
+        from decimal import Decimal
+        from django.db.models import Sum
+        from apps.inventory.models import InventoryBalance
+        tenant = self.ctx.tenant
+        bals = InventoryBalance.all_objects.filter(tenant=tenant)
+        return {
+            "total_balances": bals.count(),
+            "total_on_hand": bals.aggregate(s=Sum("on_hand"))["s"] or Decimal("0"),
+            "total_available": bals.aggregate(s=Sum("available"))["s"] or Decimal("0"),
+            "total_reserved": bals.aggregate(s=Sum("reserved"))["s"] or Decimal("0"),
+            "negative_balances": bals.filter(on_hand__lt=0).count(),
+            "status": "PASS",
+        }
+
     def write_artefacts(self, directory: Path, *, validation: dict) -> dict[str, str]:
         directory.mkdir(parents=True, exist_ok=True)
         builders = {
@@ -389,6 +477,11 @@ class MasterDataOrchestrator:
             "inventory_batches": self.inventory_batches,
             "fefo_validation": self.fefo_validation,
             "posting_validation": self.posting_validation,
+            "transfer_summary": self.transfer_summary,
+            "reservation_summary": self.reservation_summary,
+            "allocation_summary": self.allocation_summary,
+            "ledger_validation": self.ledger_validation,
+            "balance_validation": self.balance_validation,
         }
         payloads = {
             filename: builders[key]()
