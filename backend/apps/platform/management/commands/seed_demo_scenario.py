@@ -53,7 +53,7 @@ class Command(BaseCommand):
 
         # Stage 2A / Stage 2B
         parser.add_argument(
-            "--stage", choices=["master-data", "procurement-receiving", "procurement-quality"],
+            "--stage", choices=["master-data", "procurement-receiving", "procurement-quality", "inventory-ownership"],
             help="Generation stage to execute. Omit to plan only.",
         )
         parser.add_argument("--demo-version", help="Dated content version, e.g. 2026.08.03.")
@@ -209,16 +209,23 @@ class Command(BaseCommand):
         stage_name = options.get("stage")
         is_stage_2b1 = stage_name == "procurement-receiving"
         is_stage_2b2a = stage_name == "procurement-quality"
+        is_stage_2b2b = stage_name == "inventory-ownership"
 
-        if is_stage_2b1 or is_stage_2b2a:
-            from apps.platform.demo.generation.orchestrator import STAGE_2B_ARTEFACTS
+        if is_stage_2b1 or is_stage_2b2a or is_stage_2b2b:
+            from apps.platform.demo.generation.orchestrator import STAGE_2B_ARTEFACTS, STAGE_2B2B_ARTEFACTS
             from apps.platform.demo.generation.stage2b import STAGE_2B_1
-            from apps.platform.demo.generation.stage2b2 import STAGE_2B_2A
+            from apps.platform.demo.generation.stage2b2 import STAGE_2B_2A, STAGE_2B_2B
 
-            stage_set = STAGE_2B_1 + STAGE_2B_2A if is_stage_2b2a else STAGE_2B_1
-            artefact_names = STAGE_2B_ARTEFACTS
-            # Stage 2B builds on master data, so its handles must be present
-            # before the first procurement stage runs.
+            if is_stage_2b2b:
+                stage_set = STAGE_2B_1 + STAGE_2B_2A + STAGE_2B_2B
+                artefact_names = STAGE_2B2B_ARTEFACTS
+            elif is_stage_2b2a:
+                stage_set = STAGE_2B_1 + STAGE_2B_2A
+                artefact_names = STAGE_2B_ARTEFACTS
+            else:
+                stage_set = STAGE_2B_1
+                artefact_names = STAGE_2B_ARTEFACTS
+
             from apps.platform.demo.generation.stages import STAGES as MASTER_STAGES
 
             for stage in MASTER_STAGES:
@@ -242,9 +249,11 @@ class Command(BaseCommand):
             run.save(update_fields=["failure_reason", "updated_at"])
             raise CommandError(f"Master-data generation failed: {exc}") from exc
 
-        # Stage 2B validates a different thing: not "is the master data
-        # coherent" but "did anything become available to promise".
-        if is_stage_2b2a:
+        if is_stage_2b2b:
+            from apps.platform.demo.generation.validation import QualityInventoryValidator
+
+            validation = QualityInventoryValidator(run=run, tenant=tenant).run_all()
+        elif is_stage_2b2a:
             from apps.platform.demo.generation.validation import QualityValidator
 
             validation = QualityValidator(run=run, tenant=tenant).run_all()

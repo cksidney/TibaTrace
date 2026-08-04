@@ -15,10 +15,19 @@ is auditable on its own and a resume recomputes it identically rather than
 inferring it from whatever happens to exist.
 """
 
-from __future__ import annotations
-
 from django.core.exceptions import PermissionDenied, ValidationError
 
+from apps.inventory.models import (
+    InventoryBalance,
+    InventoryBatch,
+    InventoryLedgerEntry,
+    InventoryLocation,
+)
+from apps.inventory.services import (
+    FEFOAllocationService,
+    InventoryBalanceService,
+    InventoryReceiptService,
+)
 from apps.procurement.models import (
     GoodsReceipt,
     QualityDecision,
@@ -27,6 +36,7 @@ from apps.procurement.models import (
 )
 from apps.procurement.services.batch_quality_service import BatchQualityDecisionService
 from apps.procurement.services.quality_service import QualityService
+from apps.procurement.services.receiving_service import GoodsReceivingService
 
 from . import synthetic as syn
 from .stages import REF, Stage
@@ -398,3 +408,296 @@ STAGE_2B_2A: tuple[Stage, ...] = (
     StageP2Decisions(),
     StageP3BoundaryCheck(),
 )
+
+
+# ---------------------------------------------------------------------------
+# Q1 — release planning
+# ---------------------------------------------------------------------------
+
+
+class StageQ1ReleasePlan(Stage):
+    id = "Q1"
+    label = "Quality release planning"
+    requires = ("P3",)
+
+    def rehydrate(self, ctx):
+        StageP1DecisionPlan().run(ctx)
+        self.run(ctx)
+
+    def run(self, ctx):
+        batches = _scenario_batches(ctx)
+        plan = ctx.get("quality:plan")
+        if plan is None:
+            plan = StageP1DecisionPlan.plan_outcomes(ctx, batches)
+            ctx.put("quality:plan", plan)
+
+        release_plan = {}
+        for batch in batches:
+            outcome = plan.get(batch.pk)
+            if outcome == Outcome.APPROVE_FOR_RELEASE:
+                shape = getattr(batch.grn_line, "delivery_shape", "complete")
+                if shape in ("partial", "damaged"):
+                    release_qty = max(1, int(batch.received_quantity * 0.6))
+                else:
+                    release_qty = batch.received_quantity
+                release_plan[batch.pk] = release_qty
+
+        ctx.put("quality:release_plan", release_plan)
+        ctx.put("quality:batches", batches)
+        for qty in release_plan.values():
+            ctx.add_count("batches_planned_for_release", 1)
+
+
+# ---------------------------------------------------------------------------
+# Q2 — quality batch release
+# ---------------------------------------------------------------------------
+
+
+class StageQ2BatchRelease(Stage):
+    id = "Q2"
+    label = "Quality batch release"
+    requires = ("Q1",)
+
+    def rehydrate(self, ctx):
+        StageQ1ReleasePlan().run(ctx)
+
+    def run(self, ctx):
+        releaser = ctx.get("user:quality")
+        release_plan = ctx.get("quality:release_plan")
+        batches = ctx.get("quality:batches")
+
+        for batch in batches:
+            release_qty = release_plan.get(batch.pk)
+            if release_qty is None:
+                continue
+
+            reference = f"{REF}-REL-{batch.manufacturer_batch_number}"
+            if ctx.owned_reference(ReceivedBatch, reference) is not None or batch.quality_status in (
+                ReceivedBatch.QualityStatus.RELEASED,
+                ReceivedBatch.QualityStatus.PARTIALLY_RELEASED,
+            ):
+                ctx.note_reuse("quality_releases", reference)
+                ctx.add_count("quality_releases", 1)
+                ctx.add_count(f"quality_releases.{batch.quality_status}", 1)
+                continue
+
+            GoodsReceivingService.release_batch(
+                batch=batch,
+                released_by=releaser,
+                quantity=release_qty,
+                as_of=ctx.as_of,
+            )
+            ctx.own(batch, domain="quality_releases", stage=self.id,
+                    story_id=STORY_QUALITY, reference=reference,
+                    branch_reference=batch.grn_line.goods_receipt.receiving_branch.code,
+                    purpose=f"Quality release of {release_qty} units for {batch.manufacturer_batch_number}.",
+                    relationship_group=f"{REF}-QUALITY", reset_eligible=False)
+            ctx.add_count("quality_releases", 1)
+            ctx.add_count(f"quality_releases.{batch.quality_status}", 1)
+            ctx.stage_results[self.id].last_key = reference
+
+
+# ---------------------------------------------------------------------------
+# R1 — inventory receipt posting
+# ---------------------------------------------------------------------------
+
+
+class StageR1ReceiptPosting(Stage):
+    id = "R1"
+    label = "Inventory receipt posting"
+    requires = ("Q2",)
+
+    def rehydrate(self, ctx):
+        StageQ1ReleasePlan().run(ctx)
+
+    def run(self, ctx):
+        poster = ctx.get("user:ops")
+        batches = ReceivedBatch.all_objects.filter(
+            tenant=ctx.tenant,
+            quality_status__in=(
+                ReceivedBatch.QualityStatus.RELEASED,
+                ReceivedBatch.QualityStatus.PARTIALLY_RELEASED,
+            ),
+        ).select_related("grn_line__goods_receipt__receiving_branch", "sku")
+
+        from apps.medicines.provisioning import _is_cold_chain, _is_controlled
+
+        for batch in batches:
+            branch = batch.grn_line.goods_receipt.receiving_branch
+            reference = f"{REF}-POST-{batch.manufacturer_batch_number}"
+
+            if _is_controlled(batch.sku):
+                loc_type = InventoryLocation.LocationType.CONTROLLED_VAULT
+            elif _is_cold_chain(batch.sku):
+                loc_type = InventoryLocation.LocationType.COLD_ROOM
+            else:
+                loc_type = InventoryLocation.LocationType.STORE
+
+            location = InventoryLocation.all_objects.filter(
+                tenant=ctx.tenant, branch=branch, location_type=loc_type
+            ).first()
+
+            if location is None:
+                location = InventoryLocation.all_objects.filter(
+                    tenant=ctx.tenant, branch=branch
+                ).first()
+
+            if location is None:
+                raise ValidationError(f"No location found for branch {branch.code}")
+
+            if ctx.owned_reference(InventoryBatch, reference) is not None:
+                ctx.note_reuse("inventory_receipts_posted", reference)
+                ctx.add_count("inventory_receipts_posted", 1)
+                continue
+
+            inv_batch = InventoryReceiptService.post_receipt(
+                tenant=ctx.tenant,
+                received_batch=batch,
+                receiving_location=location,
+                actor=poster,
+            )
+
+            ctx.own(inv_batch, domain="inventory_batches", stage=self.id,
+                    story_id=STORY_QUALITY, reference=reference,
+                    branch_reference=branch.code,
+                    purpose=f"Inventory posting for {batch.manufacturer_batch_number}.",
+                    relationship_group=f"{REF}-INVENTORY", reset_eligible=False)
+            ctx.add_count("inventory_receipts_posted", 1)
+            ctx.stage_results[self.id].last_key = reference
+
+
+# ---------------------------------------------------------------------------
+# R2 — balance rebuild
+# ---------------------------------------------------------------------------
+
+
+class StageR2BalanceRebuild(Stage):
+    id = "R2"
+    label = "Inventory balance rebuild"
+    requires = ("R1",)
+
+    def rehydrate(self, ctx):
+        pass
+
+    def run(self, ctx):
+        InventoryBalanceService.rebuild_all_balances(tenant=ctx.tenant)
+        balance_count = InventoryBalance.all_objects.filter(tenant=ctx.tenant).count()
+        ctx.add_count("inventory_balances_rebuilt", balance_count)
+
+
+# ---------------------------------------------------------------------------
+# S1 — FEFO allocation validation
+# ---------------------------------------------------------------------------
+
+
+class StageS1FEFOValidation(Stage):
+    id = "S1"
+    label = "FEFO allocation validation"
+    requires = ("R2",)
+
+    def rehydrate(self, ctx):
+        pass
+
+    def run(self, ctx):
+        balances = InventoryBalance.all_objects.filter(
+            tenant=ctx.tenant, available__gt=0
+        ).select_related("branch", "sku")
+
+        tested_skus = set()
+        fefo_scenarios = 0
+
+        for bal in balances:
+            if bal.sku_id in tested_skus:
+                continue
+            tested_skus.add(bal.sku_id)
+
+            allocations = FEFOAllocationService.allocate_stock(
+                tenant=ctx.tenant,
+                branch=bal.branch,
+                sku=bal.sku,
+                required_quantity=10,
+            )
+            if allocations:
+                fefo_scenarios += 1
+                expiries = [b.expiry_date for b, _qty in allocations]
+                if expiries != sorted(expiries):
+                    raise ValidationError(f"FEFO allocation out of order for {bal.sku}: {expiries}")
+
+        ctx.add_count("fefo_scenarios_validated", fefo_scenarios)
+
+
+# ---------------------------------------------------------------------------
+# S2 — inventory boundary check
+# ---------------------------------------------------------------------------
+
+
+class StageS2InventoryBoundaryCheck(Stage):
+    id = "S2"
+    label = "Inventory boundary verification"
+    requires = ("S1",)
+
+    def rehydrate(self, ctx):
+        pass
+
+    def run(self, ctx):
+        from django.db.models import Sum
+
+        released_batches = ReceivedBatch.all_objects.filter(
+            tenant=ctx.tenant,
+            quality_status__in=(
+                ReceivedBatch.QualityStatus.RELEASED,
+                ReceivedBatch.QualityStatus.PARTIALLY_RELEASED,
+            ),
+        )
+
+        for b in released_batches:
+            qd = QualityDecision.all_objects.filter(tenant=ctx.tenant, batch=b).first()
+            if not qd or qd.decision != QualityDecision.Outcome.APPROVE_FOR_RELEASE:
+                raise ValidationError(
+                    f"Batch {b.manufacturer_batch_number} is {b.quality_status} but has no approved decision."
+                )
+
+        total_accepted = released_batches.aggregate(s=Sum("accepted_quantity"))["s"] or 0
+        total_ledger = InventoryLedgerEntry.all_objects.filter(tenant=ctx.tenant).aggregate(s=Sum("quantity_delta"))["s"] or 0
+
+        if total_accepted != total_ledger:
+            raise ValidationError(
+                f"Accepted quantity ({total_accepted}) does not match ledger delta ({total_ledger})."
+            )
+
+        total_balance = InventoryBalance.all_objects.filter(tenant=ctx.tenant).aggregate(s=Sum("on_hand"))["s"] or 0
+        if total_ledger != total_balance:
+            raise ValidationError(
+                f"Ledger quantity ({total_ledger}) does not match balance on_hand ({total_balance})."
+            )
+
+        quarantined_batches = ReceivedBatch.all_objects.filter(
+            tenant=ctx.tenant,
+            quality_status=ReceivedBatch.QualityStatus.QUARANTINED,
+        )
+
+        for qb in quarantined_batches:
+            if InventoryBatch.all_objects.filter(tenant=ctx.tenant, source_received_batch=qb).exists():
+                raise ValidationError(
+                    f"Quarantined batch {qb.manufacturer_batch_number} was posted to InventoryBatch."
+                )
+
+        InventoryBalanceService.rebuild_all_balances(tenant=ctx.tenant)
+        rebuilt_balance = InventoryBalance.all_objects.filter(tenant=ctx.tenant).aggregate(s=Sum("on_hand"))["s"] or 0
+        if total_balance != rebuilt_balance:
+            raise ValidationError(
+                f"Balance rebuild drift: original {total_balance}, rebuilt {rebuilt_balance}."
+            )
+
+        ctx.add_count("inventory_boundary_verified", 1)
+
+
+STAGE_2B_2B: tuple[Stage, ...] = (
+    StageQ1ReleasePlan(),
+    StageQ2BatchRelease(),
+    StageR1ReceiptPosting(),
+    StageR2BalanceRebuild(),
+    StageS1FEFOValidation(),
+    StageS2InventoryBoundaryCheck(),
+)
+
