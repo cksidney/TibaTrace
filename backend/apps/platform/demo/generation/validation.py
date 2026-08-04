@@ -854,12 +854,121 @@ class QualityInventoryValidator(QualityValidator):
         }
 
 
+class StockMobilityValidator(QualityInventoryValidator):
+    """Validates Stage 2C (stock transfers, reservations, mobility boundary)."""
+
+    def check_transfer_lifecycle(self):
+        from apps.inventory.models import StockTransfer
+
+        transfers = StockTransfer.all_objects.filter(tenant=self.tenant)
+        if not transfers.exists():
+            self._fail("transfer_lifecycle", "No stock transfers found")
+            return
+
+        bad_segregation = []
+        for t in transfers.filter(status=StockTransfer.Status.APPROVED):
+            if t.requested_by_id and t.requested_by_id == t.approved_by_id:
+                bad_segregation.append(t.transfer_number)
+
+        if bad_segregation:
+            self._fail("transfer_lifecycle_segregation", f"requester == approver on: {bad_segregation[:3]}")
+        else:
+            self._ok("transfer_lifecycle_segregation", "transfer requesters and approvers strictly segregated")
+
+        self._ok("transfer_lifecycle", f"{transfers.count()} stock transfer(s) validated")
+
+    def check_transfer_ledger_balance(self):
+        from decimal import Decimal
+        from django.db.models import Sum
+        from apps.inventory.models import InventoryLedgerEntry
+
+        out_qty = abs(
+            InventoryLedgerEntry.all_objects.filter(
+                tenant=self.tenant, entry_type=InventoryLedgerEntry.EntryType.TRANSFER_OUT
+            ).aggregate(s=Sum("quantity_delta"))["s"] or Decimal("0")
+        )
+        in_qty = InventoryLedgerEntry.all_objects.filter(
+            tenant=self.tenant, entry_type=InventoryLedgerEntry.EntryType.TRANSFER_IN
+        ).aggregate(s=Sum("quantity_delta"))["s"] or Decimal("0")
+
+        if out_qty != in_qty:
+            self._fail("transfer_ledger_balance", f"TRANSFER_OUT {out_qty} != TRANSFER_IN {in_qty}")
+        else:
+            self._ok("transfer_ledger_balance", f"TRANSFER_OUT ({out_qty}) equals TRANSFER_IN ({in_qty}), zero stock leak")
+
+    def check_reservation_lifecycle(self):
+        from apps.inventory.models import InventoryReservation
+
+        reservations = InventoryReservation.all_objects.filter(tenant=self.tenant)
+        if not reservations.exists():
+            self._fail("reservation_lifecycle", "No inventory reservations found")
+            return
+
+        self._ok("reservation_lifecycle", f"{reservations.count()} reservation(s) validated")
+
+    def check_no_negative_balances(self):
+        from apps.inventory.models import InventoryBalance
+
+        neg_on_hand = InventoryBalance.all_objects.filter(tenant=self.tenant, on_hand__lt=0).count()
+        neg_avail = InventoryBalance.all_objects.filter(tenant=self.tenant, available__lt=0).count()
+
+        if neg_on_hand or neg_avail:
+            self._fail("no_negative_balances", f"neg on_hand: {neg_on_hand}, neg available: {neg_avail}")
+        else:
+            self._ok("no_negative_balances", "zero negative stock across all inventory balances")
+
+    def run_all(self) -> dict:
+        checks = (
+            self.check_tenant_ownership,
+            self.check_orders_derive_from_requisitions,
+            self.check_order_approval_segregation,
+            self.check_supplier_qualifications_at_order_date,
+            self.check_delivery_note_uniqueness,
+            self.check_received_quantity_coherence,
+            self.check_batch_dates,
+            self.check_receiving_sessions_unposted,
+            self.check_no_duplicate_idempotency_keys,
+            self.check_quality_inspections,
+            self.check_quality_decisions,
+            self.check_every_released_batch_approved,
+            self.check_posted_quantity_approved,
+            self.check_inventory_batches_equal_balances,
+            self.check_location_compatibility,
+            self.check_fefo_valid,
+            self.check_unavailable_stock_excluded,
+            self.check_transfer_lifecycle,
+            self.check_transfer_ledger_balance,
+            self.check_reservation_lifecycle,
+            self.check_no_negative_balances,
+            self.check_no_balance_drift,
+        )
+        for check in checks:
+            try:
+                check()
+            except Exception as exc:
+                self._fail(check.__name__, f"{type(exc).__name__}: {exc}")
+
+        failures = [f for f in self.findings if f.status == "FAIL"]
+        return {
+            "run": str(self.run.pk),
+            "tenant": self.tenant.slug,
+            "stage": "2C-stock-mobility",
+            "status": "FAIL" if failures else "PASS",
+            "failure_count": len(failures),
+            "findings": [f.as_dict() for f in self.findings],
+        }
+
+
 def validate_demo_scenario(run, tenant, stage: str = "auto") -> dict:
     """Validate a demo scenario run based on its completed stage."""
-    from apps.inventory.models import InventoryLedgerEntry
+    from apps.inventory.models import InventoryReservation, StockTransfer, InventoryLedgerEntry
     from apps.procurement.models import QualityDecision, ReceivedBatch
 
-    if stage == "inventory" or (
+    if stage == "mobility" or (
+        stage == "auto" and StockTransfer.all_objects.filter(tenant=tenant).exists()
+    ):
+        return StockMobilityValidator(run=run, tenant=tenant).run_all()
+    elif stage == "inventory" or (
         stage == "auto" and InventoryLedgerEntry.all_objects.filter(tenant=tenant).exists()
     ):
         return QualityInventoryValidator(run=run, tenant=tenant).run_all()
