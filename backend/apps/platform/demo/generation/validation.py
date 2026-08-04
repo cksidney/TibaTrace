@@ -669,11 +669,201 @@ class QualityValidator(ProcurementReceivingValidator):
         }
 
 
+class QualityInventoryValidator(QualityValidator):
+    """Validates Stage 2B.2B (quality release, inventory posting, balances, FEFO)."""
+
+    def check_every_released_batch_approved(self):
+        from apps.procurement.models import QualityDecision, ReceivedBatch
+
+        released_batches = ReceivedBatch.all_objects.filter(
+            tenant=self.tenant,
+            quality_status__in=(
+                ReceivedBatch.QualityStatus.RELEASED,
+                ReceivedBatch.QualityStatus.PARTIALLY_RELEASED,
+            ),
+        )
+
+        unapproved = []
+        for b in released_batches:
+            qd = QualityDecision.all_objects.filter(tenant=self.tenant, batch=b).first()
+            if not qd or qd.decision != QualityDecision.Outcome.APPROVE_FOR_RELEASE:
+                unapproved.append(b.manufacturer_batch_number)
+
+        if unapproved:
+            self._fail("every_released_batch_approved", f"unapproved released batch(es): {unapproved[:3]}")
+        else:
+            self._ok("every_released_batch_approved", f"{released_batches.count()} released/partially-released batch(es), all approved")
+
+    def check_posted_quantity_approved(self):
+        from django.db.models import Sum
+        from apps.inventory.models import InventoryLedgerEntry
+        from apps.procurement.models import ReceivedBatch
+
+        accepted_qty = ReceivedBatch.all_objects.filter(
+            tenant=self.tenant,
+            quality_status__in=(
+                ReceivedBatch.QualityStatus.RELEASED,
+                ReceivedBatch.QualityStatus.PARTIALLY_RELEASED,
+            ),
+        ).aggregate(s=Sum("accepted_quantity"))["s"] or 0
+
+        ledger_qty = InventoryLedgerEntry.all_objects.filter(tenant=self.tenant).aggregate(s=Sum("quantity_delta"))["s"] or 0
+
+        if accepted_qty != ledger_qty:
+            self._fail("posted_quantity_approved", f"accepted {accepted_qty} != ledger {ledger_qty}")
+        else:
+            self._ok("posted_quantity_approved", f"{ledger_qty} units posted, matching approved accepted quantity")
+
+    def check_ledger_equals_balances(self):
+        from django.db.models import Sum
+        from apps.inventory.models import InventoryBalance, InventoryLedgerEntry
+
+        ledger_qty = InventoryLedgerEntry.all_objects.filter(tenant=self.tenant).aggregate(s=Sum("quantity_delta"))["s"] or 0
+        balance_qty = InventoryBalance.all_objects.filter(tenant=self.tenant).aggregate(s=Sum("on_hand"))["s"] or 0
+
+        if ledger_qty != balance_qty:
+            self._fail("ledger_equals_balances", f"ledger {ledger_qty} != balance {balance_qty}")
+        else:
+            self._ok("ledger_equals_balances", f"ledger {ledger_qty} equals balance on_hand {balance_qty}")
+
+    def check_inventory_batches_equal_balances(self):
+        from apps.inventory.models import InventoryBalance, InventoryBatch
+
+        batches = InventoryBatch.all_objects.filter(tenant=self.tenant)
+        balances = InventoryBalance.all_objects.filter(tenant=self.tenant)
+
+        unposted_quarantined = [
+            b.manufacturer_batch_number for b in batches
+            if b.source_received_batch and b.source_received_batch.quality_status == "QUARANTINED"
+        ]
+        if unposted_quarantined:
+            self._fail("inventory_batches_equal_balances", f"quarantined batch in InventoryBatch: {unposted_quarantined[:3]}")
+        else:
+            self._ok("inventory_batches_equal_balances", f"{batches.count()} InventoryBatch record(s), zero quarantined")
+
+    def check_no_balance_drift(self):
+        from django.db.models import Sum
+        from apps.inventory.models import InventoryBalance
+        from apps.inventory.services import InventoryBalanceService
+
+        before = InventoryBalance.all_objects.filter(tenant=self.tenant).aggregate(s=Sum("on_hand"))["s"] or 0
+        InventoryBalanceService.rebuild_all_balances(tenant=self.tenant)
+        after = InventoryBalance.all_objects.filter(tenant=self.tenant).aggregate(s=Sum("on_hand"))["s"] or 0
+
+        if before != after:
+            self._fail("no_balance_drift", f"balance rebuild drift: before {before}, after {after}")
+        else:
+            self._ok("no_balance_drift", f"rebuild identical ({after} units), zero drift")
+
+    def check_location_compatibility(self):
+        from apps.inventory.models import InventoryBalance
+        from apps.medicines.provisioning import _is_cold_chain, _is_controlled
+
+        balances = InventoryBalance.all_objects.filter(
+            tenant=self.tenant, available__gt=0
+        ).select_related("location", "sku")
+
+        bad = []
+        for bal in balances:
+            if _is_controlled(bal.sku) and not bal.location.controlled_drug_capability:
+                bad.append(f"{bal.sku.sku_code} in non-vault {bal.location.location_code}")
+            if _is_cold_chain(bal.sku) and not bal.location.cold_chain_capability:
+                bad.append(f"{bal.sku.sku_code} in non-cold {bal.location.location_code}")
+
+        if bad:
+            self._fail("location_compatibility", "; ".join(bad[:3]))
+        else:
+            self._ok("location_compatibility", "all released stock in compatible storage locations")
+
+    def check_fefo_valid(self):
+        from apps.inventory.models import InventoryBalance
+        from apps.inventory.services import FEFOAllocationService
+
+        balances = InventoryBalance.all_objects.filter(
+            tenant=self.tenant, available__gt=0
+        ).select_related("branch", "sku")
+
+        tested = set()
+        for bal in balances:
+            if bal.sku_id in tested:
+                continue
+            tested.add(bal.sku_id)
+
+            allocations = FEFOAllocationService.allocate_stock(
+                tenant=self.tenant, branch=bal.branch, sku=bal.sku, required_quantity=5
+            )
+            if allocations:
+                expiries = [b.expiry_date for b, _qty in allocations]
+                if expiries != sorted(expiries):
+                    self._fail("fefo_valid", f"out of order expiries for {bal.sku.sku_code}: {expiries}")
+                    return
+
+        self._ok("fefo_valid", f"FEFO allocation validated across {len(tested)} SKU(s)")
+
+    def check_unavailable_stock_excluded(self):
+        from apps.inventory.models import InventoryBalance
+
+        quarantined_avail = InventoryBalance.all_objects.filter(
+            tenant=self.tenant, location__quarantine_capability=True, available__gt=0
+        ).count()
+        damaged_avail = InventoryBalance.all_objects.filter(
+            tenant=self.tenant, location__damaged_goods_capability=True, available__gt=0
+        ).count()
+
+        if quarantined_avail or damaged_avail:
+            self._fail("unavailable_stock_excluded", f"quarantined avail: {quarantined_avail}, damaged avail: {damaged_avail}")
+        else:
+            self._ok("unavailable_stock_excluded", "quarantined and damaged locations strictly 0 available")
+
+    def run_all(self) -> dict:
+        checks = (
+            self.check_tenant_ownership,
+            self.check_orders_derive_from_requisitions,
+            self.check_order_approval_segregation,
+            self.check_supplier_qualifications_at_order_date,
+            self.check_delivery_note_uniqueness,
+            self.check_received_quantity_coherence,
+            self.check_batch_dates,
+            self.check_receiving_sessions_unposted,
+            self.check_no_duplicate_idempotency_keys,
+            self.check_quality_inspections,
+            self.check_quality_decisions,
+            self.check_every_released_batch_approved,
+            self.check_posted_quantity_approved,
+            self.check_ledger_equals_balances,
+            self.check_inventory_batches_equal_balances,
+            self.check_no_balance_drift,
+            self.check_location_compatibility,
+            self.check_fefo_valid,
+            self.check_unavailable_stock_excluded,
+        )
+        for check in checks:
+            try:
+                check()
+            except Exception as exc:
+                self._fail(check.__name__, f"{type(exc).__name__}: {exc}")
+
+        failures = [f for f in self.findings if f.status == "FAIL"]
+        return {
+            "run": str(self.run.pk),
+            "tenant": self.tenant.slug,
+            "stage": "2B.2B-inventory-ownership",
+            "status": "FAIL" if failures else "PASS",
+            "failure_count": len(failures),
+            "findings": [f.as_dict() for f in self.findings],
+        }
+
+
 def validate_demo_scenario(run, tenant, stage: str = "auto") -> dict:
     """Validate a demo scenario run based on its completed stage."""
+    from apps.inventory.models import InventoryLedgerEntry
     from apps.procurement.models import QualityDecision, ReceivedBatch
 
-    if stage == "quality" or (
+    if stage == "inventory" or (
+        stage == "auto" and InventoryLedgerEntry.all_objects.filter(tenant=tenant).exists()
+    ):
+        return QualityInventoryValidator(run=run, tenant=tenant).run_all()
+    elif stage == "quality" or (
         stage == "auto" and QualityDecision.all_objects.filter(tenant=tenant).exists()
     ):
         return QualityValidator(run=run, tenant=tenant).run_all()
@@ -683,4 +873,5 @@ def validate_demo_scenario(run, tenant, stage: str = "auto") -> dict:
         return ProcurementReceivingValidator(run=run, tenant=tenant).run_all()
     else:
         return MasterDataValidator(run=run, tenant=tenant).run_all()
+
 
