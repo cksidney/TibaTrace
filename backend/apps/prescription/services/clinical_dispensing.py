@@ -54,8 +54,8 @@ from apps.prescription.services.workflow import PrescriptionWorkflowService
 from apps.workflows.service import emit_event
 
 CAPABILITY_ALIASES = {
-    "prescriptions.intake": ("prescriptions.write",),
-    "prescriptions.legal_validate": ("prescriptions.review",),
+    "prescriptions.intake": ("prescriptions.write", "dispensing.read"),
+    "prescriptions.legal_validate": ("prescriptions.review", "prescriptions.intake", "dispensing.read"),
     "prescriptions.clinical_review": ("prescriptions.review",),
     "prescriptions.intervention.create": ("prescriptions.review",),
     "prescriptions.pharmacist_verify": ("prescriptions.approve",),

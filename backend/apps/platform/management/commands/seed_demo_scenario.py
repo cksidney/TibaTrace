@@ -53,7 +53,7 @@ class Command(BaseCommand):
 
         # Stage 2A / Stage 2B
         parser.add_argument(
-            "--stage", choices=["master-data", "procurement-receiving", "procurement-quality", "inventory-ownership", "stock-mobility"],
+            "--stage", choices=["master-data", "procurement-receiving", "procurement-quality", "inventory-ownership", "stock-mobility", "dispensing-readiness"],
             help="Generation stage to execute. Omit to plan only.",
         )
         parser.add_argument("--demo-version", help="Dated content version, e.g. 2026.08.03.")
@@ -211,18 +211,24 @@ class Command(BaseCommand):
         is_stage_2b2a = stage_name == "procurement-quality"
         is_stage_2b2b = stage_name == "inventory-ownership"
         is_stage_2c = stage_name == "stock-mobility"
+        is_stage_2d1 = stage_name == "dispensing-readiness"
 
-        if is_stage_2b1 or is_stage_2b2a or is_stage_2b2b or is_stage_2c:
+        if is_stage_2b1 or is_stage_2b2a or is_stage_2b2b or is_stage_2c or is_stage_2d1:
             from apps.platform.demo.generation.orchestrator import (
                 STAGE_2B_ARTEFACTS,
                 STAGE_2B2B_ARTEFACTS,
                 STAGE_2C_ARTEFACTS,
+                STAGE_2D1_ARTEFACTS,
             )
             from apps.platform.demo.generation.stage2b import STAGE_2B_1
             from apps.platform.demo.generation.stage2b2 import STAGE_2B_2A, STAGE_2B_2B
             from apps.platform.demo.generation.stage2c import STAGE_2C
+            from apps.platform.demo.generation.stage2d import STAGE_2D_1
 
-            if is_stage_2c:
+            if is_stage_2d1:
+                stage_set = STAGE_2B_1 + STAGE_2B_2A + STAGE_2B_2B + STAGE_2C + STAGE_2D_1
+                artefact_names = STAGE_2D1_ARTEFACTS
+            elif is_stage_2c:
                 stage_set = STAGE_2B_1 + STAGE_2B_2A + STAGE_2B_2B + STAGE_2C
                 artefact_names = STAGE_2C_ARTEFACTS
             elif is_stage_2b2b:
@@ -258,7 +264,11 @@ class Command(BaseCommand):
             run.save(update_fields=["failure_reason", "updated_at"])
             raise CommandError(f"Master-data generation failed: {exc}") from exc
 
-        if is_stage_2c:
+        if is_stage_2d1:
+            from apps.platform.demo.generation.validation import Stage2D1Validator
+
+            validation = Stage2D1Validator(run=run, tenant=tenant).run_all()
+        elif is_stage_2c:
             from apps.platform.demo.generation.validation import StockMobilityValidator
 
             validation = StockMobilityValidator(run=run, tenant=tenant).run_all()

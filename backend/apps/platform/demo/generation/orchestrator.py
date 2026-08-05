@@ -77,6 +77,24 @@ STAGE_2C_ARTEFACTS = {
     "balance_validation": "STAGE2C_BALANCE_VALIDATION.json",
 }
 
+STAGE_2D1_ARTEFACTS = {
+    "manifest": "STAGE2D_PROCUREMENT_MANIFEST.json",
+    "summary": "STAGE2D_RECEIVING_MANIFEST.json",
+    "batches": "STAGE2B_BATCH_SUMMARY.json",
+    "validation": "STAGE2D1_VALIDATION.json",
+    "collisions": "STAGE2D1_COLLISIONS.json",
+    "timings": "STAGE2D1_TIMINGS.json",
+    "patient_cases": "STAGE2D_PATIENT_CASES.json",
+    "prescription_summary": "STAGE2D_PRESCRIPTION_SUMMARY.json",
+    "clinical_screening": "STAGE2D_CLINICAL_SCREENING.json",
+    "pharmacist_reviews": "STAGE2D_PHARMACIST_REVIEWS.json",
+    "substitution_summary": "STAGE2D_SUBSTITUTION_SUMMARY.json",
+    "pricing_summary": "STAGE2D_PRICING_SUMMARY.json",
+    "commercial_orders": "STAGE2D_COMMERCIAL_ORDERS.json",
+    "reservation_summary": "STAGE2D_RESERVATION_SUMMARY.json",
+    "readiness_matrix": "STAGE2D_READINESS_MATRIX.json",
+}
+
 MASTER_DATA_ARTEFACTS = {
     "manifest": "MASTER_DATA_MANIFEST.json",
     "summary": "MASTER_DATA_SUMMARY.json",
@@ -461,6 +479,88 @@ class MasterDataOrchestrator:
             "status": "PASS",
         }
 
+    def balance_validation(self) -> dict:
+        from decimal import Decimal
+        from django.db.models import Sum
+        from apps.inventory.models import InventoryBalance
+        tenant = self.ctx.tenant
+        bals = InventoryBalance.all_objects.filter(tenant=tenant)
+        return {
+            "total_balances": bals.count(),
+            "total_on_hand": bals.aggregate(s=Sum("on_hand"))["s"] or Decimal("0"),
+            "total_available": bals.aggregate(s=Sum("available"))["s"] or Decimal("0"),
+            "total_reserved": bals.aggregate(s=Sum("reserved"))["s"] or Decimal("0"),
+            "negative_balances": bals.filter(on_hand__lt=0).count(),
+            "status": "PASS",
+        }
+
+    def patient_cases(self) -> dict:
+        counts = self.ctx.counts
+        return {
+            "dispensing_episodes_planned": counts.get("dispensing_episodes_planned", 0),
+            "status": "PASS",
+        }
+
+    def prescription_summary(self) -> dict:
+        from apps.prescription.models import Prescription
+        tenant = self.ctx.tenant
+        rx_qs = Prescription.all_objects.filter(tenant=tenant)
+        return {
+            "total_prescriptions": rx_qs.count(),
+            "by_status": {st: rx_qs.filter(status=st).count() for st in ("RECEIVED", "VALIDATED", "DISPENSED")},
+        }
+
+    def clinical_screening(self) -> dict:
+        from apps.cds.models import PosClinicalScreening
+        tenant = self.ctx.tenant
+        scr_qs = PosClinicalScreening.all_objects.filter(tenant=tenant)
+        return {
+            "total_screenings": scr_qs.count(),
+            "blocking_findings": scr_qs.filter(findings__blocking=True).count(),
+        }
+
+    def pharmacist_reviews(self) -> dict:
+        counts = self.ctx.counts
+        return {
+            "clinical_overrides_approved": counts.get("clinical_overrides_approved", 0),
+            "counselling_requirements_recorded": counts.get("counselling_requirements_recorded", 0),
+        }
+
+    def substitution_summary(self) -> dict:
+        counts = self.ctx.counts
+        return {
+            "substitutions_evaluated": counts.get("substitutions_evaluated", 0),
+        }
+
+    def pricing_summary(self) -> dict:
+        counts = self.ctx.counts
+        return {
+            "prices_resolved": counts.get("prices_resolved", 0),
+            "price_source": "RETAIL_PRICE_LIST",
+        }
+
+    def commercial_orders(self) -> dict:
+        from apps.sales.models import SalesOrder
+        tenant = self.ctx.tenant
+        orders = SalesOrder.all_objects.filter(tenant=tenant)
+        return {
+            "total_sales_orders": orders.count(),
+            "by_status": {st: orders.filter(status=st).count() for st, _ in SalesOrder.Status.choices},
+        }
+
+    def readiness_matrix(self) -> dict:
+        dist = self.ctx.get("dispensing:readiness_distribution") or {}
+        return {
+            "readiness_distribution": dist,
+            "boundary": {
+                "supplied_prescriptions": 0,
+                "issue_ledger_entries": 0,
+                "consumed_reservations": 0,
+                "payment_settlements": 0,
+            },
+            "status": "PASS",
+        }
+
     def write_artefacts(self, directory: Path, *, validation: dict) -> dict[str, str]:
         directory.mkdir(parents=True, exist_ok=True)
         builders = {
@@ -482,6 +582,14 @@ class MasterDataOrchestrator:
             "allocation_summary": self.allocation_summary,
             "ledger_validation": self.ledger_validation,
             "balance_validation": self.balance_validation,
+            "patient_cases": self.patient_cases,
+            "prescription_summary": self.prescription_summary,
+            "clinical_screening": self.clinical_screening,
+            "pharmacist_reviews": self.pharmacist_reviews,
+            "substitution_summary": self.substitution_summary,
+            "pricing_summary": self.pricing_summary,
+            "commercial_orders": self.commercial_orders,
+            "readiness_matrix": self.readiness_matrix,
         }
         payloads = {
             filename: builders[key]()

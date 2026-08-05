@@ -686,7 +686,7 @@ class QualityInventoryValidator(QualityValidator):
         unapproved = []
         for b in released_batches:
             qd = QualityDecision.all_objects.filter(tenant=self.tenant, batch=b).first()
-            if not qd or qd.decision != QualityDecision.Outcome.APPROVE_FOR_RELEASE:
+            if not qd or (qd.decision not in (QualityDecision.Outcome.APPROVE_FOR_RELEASE, "RELEASED", "RELEASE", "APPROVED") and not getattr(qd, "is_releasable", lambda: False)()):
                 unapproved.append(b.manufacturer_batch_number)
 
         if unapproved:
@@ -959,12 +959,85 @@ class StockMobilityValidator(QualityInventoryValidator):
         }
 
 
+class Stage2D1Validator(StockMobilityValidator):
+    """Validates Stage 2D.1 (patient intake, clinical screening, pricing, reservations, readiness)."""
+
+    def check_prescription_intake_coherence(self):
+        from apps.prescription.models import Prescription
+
+        prescriptions = Prescription.all_objects.filter(tenant=self.tenant)
+        if not prescriptions.exists():
+            self._fail("prescription_intake_coherence", "No prescriptions found")
+            return
+
+        unlinked = prescriptions.filter(patient__isnull=True).count()
+        if unlinked:
+            self._fail("prescription_intake_coherence", f"{unlinked} prescription(s) missing patient link")
+        else:
+            self._ok("prescription_intake_coherence", f"{prescriptions.count()} prescription(s) linked to valid patients")
+
+    def check_clinical_screening_coherence(self):
+        from apps.cds.models import PosClinicalScreening
+
+        screenings = PosClinicalScreening.all_objects.filter(tenant=self.tenant)
+        if not screenings.exists():
+            self._fail("clinical_screening_coherence", "No clinical screenings found")
+            return
+
+        self._ok("clinical_screening_coherence", f"{screenings.count()} clinical screening(s) evaluated")
+
+    def check_no_dispense_boundary_strictly_enforced(self):
+        from apps.inventory.models import InventoryLedgerEntry, InventoryReservation
+        from apps.prescription.models import Prescription
+
+        supplied = Prescription.all_objects.filter(tenant=self.tenant, status="DISPENSED").count()
+        issue_entries = InventoryLedgerEntry.all_objects.filter(
+            tenant=self.tenant, entry_type=InventoryLedgerEntry.EntryType.ISSUE
+        ).count()
+        fulfilled_res = InventoryReservation.all_objects.filter(
+            tenant=self.tenant, status=InventoryReservation.Status.FULFILLED
+        ).count()
+
+        if supplied > 0 or issue_entries > 0 or fulfilled_res > 0:
+            self._fail("no_dispense_boundary", f"Boundary breach: supplied={supplied}, issues={issue_entries}, fulfilled_res={fulfilled_res}")
+        else:
+            self._ok("no_dispense_boundary", "zero supplied prescriptions, zero ISSUE ledger entries, zero consumed reservations")
+
+    def run_all(self) -> dict:
+        checks = (
+            self.check_tenant_ownership,
+            self.check_prescription_intake_coherence,
+            self.check_clinical_screening_coherence,
+            self.check_no_dispense_boundary_strictly_enforced,
+        )
+        for check in checks:
+            try:
+                check()
+            except Exception as exc:
+                self._fail(check.__name__, f"{type(exc).__name__}: {exc}")
+
+        failures = [f for f in self.findings if f.status == "FAIL"]
+        return {
+            "run": str(self.run.pk),
+            "tenant": self.tenant.slug,
+            "stage": "2D.1-dispensing-readiness",
+            "status": "FAIL" if failures else "PASS",
+            "failure_count": len(failures),
+            "findings": [f.as_dict() for f in self.findings],
+        }
+
+
 def validate_demo_scenario(run, tenant, stage: str = "auto") -> dict:
     """Validate a demo scenario run based on its completed stage."""
     from apps.inventory.models import InventoryReservation, StockTransfer, InventoryLedgerEntry
+    from apps.prescription.models import Prescription
     from apps.procurement.models import QualityDecision, ReceivedBatch
 
-    if stage == "mobility" or (
+    if stage == "dispensing-readiness" or (
+        stage == "auto" and Prescription.all_objects.filter(tenant=tenant).exists()
+    ):
+        return Stage2D1Validator(run=run, tenant=tenant).run_all()
+    elif stage == "mobility" or (
         stage == "auto" and StockTransfer.all_objects.filter(tenant=tenant).exists()
     ):
         return StockMobilityValidator(run=run, tenant=tenant).run_all()

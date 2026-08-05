@@ -108,7 +108,10 @@ def rng_for(seed: int, *parts: object) -> random.Random:
     produces is a secret: passwords come from the guarded demo-password
     mechanism, never from this module.
     """
-    return random.Random(stable_int(seed, *parts))  # noqa: S311 - deterministic by design
+    return random.Random(stable_int(seed, *parts))
+
+
+rng = rng_for  # noqa: S311 - deterministic by design
 
 
 def pick(seed: int, choices, *parts: object):

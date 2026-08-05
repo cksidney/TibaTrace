@@ -364,3 +364,12 @@ class ClinicalOverride(TenantConsistencyMixin, TimestampedModel):
 
     def delete(self, *args, **kwargs):
         raise ValidationError("Clinical overrides cannot be deleted.")
+
+
+from apps.cds.pos_screening_models import (  # noqa: F401
+    PosClinicalAuditEvent,
+    PosClinicalDecision,
+    PosClinicalFinding,
+    PosClinicalOverride,
+    PosClinicalScreening,
+)
