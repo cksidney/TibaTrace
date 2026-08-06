@@ -67,8 +67,21 @@ REGULATORY_BLOCKS = frozenset(
     }
 )
 
+#: Dose forms that need cold-chain handling, matched on both the short code the
+#: catalogue actually uses ("INJ") and the long form other sources emit
+#: ("INJECTION").
+#:
+#: The long forms alone were wrong: seed_medicine_catalogue creates DoseForm
+#: codes TAB/CAP/SUSP/SYR/INJ/..., so _is_cold_chain matched nothing and every
+#: cold-chain rule silently never fired -- the assortment filter returned
+#: nothing, the batch counts read zero, and a supplier without a cold-chain
+#: authorisation could be contracted for an injectable. A safety gate that
+#: never engages is worse than an absent one, because the counts look fine.
 COLD_CHAIN_FORMS = frozenset(
-    {"INJECTION", "SUSPENSION_INJECTION", "VACCINE", "SOLUTION_INJECTION"}
+    {
+        "INJ", "INJECTION", "SUSPENSION_INJECTION", "SOLUTION_INJECTION",
+        "VAC", "VACCINE", "IVINF", "INFUSION",
+    }
 )
 
 
