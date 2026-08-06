@@ -92,6 +92,66 @@ test feedback.
 
 ---
 
+## Root cause identified — stale `available` snapshot with a floor of 1
+
+Stage 2B.2B is **not** missing. Committed `stage2b2.py` implements the whole
+chain -- Q1 release plan, Q2 `release_batch`, R1 `post_receipt`, R2
+`rebuild_all_balances`, S1 FEFO, S2 boundary -- and the failing fixture composes
+`STAGE_2B_1 + STAGE_2B_2A + STAGE_2B_2B + STAGE_2C`, so it runs in the right
+order. `PARTIALLY_RELEASED` exists on the model and `post_receipt` accepts it.
+The "never entered branch history" hypothesis is refuted.
+
+The defect is in Stage 2C's planner.
+
+### The signature
+
+```
+ValidationError: Insufficient eligible stock. Short by 1.0000 tab.
+```
+
+**Short by one unit, not by everything.** The allocator is not finding an empty
+warehouse; it is finding one unit less than the plan demands. That rules out
+"no stock was ever posted" and points at a quantity the planner chose.
+
+### The mechanism
+
+Both planners read `bal.available` at planning time and floor the result at 1:
+
+```python
+# transfer planning
+qty = max(Decimal("1"), Decimal(str(int(bal.available * Decimal("0.3")) or 1)))
+# reservation planning
+qty = max(Decimal("1"), Decimal(str(rnd.randint(1, min(10, int(bal.available) or 1)))))
+```
+
+`available` is captured **before any allocation runs**. Execution then consumes
+it: each transfer and reservation reduces the same balances the plan was built
+from. By the time a later item executes, `available` has fallen below its
+planned quantity.
+
+The `max(Decimal("1"), ...)` floor is what turns that into a hard failure rather
+than a smaller transfer. A balance that has been fully consumed still plans a
+quantity of **1**, and the allocator correctly reports it is short by exactly
+that.
+
+### Why this also explains the "82,900 units" report
+
+Stock genuinely was posted. Stage 2B.2B works. The earlier figures were probably
+real -- what was never reproducible was Stage 2C *consuming* them, because the
+first allocation to exhaust a balance aborts the stage and every downstream
+count reads zero.
+
+### Fix direction (not implemented)
+
+Plan against live availability rather than a snapshot: re-read `available`
+immediately before each allocation, skip a balance that can no longer satisfy
+the minimum, and drop the floor of 1 so an exhausted balance plans nothing
+instead of planning the impossible. Preserving determinism means the skip must
+be a deterministic function of the plan order, not of whatever the database
+returns.
+
+---
+
 ## Hypothesis categories
 
 Not yet investigated. Ordered by how cheaply each can be eliminated.
