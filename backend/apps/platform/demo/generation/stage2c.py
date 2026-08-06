@@ -151,8 +151,24 @@ class StageT2StockTransfers(Stage):
                 ctx.add_count("stock_transfers", 1)
                 continue
 
-            src_branch = BranchLocation.objects.get(pk=item["source_branch_id"])
-            dest_branch = BranchLocation.objects.get(pk=item["dest_branch_id"])
+            # all_objects with an explicit tenant filter, for two reasons.
+            #
+            # `objects` is tenant-strict: outside a request that has set
+            # thread-local tenant context -- a management command, a Celery
+            # task, this generator -- it matches nothing and the lookup raises
+            # DoesNotExist for a branch that plainly exists.
+            #
+            # And a bare pk lookup on a UUID is unscoped: a branch id belonging
+            # to another tenant would resolve, and the transfer would be raised
+            # against it. Naming the tenant makes a cross-tenant id a clean
+            # DoesNotExist instead, which is the same not-found behaviour the
+            # caller already handles.
+            src_branch = BranchLocation.all_objects.get(
+                pk=item["source_branch_id"], tenant=ctx.tenant
+            )
+            dest_branch = BranchLocation.all_objects.get(
+                pk=item["dest_branch_id"], tenant=ctx.tenant
+            )
 
             transfer = StockTransferService.request_transfer(
                 tenant=ctx.tenant,
