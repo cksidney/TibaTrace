@@ -53,6 +53,45 @@ on.
 
 ---
 
+## Update — the defect cascades into Stage 2D.2
+
+The 46 errors in `backend/tests/test_demo_stage2d2_hardening.py` are **the same
+defect**, not a separate one. Its `hardening_ready` fixture runs the
+orchestrator, which reaches Stage 2C and raises before any 2D.2 test executes:
+
+```
+tests/test_demo_stage2d2_hardening.py:93   hardening_ready
+  orchestrator.py:222                      stage.run(ctx)
+    stage2c.py:321                         InventoryReservationService.reserve_stock
+      inventory/services.py:351            FEFOAllocationService.allocate_stock
+E   ValidationError: Insufficient eligible stock. Short by 1.0000 tab.
+```
+
+Every one of the 46 is an *error at setup*, which is why they fail identically
+regardless of what each test asserts.
+
+### What this narrows
+
+"Insufficient eligible stock" is the allocator finding nothing available to
+reserve. That is **hypothesis 1** — an upstream precondition unmet — rather than
+a filter defect inside the mobility planner. Stage 2C is not failing to plan
+transfers; it has nothing to plan them from.
+
+The two symptoms are one cause:
+
+| Symptom | Reading |
+|---|---|
+| Stage 2C: zero transfers | nothing available to move |
+| Stage 2D.2: 46 setup errors | nothing available to reserve |
+
+### Consequence for sequencing
+
+Stage 2D.2 cannot be developed or validated until this is fixed. Its entire
+suite is blocked at fixture setup, so any 2D.2 work would be written without
+test feedback.
+
+---
+
 ## Hypothesis categories
 
 Not yet investigated. Ordered by how cheaply each can be eliminated.
@@ -76,9 +115,11 @@ indistinguishable from one that is not being given anything to plan.
 
 ## Recommended diagnostic sequence
 
-1. Run Stage 2C generation directly against a disposable tenant and print the
-   planner's candidate count **before** filtering. Zero candidates points at 1
-   or 3; non-zero candidates surviving to zero plans points at 2.
+1. **Start here.** Assert `InventoryBalance` and `InventoryBatch` counts in the
+   fixture immediately before Stage 2C runs. The 2D.2 traceback shows the
+   allocator finding no eligible stock, so the question is whether Stage 2B.2B
+   (quality release and `post_receipt`) ever ran to create any. If balances are
+   zero, the mobility planner is behaving correctly and the defect is upstream.
 2. If candidates are zero, assert on `InventoryBalance` and `InventoryBatch`
    counts in the fixture — Stage 2C cannot move stock that was never posted.
 3. If candidates exist but no transfer is created, log each filter's survivor
