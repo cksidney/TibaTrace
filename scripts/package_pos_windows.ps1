@@ -36,9 +36,9 @@ Copy-Item (Join-Path $AppRoot "dist") $AppPackage -Recurse -Force
 
 $Assets = Join-Path $StageRoot "Assets"
 New-Item $Assets -ItemType Directory -Force | Out-Null
-Copy-Item (Join-Path $BrandRoot "tibatrace-44.png") $Assets -Destination "Square44x44Logo.png"
-Copy-Item (Join-Path $BrandRoot "tibatrace-150.png") $Assets -Destination "Square150x150Logo.png"
-Copy-Item (Join-Path $BrandRoot "tibatrace-store.png") $Assets -Destination "StoreLogo.png"
+Copy-Item -Path (Join-Path $BrandRoot "tibatrace-44.png") -Destination (Join-Path $Assets "Square44x44Logo.png")
+Copy-Item -Path (Join-Path $BrandRoot "tibatrace-150.png") -Destination (Join-Path $Assets "Square150x150Logo.png")
+Copy-Item -Path (Join-Path $BrandRoot "tibatrace-store.png") -Destination (Join-Path $Assets "StoreLogo.png")
 
 if ($SkipMsix) {
     Write-Host "Windows application staged at $StageRoot"
