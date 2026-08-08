@@ -9,6 +9,7 @@ $AppRoot = Join-Path $Root "apps/pos-windows"
 $ElectronRoot = Join-Path $Root "node_modules/electron/dist"
 $ReleaseRoot = Join-Path $AppRoot "release"
 $StageRoot = Join-Path $ReleaseRoot "TibaTrace-POS-win-x64"
+$BrandRoot = Join-Path $AppRoot "public/brand"
 $Version = "0.1.0.1"
 
 if (-not (Test-Path (Join-Path $ElectronRoot "electron.exe"))) {
@@ -35,9 +36,9 @@ Copy-Item (Join-Path $AppRoot "dist") $AppPackage -Recurse -Force
 
 $Assets = Join-Path $StageRoot "Assets"
 New-Item $Assets -ItemType Directory -Force | Out-Null
-Copy-Item (Join-Path $AppRoot "build/Square44x44Logo.png") $Assets
-Copy-Item (Join-Path $AppRoot "build/Square150x150Logo.png") $Assets
-Copy-Item (Join-Path $AppRoot "build/StoreLogo.png") $Assets
+Copy-Item (Join-Path $BrandRoot "tibatrace-44.png") $Assets -Destination "Square44x44Logo.png"
+Copy-Item (Join-Path $BrandRoot "tibatrace-150.png") $Assets -Destination "Square150x150Logo.png"
+Copy-Item (Join-Path $BrandRoot "tibatrace-store.png") $Assets -Destination "StoreLogo.png"
 
 if ($SkipMsix) {
     Write-Host "Windows application staged at $StageRoot"
