@@ -85,7 +85,7 @@ jobs:
           # The commit currently running in production, read from the deployed
           # backend image label. Declared explicitly: guessing a branch point is
           # how a release reports zero migrations while carrying one.
-          baseline="${DEPLOYMENT_BASELINE_SHA:-24a160214114575bdbbb3059b10ad4e323f3daec}"
+          baseline="${DEPLOYMENT_BASELINE_SHA:-809cc8ba0e8bbd696fbec6fe137612eca1ad6f58}"
           if ! git cat-file -e "${baseline}^{commit}" 2>/dev/null; then
             echo "::error::deployment baseline $baseline is not a commit in this repository"
             exit 1
