@@ -2,8 +2,32 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PYTHON="${ROOT}/.venv/bin/python"
-PYTEST="${ROOT}/.venv/bin/pytest"
+LOCAL_VENV_BIN="${ROOT}/.venv/bin"
+
+# Developers use the repository virtualenv; CI deliberately installs its
+# dependencies into the runner interpreter.  Resolving both forms keeps this
+# validation gate representative of a clean checkout instead of requiring a
+# local-only path to exist on every runner.
+if [[ -x "${LOCAL_VENV_BIN}/python" ]]; then
+  PYTHON="${LOCAL_VENV_BIN}/python"
+else
+  PYTHON="$(command -v python3)"
+fi
+
+resolve_python_tool() {
+  local tool="$1"
+  if [[ -x "${LOCAL_VENV_BIN}/${tool}" ]]; then
+    printf '%s\n' "${LOCAL_VENV_BIN}/${tool}"
+  else
+    command -v "${tool}"
+  fi
+}
+
+PYTEST="$(resolve_python_tool pytest)"
+RUFF="$(resolve_python_tool ruff)"
+BANDIT="$(resolve_python_tool bandit)"
+CYCLONEDX="$(resolve_python_tool cyclonedx-py)"
+PIP_AUDIT="$(resolve_python_tool pip-audit)"
 
 MODE="full"
 for arg in "$@"; do
@@ -107,8 +131,8 @@ record_step "git_cleanliness_check" "git status --porcelain" "true" "PASSED" "0"
 
 echo "=== [2/13] Backend Dependency & Lint Checks ==="
 START_TIME=$(date +%s)
-"${ROOT}/.venv/bin/pip" check
-"${ROOT}/.venv/bin/ruff" check "${ROOT}/backend/apps" "${ROOT}/backend/dawatrace" "${ROOT}/backend/tests"
+"${PYTHON}" -m pip check
+"${RUFF}" check "${ROOT}/backend/apps" "${ROOT}/backend/dawatrace" "${ROOT}/backend/tests"
 END_TIME=$(date +%s)
 record_step "backend_lint_checks" "ruff check backend/apps backend/dawatrace backend/tests" "true" "PASSED" "0" "$((END_TIME - START_TIME))" "" ""
 
@@ -193,9 +217,9 @@ record_step "pytest_backend_suite" "pytest -c backend/pytest.ini backend/tests b
 
 echo "=== [9/13] Security Audits & SBOM ==="
 START_TIME=$(date +%s)
-"${ROOT}/.venv/bin/bandit" -q -r "${ROOT}/backend/apps" "${ROOT}/backend/dawatrace" \
+"${BANDIT}" -q -r "${ROOT}/backend/apps" "${ROOT}/backend/dawatrace" \
   -c "${ROOT}/pyproject.toml" -f json -o "${ROOT}/artifacts/generated/security/bandit.json"
-"${ROOT}/.venv/bin/cyclonedx-py" requirements "${ROOT}/backend/requirements.lock" \
+"${CYCLONEDX}" requirements "${ROOT}/backend/requirements.lock" \
   --output-reproducible --of JSON -o "${ROOT}/artifacts/generated/security/dawatrace-backend.cdx.json"
 "${PYTHON}" "${ROOT}/scripts/scan_secrets.py" \
   --root "${ROOT}" --output "${ROOT}/artifacts/generated/security/secret-scan.json"
@@ -204,7 +228,7 @@ record_step "security_scans_and_sbom" "bandit; cyclonedx; scan_secrets" "true" "
 
 START_TIME=$(date +%s)
 if [[ "${DAWATRACE_RUN_ONLINE_AUDIT:-false}" == "true" ]]; then
-  "${ROOT}/.venv/bin/pip-audit" -r "${ROOT}/backend/requirements.lock" \
+  "${PIP_AUDIT}" -r "${ROOT}/backend/requirements.lock" \
     --format json --output "${ROOT}/artifacts/generated/security/pip-audit.json"
   END_TIME=$(date +%s)
   record_step "online_dependency_audit" "pip-audit -r backend/requirements.lock" "true" "PASSED" "0" "$((END_TIME - START_TIME))" "" "artifacts/generated/security/pip-audit.json"
