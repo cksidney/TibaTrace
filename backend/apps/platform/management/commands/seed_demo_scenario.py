@@ -215,8 +215,8 @@ class Command(BaseCommand):
 
         if is_stage_2b1 or is_stage_2b2a or is_stage_2b2b or is_stage_2c or is_stage_2d1:
             from apps.platform.demo.generation.orchestrator import (
-                STAGE_2B_ARTEFACTS,
                 STAGE_2B2B_ARTEFACTS,
+                STAGE_2B_ARTEFACTS,
                 STAGE_2C_ARTEFACTS,
                 STAGE_2D1_ARTEFACTS,
             )

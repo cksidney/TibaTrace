@@ -342,6 +342,7 @@ class MasterDataOrchestrator:
 
     def release_summary(self) -> dict:
         from django.db.models import Sum
+
         from apps.procurement.models import ReceivedBatch
         tenant = self.ctx.tenant
         counts = self.ctx.counts
@@ -358,6 +359,7 @@ class MasterDataOrchestrator:
 
     def ledger_summary(self) -> dict:
         from django.db.models import Sum
+
         from apps.inventory.models import InventoryLedgerEntry
         tenant = self.ctx.tenant
         entries = InventoryLedgerEntry.all_objects.filter(tenant=tenant)
@@ -369,6 +371,7 @@ class MasterDataOrchestrator:
 
     def balance_summary(self) -> dict:
         from django.db.models import Sum
+
         from apps.inventory.models import InventoryBalance
         tenant = self.ctx.tenant
         bals = InventoryBalance.all_objects.filter(tenant=tenant)
@@ -381,6 +384,7 @@ class MasterDataOrchestrator:
 
     def inventory_batches(self) -> dict:
         from django.db.models import Sum
+
         from apps.inventory.models import InventoryBatch, InventoryLedgerEntry
         tenant = self.ctx.tenant
         batches = InventoryBatch.all_objects.filter(tenant=tenant)
@@ -434,6 +438,7 @@ class MasterDataOrchestrator:
 
     def allocation_summary(self) -> dict:
         from django.db.models import Sum
+
         from apps.inventory.models import InventoryReservation
         tenant = self.ctx.tenant
         res = InventoryReservation.all_objects.filter(tenant=tenant, status=InventoryReservation.Status.ALLOCATED)
@@ -446,7 +451,9 @@ class MasterDataOrchestrator:
 
     def ledger_validation(self) -> dict:
         from decimal import Decimal
+
         from django.db.models import Sum
+
         from apps.inventory.models import InventoryLedgerEntry
         tenant = self.ctx.tenant
         out_qty = abs(
@@ -466,22 +473,9 @@ class MasterDataOrchestrator:
 
     def balance_validation(self) -> dict:
         from decimal import Decimal
-        from django.db.models import Sum
-        from apps.inventory.models import InventoryBalance
-        tenant = self.ctx.tenant
-        bals = InventoryBalance.all_objects.filter(tenant=tenant)
-        return {
-            "total_balances": bals.count(),
-            "total_on_hand": bals.aggregate(s=Sum("on_hand"))["s"] or Decimal("0"),
-            "total_available": bals.aggregate(s=Sum("available"))["s"] or Decimal("0"),
-            "total_reserved": bals.aggregate(s=Sum("reserved"))["s"] or Decimal("0"),
-            "negative_balances": bals.filter(on_hand__lt=0).count(),
-            "status": "PASS",
-        }
 
-    def balance_validation(self) -> dict:
-        from decimal import Decimal
         from django.db.models import Sum
+
         from apps.inventory.models import InventoryBalance
         tenant = self.ctx.tenant
         bals = InventoryBalance.all_objects.filter(tenant=tenant)

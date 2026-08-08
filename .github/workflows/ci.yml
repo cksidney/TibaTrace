@@ -141,7 +141,7 @@ jobs:
           node-version: "22"
           cache: npm
       - run: npm ci
-      - run: npm rebuild electron
+      - run: node node_modules/electron/install.js
       - run: npm run build --workspace @dawatrace/shared
       - run: npm run typecheck --workspace @dawatrace/pos-windows
       - run: npm run test --workspace @dawatrace/pos-windows

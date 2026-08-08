@@ -60,9 +60,9 @@ jobs:
 
       - name: Restore Electron runtime
         # The Electron post-install downloader is occasionally skipped by the
-        # hosted runner cache. Rebuilding explicitly makes a missing runtime a
+        # hosted runner cache. Running the installer explicitly makes a missing runtime a
         # deterministic install failure rather than a late packaging failure.
-        run: npm rebuild electron
+        run: node node_modules/electron/install.js
 
       - name: Build shared package
         run: npm run build --workspace @dawatrace/shared

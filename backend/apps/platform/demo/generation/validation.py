@@ -696,6 +696,7 @@ class QualityInventoryValidator(QualityValidator):
 
     def check_posted_quantity_approved(self):
         from django.db.models import Sum
+
         from apps.inventory.models import InventoryLedgerEntry
         from apps.procurement.models import ReceivedBatch
 
@@ -716,6 +717,7 @@ class QualityInventoryValidator(QualityValidator):
 
     def check_ledger_equals_balances(self):
         from django.db.models import Sum
+
         from apps.inventory.models import InventoryBalance, InventoryLedgerEntry
 
         ledger_qty = InventoryLedgerEntry.all_objects.filter(tenant=self.tenant).aggregate(s=Sum("quantity_delta"))["s"] or 0
@@ -727,10 +729,9 @@ class QualityInventoryValidator(QualityValidator):
             self._ok("ledger_equals_balances", f"ledger {ledger_qty} equals balance on_hand {balance_qty}")
 
     def check_inventory_batches_equal_balances(self):
-        from apps.inventory.models import InventoryBalance, InventoryBatch
+        from apps.inventory.models import InventoryBatch
 
         batches = InventoryBatch.all_objects.filter(tenant=self.tenant)
-        balances = InventoryBalance.all_objects.filter(tenant=self.tenant)
 
         unposted_quarantined = [
             b.manufacturer_batch_number for b in batches
@@ -743,6 +744,7 @@ class QualityInventoryValidator(QualityValidator):
 
     def check_no_balance_drift(self):
         from django.db.models import Sum
+
         from apps.inventory.models import InventoryBalance
         from apps.inventory.services import InventoryBalanceService
 
@@ -879,7 +881,9 @@ class StockMobilityValidator(QualityInventoryValidator):
 
     def check_transfer_ledger_balance(self):
         from decimal import Decimal
+
         from django.db.models import Sum
+
         from apps.inventory.models import InventoryLedgerEntry
 
         out_qty = abs(
@@ -1029,7 +1033,7 @@ class Stage2D1Validator(StockMobilityValidator):
 
 def validate_demo_scenario(run, tenant, stage: str = "auto") -> dict:
     """Validate a demo scenario run based on its completed stage."""
-    from apps.inventory.models import InventoryReservation, StockTransfer, InventoryLedgerEntry
+    from apps.inventory.models import InventoryLedgerEntry, StockTransfer
     from apps.prescription.models import Prescription
     from apps.procurement.models import QualityDecision, ReceivedBatch
 
@@ -1055,5 +1059,3 @@ def validate_demo_scenario(run, tenant, stage: str = "auto") -> dict:
         return ProcurementReceivingValidator(run=run, tenant=tenant).run_all()
     else:
         return MasterDataValidator(run=run, tenant=tenant).run_all()
-
-
