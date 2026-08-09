@@ -151,11 +151,40 @@ def classify_tenant(tenant) -> ClassificationReport:
         dc.demo_owned = owned_by_ct.get((app_label, model_name.lower()), 0)
         report.domains[label] = dc
 
-    report.verdict = _verdict(report)
+    report.verdict = _verdict(report, tenant)
     return report
 
 
-def _verdict(report: ClassificationReport) -> str:
+def _is_unassigned_bootstrap_tenant_admin(tenant) -> bool:
+    """Recognise the sole system role created when a tenant is provisioned.
+
+    ``TENANT_ADMIN`` is infrastructure, not business data.  A freshly
+    provisioned tenant can therefore contain that one unassigned system role
+    before its first user exists.  Treating it as unexplained data made an
+    otherwise empty tenant impossible to seed, while accepting any other role
+    would weaken the conservative classification boundary.
+    """
+    from apps.identity.models import Role, UserRole
+
+    roles = list(
+        Role.all_objects.filter(tenant=tenant).only(
+            "id", "code", "name", "is_active", "is_system"
+        )
+    )
+    if len(roles) != 1:
+        return False
+
+    role = roles[0]
+    return (
+        role.code == "TENANT_ADMIN"
+        and role.name == "Tenant administrator"
+        and role.is_system
+        and role.is_active
+        and not UserRole.all_objects.filter(tenant=tenant).exists()
+    )
+
+
+def _verdict(report: ClassificationReport, tenant) -> str:
     """Decide the verdict conservatively.
 
     Order matters. Unaccounted rows outrank everything else, because an object
@@ -173,21 +202,29 @@ def _verdict(report: ClassificationReport) -> str:
     if total == 0:
         return EMPTY_SAFE_TO_SEED
 
-    # A lone bootstrap user is expected on a provisioned-but-unused tenant and
-    # is not evidence of trading. This exemption must require *exactly* one
-    # unaccounted user and no demo-owned data: written as `<= 1` it also fired
-    # when unaccounted was zero, which is the demo-owned case, and reported a
-    # seeded tenant as empty.
+    # A lone bootstrap user and the canonical, unassigned system role are
+    # expected on a provisioned-but-unused tenant.  Nothing else may use this
+    # exemption: normal/custom roles, assigned roles and every clinical or
+    # transactional record remain unclassified and block a seed.
+    bootstrap_domains = set()
+    if live.get("users") is not None and live["users"].unaccounted == 1:
+        bootstrap_domains.add("users")
+    if live.get("roles") is not None and _is_unassigned_bootstrap_tenant_admin(tenant):
+        bootstrap_domains.add("roles")
+
     only_bootstrap = (
-        unaccounted == 1
-        and demo_owned == 0
-        and live.get("users") is not None
-        and live["users"].unaccounted == 1
-        and all(v.unaccounted == 0 for k, v in live.items() if k != "users")
+        demo_owned == 0
+        and bool(bootstrap_domains)
+        and all(
+            v.unaccounted == 0
+            for key, v in live.items()
+            if key not in bootstrap_domains
+        )
     )
     if only_bootstrap:
         report.notes.append(
-            "only a bootstrap user is unaccounted for; treated as empty for seeding"
+            "only canonical bootstrap provisioning records are unaccounted for; "
+            "treated as empty for seeding"
         )
         return EMPTY_SAFE_TO_SEED
 

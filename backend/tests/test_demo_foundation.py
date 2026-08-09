@@ -16,12 +16,13 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.utils import timezone
 
-from apps.identity.models import User
+from apps.identity.models import Role, User, UserRole
 from apps.platform.demo import safety
 from apps.platform.demo.classification import (
     DEMO_DATA_PRESENT,
     EMPTY_SAFE_TO_SEED,
     REAL_DATA_PRESENT,
+    UNCLASSIFIED_DATA_PRESENT,
     classify_tenant,
 )
 from apps.platform.demo.manifest import build_manifest, digest_manifest, finalise
@@ -331,6 +332,37 @@ def test_unknown_profile_is_rejected():
 
 def test_empty_tenant_is_safe_to_seed(db, demo_tenant):
     assert classify_tenant(demo_tenant).verdict == EMPTY_SAFE_TO_SEED
+
+
+def test_unassigned_canonical_tenant_admin_role_is_safe_to_seed(db, demo_tenant):
+    Role.all_objects.create(
+        tenant=demo_tenant,
+        code="TENANT_ADMIN",
+        name="Tenant administrator",
+        capabilities=["identity.manage"],
+        is_active=True,
+        is_system=True,
+    )
+
+    report = classify_tenant(demo_tenant)
+
+    assert report.verdict == EMPTY_SAFE_TO_SEED
+    assert "canonical bootstrap provisioning records" in report.notes[0]
+
+
+def test_assigned_tenant_admin_role_remains_unclassified(db, demo_tenant):
+    role = Role.all_objects.create(
+        tenant=demo_tenant,
+        code="TENANT_ADMIN",
+        name="Tenant administrator",
+        capabilities=["identity.manage"],
+        is_active=True,
+        is_system=True,
+    )
+    user = User.objects.create(username="bootstrap-admin", tenant=demo_tenant)
+    UserRole.all_objects.create(tenant=demo_tenant, user=user, role=role)
+
+    assert classify_tenant(demo_tenant).verdict == UNCLASSIFIED_DATA_PRESENT
 
 
 def test_transactional_records_classify_as_real_data(db, demo_tenant):
