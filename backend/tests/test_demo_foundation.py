@@ -129,6 +129,29 @@ def test_designation_succeeds_and_audits(db, plain_tenant):
     ).exists()
 
 
+def test_platform_admin_can_designate_and_is_audited(db, plain_tenant):
+    from apps.audit.models import AuditEvent
+
+    User.objects.create(username="platform-owner", is_platform_admin=True)
+    call_command(
+        "designate_demo_tenant",
+        tenant_id=str(plain_tenant.id),
+        tenant_slug=plain_tenant.slug,
+        tenant_name=plain_tenant.name,
+        reason="authorised demonstration tenant",
+        actor_username="platform-owner",
+        confirm=plain_tenant.slug,
+    )
+
+    plain_tenant.refresh_from_db()
+    assert plain_tenant.is_demo is True
+    assert AuditEvent.all_objects.filter(
+        tenant=plain_tenant,
+        actor__username="platform-owner",
+        action="DEMO_TENANT_DESIGNATED",
+    ).exists()
+
+
 # --------------------------------------------------------------------------
 # Safety gates
 # --------------------------------------------------------------------------

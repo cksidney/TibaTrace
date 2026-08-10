@@ -97,6 +97,12 @@ class Command(BaseCommand):
     def _has_govern_capability(actor) -> bool:
         from apps.platform.demo.safety import PLATFORM_OWNER_CAPABILITY
 
+        # Platform administrators have platform-wide effective capabilities.
+        # Requiring a tenant-scoped UserRole as well made a legitimate Platform
+        # Owner unable to perform this platform-level action.
+        if actor.is_superuser or actor.is_platform_admin:
+            return True
+
         try:
             from apps.identity.models import UserRole
 

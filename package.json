@@ -1,7 +1,7 @@
 {
   "name": "@dawatrace/workspace",
   "private": true,
-  "version": "1.0.0-rc16",
+  "version": "1.0.0-rc17",
   "workspaces": [
     "apps/*",
     "packages/*"
