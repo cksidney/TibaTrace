@@ -171,6 +171,81 @@ def test_unrelated_audit_event_blocks_empty_demo_classification(db, plain_tenant
     assert classify_tenant(plain_tenant).verdict == UNCLASSIFIED_DATA_PRESENT
 
 
+def test_seed_provenance_audit_is_demo_owned(db, demo_tenant):
+    from django.contrib.contenttypes.models import ContentType
+
+    from apps.audit.models import AuditEvent
+    from apps.patients.models import Patient
+    from apps.platform.demo.models import DemoScenarioObject
+
+    run = DemoScenarioRun.all_objects.create(
+        tenant=demo_tenant,
+        scenario_name="nairobi-chemists",
+        scenario_version=SCENARIO_VERSION,
+        profile=PILOT.key,
+        random_seed=SEED,
+        as_of_date=AS_OF,
+    )
+    actor = User.objects.create(username="seeded-pharmacist", tenant=demo_tenant)
+    patient = Patient.all_objects.create(tenant=demo_tenant, internal_reference_id="DEMO-AUDIT-1")
+    for target, key in ((actor, "user-1"), (patient, "patient-1")):
+        DemoScenarioObject.all_objects.create(
+            run=run,
+            tenant=demo_tenant,
+            content_type=ContentType.objects.get_for_model(target),
+            object_id=str(target.pk),
+            generator="test",
+            seed_key=key,
+        )
+    AuditEvent.all_objects.create(
+        tenant=demo_tenant,
+        actor=actor,
+        action="PATIENT_CREATED",
+        model_name="Patient",
+        object_id=str(patient.pk),
+    )
+
+    assert classify_tenant(demo_tenant).verdict == DEMO_DATA_PRESENT
+
+
+def test_duplicate_seed_audit_fact_remains_blocking(db, demo_tenant):
+    from django.contrib.contenttypes.models import ContentType
+
+    from apps.audit.models import AuditEvent
+    from apps.patients.models import Patient
+    from apps.platform.demo.models import DemoScenarioObject
+
+    run = DemoScenarioRun.all_objects.create(
+        tenant=demo_tenant,
+        scenario_name="nairobi-chemists",
+        scenario_version=SCENARIO_VERSION,
+        profile=PILOT.key,
+        random_seed=SEED,
+        as_of_date=AS_OF,
+    )
+    actor = User.objects.create(username="seeded-auditor", tenant=demo_tenant)
+    patient = Patient.all_objects.create(tenant=demo_tenant, internal_reference_id="DEMO-AUDIT-2")
+    for target, key in ((actor, "user-2"), (patient, "patient-2")):
+        DemoScenarioObject.all_objects.create(
+            run=run,
+            tenant=demo_tenant,
+            content_type=ContentType.objects.get_for_model(target),
+            object_id=str(target.pk),
+            generator="test",
+            seed_key=key,
+        )
+    for _ in range(2):
+        AuditEvent.all_objects.create(
+            tenant=demo_tenant,
+            actor=actor,
+            action="PATIENT_CREATED",
+            model_name="Patient",
+            object_id=str(patient.pk),
+        )
+
+    assert classify_tenant(demo_tenant).verdict == UNCLASSIFIED_DATA_PRESENT
+
+
 # --------------------------------------------------------------------------
 # Safety gates
 # --------------------------------------------------------------------------
@@ -435,6 +510,13 @@ def test_demo_owned_records_classify_as_demo_data(db, demo_tenant):
         run=run, tenant=demo_tenant,
         content_type=ContentType.objects.get_for_model(Patient),
         object_id=str(patient.pk), generator="patients", seed_key="p-1",
+    )
+    Role.all_objects.create(
+        tenant=demo_tenant,
+        code="TENANT_ADMIN",
+        name="Tenant administrator",
+        is_system=True,
+        capabilities=["identity.manage"],
     )
     assert classify_tenant(demo_tenant).verdict == DEMO_DATA_PRESENT
 

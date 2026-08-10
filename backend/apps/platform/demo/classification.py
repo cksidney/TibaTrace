@@ -13,6 +13,7 @@ Anything unaccounted for produces UNCLASSIFIED_DATA_PRESENT, which blocks.
 
 from __future__ import annotations
 
+from collections import defaultdict
 from dataclasses import dataclass, field
 
 from django.apps import apps as django_apps
@@ -126,9 +127,11 @@ def classify_tenant(tenant) -> ClassificationReport:
     report.demo_runs = DemoScenarioRun.all_objects.filter(tenant=tenant).count()
 
     owned_by_ct: dict[tuple[str, str], int] = {}
+    owned_ids_by_model: dict[str, set[str]] = defaultdict(set)
     for entry in DemoScenarioObject.all_objects.filter(tenant=tenant).select_related("content_type"):
         key = (entry.content_type.app_label, entry.content_type.model)
         owned_by_ct[key] = owned_by_ct.get(key, 0) + 1
+        owned_ids_by_model[entry.content_type.model].add(str(entry.object_id))
 
     for label, app_label, model_name, immutable in INSPECTED_MODELS:
         dc = DomainCount(label=label, immutable=immutable)
@@ -149,6 +152,13 @@ def classify_tenant(tenant) -> ClassificationReport:
 
         dc.total = qs.count()
         dc.demo_owned = owned_by_ct.get((app_label, model_name.lower()), 0)
+        if label == "audit_events":
+            # Audit events are immutable and emitted by domain services.  Prove
+            # their narrow seed provenance from the exact owned target instead.
+            registry_ids = owned_ids_by_model.get("auditevent", set())
+            dc.demo_owned = len(
+                registry_ids | _proven_demo_audit_event_ids(tenant, owned_ids_by_model)
+            )
         report.domains[label] = dc
 
     report.verdict = _verdict(report, tenant)
@@ -167,7 +177,7 @@ def _is_unassigned_bootstrap_tenant_admin(tenant) -> bool:
     from apps.identity.models import Role, UserRole
 
     roles = list(
-        Role.all_objects.filter(tenant=tenant).only(
+        Role.all_objects.filter(tenant=tenant, code="TENANT_ADMIN").only(
             "id", "code", "name", "is_active", "is_system"
         )
     )
@@ -180,11 +190,11 @@ def _is_unassigned_bootstrap_tenant_admin(tenant) -> bool:
         and role.name == "Tenant administrator"
         and role.is_system
         and role.is_active
-        and not UserRole.all_objects.filter(tenant=tenant).exists()
+        and not UserRole.all_objects.filter(tenant=tenant, role=role).exists()
     )
 
 
-def _is_canonical_demo_designation_audit(tenant) -> bool:
+def _is_canonical_demo_designation_audit(event, tenant) -> bool:
     """Recognise only the audited act which designates this exact demo tenant.
 
     Designation is a required, immutable governance action performed before
@@ -192,17 +202,6 @@ def _is_canonical_demo_designation_audit(tenant) -> bool:
     tenant business activity.  The event is deliberately matched in full so a
     normal audit record can never be used to make an in-use tenant seedable.
     """
-    from apps.audit.models import AuditEvent
-
-    events = list(
-        AuditEvent.all_objects.filter(tenant=tenant).only(
-            "action", "actor_id", "model_name", "object_id", "outcome", "metadata"
-        )
-    )
-    if len(events) != 1:
-        return False
-
-    event = events[0]
     metadata = event.metadata or {}
     return (
         tenant.is_demo
@@ -219,6 +218,67 @@ def _is_canonical_demo_designation_audit(tenant) -> bool:
     )
 
 
+_DEMO_AUDIT_ACTION_TARGETS = {
+    "PATIENT_CREATED": "patient",
+    "PRACTITIONER_CONTROLLED_AUTHORITY_GRANTED": "practitioner",
+    "SUPPLIER_QUALIFICATION_REGISTERED": "supplierqualification",
+    "SUPPLIER_QUALIFICATION_VERIFIED": "supplierqualification",
+    "INSURANCE_COVERAGE_CREATED": "insurancecoverage",
+    "INSURANCE_BENEFIT_DEFINED": "coveragebenefit",
+}
+_SYSTEM_GENERATED_DEMO_AUDIT_ACTIONS = {
+    "INSURANCE_COVERAGE_CREATED",
+    "INSURANCE_BENEFIT_DEFINED",
+}
+
+
+def _proven_demo_audit_event_ids(tenant, owned_ids_by_model: dict[str, set[str]]) -> set[str]:
+    """Return immutable audit rows whose exact target proves seed provenance.
+
+    A domain service writes its audit evidence after it creates the target, so
+    the orchestrator cannot claim it as a normal generated object.  Duplicated
+    or unrelated audit facts deliberately remain unproven and block seeding.
+    """
+    from apps.audit.models import AuditEvent
+
+    events = list(
+        AuditEvent.all_objects.filter(tenant=tenant).only(
+            "id", "action", "actor_id", "model_name", "object_id", "outcome", "metadata"
+        )
+    )
+    proven: set[str] = set()
+
+    designation_events = [
+        event for event in events if _is_canonical_demo_designation_audit(event, tenant)
+    ]
+    if len(designation_events) == 1:
+        proven.add(str(designation_events[0].id))
+
+    demo_user_ids = owned_ids_by_model.get("user", set())
+    candidates: dict[tuple[str, str, str], list] = defaultdict(list)
+    for event in events:
+        expected_model = _DEMO_AUDIT_ACTION_TARGETS.get(event.action)
+        actual_model = event.model_name.lower()
+        if (
+            expected_model is None
+            or actual_model != expected_model
+            or event.outcome != "SUCCESS"
+            or str(event.object_id) not in owned_ids_by_model.get(expected_model, set())
+        ):
+            continue
+        if event.actor_id is None:
+            if event.action not in _SYSTEM_GENERATED_DEMO_AUDIT_ACTIONS:
+                continue
+        elif str(event.actor_id) not in demo_user_ids:
+            continue
+        candidates[(event.action, actual_model, str(event.object_id))].append(event)
+
+    for matching_events in candidates.values():
+        if len(matching_events) == 1:
+            proven.add(str(matching_events[0].id))
+    return proven
+
+
 def _verdict(report: ClassificationReport, tenant) -> str:
     """Decide the verdict conservatively.
 
@@ -231,41 +291,34 @@ def _verdict(report: ClassificationReport, tenant) -> str:
         return BLOCKED
 
     total = sum(v.total for v in live.values())
-    unaccounted = sum(v.unaccounted for v in live.values())
     demo_owned = sum(v.demo_owned for v in live.values())
 
     if total == 0:
         return EMPTY_SAFE_TO_SEED
 
-    # The canonical provisioning role and the exact audited demo designation
-    # are expected on a provisioned-but-unused demo tenant.  Nothing else may
-    # use this exemption: normal/custom roles, assigned roles and every
-    # clinical, commercial or transactional record remain unclassified and
-    # block a seed.
+    # The canonical provisioning role is expected on a provisioned demo
+    # tenant, even after generated roles exist. Nothing else may use this
+    # exemption: normal/custom roles, assigned roles and every clinical,
+    # commercial or transactional record remain unclassified and block a seed.
     bootstrap_domains = set()
     if live.get("users") is not None and live["users"].unaccounted == 1:
         bootstrap_domains.add("users")
     if live.get("roles") is not None and _is_unassigned_bootstrap_tenant_admin(tenant):
         bootstrap_domains.add("roles")
-    if (
-        live.get("audit_events") is not None
-        and live["audit_events"].unaccounted == 1
-        and _is_canonical_demo_designation_audit(tenant)
-    ):
-        bootstrap_domains.add("audit_events")
+    unaccounted = sum(
+        value.unaccounted
+        for key, value in live.items()
+        if key not in bootstrap_domains
+    )
 
     only_bootstrap = (
         demo_owned == 0
         and bool(bootstrap_domains)
-        and all(
-            v.unaccounted == 0
-            for key, v in live.items()
-            if key not in bootstrap_domains
-        )
+        and unaccounted == 0
     )
     if only_bootstrap:
         report.notes.append(
-            "only canonical provisioning and demo-designation records are unaccounted for; "
+            "only canonical provisioning records are unaccounted for; "
             "treated as empty for seeding"
         )
         return EMPTY_SAFE_TO_SEED
