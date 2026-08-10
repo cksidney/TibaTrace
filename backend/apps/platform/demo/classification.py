@@ -184,6 +184,41 @@ def _is_unassigned_bootstrap_tenant_admin(tenant) -> bool:
     )
 
 
+def _is_canonical_demo_designation_audit(tenant) -> bool:
+    """Recognise only the audited act which designates this exact demo tenant.
+
+    Designation is a required, immutable governance action performed before
+    seeding.  Its one audit event is therefore infrastructure rather than
+    tenant business activity.  The event is deliberately matched in full so a
+    normal audit record can never be used to make an in-use tenant seedable.
+    """
+    from apps.audit.models import AuditEvent
+
+    events = list(
+        AuditEvent.all_objects.filter(tenant=tenant).only(
+            "action", "actor_id", "model_name", "object_id", "outcome", "metadata"
+        )
+    )
+    if len(events) != 1:
+        return False
+
+    event = events[0]
+    metadata = event.metadata or {}
+    return (
+        tenant.is_demo
+        and event.action == "DEMO_TENANT_DESIGNATED"
+        and event.outcome == "SUCCESS"
+        and event.actor_id is not None
+        and event.model_name == ""
+        and event.object_id == ""
+        and metadata.get("tenant_id") == str(tenant.id)
+        and metadata.get("tenant_slug") == tenant.slug
+        and metadata.get("tenant_name") == tenant.name
+        and metadata.get("is_demo_before") is False
+        and metadata.get("is_demo_after") is True
+    )
+
+
 def _verdict(report: ClassificationReport, tenant) -> str:
     """Decide the verdict conservatively.
 
@@ -202,15 +237,22 @@ def _verdict(report: ClassificationReport, tenant) -> str:
     if total == 0:
         return EMPTY_SAFE_TO_SEED
 
-    # A lone bootstrap user and the canonical, unassigned system role are
-    # expected on a provisioned-but-unused tenant.  Nothing else may use this
-    # exemption: normal/custom roles, assigned roles and every clinical or
-    # transactional record remain unclassified and block a seed.
+    # The canonical provisioning role and the exact audited demo designation
+    # are expected on a provisioned-but-unused demo tenant.  Nothing else may
+    # use this exemption: normal/custom roles, assigned roles and every
+    # clinical, commercial or transactional record remain unclassified and
+    # block a seed.
     bootstrap_domains = set()
     if live.get("users") is not None and live["users"].unaccounted == 1:
         bootstrap_domains.add("users")
     if live.get("roles") is not None and _is_unassigned_bootstrap_tenant_admin(tenant):
         bootstrap_domains.add("roles")
+    if (
+        live.get("audit_events") is not None
+        and live["audit_events"].unaccounted == 1
+        and _is_canonical_demo_designation_audit(tenant)
+    ):
+        bootstrap_domains.add("audit_events")
 
     only_bootstrap = (
         demo_owned == 0
@@ -223,7 +265,7 @@ def _verdict(report: ClassificationReport, tenant) -> str:
     )
     if only_bootstrap:
         report.notes.append(
-            "only canonical bootstrap provisioning records are unaccounted for; "
+            "only canonical provisioning and demo-designation records are unaccounted for; "
             "treated as empty for seeding"
         )
         return EMPTY_SAFE_TO_SEED

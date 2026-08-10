@@ -150,6 +150,25 @@ def test_platform_admin_can_designate_and_is_audited(db, plain_tenant):
         actor__username="platform-owner",
         action="DEMO_TENANT_DESIGNATED",
     ).exists()
+    assert classify_tenant(plain_tenant).verdict == EMPTY_SAFE_TO_SEED
+
+
+def test_unrelated_audit_event_blocks_empty_demo_classification(db, plain_tenant):
+    from apps.audit.models import AuditEvent
+
+    plain_tenant.is_demo = True
+    plain_tenant.save(update_fields=["is_demo", "updated_at"])
+    actor = User.objects.create(username="audit-actor", is_platform_admin=True)
+    AuditEvent.all_objects.create(
+        tenant=plain_tenant,
+        actor=actor,
+        action="USER_LOGGED_IN",
+        model_name="identity.User",
+        object_id=str(actor.id),
+        metadata={"tenant_id": str(plain_tenant.id)},
+    )
+
+    assert classify_tenant(plain_tenant).verdict == UNCLASSIFIED_DATA_PRESENT
 
 
 # --------------------------------------------------------------------------
