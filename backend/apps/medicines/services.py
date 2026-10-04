@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import decimal
+from dataclasses import dataclass
+from typing import Any
 
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 from django.utils import timezone
 
+from apps.medicines.government_catalogue import SOURCE_NAME
 from apps.medicines.models import (
     ActiveSubstance,
     BranchAssortment,
@@ -228,6 +231,178 @@ class TenantCatalogueService:
             },
         )
         return selection
+
+
+@dataclass(frozen=True)
+class CatalogueImportIssue:
+    """One row that prevents an all-or-nothing catalogue import.
+
+    The row number is deliberately the spreadsheet row (the header is row 1),
+    rather than an opaque array offset.  It lets an operator correct a CSV
+    without trying to count from zero or infer which duplicate was rejected.
+    """
+
+    row: int
+    field: str
+    value: str
+    message: str
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "row": self.row,
+            "field": self.field,
+            "value": self.value,
+            "message": self.message,
+        }
+
+
+class BulkTenantCatalogueSelectionService:
+    """Validate and select universal catalogue products in one tenant.
+
+    The import deliberately selects *only* products that are already in the
+    regulated universal catalogue.  It cannot invent clinical products,
+    packaging or tenant SKUs from a spreadsheet.  That keeps the bulk path
+    subject to the same catalogue provenance as the one-at-a-time UI.
+    """
+
+    MAX_ROWS = 5_000
+
+    @classmethod
+    def preview(cls, *, tenant, rows) -> tuple[list[tuple[int, Medicine]], list[CatalogueImportIssue]]:
+        """Return validated rows and all detectable errors without writing."""
+        if not isinstance(rows, list):
+            return [], [
+                CatalogueImportIssue(
+                    row=0,
+                    field="rows",
+                    value="",
+                    message="rows must be a list of catalogue-code records.",
+                )
+            ]
+        if not rows:
+            return [], [
+                CatalogueImportIssue(
+                    row=0,
+                    field="rows",
+                    value="",
+                    message="The import contains no data rows.",
+                )
+            ]
+        if len(rows) > cls.MAX_ROWS:
+            return [], [
+                CatalogueImportIssue(
+                    row=0,
+                    field="rows",
+                    value=str(len(rows)),
+                    message=f"A single import may contain at most {cls.MAX_ROWS} rows.",
+                )
+            ]
+
+        issues: list[CatalogueImportIssue] = []
+        codes_by_row: list[tuple[int, str]] = []
+        first_seen: dict[str, int] = {}
+        for index, payload in enumerate(rows, start=2):
+            row_number = index
+            if isinstance(payload, dict):
+                try:
+                    candidate = int(payload.get("_source_row", index))
+                    if candidate >= 2:
+                        row_number = candidate
+                except (TypeError, ValueError):
+                    pass
+            value = payload.get("master_catalogue_code", "") if isinstance(payload, dict) else ""
+            code = str(value or "").strip()
+            if not code:
+                issues.append(CatalogueImportIssue(
+                    row=row_number,
+                    field="master_catalogue_code",
+                    value="",
+                    message="A universal catalogue code is required.",
+                ))
+                continue
+            if len(code) > 100:
+                issues.append(CatalogueImportIssue(
+                    row=row_number,
+                    field="master_catalogue_code",
+                    value=code,
+                    message="The catalogue code is longer than 100 characters.",
+                ))
+                continue
+            if code in first_seen:
+                issues.append(CatalogueImportIssue(
+                    row=row_number,
+                    field="master_catalogue_code",
+                    value=code,
+                    message=f"Duplicate of row {first_seen[code]}.",
+                ))
+                continue
+            first_seen[code] = row_number
+            codes_by_row.append((row_number, code))
+
+        master_by_code = {
+            medicine.code: medicine
+            for medicine in Medicine.all_objects.filter(
+                tenant__isnull=True,
+                is_global=True,
+                source=SOURCE_NAME,
+                code__in=[code for _, code in codes_by_row],
+            )
+        }
+        valid: list[tuple[int, Medicine]] = []
+        for row, code in codes_by_row:
+            medicine = master_by_code.get(code)
+            if medicine is None:
+                issues.append(CatalogueImportIssue(
+                    row=row,
+                    field="master_catalogue_code",
+                    value=code,
+                    message="No universal catalogue product matches this code.",
+                ))
+            else:
+                valid.append((row, medicine))
+        return valid, issues
+
+    @classmethod
+    def import_rows(cls, *, tenant, rows, actor, dry_run: bool = True) -> dict[str, Any]:
+        """Preview or atomically select every valid product in ``rows``.
+
+        A non-dry run is refused as a whole when any row is invalid.  Existing
+        selections are reported as unchanged rather than re-written, making a
+        corrected/retried file naturally idempotent.
+        """
+        valid, issues = cls.preview(tenant=tenant, rows=rows)
+        selected_ids = set(
+            TenantCatalogueProduct.all_objects.filter(
+                tenant=tenant,
+                master_medicine_id__in=[medicine.pk for _, medicine in valid],
+                status=TenantCatalogueProduct.STATUS_SELECTED,
+            ).values_list("master_medicine_id", flat=True)
+        )
+        to_select = [(row, medicine) for row, medicine in valid if medicine.pk not in selected_ids]
+        result: dict[str, Any] = {
+            "dry_run": bool(dry_run),
+            "received": len(rows) if isinstance(rows, list) else 0,
+            "valid": not issues,
+            "ready_to_select": len(to_select),
+            "already_selected": len(valid) - len(to_select),
+            "selected": 0,
+            "errors": [issue.as_dict() for issue in issues],
+        }
+        if issues or dry_run:
+            return result
+
+        # The selection service emits the same domain event as a manual
+        # selection.  The outer transaction means an event/database failure
+        # rolls back every selection made by this file.
+        with transaction.atomic():
+            for _, medicine in to_select:
+                TenantCatalogueService.select_master_product(
+                    tenant=tenant,
+                    master_medicine=medicine,
+                    actor=actor,
+                )
+        result["selected"] = len(to_select)
+        return result
 
 
 class IngredientCompositionService:

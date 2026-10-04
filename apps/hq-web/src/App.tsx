@@ -37,6 +37,7 @@ import {
   loadCashVariances,
   loadForcedClosures,
   loadGovernmentCatalogue,
+  importGovernmentCatalogueSelection,
   loadHQOverview,
   loadHQWorkspace,
   loadInsurers,
@@ -65,6 +66,7 @@ import {
   resolvePrice,
   resolveCashExceptionReview,
   saveTenantPriceDraft,
+  importTenantPriceDraft,
   setHQTenantContext,
   startCashExceptionReview,
   loadRolesDetail,
@@ -102,6 +104,7 @@ import {
   dispatchStockTransfer,
   receiveStockTransfer,
 } from './api.js';
+import { CsvBulkImportDialog } from './CsvBulkImportDialog.js';
 import type {
   ActiveSubstanceSummary,
   SystemHealth,
@@ -2560,6 +2563,7 @@ function TenantPricingView({
   const [priceDraftTaxInclusive, setPriceDraftTaxInclusive] = useState(true);
   const [priceDraftBusy, setPriceDraftBusy] = useState(false);
   const [priceDraftError, setPriceDraftError] = useState('');
+  const [priceImportOpen, setPriceImportOpen] = useState(false);
   const [priceNotice, setPriceNotice] = useState('');
   const [busyOverrideId, setBusyOverrideId] = useState<string | null>(null);
   const [overrideError, setOverrideError] = useState('');
@@ -2706,17 +2710,27 @@ function TenantPricingView({
               Tills only resolve active or scheduled versions assigned to their scope.
             </p>
           </div>
-          <button
-            className="primary-button"
-            onClick={() => {
-              setPriceDraftError('');
-              setPriceDraftOpen(true);
-            }}
-            type="button"
-          >
-            <Icon name="database" />
-            Create or update price draft
-          </button>
+          <div className="price-control-guide-actions">
+            <button
+              className="secondary-button"
+              onClick={() => setPriceImportOpen(true)}
+              type="button"
+            >
+              <Icon name="plus" />
+              Bulk upload price draft
+            </button>
+            <button
+              className="primary-button"
+              onClick={() => {
+                setPriceDraftError('');
+                setPriceDraftOpen(true);
+              }}
+              type="button"
+            >
+              <Icon name="database" />
+              Create or update price draft
+            </button>
+          </div>
         </div>
         <div className="price-control-steps" aria-label="Price control workflow">
           <div><span>1</span><strong>Prepare</strong><small>Select a tenant SKU and set its selling price and floor.</small></div>
@@ -3309,6 +3323,49 @@ function TenantPricingView({
           </div>
         )}
       </article>
+      {priceImportOpen ? (
+        <CsvBulkImportDialog
+          columns={['sku_code', 'unit_price', 'minimum_allowed_price', 'tax_inclusive']}
+          description="Validate a complete retail price file before it touches the editable tenant draft. The import never changes live till prices; submit, independent approval and publication still apply."
+          example={['SKU-EXAMPLE-001', '250.00', '200.00', 'true']}
+          filename="tibatrace-tenant-retail-prices-template.csv"
+          onClose={() => setPriceImportOpen(false)}
+          onImported={async () => {
+            setPricingReload((value) => value + 1);
+            setVersionReload((value) => value + 1);
+          }}
+          preview={(rows) => importTenantPriceDraft(
+            rows.map((row) => ({
+              sku_code: row.values.sku_code ?? '',
+              unit_price: row.values.unit_price ?? '',
+              minimum_allowed_price: row.values.minimum_allowed_price || null,
+              tax_inclusive: row.values.tax_inclusive ?? '',
+              _source_row: row.line,
+            })),
+            tenantId,
+            csrfToken,
+            true,
+          )}
+          save={(rows) => importTenantPriceDraft(
+            rows.map((row) => ({
+              sku_code: row.values.sku_code ?? '',
+              unit_price: row.values.unit_price ?? '',
+              minimum_allowed_price: row.values.minimum_allowed_price || null,
+              tax_inclusive: row.values.tax_inclusive ?? '',
+              _source_row: row.line,
+            })),
+            tenantId,
+            csrfToken,
+            false,
+          )}
+          summarise={(result) => result.errors.length
+            ? `${result.received} row${result.received === 1 ? '' : 's'} checked; correct the listed rows before importing.`
+            : result.dry_run
+              ? `${result.ready_to_create} price${result.ready_to_create === 1 ? '' : 's'} will be added and ${result.ready_to_update} will update in draft ${result.price_book}.`
+              : `${result.saved} price${result.saved === 1 ? '' : 's'} saved to ${result.price_book} draft v${result.version_number ?? '—'}. Submit it for independent review when ready.`}
+          title="Bulk upload tenant retail prices"
+        />
+      ) : null}
       {priceDraftOpen ? (
         <div className="business-dialog-backdrop" role="presentation">
           <section aria-labelledby="price-draft-title" aria-modal="true" className="business-dialog" role="dialog">
@@ -6072,6 +6129,7 @@ function GovernmentCatalogue({
   const [priceSubmitting, setPriceSubmitting] = useState(false);
   const [priceSuccess, setPriceSuccess] = useState('');
   const [priceError, setPriceError] = useState('');
+  const [catalogueImportOpen, setCatalogueImportOpen] = useState(false);
 
   useEffect(() => {
     const nextTenantId = overview.tenant_id || overview.network_items[0]?.id || '';
@@ -6197,6 +6255,11 @@ function GovernmentCatalogue({
                 : 'Government catalogue source'}
           </small>
         </div>
+        {catalogue?.can_manage && tenantId ? (
+          <button className="secondary-button" onClick={() => setCatalogueImportOpen(true)} type="button">
+            <Icon name="plus" /> Bulk add to tenant
+          </button>
+        ) : null}
       </div>
 
       <div className="catalogue-scopebar">
@@ -6581,6 +6644,42 @@ function GovernmentCatalogue({
             </form>
           </div>
         </div>
+      ) : null}
+      {catalogueImportOpen ? (
+        <CsvBulkImportDialog
+          columns={['master_catalogue_code']}
+          description="Preview eTCD master-product codes before selecting them for this tenant. The upload only selects existing national catalogue products; package, SKU and price governance remain controlled steps."
+          example={['ETCD-PRODUCT-123']}
+          filename="tibatrace-tenant-catalogue-template.csv"
+          onClose={() => setCatalogueImportOpen(false)}
+          onImported={async () => {
+            setReloadVersion((version) => version + 1);
+          }}
+          preview={(rows) => importGovernmentCatalogueSelection(
+            rows.map((row) => ({
+              master_catalogue_code: row.values.master_catalogue_code ?? '',
+              _source_row: row.line,
+            })),
+            tenantId,
+            csrfToken,
+            true,
+          )}
+          save={(rows) => importGovernmentCatalogueSelection(
+            rows.map((row) => ({
+              master_catalogue_code: row.values.master_catalogue_code ?? '',
+              _source_row: row.line,
+            })),
+            tenantId,
+            csrfToken,
+            false,
+          )}
+          summarise={(result) => result.errors.length
+            ? `${result.received} row${result.received === 1 ? '' : 's'} checked; correct the listed rows before importing.`
+            : result.dry_run
+              ? `${result.ready_to_select} product${result.ready_to_select === 1 ? '' : 's'} will be selected; ${result.already_selected} already selected row${result.already_selected === 1 ? '' : 's'} will remain unchanged.`
+              : `${result.selected} product${result.selected === 1 ? '' : 's'} selected. ${result.already_selected} already selected row${result.already_selected === 1 ? '' : 's'} remained unchanged.`}
+          title="Bulk add tenant catalogue products"
+        />
       ) : null}
     </article>
   );

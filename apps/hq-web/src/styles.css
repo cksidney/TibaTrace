@@ -3218,6 +3218,86 @@ tbody tr:hover {
   border-top: 1px solid var(--line-soft);
 }
 
+.bulk-import-dialog {
+  width: min(720px, 100%);
+}
+
+.bulk-import-template {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0 0 16px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--canvas);
+}
+
+.bulk-import-template > div {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.bulk-import-template strong {
+  font-size: 0.78rem;
+}
+
+.bulk-import-template code {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.76rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bulk-import-result {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 13px;
+  border: 1px solid color-mix(in srgb, var(--teal-600) 40%, var(--line));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--teal-50) 58%, var(--panel));
+}
+
+.bulk-import-result.has-errors {
+  border-color: color-mix(in srgb, var(--red-700) 55%, var(--line));
+  background: color-mix(in srgb, var(--red-100) 70%, var(--panel));
+}
+
+.bulk-import-result > p,
+.bulk-import-errors ul {
+  margin: 0;
+}
+
+.bulk-import-result > p {
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
+.bulk-import-errors {
+  display: grid;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--red-700) 28%, var(--line));
+  color: var(--red-700);
+}
+
+.bulk-import-errors ul {
+  display: grid;
+  gap: 5px;
+  padding-left: 18px;
+  font-size: 0.79rem;
+}
+
+.bulk-import-errors code {
+  margin-left: 6px;
+  color: inherit;
+}
+
 .status-warning {
   color: #9a6500;
   background: #fff2cc;
@@ -4010,6 +4090,14 @@ tbody tr:hover {
   margin: 0;
   color: var(--muted);
   line-height: 1.6;
+}
+
+.price-control-guide-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .price-control-steps,
@@ -7856,6 +7944,10 @@ td .digest {
   .price-control-guide-head {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .price-control-guide-actions {
+    justify-content: flex-start;
   }
 
   .price-control-steps,

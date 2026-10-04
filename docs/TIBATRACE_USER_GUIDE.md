@@ -217,6 +217,23 @@ item before its catalogue governance is complete**. If pricing rejects a code
 with "select an existing tenant commercial SKU", the answer is to finish the
 catalogue entry, not to work around it.
 
+### Bulk tenant catalogue and retail prices
+
+For a large tenant setup, use the **Bulk add to tenant** action in the Kenya
+eTCD catalogue. Download its CSV template, add one exact
+`master_catalogue_code` per row, then run **Preview import**. The preview lists
+every unknown or duplicate code and writes nothing. **Import validated rows**
+is enabled only when the preview has no errors; it selects every product as one
+atomic operation.
+
+Selecting a national product does not make it a sellable SKU. Complete its
+manufacturer, package and tenant commercial-SKU governance first. In
+**Pricing**, choose **Bulk upload price draft**, download the template, and
+provide `sku_code`, `unit_price`, `minimum_allowed_price`, and
+`tax_inclusive`. This upload can only save to the tenant's editable retail
+draft; it never changes a till price directly. Submit, independent approval,
+and publication remain required before a new price is active.
+
 ### 3.4 Pricing
 
 **Pricing** manages branch price books. Prices resolve in strict order:

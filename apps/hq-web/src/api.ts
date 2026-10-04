@@ -1540,6 +1540,24 @@ export const saveTenantPriceDraft = (
   tenantId,
 );
 
+export const importTenantPriceDraft = (
+  rows: readonly {
+    readonly sku_code: string;
+    readonly unit_price: Money;
+    readonly minimum_allowed_price: Money | null;
+    readonly tax_inclusive: boolean | string;
+  }[],
+  tenantId: string,
+  csrfToken: string,
+  dryRun: boolean,
+) => mutateJson<PriceDraftBulkImportResult>(
+  '/api/pricing/prices/import-draft/',
+  'POST',
+  { dry_run: dryRun, rows },
+  csrfToken,
+  tenantId,
+);
+
 export const transitionPriceBookVersion = (
   versionId: string,
   action: 'approve' | 'publish' | 'submit',
@@ -2065,6 +2083,37 @@ export interface GovernmentCataloguePage {
   readonly can_manage: boolean;
 }
 
+/** A source-row error returned by a preview-first CSV import. */
+export interface BulkImportIssue {
+  readonly row: number;
+  readonly field: string;
+  readonly value: string;
+  readonly message: string;
+}
+
+export interface CatalogueBulkSelectionResult {
+  readonly dry_run: boolean;
+  readonly received: number;
+  readonly valid: boolean;
+  readonly ready_to_select: number;
+  readonly already_selected: number;
+  readonly selected: number;
+  readonly errors: readonly BulkImportIssue[];
+}
+
+export interface PriceDraftBulkImportResult {
+  readonly dry_run: boolean;
+  readonly received: number;
+  readonly valid: boolean;
+  readonly ready_to_create: number;
+  readonly ready_to_update: number;
+  readonly saved: number;
+  readonly price_book: string;
+  readonly version_id: string | null;
+  readonly version_number: number | null;
+  readonly errors: readonly BulkImportIssue[];
+}
+
 export const loadActiveSubstances = (signal?: AbortSignal) =>
   getCollection<ActiveSubstanceSummary>('/api/medicines/substances/', signal);
 
@@ -2136,6 +2185,19 @@ export async function updateGovernmentCatalogueSelection(
   }
   return (await response.json()) as { readonly selected: boolean };
 }
+
+export const importGovernmentCatalogueSelection = (
+  rows: readonly { readonly master_catalogue_code: string }[],
+  tenantId: string,
+  csrfToken: string,
+  dryRun: boolean,
+) => mutateJson<CatalogueBulkSelectionResult>(
+  '/api/medicines/government-catalogue/bulk-selection/',
+  'POST',
+  { dry_run: dryRun, rows },
+  csrfToken,
+  tenantId,
+);
 
 /* ── system health ─────────────────────────────────────────────────────────── */
 

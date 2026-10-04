@@ -251,6 +251,76 @@ class TestPriceDraftWorkflow:
         )
         assert response.status_code == 403
 
+    def test_bulk_price_import_previews_then_saves_only_to_a_draft(self, world):
+        grant(world["user"], MANAGE_CAPABILITY)
+        second_sku = CommercialSKU.objects.create(
+            tenant=world["tenant"],
+            sku_code="SKU-PB",
+            display_name="Amoxil bulk pack",
+            manufactured_product=world["sku"].manufactured_product,
+            package_definition=world["sku"].package_definition,
+        )
+        payload = {
+            "dry_run": True,
+            "rows": [
+                {
+                    "sku_code": world["sku"].sku_code,
+                    "unit_price": "625.00",
+                    "minimum_allowed_price": "500.00",
+                    "tax_inclusive": True,
+                },
+                {
+                    "sku_code": second_sku.sku_code,
+                    "unit_price": "800.00",
+                    "minimum_allowed_price": "700.00",
+                    "tax_inclusive": False,
+                },
+            ],
+        }
+
+        preview = world["client"].post(
+            "/api/pricing/prices/import-draft/", payload, format="json"
+        )
+
+        assert preview.status_code == 200
+        assert preview.json()["ready_to_create"] == 2
+        assert preview.json()["saved"] == 0
+        assert not PriceBookVersion.all_objects.filter(tenant=world["tenant"]).exists()
+
+        applied = world["client"].post(
+            "/api/pricing/prices/import-draft/",
+            {**payload, "dry_run": False},
+            format="json",
+        )
+
+        assert applied.status_code == 200
+        assert applied.json()["saved"] == 2
+        draft = PriceBookVersion.all_objects.get(pk=applied.json()["version_id"])
+        assert draft.status == PriceBookVersion.Status.DRAFT
+        assert {
+            entry.sku.sku_code: entry.unit_price
+            for entry in PriceBookEntry.all_objects.filter(version=draft).select_related("sku")
+        } == {world["sku"].sku_code: cash("625.00"), second_sku.sku_code: cash("800.00")}
+
+    def test_bulk_price_import_is_all_or_nothing_when_a_row_is_invalid(self, world):
+        grant(world["user"], MANAGE_CAPABILITY)
+
+        response = world["client"].post(
+            "/api/pricing/prices/import-draft/",
+            {
+                "dry_run": False,
+                "rows": [
+                    {"sku_code": world["sku"].sku_code, "unit_price": "625.00", "tax_inclusive": True},
+                    {"sku_code": "NO-SUCH-SKU", "unit_price": "100.00", "tax_inclusive": True},
+                ],
+            },
+            format="json",
+        )
+
+        assert response.status_code == 400
+        assert response.json()["errors"][0]["row"] == 3
+        assert not PriceBookVersion.all_objects.filter(tenant=world["tenant"]).exists()
+
 
 # ─── resolution answers, and records nothing ─────────────────────────────────
 

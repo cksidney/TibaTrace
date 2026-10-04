@@ -86,9 +86,9 @@ class PriceBookViewSet(TenantScopedReadOnly):
             if tenant:
                 book, _ = PriceBook.all_objects.get_or_create(
                     tenant=tenant,
-                    code="RETAIL-DEFAULT",
+                    code="DEFAULT-RETAIL",
                     defaults={
-                        "name": "Standard Tenant Retail Price Book",
+                        "name": "Default Tenant Retail Book",
                         "scope_type": PriceBook.ScopeType.TENANT,
                         "price_type": PriceBook.PriceType.RETAIL,
                         "currency": "KES",
@@ -370,3 +370,52 @@ class PriceResolutionViewSet(viewsets.ViewSet):
             "version_number": entry.version.version_number,
             "created": created,
         }, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=["post"], url_path="import-draft")
+    def import_draft(self, request):
+        """Preview or atomically load prices into the editable tenant draft.
+
+        The browser parses CSV locally and submits structured rows, so files
+        containing commercial data are never persisted merely for an import.
+        The service still validates every row against the tenant SKU catalogue
+        and never writes to an active price-book version.
+        """
+        tenant_id = (
+            getattr(request, "tenant_id", None)
+            or getattr(getattr(request, "tenant", None), "pk", None)
+            or getattr(request.user, "tenant_id", None)
+        )
+        if not tenant_id:
+            return Response(
+                {"detail": "Tenant workspace required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        dry_run = request.data.get("dry_run", True)
+        if not isinstance(dry_run, bool):
+            return Response(
+                {"detail": "dry_run must be true or false."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            result = PriceBookVersionService.import_tenant_retail_draft(
+                tenant_id=tenant_id,
+                rows=request.data.get("rows"),
+                actor=request.user,
+                dry_run=dry_run,
+            )
+        except PermissionDenied as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_403_FORBIDDEN)
+        except ValidationError as exc:
+            return Response(
+                {"detail": " ".join(exc.messages)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        # A dry run deliberately returns a complete row-level validation report
+        # with 200.  A non-dry run remains a failed request when invalid, so a
+        # client can never mistake a rejected file for a saved draft.
+        if result["errors"]:
+            return Response(
+                result,
+                status=status.HTTP_200_OK if dry_run else status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(result, status=status.HTTP_200_OK)

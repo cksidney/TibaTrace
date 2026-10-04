@@ -46,7 +46,11 @@ from apps.medicines.models import (
     TenantCatalogueProduct,
     TherapeuticClassification,
 )
-from apps.medicines.services import MedicineCatalogueService, TenantCatalogueService
+from apps.medicines.services import (
+    BulkTenantCatalogueSelectionService,
+    MedicineCatalogueService,
+    TenantCatalogueService,
+)
 from apps.tenancy.models import Tenant
 
 # Every viewset here is read-only.
@@ -490,3 +494,42 @@ class GovernmentCatalogueSelectionView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
         return None
+
+
+class GovernmentCatalogueBulkSelectionView(APIView):
+    """Preview or atomically select many universal catalogue products.
+
+    CSV parsing happens in HQ so no spreadsheet needs to be stored server-side.
+    This boundary receives only the exact master codes and still repeats all
+    authoritative checks before it writes a tenant selection.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        tenant = GovernmentCatalogueView._tenant(request)
+        permission_error = GovernmentCatalogueSelectionView._permission_error(request, tenant)
+        if permission_error:
+            return permission_error
+
+        dry_run = request.data.get("dry_run", True)
+        if not isinstance(dry_run, bool):
+            return Response(
+                {"detail": "dry_run must be true or false."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        result = BulkTenantCatalogueSelectionService.import_rows(
+            tenant=tenant,
+            rows=request.data.get("rows"),
+            actor=request.user,
+            dry_run=dry_run,
+        )
+        # A preview is a validation report, not a malformed request.  Returning
+        # it as 200 lets HQ show every fixable spreadsheet row at once.  An
+        # attempted write with the same errors is still refused as 400.
+        if result["errors"]:
+            return Response(
+                result,
+                status=status.HTTP_200_OK if dry_run else status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(result, status=status.HTTP_200_OK)

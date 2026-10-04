@@ -171,3 +171,83 @@ def test_tenant_selects_products_from_universal_catalogue_without_cross_tenant_l
         tenant=nairobi,
         master_medicine=medicine,
     ).status == TenantCatalogueProduct.STATUS_REMOVED
+
+
+@pytest.mark.django_db
+def test_bulk_catalogue_selection_previews_then_selects_atomically():
+    user = get_user_model().objects.create_user(
+        username="bulk-catalogue-admin",
+        password="catalogue-password-long-enough",
+        is_platform_admin=True,
+    )
+    tenant = Tenant.objects.create(name="Bulk Selection Pharmacy", slug="bulk-selection")
+    first = government_medicine("BULK-001", "Amoxicillin")
+    second = government_medicine("BULK-002", "Paracetamol")
+    client = APIClient()
+    client.force_authenticate(user=user)
+    url = "/api/medicines/government-catalogue/bulk-selection/"
+    payload = {
+        "dry_run": True,
+        "rows": [
+            {"master_catalogue_code": first.code},
+            {"master_catalogue_code": second.code},
+        ],
+    }
+
+    preview = client.post(url, payload, format="json", HTTP_X_TENANT_ID=str(tenant.pk))
+
+    assert preview.status_code == 200
+    assert preview.json()["ready_to_select"] == 2
+    assert preview.json()["selected"] == 0
+    assert not TenantCatalogueProduct.all_objects.filter(tenant=tenant).exists()
+
+    applied = client.post(
+        url,
+        {**payload, "dry_run": False},
+        format="json",
+        HTTP_X_TENANT_ID=str(tenant.pk),
+    )
+
+    assert applied.status_code == 200
+    assert applied.json()["selected"] == 2
+    assert TenantCatalogueProduct.all_objects.filter(
+        tenant=tenant,
+        status=TenantCatalogueProduct.STATUS_SELECTED,
+    ).count() == 2
+
+
+@pytest.mark.django_db
+def test_bulk_catalogue_selection_refuses_the_whole_file_when_any_row_is_invalid():
+    user = get_user_model().objects.create_user(
+        username="bulk-catalogue-invalid-admin",
+        password="catalogue-password-long-enough",
+        is_platform_admin=True,
+    )
+    tenant = Tenant.objects.create(name="Bulk Invalid Pharmacy", slug="bulk-invalid")
+    medicine = government_medicine("BULK-VALID", "Metformin")
+    client = APIClient()
+    client.force_authenticate(user=user)
+
+    response = client.post(
+        "/api/medicines/government-catalogue/bulk-selection/",
+        {
+            "dry_run": False,
+            "rows": [
+                {"master_catalogue_code": medicine.code},
+                {"master_catalogue_code": "NOT-IN-ETCD"},
+            ],
+        },
+        format="json",
+        HTTP_X_TENANT_ID=str(tenant.pk),
+    )
+
+    assert response.status_code == 400
+    assert response.json()["errors"] == [
+        {
+            "row": 3,
+            "field": "master_catalogue_code",
+            "value": "NOT-IN-ETCD",
+            "message": "No universal catalogue product matches this code.",
+        }
+    ]
+    assert not TenantCatalogueProduct.all_objects.filter(tenant=tenant).exists()

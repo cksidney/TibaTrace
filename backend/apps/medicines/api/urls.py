@@ -8,6 +8,7 @@ from apps.medicines.api.views import (
     ClinicalMedicinalProductViewSet,
     CommercialSKUViewSet,
     DoseFormViewSet,
+    GovernmentCatalogueBulkSelectionView,
     GovernmentCatalogueSelectionView,
     GovernmentCatalogueView,
     IngredientCompositionViewSet,
@@ -48,6 +49,11 @@ urlpatterns = [
         "government-catalogue/<uuid:pk>/selection/",
         GovernmentCatalogueSelectionView.as_view(),
         name="government-catalogue-selection",
+    ),
+    path(
+        "government-catalogue/bulk-selection/",
+        GovernmentCatalogueBulkSelectionView.as_view(),
+        name="government-catalogue-bulk-selection",
     ),
     *router.urls,
 ]
