@@ -2575,6 +2575,16 @@
         ],
         "type": "string"
       },
+      "DeviceTypeEnum": {
+        "description": "* `DESKTOP_WINDOWS` - DESKTOP_WINDOWS\n* `MOBILE_ANDROID` - MOBILE_ANDROID\n* `TABLET` - TABLET\n* `WORKSTATION` - WORKSTATION",
+        "enum": [
+          "DESKTOP_WINDOWS",
+          "MOBILE_ANDROID",
+          "TABLET",
+          "WORKSTATION"
+        ],
+        "type": "string"
+      },
       "DispatchLine": {
         "properties": {
           "batch": {
@@ -7542,6 +7552,57 @@
         ],
         "type": "string"
       },
+      "PaymentSettlement": {
+        "properties": {
+          "amount": {
+            "format": "decimal",
+            "pattern": "^-?\\d{0,13}(?:\\.\\d{0,2})?$",
+            "readOnly": true,
+            "type": "string"
+          },
+          "currency": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "readOnly": true,
+            "type": "string"
+          },
+          "payment_tender": {
+            "format": "uuid",
+            "readOnly": true,
+            "type": "string"
+          },
+          "provider_reference": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "settled_at": {
+            "format": "date-time",
+            "readOnly": true,
+            "type": "string"
+          },
+          "source": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SourceEnum"
+              }
+            ],
+            "readOnly": true
+          }
+        },
+        "required": [
+          "amount",
+          "currency",
+          "id",
+          "payment_tender",
+          "provider_reference",
+          "settled_at",
+          "source"
+        ],
+        "type": "object"
+      },
       "PaymentStateA20Enum": {
         "description": "* `NOT_REQUIRED` - Not required\n* `PENDING` - Pending\n* `AUTHORIZED` - Authorized\n* `PARTIALLY_PAID` - Partially paid\n* `PAID` - Paid\n* `WAIVED` - Waived\n* `FAILED` - Failed\n* `CANCELLED` - Cancelled\n* `REVERSAL_PENDING` - Reversal pending\n* `REVERSED` - Reversed\n* `REFUNDED` - Refunded",
         "enum": [
@@ -9084,6 +9145,14 @@
             "nullable": true,
             "type": "string"
           },
+          "receipt": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RetailCashReceipt"
+              }
+            ],
+            "readOnly": true
+          },
           "register": {
             "format": "uuid",
             "type": "string"
@@ -9134,6 +9203,7 @@
           "operator",
           "operator_shift",
           "operator_username",
+          "receipt",
           "register",
           "register_code",
           "register_session",
@@ -10885,14 +10955,16 @@
         "type": "string"
       },
       "ProviderTypeEnum": {
-        "description": "* `DHA_HIE` - DHA Health Information Exchange\n* `DHA_HWR` - DHA Health Worker Registry\n* `PPB_PREMISES` - PPB Premises Registry\n* `PPB_PRODUCT_REGISTER` - PPB Product Register\n* `PPB_REGULATORY_ALERTS` - PPB Regulatory Alerts\n* `PPB_RECALLS` - PPB Product Recalls",
+        "description": "* `DHA_HIE` - DHA Health Information Exchange\n* `DHA_HWR` - DHA Health Worker Registry\n* `PPB_PREMISES` - PPB Premises Registry\n* `PPB_PRODUCT_REGISTER` - PPB Product Register\n* `PPB_REGULATORY_ALERTS` - PPB Regulatory Alerts\n* `PPB_RECALLS` - PPB Product Recalls\n* `SHA_INSURER` - SHA / approved insurer\n* `MPESA` - Safaricom M-PESA",
         "enum": [
           "DHA_HIE",
           "DHA_HWR",
           "PPB_PREMISES",
           "PPB_PRODUCT_REGISTER",
           "PPB_REGULATORY_ALERTS",
-          "PPB_RECALLS"
+          "PPB_RECALLS",
+          "SHA_INSURER",
+          "MPESA"
         ],
         "type": "string"
       },
@@ -11250,10 +11322,11 @@
         "type": "string"
       },
       "QualityStatusEnum": {
-        "description": "* `PENDING_INSPECTION` - Pending Inspection\n* `QUARANTINED` - Quarantined\n* `RELEASED` - Released\n* `REJECTED` - Rejected\n* `RETURN_PENDING` - Return Pending\n* `RETURNED` - Returned\n* `DESTROYED` - Destroyed",
+        "description": "* `PENDING_INSPECTION` - Pending Inspection\n* `QUARANTINED` - Quarantined\n* `PARTIALLY_RELEASED` - Partially Released\n* `RELEASED` - Released\n* `REJECTED` - Rejected\n* `RETURN_PENDING` - Return Pending\n* `RETURNED` - Returned\n* `DESTROYED` - Destroyed",
         "enum": [
           "PENDING_INSPECTION",
           "QUARANTINED",
+          "PARTIALLY_RELEASED",
           "RELEASED",
           "REJECTED",
           "RETURN_PENDING",
@@ -12424,6 +12497,107 @@
         ],
         "type": "object"
       },
+      "RequestInput": {
+        "properties": {
+          "app_version": {
+            "default": "",
+            "maxLength": 40,
+            "type": "string"
+          },
+          "branch_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "business_justification": {
+            "maxLength": 2000,
+            "minLength": 10,
+            "type": "string"
+          },
+          "device_fingerprint": {
+            "maxLength": 255,
+            "minLength": 16,
+            "type": "string"
+          },
+          "device_id": {
+            "maxLength": 120,
+            "type": "string"
+          },
+          "device_name": {
+            "maxLength": 160,
+            "type": "string"
+          },
+          "device_type": {
+            "$ref": "#/components/schemas/DeviceTypeEnum"
+          },
+          "requested_register": {
+            "maxLength": 120,
+            "type": "string"
+          },
+          "tenant_id": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "branch_id",
+          "business_justification",
+          "device_fingerprint",
+          "device_id",
+          "device_name",
+          "device_type",
+          "requested_register"
+        ],
+        "type": "object"
+      },
+      "RetailCashReceipt": {
+        "properties": {
+          "amount": {
+            "type": "string"
+          },
+          "cash_received": {
+            "type": "string"
+          },
+          "change_due": {
+            "type": "string"
+          },
+          "currency": {
+            "maxLength": 3,
+            "type": "string"
+          },
+          "disclaimer": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "lines_snapshot": {},
+          "print_job": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "receipt_number": {
+            "maxLength": 32,
+            "type": "string"
+          },
+          "settled_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "tender_type": {
+            "description": "Cash-only receipt; this value is always CASH.",
+            "readOnly": true,
+            "type": "string"
+          },
+          "totals_snapshot": {}
+        },
+        "required": [
+          "amount",
+          "cash_received",
+          "change_due",
+          "disclaimer",
+          "print_job",
+          "tender_type"
+        ],
+        "type": "object"
+      },
       "RiskCategoryEnum": {
         "description": "* `LOW` - Low Risk\n* `MEDIUM` - Medium Risk\n* `HIGH` - High Risk\n* `CRITICAL` - Critical Risk",
         "enum": [
@@ -13430,6 +13604,16 @@
           "HOSPITAL_INTEGRATION",
           "MOBILE",
           "TRANSFERRED"
+        ],
+        "type": "string"
+      },
+      "SourceEnum": {
+        "description": "* `CASH` - Cash at till\n* `CARD_MANUAL` - Manually confirmed card approval\n* `PROVIDER_EVENT` - Provider callback\n* `PROVIDER_QUERY` - Provider status query",
+        "enum": [
+          "CASH",
+          "CARD_MANUAL",
+          "PROVIDER_EVENT",
+          "PROVIDER_QUERY"
         ],
         "type": "string"
       },
@@ -14714,6 +14898,10 @@
       },
       "UserSummary": {
         "properties": {
+          "effective_capabilities": {
+            "readOnly": true,
+            "type": "string"
+          },
           "email": {
             "format": "email",
             "maxLength": 254,
@@ -14731,9 +14919,17 @@
           "is_platform_admin": {
             "type": "boolean"
           },
+          "is_superuser": {
+            "description": "Designates that this user has all permissions without explicitly assigning them.",
+            "title": "Superuser status",
+            "type": "boolean"
+          },
           "last_name": {
             "maxLength": 150,
             "type": "string"
+          },
+          "must_change_password": {
+            "type": "boolean"
           },
           "tenant_id": {
             "format": "uuid",
@@ -14749,6 +14945,7 @@
           }
         },
         "required": [
+          "effective_capabilities",
           "id",
           "tenant_id",
           "username"
@@ -14833,7 +15030,7 @@
   "info": {
     "description": "Independent pharmacy and healthcare clinical-core API",
     "title": "DawaTrace API",
-    "version": "1.0.0-rc12"
+    "version": "1.0.0-rc28"
   },
   "openapi": "3.0.3",
   "paths": {
@@ -17680,6 +17877,27 @@
         ]
       }
     },
+    "/api/identity/password/change/": {
+      "post": {
+        "operationId": "identity_password_change_create",
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "identity"
+        ]
+      }
+    },
     "/api/identity/password/forgot/": {
       "post": {
         "description": "Start a password reset. Always answers the same way.",
@@ -20367,6 +20585,28 @@
         ]
       }
     },
+    "/api/medicines/government-catalogue/bulk-selection/": {
+      "post": {
+        "description": "Preview or atomically select many universal catalogue products.\n\nCSV parsing happens in HQ so no spreadsheet needs to be stored server-side.\nThis boundary receives only the exact master codes and still repeats all\nauthoritative checks before it writes a tenant selection.",
+        "operationId": "medicines_government_catalogue_bulk_selection_create",
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "medicines"
+        ]
+      }
+    },
     "/api/medicines/government-catalogue/{id}/selection/": {
       "delete": {
         "operationId": "medicines_government_catalogue_selection_destroy",
@@ -20567,6 +20807,59 @@
               }
             },
             "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "medicines"
+        ]
+      }
+    },
+    "/api/medicines/initial-setup/": {
+      "get": {
+        "operationId": "medicines_initial_setup_retrieve",
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "medicines"
+        ]
+      }
+    },
+    "/api/medicines/initial-setup/{id}/review/": {
+      "post": {
+        "operationId": "medicines_initial_setup_review_create",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
           }
         },
         "security": [
@@ -28363,7 +28656,7 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "$ref": "#/components/schemas/PaymentTender"
+                    "$ref": "#/components/schemas/PaymentSettlement"
                   },
                   "type": "array"
                 }
@@ -28405,7 +28698,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PaymentTender"
+                  "$ref": "#/components/schemas/PaymentSettlement"
                 }
               }
             },
@@ -28444,17 +28737,17 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/PaymentTender"
+                "$ref": "#/components/schemas/PaymentSettlement"
               }
             },
             "application/x-www-form-urlencoded": {
               "schema": {
-                "$ref": "#/components/schemas/PaymentTender"
+                "$ref": "#/components/schemas/PaymentSettlement"
               }
             },
             "multipart/form-data": {
               "schema": {
-                "$ref": "#/components/schemas/PaymentTender"
+                "$ref": "#/components/schemas/PaymentSettlement"
               }
             }
           }
@@ -28464,7 +28757,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PaymentTender"
+                  "$ref": "#/components/schemas/PaymentSettlement"
                 }
               }
             },
@@ -28995,6 +29288,66 @@
     "/api/pos/retail/transactions/{id}/cancel/": {
       "post": {
         "operationId": "pos_retail_transactions_cancel_create",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this pos transaction.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PosTransaction"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PosTransaction"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/PosTransaction"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PosTransaction"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "pos"
+        ]
+      }
+    },
+    "/api/pos/retail/transactions/{id}/cash-settle/": {
+      "post": {
+        "operationId": "pos_retail_transactions_cash_settle_create",
         "parameters": [
           {
             "description": "A UUID string identifying this pos transaction.",
@@ -33035,6 +33388,28 @@
               }
             },
             "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "pricing"
+        ]
+      }
+    },
+    "/api/pricing/prices/import-draft/": {
+      "post": {
+        "description": "Preview or atomically load prices into the editable tenant draft.\n\nThe browser parses CSV locally and submits structured rows, so files\ncontaining commercial data are never persisted merely for an import.\nThe service still validates every row against the tenant SKU catalogue\nand never writes to an active price-book version.",
+        "operationId": "pricing_prices_import_draft_create",
+        "responses": {
+          "200": {
+            "description": "No response body"
           }
         },
         "security": [
@@ -39591,6 +39966,556 @@
         ],
         "tags": [
           "terminology"
+        ]
+      }
+    },
+    "/api/v1/platform/pos-activations/requests/": {
+      "get": {
+        "operationId": "v1_platform_pos_activations_requests_list",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RequestInput"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "v1"
+        ]
+      },
+      "post": {
+        "operationId": "v1_platform_pos_activations_requests_create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestInput"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestInput"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestInput"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "v1"
+        ]
+      }
+    },
+    "/api/v1/platform/pos-activations/requests/validate/": {
+      "post": {
+        "description": "Re-check durable approval and revocation; never trust the client DTO.",
+        "operationId": "v1_platform_pos_activations_requests_validate_create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestInput"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestInput"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestInput"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "v1"
+        ]
+      }
+    },
+    "/api/v1/platform/pos-activations/requests/{id}/approve/": {
+      "post": {
+        "operationId": "v1_platform_pos_activations_requests_approve_create",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this pos activation request.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestInput"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestInput"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestInput"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "v1"
+        ]
+      }
+    },
+    "/api/v1/platform/pos-activations/requests/{id}/enrol/": {
+      "post": {
+        "operationId": "v1_platform_pos_activations_requests_enrol_create",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this pos activation request.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestInput"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestInput"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestInput"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "v1"
+        ]
+      }
+    },
+    "/api/v1/platform/pos-activations/requests/{id}/reject/": {
+      "post": {
+        "operationId": "v1_platform_pos_activations_requests_reject_create",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this pos activation request.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestInput"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestInput"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestInput"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "v1"
+        ]
+      }
+    },
+    "/api/v1/platform/pos-activations/requests/{id}/revoke/": {
+      "post": {
+        "operationId": "v1_platform_pos_activations_requests_revoke_create",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this pos activation request.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestInput"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestInput"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestInput"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "v1"
+        ]
+      }
+    },
+    "/api/v1/tenant/pos-activations/requests/": {
+      "get": {
+        "operationId": "v1_tenant_pos_activations_requests_list",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RequestInput"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "v1"
+        ]
+      },
+      "post": {
+        "operationId": "v1_tenant_pos_activations_requests_create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestInput"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestInput"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestInput"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "v1"
+        ]
+      }
+    },
+    "/api/v1/tenant/pos-activations/requests/validate/": {
+      "post": {
+        "description": "Re-check durable approval and revocation; never trust the client DTO.",
+        "operationId": "v1_tenant_pos_activations_requests_validate_create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestInput"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestInput"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestInput"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "v1"
+        ]
+      }
+    },
+    "/api/v1/tenant/pos-activations/requests/{id}/enrol/": {
+      "post": {
+        "operationId": "v1_tenant_pos_activations_requests_enrol_create",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestInput"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestInput"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestInput"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "v1"
         ]
       }
     }
