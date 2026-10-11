@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
-import { loadLegacySetup, saveLegacySetupReview } from './api.js';
+import { loadGovernmentCatalogue, loadLegacySetup, saveLegacySetupReview } from './api.js';
+import type { GovernmentCatalogueMedicine } from './api.js';
 import type { LegacySetupItem, LegacySetupPage, LegacySetupReview } from './api.js';
 import './legacyItemSetup.css';
 
@@ -96,7 +97,7 @@ function ItemDetails({ item, csrfToken, onCancel, onSaved }: { readonly item: Le
       <label>Physical count date<input type="date" value={review.counted_on ?? ''} onChange={(e) => edit('counted_on', e.target.value)} /></label>
       <label>Reviewed national medicine code<input value={review.master_catalogue_code ?? ''} placeholder="Confirm exact product in national catalogue" maxLength={120} onChange={(e) => edit('master_catalogue_code', e.target.value)} /><small>For medicines. A similar name alone is not a confirmed match.</small></label>
       <label>Actual manufacturer barcode (optional)<input value={review.barcode ?? ''} maxLength={100} onChange={(e) => edit('barcode', e.target.value)} /><small>Leave blank if none. Name and internal code lookup can be used after activation.</small></label>
-    </div><div className="legacy-batches"><h4>Actual opening-stock batches</h4><p>Split the physical count by batch. Quantities are in the confirmed sales unit. Do not copy a guessed batch number or expiry.</p>
+    </div><ReferenceSearch sourceName={item.source_name} onChoose={(code) => edit('master_catalogue_code', code)} /><div className="legacy-batches"><h4>Actual opening-stock batches</h4><p>Split the physical count by batch. Quantities are in the confirmed sales unit. Do not copy a guessed batch number or expiry.</p>
       {batches.map((batch, index) => <div className="legacy-batch" key={index}>
         <label>Batch number<input required maxLength={120} value={batch.batch_number} onChange={(e) => setReview((r) => ({ ...r, batches: batches.map((b, i) => i === index ? { ...b, batch_number: e.target.value } : b) }))} /></label>
         <label>Expiry date<input required type="date" value={batch.expiry_date} onChange={(e) => setReview((r) => ({ ...r, batches: batches.map((b, i) => i === index ? { ...b, expiry_date: e.target.value } : b) }))} /></label>
@@ -107,4 +108,23 @@ function ItemDetails({ item, csrfToken, onCancel, onSaved }: { readonly item: Le
       <label className="legacy-exclude"><input type="checkbox" checked={review.excluded ?? false} onChange={(e) => setReview((r) => ({ ...r, excluded: e.target.checked }))} />Exclude from initial setup (source record retained)</label>
       {error && <p role="alert" className="legacy-error">{error}</p>}<footer className="legacy-actions"><button className="secondary-button" type="button" onClick={onCancel}>Cancel</button><button className="primary-button" type="submit">{busy ? 'Saving…' : 'Save setup details'}</button></footer>
     </fieldset></form></section>;
+}
+
+function ReferenceSearch({ sourceName, onChoose }: { readonly sourceName: string; readonly onChoose: (code: string) => void }) {
+  const [query, setQuery] = useState(sourceName.split(/\s+/)[0] ?? '');
+  const [rows, setRows] = useState<readonly GovernmentCatalogueMedicine[] | null>(null);
+  const [total, setTotal] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const find = async () => {
+    if (!query.trim()) return;
+    setBusy(true); setError('');
+    try { const page = await loadGovernmentCatalogue({ query, pageSize: 25 }); setRows(page.results); setTotal(page.count); }
+    catch (err: unknown) { setError(err instanceof Error ? err.message : 'Could not search the national catalogue.'); }
+    finally { setBusy(false); }
+  };
+  return <div className="legacy-reference"><h4>Find a national reference</h4><p>Search by brand, generic name or exact eTCD code. Compare strength, form and manufacturer against the actual pack. These are reference candidates, not proof of licence status or automatic product matches.</p>
+    <div className="legacy-tools"><label>Reference search<input type="search" value={query} onChange={(e) => setQuery(e.target.value)} /></label><button type="button" className="secondary-button" disabled={busy || !query.trim()} onClick={() => { void find(); }}>{busy ? 'Searching…' : 'Search references'}</button></div>
+    {error && <p role="alert" className="legacy-error">{error}</p>}{rows && <><p>{total} reference candidate(s). {total > rows.length ? 'First 25 shown; narrow the search.' : ''}</p><div className="table-scroll"><table><thead><tr><th>Reference</th><th>Generic / brand</th><th>Strength / form</th><th>Manufacturer</th><th>Action</th></tr></thead><tbody>{rows.map((r) => <tr key={r.id}><td>{r.code}</td><td>{r.generic_name}<small className="legacy-code">{r.brand_name}</small></td><td>{r.strength} · {r.dosage_form}</td><td>{r.manufacturer_name || 'Not supplied'}</td><td><button type="button" className="secondary-button" onClick={() => onChoose(r.code)}>Set reference for review</button></td></tr>)}</tbody></table></div></>}
+  </div>;
 }

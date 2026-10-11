@@ -1,25 +1,27 @@
-.legacy-setup { padding: 24px; }
+.legacy-setup { padding: 24px; color: var(--ink, #0f172a); }
 .legacy-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .legacy-heading h2, .legacy-heading h3 { margin: 4px 0 12px; }
-.legacy-explainer { max-width: 1050px; line-height: 1.6; color: #475569; }
+.legacy-explainer { max-width: 1050px; line-height: 1.6; color: var(--muted, #475569); }
 .legacy-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 20px 0; }
-.legacy-stats > div { background: #f1f5f9; border-radius: 10px; padding: 16px; }
-.legacy-stats strong { display: block; font-size: 1.5rem; color: #0f172a; }
-.legacy-stats span { font-size: .82rem; color: #475569; }
+.legacy-stats > div { background: color-mix(in srgb, var(--panel, #fff) 90%, var(--ink, #0f172a) 10%); border-radius: 10px; padding: 16px; }
+.legacy-stats strong { display: block; font-size: 1.5rem; color: var(--ink, #0f172a); }
+.legacy-stats span { font-size: .82rem; color: var(--muted, #475569); }
 .legacy-tools { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; margin-bottom: 18px; }
 .legacy-tools label:first-child { flex: 1; min-width: 240px; }
-.legacy-setup label { display: flex; flex-direction: column; gap: 6px; font-size: .83rem; font-weight: 600; color: #334155; }
-.legacy-setup input:not([type=checkbox]), .legacy-setup select, .legacy-setup textarea { border: 1px solid #cbd5e1; border-radius: 7px; padding: 10px; background: #fff; color: #0f172a; font: inherit; min-width: 0; width: 100%; box-sizing: border-box; }
+.legacy-setup label { display: flex; flex-direction: column; gap: 6px; font-size: .83rem; font-weight: 600; color: var(--ink, #334155); }
+.legacy-setup input:not([type=checkbox]), .legacy-setup select, .legacy-setup textarea { border: 1px solid var(--line, #cbd5e1); border-radius: 7px; padding: 10px; background-color: var(--panel, #fff); color: var(--ink, #0f172a); font: inherit; min-width: 0; width: 100%; box-sizing: border-box; }
+.legacy-setup select { padding-right: 34px; }
 .legacy-setup input:focus, .legacy-setup select:focus, .legacy-setup textarea:focus { outline: 2px solid #0d9488; outline-offset: 2px; }
-.legacy-code { display: block; margin-top: 5px; color: #64748b; font-size: .75rem; }
+.legacy-code { display: block; margin-top: 5px; color: var(--muted, #64748b); font-size: .75rem; }
 .legacy-pagination { display: flex; justify-content: space-between; gap: 16px; align-items: center; margin-top: 16px; font-size: .82rem; }
-.legacy-detail { margin-top: 24px; padding: 24px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 12px; scroll-margin-top: 20px; }
-.legacy-detail p { font-size: .85rem; line-height: 1.6; color: #475569; }
+.legacy-detail { margin-top: 24px; padding: 24px; background: color-mix(in srgb, var(--panel, #fff) 97%, var(--ink, #0f172a) 3%); border: 1px solid var(--line, #cbd5e1); border-radius: 12px; scroll-margin-top: 20px; }
+.legacy-detail p { font-size: .85rem; line-height: 1.6; color: var(--muted, #475569); }
 .legacy-detail fieldset { border: 0; padding: 0; margin: 0; }
 .legacy-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
-.legacy-setup label small { color: #64748b; font-weight: 400; line-height: 1.5; }
+.legacy-setup label small { color: var(--muted, #64748b); font-weight: 400; line-height: 1.5; }
 .legacy-issues { background: #fffbeb; border-radius: 8px; color: #92400e; padding: 14px 14px 14px 32px; font-size: .82rem; line-height: 1.6; }
-.legacy-batches { margin: 24px 0; padding-top: 12px; border-top: 1px solid #cbd5e1; }
+.legacy-batches { margin: 24px 0; padding-top: 12px; border-top: 1px solid var(--line, #cbd5e1); }
+.legacy-reference { margin-top: 24px; padding-top: 12px; border-top: 1px solid var(--line, #cbd5e1); }
 .legacy-batch { display: grid; grid-template-columns: 1.2fr 1fr 1fr auto; gap: 12px; margin: 14px 0; align-items: end; }
 .legacy-setup .legacy-exclude { flex-direction: row; align-items: center; margin-top: 16px; }
 .legacy-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px; }

@@ -39,7 +39,7 @@ it('keeps imported stock separate and allows an auditable partial manager save',
   const [url, options] = fetchMock.mock.calls[1] as [string, RequestInit];
   expect(url).toContain('/item-1/review/');
   expect(options.headers).toMatchObject({ 'X-CSRFToken': 'csrf-test' });
-  expect(JSON.parse(String(options.body))).toEqual({ expected_updated_at: page.results[0].updated_at, review: {
+  expect(JSON.parse(String(options.body))).toEqual({ expected_updated_at: page.results[0]!.updated_at, review: {
     confirmed_price: null, confirmed_cost: null, counted_quantity: null, counted_on: null,
   } });
   expect(container.textContent).toContain('details saved');
