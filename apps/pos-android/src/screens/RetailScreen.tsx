@@ -11,12 +11,13 @@ import {
 import { formatDecimal, formatMoney } from '@dawatrace/shared/money.js';
 import {
   PosRetailClient,
+  retailCashChangeDue,
   type RetailCatalogueItemDTO,
   type RetailTransactionDTO,
   type RetailTransactionLineDTO,
 } from '@dawatrace/shared/retail/index.js';
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { readableColumn } from '../components/tibatrace/layout';
 
@@ -42,6 +43,7 @@ export function RetailScreen({ apiBaseUrl, apiFetch, deviceId }: RetailScreenPro
   const [results, setResults] = useState<readonly RetailCatalogueItemDTO[]>([]);
   const [barcode, setBarcode] = useState('');
   const [query, setQuery] = useState('');
+  const [cashReceived, setCashReceived] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -62,9 +64,9 @@ export function RetailScreen({ apiBaseUrl, apiFetch, deviceId }: RetailScreenPro
 
   const run = async (operation: () => Promise<void>) => {
     setBusy(true);
+    setNotice('');
     try {
       await operation();
-      setNotice('');
     } catch (cause) {
       setNotice(message(cause));
     } finally {
@@ -83,6 +85,7 @@ export function RetailScreen({ apiBaseUrl, apiFetch, deviceId }: RetailScreenPro
       setResults([]);
       setBarcode('');
       setQuery('');
+      setCashReceived('');
     });
   const scan = () =>
     void run(async () => {
@@ -148,6 +151,49 @@ export function RetailScreen({ apiBaseUrl, apiFetch, deviceId }: RetailScreenPro
       }
     });
 
+  const changeDue = transaction
+    ? retailCashChangeDue(transaction.total, cashReceived)
+    : null;
+  const receipt = transaction?.state === 'COMPLETED' ? transaction.receipt : null;
+  const settleCash = () =>
+    void run(async () => {
+      if (!transaction) throw new Error('Start a sale before taking payment.');
+      if (changeDue === null) throw new Error('Enter cash received equal to or greater than the sale total.');
+      const settled = await client.settleCash(transaction.id, {
+        device_id: deviceId,
+        cash_received: cashReceived,
+        idempotency_key: `retail-cash-${transaction.id}`,
+      });
+      setTransaction(settled);
+      if (settled.state === 'DRAFT') {
+        setCashReceived('');
+        setNotice('The price or eligible stock changed. Review the updated basket; no cash or stock was recorded.');
+      }
+    });
+  const cancel = () => {
+    if (!transaction) return;
+    Alert.alert(
+      'Cancel sale?',
+      `Cancel ${transaction.transaction_number}? No cash will be taken.`,
+      [
+        { text: 'Keep sale', style: 'cancel' },
+        {
+          text: 'Cancel sale',
+          style: 'destructive',
+          onPress: () => void run(async () => {
+            if (!transaction) return;
+            setTransaction(
+              await client.cancel(transaction.id, {
+                device_id: deviceId,
+                reason: 'Cancelled by operator at POS',
+              }),
+            );
+          }),
+        },
+      ],
+    );
+  };
+
   const primary = deriveRetailPrimaryAction({
     state: transaction?.state ?? null,
     lineCount: transaction?.lines.length ?? 0,
@@ -157,6 +203,7 @@ export function RetailScreen({ apiBaseUrl, apiFetch, deviceId }: RetailScreenPro
     if (primary.kind === 'START_SALE') start();
     if (primary.kind === 'RESUME_SALE') resume();
     if (primary.kind === 'PREPARE_PAYMENT') preparePayment();
+    if (primary.kind === 'SETTLE_CASH') settleCash();
   };
 
   return (
@@ -284,6 +331,50 @@ export function RetailScreen({ apiBaseUrl, apiFetch, deviceId }: RetailScreenPro
             </View>
           )}
         </Section>
+
+        {transaction?.state === 'READY_FOR_PAYMENT' ? (
+          <Section title="Cash payment">
+            <Text style={styles.sectionHint}>Cash only. Card and M-PESA are not enabled for retail checkout.</Text>
+            <TextInput
+              value={cashReceived}
+              onChangeText={setCashReceived}
+              editable={!busy}
+              keyboardType="decimal-pad"
+              placeholder="Cash received"
+              accessibilityLabel="Cash received"
+              style={styles.input}
+            />
+            <Text style={styles.small}>
+              {changeDue === null
+                ? `Amount due: ${money(transaction.total, transaction.currency)}`
+                : `Change due: ${money(changeDue, transaction.currency)}`}
+            </Text>
+          </Section>
+        ) : null}
+
+        {receipt ? (
+          <Section title={`Internal receipt · ${receipt.receipt_number}`}>
+            {receipt.lines_snapshot.map((line, index) => (
+              <View key={`${line.sku_code}-${index}`} style={styles.receiptLine}>
+                <Text style={styles.resultName}>{line.description}</Text>
+                <Text style={styles.small}>
+                  {line.quantity} {line.unit} × {money(line.unit_price, receipt.currency)}
+                </Text>
+                <Text style={styles.resultPrice}>{money(line.line_total, receipt.currency)}</Text>
+              </View>
+            ))}
+            <Text style={styles.small}>Cash received: {money(receipt.cash_received, receipt.currency)}</Text>
+            <Text style={styles.small}>Change returned: {money(receipt.change_due, receipt.currency)}</Text>
+            <Text style={styles.small}>
+              {receipt.print_job?.transport === 'SIMULATOR'
+                ? 'Print job queued for the simulator; no physical print is confirmed.'
+                : receipt.print_job
+                  ? `Print job: ${receipt.print_job.status.toLowerCase().replace(/_/g, ' ')}.`
+                  : 'The internal receipt is saved; its print job could not be queued.'}
+            </Text>
+            <Text style={styles.receiptDisclaimer}>{receipt.disclaimer}</Text>
+          </Section>
+        ) : null}
       </ScrollView>
 
       <View style={styles.footer}>
@@ -305,12 +396,23 @@ export function RetailScreen({ apiBaseUrl, apiFetch, deviceId }: RetailScreenPro
               <Text style={styles.secondaryText}>Hold</Text>
             </Pressable>
           ) : null}
+          {transaction && ['DRAFT', 'HELD', 'READY_FOR_PAYMENT'].includes(transaction.state) ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Cancel sale"
+              disabled={busy}
+              onPress={cancel}
+              style={({ pressed }) => [styles.secondary, pressed && styles.pressed]}
+            >
+              <Text style={styles.secondaryText}>Cancel</Text>
+            </Pressable>
+          ) : null}
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={primary.label}
             accessibilityHint={primary.detail}
             accessibilityState={{ disabled: busy || !primary.enabled }}
-            disabled={busy || !primary.enabled}
+            disabled={busy || !primary.enabled || (primary.kind === 'SETTLE_CASH' && changeDue === null)}
             onPress={performPrimaryAction}
             style={({ pressed }) => [
               styles.primary,
@@ -510,6 +612,8 @@ const styles = StyleSheet.create({
   },
   lineInfo: { flex: 1, gap: 2 },
   lineControls: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  receiptLine: { paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: surface.border, gap: 2 },
+  receiptDisclaimer: { color: text.secondary, fontSize: fontSize.caption, fontStyle: 'italic', marginTop: spacing.xs },
   quantityButton: {
     minWidth: controlSize.touchTarget,
     minHeight: controlSize.touchTarget,

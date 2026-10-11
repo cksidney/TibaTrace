@@ -9,6 +9,7 @@ from apps.pos_transactions.models import (
     PosTransaction,
     PosTransactionInventoryContext,
     PosTransactionLine,
+    RetailCashReceipt,
 )
 
 
@@ -47,6 +48,39 @@ class PosTransactionLineSerializer(serializers.ModelSerializer):
         ]
 
 
+class RetailCashReceiptSerializer(serializers.ModelSerializer):
+    amount = MoneyField()
+    cash_received = MoneyField()
+    change_due = MoneyField()
+    disclaimer = serializers.SerializerMethodField()
+    print_job = serializers.SerializerMethodField()
+
+    class Meta:
+        model = RetailCashReceipt
+        fields = [
+            "receipt_number", "tender_type", "amount", "cash_received", "change_due", "currency",
+            "lines_snapshot", "totals_snapshot", "settled_at", "disclaimer", "print_job",
+        ]
+
+    @staticmethod
+    def get_disclaimer(_receipt):
+        return "Internal sales receipt — not a fiscal/eTIMS receipt."
+
+    @staticmethod
+    def get_print_job(receipt):
+        from apps.prescription.pos_printing_models import PosPrintDocument, PosPrintJob
+
+        job = PosPrintJob.all_objects.filter(
+            tenant_id=receipt.tenant_id,
+            document__document_number=receipt.receipt_number,
+            document__document_type=PosPrintDocument.DocumentType.RETAIL_RECEIPT,
+            copy_classification=PosPrintJob.CopyClassification.ORIGINAL,
+        ).values("id", "status", "transport").first()
+        if job is None:
+            return None
+        return {"id": str(job["id"]), "status": job["status"], "transport": job["transport"]}
+
+
 class PosTransactionSerializer(serializers.ModelSerializer):
     subtotal = MoneyField()
     discount_total = MoneyField()
@@ -56,6 +90,7 @@ class PosTransactionSerializer(serializers.ModelSerializer):
     register_code = serializers.CharField(source="register.code", read_only=True)
     operator_username = serializers.CharField(source="operator.username", read_only=True)
     lines = PosTransactionLineSerializer(many=True, read_only=True)
+    receipt = RetailCashReceiptSerializer(source="cash_receipt", read_only=True)
 
     class Meta:
         model = PosTransaction
@@ -64,7 +99,7 @@ class PosTransactionSerializer(serializers.ModelSerializer):
             "store", "register", "register_code", "register_session", "operator_shift",
             "business_day", "operator", "operator_username", "device_id", "customer", "patient",
             "currency", "subtotal", "discount_total", "tax_total", "total", "hold_reason",
-            "held_at", "cancelled_at", "cancellation_reason", "created_at", "updated_at", "lines",
+            "held_at", "cancelled_at", "cancellation_reason", "created_at", "updated_at", "lines", "receipt",
         ]
 
 
@@ -109,6 +144,13 @@ class RemoveLineRequestSerializer(serializers.Serializer):
 
 class DeviceActionRequestSerializer(serializers.Serializer):
     device_id = serializers.CharField(max_length=128)
+
+
+class CashSettlementRequestSerializer(serializers.Serializer):
+    device_id = serializers.CharField(max_length=128)
+    cash_received = serializers.DecimalField(max_digits=15, decimal_places=2, min_value=Decimal("0.01"))
+    idempotency_key = serializers.CharField(max_length=255, allow_blank=False, trim_whitespace=True)
+    tender_type = serializers.ChoiceField(choices=(("CASH", "Cash"),), default="CASH")
 
 
 class HoldRequestSerializer(DeviceActionRequestSerializer):

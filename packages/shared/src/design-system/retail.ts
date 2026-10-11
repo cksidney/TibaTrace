@@ -9,6 +9,7 @@ export type RetailPrimaryActionKind =
   | 'START_SALE'
   | 'RESUME_SALE'
   | 'PREPARE_PAYMENT'
+  | 'SETTLE_CASH'
   | 'NONE';
 
 export interface RetailPrimaryAction {
@@ -72,19 +73,19 @@ export function deriveRetailPrimaryAction({
 
   if (state === 'READY_FOR_PAYMENT') {
     return {
-      kind: 'NONE',
-      label: 'Settlement required',
-      detail: 'Retail settlement is not available in this POS pilot.',
-      enabled: false,
+      kind: 'SETTLE_CASH',
+      label: 'Settle cash payment',
+      detail: 'Cash only. Card and M-PESA settlement remain unavailable.',
+      enabled: true,
     };
   }
 
-  if (state === 'CANCELLED') {
+  if (state === 'CANCELLED' || state === 'COMPLETED' || state === 'PAID') {
     return {
-      kind: 'NONE',
-      label: 'Sale cancelled',
-      detail: 'Start a new sale to continue serving the customer.',
-      enabled: false,
+      kind: 'START_SALE',
+      label: 'Start new sale',
+      detail: 'Open a fresh register-bound basket.',
+      enabled: hasStore,
     };
   }
 

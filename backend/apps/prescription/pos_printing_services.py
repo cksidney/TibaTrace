@@ -73,6 +73,90 @@ class PosPrintDocumentService:
 
     @classmethod
     @transaction.atomic
+    def issue_retail_receipt(
+        cls,
+        *,
+        transaction_record,
+        receipt,
+        actor,
+        printer="",
+        transport=PosPrintJob.Transport.SIMULATOR,
+    ):
+        """Queue an immutable retail receipt without coupling it to dispensing."""
+        if receipt.tenant_id != transaction_record.tenant_id or receipt.transaction_id != transaction_record.pk:
+            raise ValidationError("Retail receipt does not belong to this transaction.")
+        if transaction_record.state != "COMPLETED":
+            raise ValidationError("A retail receipt may be queued only after cash settlement completed.")
+
+        existing = PosPrintDocument.all_objects.filter(
+            tenant_id=receipt.tenant_id,
+            document_number=receipt.receipt_number,
+            document_type=PosPrintDocument.DocumentType.RETAIL_RECEIPT,
+        ).first()
+        if existing:
+            job = PosPrintJob.all_objects.filter(
+                tenant_id=receipt.tenant_id,
+                document=existing,
+                copy_classification=PosPrintJob.CopyClassification.ORIGINAL,
+            ).first()
+            return existing, job, True
+
+        snapshot = {
+            "document_type": PosPrintDocument.DocumentType.RETAIL_RECEIPT,
+            "document_number": receipt.receipt_number,
+            "issued_at": receipt.settled_at.isoformat(),
+            "tenant_id": str(receipt.tenant_id),
+            "branch_id": str(transaction_record.branch_id),
+            "transaction_id": str(transaction_record.pk),
+            "transaction_number": transaction_record.transaction_number,
+            "register_session_id": str(transaction_record.register_session_id),
+            "lines": receipt.lines_snapshot,
+            "totals": receipt.totals_snapshot,
+            "payment": {
+                "tender_type": "CASH",
+                "amount": str(receipt.amount),
+                "cash_received": str(receipt.cash_received),
+                "change_due": str(receipt.change_due),
+                "currency": receipt.currency,
+            },
+            "disclaimer": "Internal sales receipt — not a fiscal/eTIMS receipt.",
+        }
+        document = PosPrintDocument.all_objects.create(
+            tenant_id=receipt.tenant_id,
+            document_type=PosPrintDocument.DocumentType.RETAIL_RECEIPT,
+            document_number=receipt.receipt_number,
+            snapshot=snapshot,
+            document_hash=_hash_snapshot(snapshot),
+            register_session=transaction_record.register_session,
+            created_by=actor,
+        )
+        job = PosPrintJob.all_objects.create(
+            tenant_id=receipt.tenant_id,
+            document=document,
+            branch=transaction_record.branch,
+            device_id=transaction_record.device_id,
+            printer=printer,
+            transport=transport,
+            copy_classification=PosPrintJob.CopyClassification.ORIGINAL,
+            copy_number=1,
+            requested_by=actor,
+            idempotency_key=f"receipt-original:{receipt.pk}",
+        )
+        emit_event(
+            tenant_id=str(receipt.tenant_id),
+            aggregate_type="PosPrintDocument",
+            aggregate_id=str(document.pk),
+            event_type="POS_RETAIL_RECEIPT_QUEUED",
+            payload={
+                "document_number": document.document_number,
+                "print_job_id": str(job.pk),
+                "transaction_id": str(transaction_record.pk),
+            },
+        )
+        return document, job, False
+
+    @classmethod
+    @transaction.atomic
     def issue_receipt_for_settlement(cls, *, episode, settlement, actor, printer="", transport=PosPrintJob.Transport.SIMULATOR):
         episode = episode.__class__.all_objects.select_for_update().select_related(
             "tenant", "patient", "prescription", "branch"

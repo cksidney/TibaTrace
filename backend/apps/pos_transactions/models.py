@@ -5,8 +5,9 @@ from decimal import Decimal
 
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.utils import timezone
 
-from apps.core.models import StrictTenantManager, TenantConsistencyMixin, TimestampedModel
+from apps.core.models import StrictTenantManager, StrictTenantQuerySet, TenantConsistencyMixin, TimestampedModel
 
 MONEY = {"max_digits": 15, "decimal_places": 2}
 QUANTITY = {"max_digits": 15, "decimal_places": 4}
@@ -97,6 +98,8 @@ class PosTransaction(TenantConsistencyMixin, TimestampedModel):
                 .values(
                     "state", "branch_id", "store_id", "register_id", "register_session_id",
                     "operator_shift_id", "business_day_id", "operator_id", "device_id",
+                    "customer_id", "patient_id", "channel", "currency",
+                    "subtotal", "discount_total", "tax_total", "total",
                 )
                 .first()
             )
@@ -104,10 +107,37 @@ class PosTransaction(TenantConsistencyMixin, TimestampedModel):
                 context = (
                     "branch_id", "store_id", "register_id", "register_session_id",
                     "operator_shift_id", "business_day_id", "operator_id", "device_id",
+                    "customer_id", "patient_id", "channel", "currency",
                 )
                 if any(getattr(self, field) != existing[field] for field in context):
                     raise ValidationError("A paid POS transaction cannot move to another register context.")
+                if self.state != existing["state"]:
+                    raise ValidationError("A completed POS transaction cannot be reopened or reclassified.")
+                financial = ("subtotal", "discount_total", "tax_total", "total")
+                if any(getattr(self, field) != existing[field] for field in financial):
+                    raise ValidationError("A completed POS transaction total is immutable.")
         return super().save(*args, **kwargs)
+
+
+class PosTransactionLineQuerySet(StrictTenantQuerySet):
+    EDITABLE_STATES = ("DRAFT", "HELD")
+
+    def _ensure_editable(self):
+        if self.exclude(transaction__state__in=self.EDITABLE_STATES).exists():
+            raise ValidationError("Only draft or held POS transaction lines may be changed.")
+
+    def update(self, **kwargs):
+        self._ensure_editable()
+        return super().update(**kwargs)
+
+    def delete(self):
+        self._ensure_editable()
+        return super().delete()
+
+
+class PosTransactionLineManager(StrictTenantManager):
+    def _base_queryset(self):
+        return PosTransactionLineQuerySet(self.model, using=self._db)
 
 
 class PosTransactionLine(TenantConsistencyMixin, TimestampedModel):
@@ -127,8 +157,8 @@ class PosTransactionLine(TenantConsistencyMixin, TimestampedModel):
     price_snapshot = models.JSONField(default=dict)
     scan_source = models.CharField(max_length=20, default="SEARCH")
 
-    objects = StrictTenantManager()
-    all_objects = models.Manager()
+    objects = PosTransactionLineManager()
+    all_objects = models.Manager.from_queryset(PosTransactionLineQuerySet)()
 
     class Meta:
         constraints = [
@@ -145,6 +175,82 @@ class PosTransactionLine(TenantConsistencyMixin, TimestampedModel):
         }:
             raise ValidationError("Only draft or held POS transaction lines may be changed.")
         return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        if self.transaction.state not in {PosTransaction.State.DRAFT, PosTransaction.State.HELD}:
+            raise ValidationError("Only draft or held POS transaction lines may be changed.")
+        return super().delete(*args, **kwargs)
+
+
+def retail_receipt_number() -> str:
+    return f"RCP-{uuid.uuid4().hex[:18].upper()}"
+
+
+class RetailCashReceiptQuerySet(StrictTenantQuerySet):
+    def update(self, **kwargs):
+        raise ValidationError("Retail cash receipts are immutable.")
+
+    def delete(self):
+        raise ValidationError("Retail cash receipts are immutable and cannot be deleted.")
+
+
+class RetailCashReceiptManager(StrictTenantManager):
+    def _base_queryset(self):
+        return RetailCashReceiptQuerySet(self.model, using=self._db)
+
+
+class RetailCashReceipt(TenantConsistencyMixin, TimestampedModel):
+    """Immutable evidence of cash received for a completed retail transaction."""
+
+    tenant_relation_fields = ("transaction", "created_by")
+
+    tenant = models.ForeignKey("tenancy.Tenant", on_delete=models.CASCADE, related_name="retail_cash_receipts")
+    transaction = models.OneToOneField(
+        PosTransaction, on_delete=models.PROTECT, related_name="cash_receipt"
+    )
+    receipt_number = models.CharField(max_length=32, default=retail_receipt_number)
+    tender_type = models.CharField(max_length=12, choices=(("CASH", "Cash"),), default="CASH")
+    amount = models.DecimalField(**MONEY)
+    cash_received = models.DecimalField(**MONEY)
+    change_due = models.DecimalField(**MONEY)
+    currency = models.CharField(max_length=3, default="KES")
+    lines_snapshot = models.JSONField(default=list)
+    totals_snapshot = models.JSONField(default=dict)
+    idempotency_key = models.CharField(max_length=255)
+    settled_at = models.DateTimeField(default=timezone.now)
+    created_by = models.ForeignKey("identity.User", on_delete=models.PROTECT, related_name="+")
+
+    objects = RetailCashReceiptManager()
+    all_objects = models.Manager.from_queryset(RetailCashReceiptQuerySet)()
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(condition=models.Q(tender_type="CASH"), name="chk_retail_cash_receipt_cash_only"),
+            models.UniqueConstraint(
+                fields=["tenant", "receipt_number"], name="uq_retail_cash_receipt_number"
+            ),
+            models.UniqueConstraint(
+                fields=["tenant", "idempotency_key"], name="uq_retail_cash_receipt_idempotency"
+            ),
+            models.CheckConstraint(condition=models.Q(amount__gt=0), name="chk_retail_cash_receipt_amount_positive"),
+            models.CheckConstraint(
+                condition=models.Q(cash_received__gte=models.F("amount")),
+                name="chk_retail_cash_receipt_tender_covers_total",
+            ),
+            models.CheckConstraint(condition=models.Q(change_due__gte=0), name="chk_retail_cash_receipt_change_nonneg"),
+            models.CheckConstraint(
+                condition=models.Q(change_due=models.F("cash_received") - models.F("amount")),
+                name="chk_retail_cash_receipt_change_matches",
+            ),
+        ]
+
+    def save(self, *args, **kwargs):
+        if self.pk and RetailCashReceipt.all_objects.filter(tenant_id=self.tenant_id, pk=self.pk).exists():
+            raise ValidationError("Retail cash receipts are immutable.")
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("Retail cash receipts are immutable and cannot be deleted.")
 
 
 class PosTransactionInventoryContext(TenantConsistencyMixin, TimestampedModel):

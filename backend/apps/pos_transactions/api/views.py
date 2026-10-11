@@ -17,6 +17,7 @@ from apps.tenancy.models import Tenant
 from .serializers import (
     AddLineRequestSerializer,
     CancelRequestSerializer,
+    CashSettlementRequestSerializer,
     CatalogueSearchRequestSerializer,
     CreateDraftRequestSerializer,
     DeviceActionRequestSerializer,
@@ -76,7 +77,7 @@ class PosTransactionViewSet(viewsets.ReadOnlyModelViewSet):
         return (
             PosTransaction.all_objects.filter(tenant_id=tenant_id)
             .select_related("branch", "store", "register", "register_session", "operator_shift", "business_day", "operator")
-            .prefetch_related("lines__sku__package_definition", "lines__inventory_context")
+            .prefetch_related("lines__sku__package_definition", "lines__inventory_context", "cash_receipt")
             .order_by("-created_at")
         )
 
@@ -202,6 +203,23 @@ class PosTransactionViewSet(viewsets.ReadOnlyModelViewSet):
             lambda: PosRetailService.ready_for_payment(
                 tenant=_tenant(request), transaction_id=pk, actor=request.user,
                 device_id=serializer.validated_data["device_id"],
+            )
+        )
+        return Response(PosTransactionSerializer(transaction_record).data)
+
+    @action(detail=True, methods=["post"], url_path="cash-settle")
+    def cash_settle(self, request, pk=None):
+        serializer = CashSettlementRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        transaction_record = _run(
+            lambda: PosRetailService.settle_cash(
+                tenant=_tenant(request),
+                transaction_id=pk,
+                actor=request.user,
+                device_id=data["device_id"],
+                cash_received=data["cash_received"],
+                idempotency_key=data["idempotency_key"],
             )
         )
         return Response(PosTransactionSerializer(transaction_record).data)

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
+from datetime import timedelta
 from decimal import Decimal
 
 from django.core.exceptions import PermissionDenied, ValidationError
@@ -8,13 +10,23 @@ from django.db import transaction
 from django.db.models import Q, Sum
 from django.utils import timezone
 
-from apps.inventory.models import BarcodeMaster, InventoryBalance, InventoryBatch, InventoryLocation
+from apps.inventory.models import (
+    BarcodeMaster,
+    InventoryBalance,
+    InventoryBatch,
+    InventoryLedgerEntry,
+    InventoryLocation,
+)
+from apps.inventory.services import FEFOAllocationService, InventoryLedgerService
 from apps.medicines.models import BranchAssortment, CommercialSKU, ProductIdentifier
 from apps.pos_shift.authority import RegisterAuthority, RegisterAuthorityService
 from apps.pricing.catalogue import PriceCatalogue
 from apps.pricing.resolution import PricingContext, PricingError, money
+from apps.workflows.service import emit_event
 
-from .models import PosTransaction, PosTransactionInventoryContext, PosTransactionLine
+from .models import PosTransaction, PosTransactionInventoryContext, PosTransactionLine, RetailCashReceipt
+
+logger = logging.getLogger(__name__)
 
 
 def _require(actor, tenant_id, capability: str) -> None:
@@ -86,16 +98,14 @@ class PosRetailService:
                 branch=branch,
                 location=store,
                 sku=sku,
+                inventory_batch__isnull=False,
                 available__gt=0,
                 expiry_status="NORMAL",
             )
             .filter(
-                Q(inventory_batch__isnull=True)
-                | Q(
-                    inventory_batch__quality_status=InventoryBatch.QualityStatus.RELEASED,
-                    inventory_batch__recall_status=InventoryBatch.RecallStatus.NONE,
-                    inventory_batch__expiry_date__gt=timezone.localdate(),
-                )
+                inventory_batch__quality_status=InventoryBatch.QualityStatus.RELEASED,
+                inventory_batch__recall_status=InventoryBatch.RecallStatus.NONE,
+                inventory_batch__expiry_date__gt=timezone.localdate(),
             )
             .aggregate(total=Sum("available"))["total"]
             or Decimal("0.0000")
@@ -388,7 +398,7 @@ class PosRetailService:
     @transaction.atomic
     def cancel(cls, *, tenant, transaction_id, actor, device_id: str, reason: str):
         _require(actor, tenant.pk, "pos.transaction.cancel")
-        transaction_record, authority = cls._editable_transaction(
+        transaction_record, authority = cls._cancelable_transaction(
             tenant=tenant, transaction_id=transaction_id, actor=actor, device_id=device_id
         )
         if not reason.strip():
@@ -404,7 +414,7 @@ class PosRetailService:
     @classmethod
     @transaction.atomic
     def ready_for_payment(cls, *, tenant, transaction_id, actor, device_id: str):
-        _require(actor, tenant.pk, "pos.payment.accept")
+        _require(actor, tenant.pk, "pos.payment.cash.accept")
         transaction_record, authority = cls._editable_transaction(
             tenant=tenant, transaction_id=transaction_id, actor=actor, device_id=device_id
         )
@@ -412,7 +422,7 @@ class PosRetailService:
             PosTransactionLine.all_objects.filter(
                 tenant=tenant,
                 transaction=transaction_record,
-            ).select_related("sku")
+            ).select_for_update().select_related("sku", "sku__package_definition")
         )
         if not lines:
             raise ValidationError("A POS transaction needs at least one line before payment.")
@@ -426,9 +436,270 @@ class PosRetailService:
                 customer=transaction_record.customer,
             )
             cls._require_stock(item=item, sku=line.sku, quantity=line.quantity)
+            line.unit_price = money(item.resolved_price.unit_price)
+            line.line_total = money(line.unit_price * line.quantity)
+            line.price_snapshot = cls._price_snapshot(item=item, unit_price=line.unit_price)
+            line.save(update_fields=["unit_price", "line_total", "price_snapshot", "updated_at"])
+            cls._update_inventory_context(line=line, item=item, store=transaction_record.store)
+        cls._recalculate(transaction_record)
         transaction_record.state = PosTransaction.State.READY_FOR_PAYMENT
         transaction_record.save(update_fields=["state", "updated_at"])
         return transaction_record
+
+    @classmethod
+    @transaction.atomic
+    def settle_cash(
+        cls,
+        *,
+        tenant,
+        transaction_id,
+        actor,
+        device_id: str,
+        cash_received,
+        idempotency_key: str,
+    ):
+        """Atomically accept cash, issue FEFO stock, and complete a retail sale."""
+        _require(actor, tenant.pk, "pos.payment.cash.accept")
+        key = idempotency_key.strip()
+        if not key:
+            raise ValidationError("A cash settlement idempotency key is required.")
+        received = money(cash_received)
+        transaction_record = (
+            PosTransaction.all_objects.select_for_update()
+            .select_related("branch", "store", "register", "register_session", "operator_shift", "business_day")
+            .filter(tenant=tenant, pk=transaction_id)
+            .first()
+        )
+        if transaction_record is None:
+            raise ValidationError("POS transaction not found.")
+
+        keyed_receipt = RetailCashReceipt.all_objects.filter(tenant=tenant, idempotency_key=key).first()
+        if keyed_receipt and keyed_receipt.transaction_id != transaction_record.pk:
+            raise ValidationError("This idempotency key was already used for another retail sale.")
+        existing_receipt = RetailCashReceipt.all_objects.filter(
+            tenant=tenant, transaction=transaction_record
+        ).first()
+        if existing_receipt is not None:
+            if (
+                existing_receipt.idempotency_key == key
+                and existing_receipt.cash_received == received
+                and existing_receipt.created_by_id == actor.pk
+                and transaction_record.device_id == device_id
+            ):
+                return transaction_record
+            raise ValidationError("This retail sale has already been settled.")
+
+        if transaction_record.state != PosTransaction.State.READY_FOR_PAYMENT:
+            raise ValidationError("Only a sale ready for payment can be settled in cash.")
+        if received <= 0:
+            raise ValidationError("Cash received must be greater than zero.")
+        if transaction_record.store.status != InventoryLocation.Status.ACTIVE:
+            raise ValidationError("The selected retail store is inactive. Cancel this unpaid sale and choose another store.")
+
+        authority = cls._authority(
+            tenant=tenant,
+            branch=transaction_record.branch,
+            actor=actor,
+            device_id=device_id,
+        )
+        expected_context = (
+            ("register", transaction_record.register_id, authority.register.pk),
+            ("register session", transaction_record.register_session_id, authority.session.pk),
+            ("operator shift", transaction_record.operator_shift_id, authority.operator_shift.pk),
+            ("business day", transaction_record.business_day_id, authority.business_day.pk),
+        )
+        if transaction_record.operator_id != actor.pk or transaction_record.device_id != device_id:
+            raise ValidationError("This retail sale belongs to a different operator or device.")
+        for label, actual, expected in expected_context:
+            if actual != expected:
+                raise ValidationError(f"This retail sale belongs to a different {label}.")
+
+        lines = list(
+            PosTransactionLine.all_objects.select_for_update()
+            .select_related("sku", "sku__package_definition")
+            .filter(tenant=tenant, transaction=transaction_record)
+            .order_by("pk")
+        )
+        if not lines:
+            raise ValidationError("A POS transaction needs at least one line before payment.")
+        cls._recalculate(transaction_record)
+        if transaction_record.total <= 0:
+            raise ValidationError("Cash settlement requires a positive sale total.")
+        if received < transaction_record.total:
+            raise ValidationError(
+                f"Cash received ({received}) is less than the sale total ({transaction_record.total})."
+            )
+
+        # If the sellable price changed after the customer-facing payment screen
+        # was prepared, refresh the basket and require the cashier to reconfirm
+        # the new total. No money or stock is recorded on this path.
+        price_changed = False
+        insufficient_stock = False
+        repriced_lines = []
+        for line in lines:
+            item = cls._catalogue_item(
+                tenant=tenant,
+                branch=transaction_record.branch,
+                store=transaction_record.store,
+                sku=line.sku,
+                quantity=line.quantity,
+                customer=transaction_record.customer,
+            )
+            if line.sku.stock_tracking_required and item.available_quantity < line.quantity:
+                insufficient_stock = True
+            current_price = money(item.resolved_price.unit_price)
+            if current_price != line.unit_price:
+                price_changed = True
+                line.unit_price = current_price
+                line.line_total = money(current_price * line.quantity)
+                line.price_snapshot = cls._price_snapshot(item=item, unit_price=current_price)
+                repriced_lines.append(line)
+            cls._update_inventory_context(line=line, item=item, store=transaction_record.store)
+        if price_changed or insufficient_stock:
+            transaction_record.state = PosTransaction.State.DRAFT
+            transaction_record.save(update_fields=["state", "updated_at"])
+            for line in repriced_lines:
+                line.save(update_fields=["unit_price", "line_total", "price_snapshot", "updated_at"])
+            cls._recalculate(transaction_record)
+            return transaction_record
+
+        if transaction_record.currency != authority.register.currency:
+            raise ValidationError("The retail transaction currency does not match the active register.")
+
+        for line in lines:
+            if line.sku.stock_tracking_required:
+                cls._issue_retail_line(
+                    transaction_record=transaction_record,
+                    line=line,
+                    actor=actor,
+                )
+
+        receipt = RetailCashReceipt.all_objects.create(
+            tenant=tenant,
+            transaction=transaction_record,
+            amount=transaction_record.total,
+            cash_received=received,
+            change_due=received - transaction_record.total,
+            currency=transaction_record.currency,
+            lines_snapshot=[
+                {
+                    "sku_code": line.sku.sku_code,
+                    "description": line.description_snapshot,
+                    "quantity": str(line.quantity),
+                    "unit": line.unit,
+                    "unit_price": str(line.unit_price),
+                    "discount_amount": str(line.discount_amount),
+                    "tax_amount": str(line.tax_amount),
+                    "line_total": str(line.line_total),
+                }
+                for line in lines
+            ],
+            totals_snapshot={
+                "subtotal": str(transaction_record.subtotal),
+                "discount_total": str(transaction_record.discount_total),
+                "tax_total": str(transaction_record.tax_total),
+                "total": str(transaction_record.total),
+            },
+            idempotency_key=key,
+            created_by=actor,
+        )
+        transaction_record.state = PosTransaction.State.COMPLETED
+        transaction_record.save(update_fields=["state", "updated_at"])
+        # Queueing is deliberately best-effort: the cash receipt and inventory
+        # ledger are the sale. A printer/queue fault must not collect cash twice
+        # or roll back a sale that has already been settled.
+        try:
+            from apps.prescription.pos_printing_services import PosPrintDocumentService
+
+            with transaction.atomic():
+                PosPrintDocumentService.issue_retail_receipt(
+                    transaction_record=transaction_record,
+                    receipt=receipt,
+                    actor=actor,
+                )
+        except Exception:
+            logger.exception(
+                "Could not queue retail receipt print job.",
+                extra={"tenant_id": str(tenant.pk), "transaction_id": str(transaction_record.pk)},
+            )
+        emit_event(
+            tenant_id=str(tenant.pk),
+            aggregate_type="PosTransaction",
+            aggregate_id=str(transaction_record.pk),
+            event_type="RetailCashSaleCompleted",
+            payload={
+                "receipt_id": str(receipt.pk),
+                "receipt_number": receipt.receipt_number,
+                "register_session_id": str(transaction_record.register_session_id),
+                "total": str(receipt.amount),
+                "currency": receipt.currency,
+                "tender_type": "CASH",
+            },
+        )
+        return transaction_record
+
+    @staticmethod
+    def _price_snapshot(*, item: RetailCatalogueItem, unit_price: Decimal) -> dict:
+        return {
+            "unit_price": str(unit_price),
+            "source": item.resolved_price.source,
+            "source_reference": item.resolved_price.reference,
+            "context_hash": item.resolved_price.context_hash,
+            "considered": list(item.resolved_price.considered),
+            "tax_inclusive": item.resolved_price.tax_inclusive,
+        }
+
+    @staticmethod
+    def _issue_retail_line(*, transaction_record, line, actor) -> None:
+        # Lock all candidate balances in stable order before selecting FEFO lots.
+        # A second concurrent till must wait, then allocate against the updated
+        # projection instead of issuing the same units a second time.
+        balances = list(
+            InventoryBalance.all_objects.select_for_update()
+            .filter(
+                tenant=transaction_record.tenant,
+                branch=transaction_record.branch,
+                location=transaction_record.store,
+                sku=line.sku,
+                available__gt=0,
+                inventory_batch__isnull=False,
+            )
+            .order_by("pk")
+        )
+        batch_ids = sorted({balance.inventory_batch_id for balance in balances if balance.inventory_batch_id})
+        list(
+            InventoryBatch.all_objects.select_for_update()
+            .filter(tenant=transaction_record.tenant, pk__in=batch_ids)
+            .order_by("pk")
+        )
+        allocations = FEFOAllocationService.allocate_stock(
+            tenant=transaction_record.tenant,
+            branch=transaction_record.branch,
+            location=transaction_record.store,
+            sku=line.sku,
+            required_quantity=line.quantity,
+            minimum_expiry_date=timezone.localdate() + timedelta(days=1),
+        )
+        for batch, quantity in allocations:
+            InventoryLedgerService.post_entry(
+                tenant=transaction_record.tenant,
+                branch=transaction_record.branch,
+                location=transaction_record.store,
+                sku=line.sku,
+                inventory_batch=batch,
+                entry_type=InventoryLedgerEntry.EntryType.ISSUE,
+                quantity_delta=-quantity,
+                unit=line.unit,
+                base_quantity_delta=-quantity,
+                effective_timestamp=timezone.now(),
+                source_document_type="POS_RETAIL_TRANSACTION",
+                source_document_id=str(transaction_record.pk),
+                source_line_id=str(line.pk),
+                idempotency_key=f"pos-retail-issue-{transaction_record.pk}-{line.pk}-{batch.pk}",
+                actor=actor,
+                reason_code="RETAIL_CASH_SALE",
+                notes=f"Cash sale {transaction_record.transaction_number}",
+            )
 
     @classmethod
     def _editable_transaction(cls, *, tenant, transaction_id, actor, device_id):
@@ -446,15 +717,53 @@ class PosRetailService:
         cls._validate_editable_transaction(transaction_record, authority)
         return transaction_record, authority
 
+    @classmethod
+    def _cancelable_transaction(cls, *, tenant, transaction_id, actor, device_id):
+        transaction_record = PosTransaction.all_objects.select_for_update().select_related("branch").filter(
+            tenant=tenant, pk=transaction_id
+        ).first()
+        if transaction_record is None:
+            raise ValidationError("POS transaction not found.")
+        if transaction_record.state not in {
+            PosTransaction.State.DRAFT,
+            PosTransaction.State.HELD,
+            PosTransaction.State.READY_FOR_PAYMENT,
+        }:
+            raise ValidationError("Only an unpaid POS transaction can be cancelled.")
+        authority = cls._authority(
+            tenant=tenant,
+            branch=transaction_record.branch,
+            actor=actor,
+            device_id=device_id,
+        )
+        cls._validate_transaction_context(
+            transaction_record,
+            authority,
+            actor=actor,
+            device_id=device_id,
+        )
+        return transaction_record, authority
+
     @staticmethod
     def _validate_editable_transaction(transaction_record, authority) -> None:
         if transaction_record.state not in {PosTransaction.State.DRAFT, PosTransaction.State.HELD}:
             raise ValidationError("This POS transaction is no longer editable.")
+        PosRetailService._validate_transaction_context(
+            transaction_record,
+            authority,
+            actor=authority.operator_shift.operator,
+            device_id=authority.register.device_id,
+        )
+
+    @staticmethod
+    def _validate_transaction_context(transaction_record, authority, *, actor, device_id) -> None:
         context = (
             ("register", transaction_record.register_id, authority.register.pk),
             ("register session", transaction_record.register_session_id, authority.session.pk),
             ("operator shift", transaction_record.operator_shift_id, authority.operator_shift.pk),
             ("business day", transaction_record.business_day_id, authority.business_day.pk),
+            ("operator", transaction_record.operator_id, actor.pk),
+            ("device", transaction_record.device_id, device_id),
         )
         for label, actual, expected in context:
             if actual != expected:

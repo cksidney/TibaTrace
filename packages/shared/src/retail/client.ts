@@ -65,6 +65,16 @@ export class PosRetailClient {
     return this.request(`/transactions/${transactionId}/ready-for-payment/`, 'POST', input);
   }
 
+  settleCash(
+    transactionId: string,
+    input: { device_id: string; cash_received: string; idempotency_key: string },
+  ): Promise<RetailTransactionDTO> {
+    return this.request(`/transactions/${transactionId}/cash-settle/`, 'POST', {
+      ...input,
+      tender_type: 'CASH',
+    });
+  }
+
   private async request<T>(path: string, method: string, body?: unknown): Promise<T> {
     const response = await this.fetcher(`${this.baseUrl}${path}`, {
       method,

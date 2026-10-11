@@ -3,14 +3,14 @@ import { describe, expect, it } from 'vitest';
 import { deriveRetailPrimaryAction } from './retail.js';
 
 describe('deriveRetailPrimaryAction', () => {
-  it('does not present settlement as complete after a basket is prepared', () => {
+  it('offers cash settlement after a basket is prepared without enabling other tenders', () => {
     expect(
       deriveRetailPrimaryAction({ state: 'READY_FOR_PAYMENT', lineCount: 2, hasStore: true }),
     ).toEqual({
-      kind: 'NONE',
-      label: 'Settlement required',
-      detail: 'Retail settlement is not available in this POS pilot.',
-      enabled: false,
+      kind: 'SETTLE_CASH',
+      label: 'Settle cash payment',
+      detail: 'Cash only. Card and M-PESA settlement remain unavailable.',
+      enabled: true,
     });
   });
 
@@ -18,5 +18,11 @@ describe('deriveRetailPrimaryAction', () => {
     expect(
       deriveRetailPrimaryAction({ state: 'DRAFT', lineCount: 1, hasStore: true }),
     ).toMatchObject({ kind: 'PREPARE_PAYMENT', label: 'Prepare payment', enabled: true });
+  });
+
+  it('allows a fresh basket after the previous sale has completed', () => {
+    expect(
+      deriveRetailPrimaryAction({ state: 'COMPLETED', lineCount: 1, hasStore: true }),
+    ).toMatchObject({ kind: 'START_SALE', label: 'Start new sale', enabled: true });
   });
 });

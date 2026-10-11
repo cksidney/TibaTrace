@@ -49,6 +49,35 @@ export interface RetailTransactionDTO {
   readonly total: string;
   readonly hold_reason: string;
   readonly lines: readonly RetailTransactionLineDTO[];
+  readonly receipt: RetailCashReceiptDTO | null;
+}
+
+export interface RetailCashReceiptDTO {
+  readonly receipt_number: string;
+  readonly tender_type: 'CASH';
+  readonly amount: string;
+  readonly cash_received: string;
+  readonly change_due: string;
+  readonly currency: string;
+  readonly lines_snapshot: readonly {
+    readonly sku_code: string;
+    readonly description: string;
+    readonly quantity: string;
+    readonly unit: string;
+    readonly unit_price: string;
+    readonly discount_amount: string;
+    readonly tax_amount: string;
+    readonly line_total: string;
+  }[];
+  readonly totals_snapshot: {
+    readonly subtotal: string;
+    readonly discount_total: string;
+    readonly tax_total: string;
+    readonly total: string;
+  };
+  readonly settled_at: string;
+  readonly disclaimer: string;
+  readonly print_job: { readonly id: string; readonly status: string; readonly transport: string } | null;
 }
 
 export interface RetailCatalogueItemDTO {

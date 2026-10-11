@@ -14,6 +14,7 @@ import {
 import { formatDecimal, formatMoney } from '@dawatrace/shared/money.js';
 import {
   PosRetailClient,
+  retailCashChangeDue,
   type RetailCatalogueItemDTO,
   type RetailTransactionDTO,
   type RetailTransactionLineDTO,
@@ -51,6 +52,7 @@ export function RetailWorkspace({ apiFetch, deviceId }: RetailWorkspaceProps) {
   const [results, setResults] = useState<readonly RetailCatalogueItemDTO[]>([]);
   const [barcode, setBarcode] = useState('');
   const [search, setSearch] = useState('');
+  const [cashReceived, setCashReceived] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -87,9 +89,9 @@ export function RetailWorkspace({ apiFetch, deviceId }: RetailWorkspaceProps) {
 
   const run = useCallback(async (operation: () => Promise<void>) => {
     setBusy(true);
+    setNotice('');
     try {
       await operation();
-      setNotice('');
     } catch (cause) {
       setNotice(message(cause));
     } finally {
@@ -111,6 +113,7 @@ export function RetailWorkspace({ apiFetch, deviceId }: RetailWorkspaceProps) {
       setResults([]);
       setBarcode('');
       setSearch('');
+      setCashReceived('');
       requestAnimationFrame(() => barcodeInput.current?.focus());
     });
 
@@ -198,6 +201,26 @@ export function RetailWorkspace({ apiFetch, deviceId }: RetailWorkspaceProps) {
       setTransaction(await client.readyForPayment(transaction.id, { device_id: deviceId }));
     });
 
+  const changeDue = transaction
+    ? retailCashChangeDue(transaction.total, cashReceived)
+    : null;
+  const receipt = transaction?.state === 'COMPLETED' ? transaction.receipt : null;
+  const settleCash = () =>
+    void run(async () => {
+      if (!transaction) throw new Error('Start a sale before taking payment.');
+      if (changeDue === null) throw new Error('Enter cash received equal to or greater than the sale total.');
+      const settled = await client.settleCash(transaction.id, {
+        device_id: deviceId,
+        cash_received: cashReceived,
+        idempotency_key: `retail-cash-${transaction.id}`,
+      });
+      setTransaction(settled);
+      if (settled.state === 'DRAFT') {
+        setCashReceived('');
+        setNotice('The price or eligible stock changed. Review the updated basket; no cash or stock was recorded.');
+      }
+    });
+
   const primary = deriveRetailPrimaryAction({
     state: transaction?.state ?? null,
     lineCount: transaction?.lines.length ?? 0,
@@ -207,6 +230,7 @@ export function RetailWorkspace({ apiFetch, deviceId }: RetailWorkspaceProps) {
     if (primary.kind === 'START_SALE') startSale();
     if (primary.kind === 'RESUME_SALE') resume();
     if (primary.kind === 'PREPARE_PAYMENT') preparePayment();
+    if (primary.kind === 'SETTLE_CASH') settleCash();
   };
   const viewport = useViewport();
 
@@ -351,6 +375,52 @@ export function RetailWorkspace({ apiFetch, deviceId }: RetailWorkspaceProps) {
             <Total label="Total" amount={transaction.total} currency={transaction.currency} emphatic />
           </div>
         ) : null}
+        {transaction?.state === 'READY_FOR_PAYMENT' ? (
+          <section aria-label="Cash payment" style={paymentPanel}>
+            <strong>Cash payment</strong>
+            <p style={helperText}>Cash only. Card and M-PESA are not enabled for retail checkout.</p>
+            <label style={labelStyle}>
+              Cash received
+              <input
+                value={cashReceived}
+                onChange={(event) => setCashReceived(event.target.value)}
+                inputMode="decimal"
+                disabled={busy}
+                placeholder="0.00"
+                style={inputStyle}
+              />
+            </label>
+            <div style={changeStyle} aria-live="polite">
+              {changeDue === null
+                ? `Amount due: ${money(transaction.total, transaction.currency)}`
+                : `Change due: ${money(changeDue, transaction.currency)}`}
+            </div>
+          </section>
+        ) : null}
+        {receipt ? (
+          <section aria-label="Internal cash receipt" style={receiptPanel}>
+            <strong>Internal receipt · {receipt.receipt_number}</strong>
+            {receipt.lines_snapshot.map((line, index) => (
+              <div key={`${line.sku_code}-${index}`} style={receiptLine}>
+                <span>{line.description}</span>
+                <small style={lineMeta}>
+                  {line.quantity} {line.unit} × {money(line.unit_price, receipt.currency)}
+                </small>
+                <strong style={moneyStyle}>{money(line.line_total, receipt.currency)}</strong>
+              </div>
+            ))}
+            <Total label="Cash received" amount={receipt.cash_received} currency={receipt.currency} />
+            <Total label="Change returned" amount={receipt.change_due} currency={receipt.currency} />
+            <p style={helperText}>
+              {receipt.print_job?.transport === 'SIMULATOR'
+                ? 'Print job queued for the simulator; no physical print is confirmed.'
+                : receipt.print_job
+                  ? `Print job: ${receipt.print_job.status.toLowerCase().replace(/_/g, ' ')}.`
+                  : 'The internal receipt is saved; its print job could not be queued.'}
+            </p>
+            <p style={helperText}>{receipt.disclaimer}</p>
+          </section>
+        ) : null}
         <div style={actions}>
           {transaction?.state === 'DRAFT' ? (
             <button type="button" disabled={busy} onClick={hold} style={secondaryButton}>
@@ -359,14 +429,14 @@ export function RetailWorkspace({ apiFetch, deviceId }: RetailWorkspaceProps) {
           ) : null}
           <button
             type="button"
-            disabled={busy || !primary.enabled}
+            disabled={busy || !primary.enabled || (primary.kind === 'SETTLE_CASH' && changeDue === null)}
             onClick={performPrimaryAction}
             style={{ ...primaryButton, ...(busy || !primary.enabled ? disabledButton : {}) }}
             title={primary.detail}
           >
             {primary.label}
           </button>
-          {transaction?.state === 'DRAFT' ? (
+          {transaction && ['DRAFT', 'HELD', 'READY_FOR_PAYMENT'].includes(transaction.state) ? (
             <button type="button" disabled={busy} onClick={cancel} style={dangerButton}>
               Cancel sale
             </button>
@@ -663,6 +733,32 @@ const totals = {
   paddingTop: spacing.md,
   borderTop: `1px solid ${surface.border}`,
 } as const;
+const paymentPanel = {
+  display: 'grid',
+  gap: spacing.xs,
+  marginTop: spacing.lg,
+  padding: spacing.md,
+  border: `1px solid ${statusPalette.PROCESSING.border}`,
+  borderRadius: 10,
+  background: statusPalette.PROCESSING.surface,
+} as const;
+const receiptPanel = {
+  display: 'grid',
+  gap: spacing.sm,
+  marginTop: spacing.lg,
+  padding: spacing.md,
+  border: `1px solid ${surface.border}`,
+  borderRadius: 10,
+  background: surface.page,
+} as const;
+const receiptLine = {
+  display: 'grid',
+  gridTemplateColumns: 'minmax(0, 1fr) auto',
+  gap: spacing.xs,
+  paddingTop: spacing.xs,
+  borderTop: `1px solid ${surface.border}`,
+} as const;
+const changeStyle = { fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: text.primary } as const;
 const actions = { display: 'grid', gap: spacing.sm, marginTop: spacing.xl } as const;
 const helperText = { margin: `${spacing.sm}px 0 0`, color: text.secondary, fontSize: fontSize.caption } as const;
 const noticeStyle = {

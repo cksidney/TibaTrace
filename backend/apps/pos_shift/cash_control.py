@@ -24,6 +24,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from decimal import ROUND_HALF_UP, Decimal
 
+from django.db.models import Sum
+
 from apps.prescription.payment_models import PaymentTender
 
 from .models import ZERO, CashDeclaration, CashMovement, RegisterSession
@@ -153,6 +155,8 @@ class CashControlService:
 
         Reads `settled_amount - reversed_amount` so a reversal is netted off
         rather than leaving the till expecting money that was handed back.
+        Retail cash receipts are included as CASH settlements without creating
+        a prescription episode just to satisfy the dispensing payment ledger.
         """
         by_type: dict[str, Decimal] = {}
         tenders = PaymentTender.all_objects.filter(
@@ -163,6 +167,15 @@ class CashControlService:
             effective = money(row["settled_amount"]) - money(row["reversed_amount"])
             key = row["tender_type"]
             by_type[key] = money(by_type.get(key, ZERO) + effective)
+
+        from apps.pos_transactions.models import RetailCashReceipt
+
+        retail_cash = RetailCashReceipt.all_objects.filter(
+            tenant_id=session.tenant_id,
+            transaction__register_session_id=session.pk,
+        ).aggregate(total=Sum("amount"))["total"] or ZERO
+        if retail_cash:
+            by_type["CASH"] = money(by_type.get("CASH", ZERO) + retail_cash)
         return TenderBreakdown(by_type=by_type)
 
     @staticmethod
