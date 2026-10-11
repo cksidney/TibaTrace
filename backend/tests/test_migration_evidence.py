@@ -44,6 +44,8 @@ RELEASE_MIGRATIONS = [
     "backend/apps/organizations/migrations/0002_departments.py",
     "backend/apps/platform/migrations/0004_demo_story_metadata.py",
     "backend/apps/platform/migrations/0005_posactivationrequest.py",
+    # Cash-only retail settlement: immutable receipt table and validation constraints.
+    "backend/apps/pos_transactions/migrations/0002_retailcashreceipt.py",
     # Stage 2A service closure: segregation of duties on supplier qualifications.
     # Additive only -- four nullable columns, no alteration to existing data.
     "backend/apps/procurement/migrations/0005_supplier_qualification_governance.py",
@@ -100,6 +102,23 @@ def test_unset_input_fails_rather_than_reporting_zero(tmp_path):
     assert result.returncode != 0
     assert "TIBATRACE_NEW_MIGRATION_FILES" in result.stderr
     assert not out.exists()
+
+
+def test_retail_cash_receipt_migration_is_additive_and_reversible(tmp_path):
+    source = "backend/apps/pos_transactions/migrations/0002_retailcashreceipt.py"
+    out = tmp_path / "MIGRATIONS.json"
+    result = run(source, out)
+    assert result.returncode == 0, result.stderr
+    entry = json.loads(out.read_text())[0]
+    assert entry["source_path"] == source
+    assert entry["app"] == "pos_transactions"
+    assert entry["migration"] == "0002_retailcashreceipt"
+    assert entry["operation_types"] == ["CreateModel"] + ["AddConstraint"] * 7
+    assert entry["operation_count"] == 8
+    assert entry["destructive"] is False
+    assert entry["reversible"] is True
+    assert entry["data_migration"] is False
+    assert entry["sql_operation"] is False
 
 
 def test_unknown_migration_fails(tmp_path):
