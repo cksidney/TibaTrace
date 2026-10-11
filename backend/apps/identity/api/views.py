@@ -72,14 +72,6 @@ class RoleViewSet(viewsets.ModelViewSet):
             return Role.all_objects.none()
         return Role.all_objects.filter(tenant_id=tenant_id).order_by("name")
 
-    def list(self, request, *args, **kwargs):
-        tenant_id = getattr(request, "tenant_id", None) or request.user.tenant_id
-        if tenant_id:
-            UserAdministrationService.ensure_default_tenant_roles(tenant_id=tenant_id)
-        queryset = self.filter_queryset(self.get_queryset())
-        serializer = self.get_serializer(queryset, many=True)
-        return Response(serializer.data)
-
     def create(self, request, *args, **kwargs):
         payload = RoleCreateSerializer(data=request.data)
         payload.is_valid(raise_exception=True)

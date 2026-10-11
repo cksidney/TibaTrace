@@ -13,6 +13,10 @@ HTTP endpoint or passing isolated test is not full business acceptance.
   eight demo readiness setup errors. Images were not published by that run.
 - rc24 fixes the eligible-stock reservation planning error and requests full
   Git history so baseline evidence no longer skips. Its full CI verdict is pending.
+- rc25 adds a live retail availability check against each batch expiry date, so
+  cached NORMAL status cannot make an expired batch sellable. It also removes
+  role creation/reactivation from the role-list GET path. The rc25 full CI gate
+  is required before deployment.
 
 ## Verified locally
 
@@ -31,7 +35,8 @@ HTTP endpoint or passing isolated test is not full business acceptance.
 
 ## Boundaries still requiring closure
 
-- Commit-matched, full CI test evidence and immutable published image digests.
+- Commit-matched, full CI test evidence and immutable published image digests for
+  the final rc25 candidate.
 - Backup/restore acceptance and safe production deployment/rollback evidence.
 - Native signed installer publication and real Manager device/hardware tests.
   Managers agreed to arrange the existing Android signing key via secret setup;
@@ -47,6 +52,8 @@ HTTP endpoint or passing isolated test is not full business acceptance.
   or national licence validation. Simulated providers cannot settle real tenants.
 - Existing untracked Stage 2D.2 files and certification reports remain user drafts,
   outside release bundles. Their claims are not accepted as verification evidence.
+- Retail settlement, refund, receipt and till-close integration remain incomplete;
+  rc25 does not make the retail till a full trading workflow.
 
 VPS disk headroom is about 3.7 GB (90% used). Do not prune unrelated services,
 live data, rollback assets or user drafts to create space.

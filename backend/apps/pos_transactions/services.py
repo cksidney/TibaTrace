@@ -94,6 +94,7 @@ class PosRetailService:
                 | Q(
                     inventory_batch__quality_status=InventoryBatch.QualityStatus.RELEASED,
                     inventory_batch__recall_status=InventoryBatch.RecallStatus.NONE,
+                    inventory_batch__expiry_date__gt=timezone.localdate(),
                 )
             )
             .aggregate(total=Sum("available"))["total"]

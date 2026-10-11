@@ -190,6 +190,61 @@ def test_catalogue_hides_items_without_an_authoritative_price(world):
     assert response.json() == []
 
 
+def test_catalogue_never_counts_expired_batch_stock_as_sellable(world):
+    InventoryBalance.all_objects.filter(tenant=world["tenant"], sku=world["sku"]).update(
+        on_hand=Decimal("0.0000"), available=Decimal("0.0000")
+    )
+    expired_batch = InventoryBatch.all_objects.create(
+        tenant=world["tenant"],
+        sku=world["sku"],
+        manufactured_product=world["sku"].manufactured_product,
+        manufacturer_batch_number="EXPIRED-RETAIL-1",
+        expiry_date=timezone.localdate() - timedelta(days=1),
+        quality_status=InventoryBatch.QualityStatus.RELEASED,
+        recall_status=InventoryBatch.RecallStatus.NONE,
+    )
+    InventoryBalance.all_objects.create(
+        tenant=world["tenant"],
+        branch=world["branch"],
+        location=world["store"],
+        sku=world["sku"],
+        inventory_batch=expired_batch,
+        quality_status=InventoryBatch.QualityStatus.RELEASED,
+        expiry_status="NORMAL",
+        on_hand=Decimal("8.0000"),
+        available=Decimal("8.0000"),
+    )
+
+    response = world["client"].post(
+        "/api/pos/retail/catalogue/search/",
+        {
+            "device_id": "POS-RETAIL-01",
+            "store_id": str(world["store"].pk),
+            "query": "Retail product",
+        },
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert len(response.json()) == 1
+    assert response.json()[0]["available_quantity"] == "0.0000"
+    assert response.json()[0]["stock_state"] == "OUT_OF_STOCK"
+
+    draft = create_draft(world)
+    add_line = world["client"].post(
+        f"/api/pos/retail/transactions/{draft['id']}/add-line/",
+        {
+            "device_id": "POS-RETAIL-01",
+            "sku_id": str(world["sku"].pk),
+            "quantity": "1.0000",
+        },
+        format="json",
+    )
+
+    assert add_line.status_code == 400
+    assert "insufficient eligible stock" in str(add_line.json()).lower()
+
+
 def test_retail_activity_is_rejected_when_operator_shift_closes(world):
     draft = create_draft(world)
     world["operator_shift"].state = "CLOSED"

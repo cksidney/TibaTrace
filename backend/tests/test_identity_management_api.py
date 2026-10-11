@@ -2,6 +2,7 @@ import pytest
 from rest_framework.test import APIClient
 
 from apps.identity.models import Role, ServiceAccount, User, UserRole
+from apps.identity.services import UserAdministrationService
 from apps.tenancy.models import Tenant
 
 pytestmark = pytest.mark.django_db
@@ -152,8 +153,26 @@ def test_tenant_admin_can_create_role_and_assign_it_to_a_new_user():
     assert any(role["code"] == "BRANCH_MANAGER" for role in user_body["assigned_roles"])
     assert "inventory.read" in user_body["effective_capabilities"]
 
+    UserAdministrationService.ensure_default_tenant_roles(tenant_id=tenant.pk)
     roles = client.get("/api/identity/roles-detail/", HTTP_X_TENANT_ID=str(tenant.pk))
     assert roles.status_code == 200
     codes = {row["code"] for row in roles.json()}
     assert "TENANT_ADMIN" in codes
     assert "BRANCH_MANAGER" in codes
+
+
+def test_listing_roles_does_not_create_or_modify_roles():
+    tenant = Tenant.objects.create(name="Read Only Role Tenant", slug="read-only-role-tenant")
+    manager = make_user(
+        tenant=tenant,
+        username="read-only-role-manager",
+        capabilities=("identity.manage",),
+    )
+    client = APIClient()
+    client.force_authenticate(user=manager)
+
+    response = client.get("/api/identity/roles-detail/", HTTP_X_TENANT_ID=str(tenant.pk))
+
+    assert response.status_code == 200
+    assert response.json() == []
+    assert not Role.all_objects.filter(tenant=tenant, code="TENANT_ADMIN").exists()
