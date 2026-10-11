@@ -617,6 +617,66 @@ async function mutateJson<T>(
   return (await response.json()) as T;
 }
 
+export interface LegacySetupReview {
+  readonly item_kind?: string;
+  readonly sales_unit?: string;
+  readonly pack_description?: string;
+  readonly confirmed_price?: string | null;
+  readonly confirmed_cost?: string | null;
+  readonly counted_quantity?: string | null;
+  readonly counted_on?: string | null;
+  readonly tax_category?: string;
+  readonly master_catalogue_code?: string;
+  readonly barcode?: string;
+  readonly notes?: string;
+  readonly excluded?: boolean;
+  readonly batches?: readonly { readonly batch_number: string; readonly expiry_date: string; readonly quantity: string }[];
+}
+
+export interface LegacySetupItem {
+  readonly id: string;
+  readonly source_key: string;
+  readonly source_row: number;
+  readonly legacy_code: string;
+  readonly proposed_sku_code: string;
+  readonly source_name: string;
+  readonly source_uom: string;
+  readonly source_cost: string;
+  readonly source_price: string;
+  readonly source_quantity: string;
+  readonly source_product: { readonly page: number };
+  readonly source_stock: { readonly page: number };
+  readonly source_issues: readonly string[];
+  readonly review: LegacySetupReview;
+  readonly status: string;
+  readonly missing_details: readonly string[];
+  readonly updated_at: string;
+  readonly saleable: false;
+}
+
+export interface LegacySetupPage {
+  readonly summary: { readonly total: number; readonly positive_stock: number; readonly negative_stock: number; readonly details_complete: number; readonly excluded: number };
+  readonly count: number;
+  readonly page: number;
+  readonly pages: number;
+  readonly source_date: string | null;
+  readonly can_edit: boolean;
+  readonly results: readonly LegacySetupItem[];
+}
+
+export async function loadLegacySetup(q: string, stock: string, page: number, signal?: AbortSignal): Promise<LegacySetupPage> {
+  const params = new URLSearchParams({ q, stock, page: String(page) });
+  const response = await fetch(`/api/medicines/initial-setup/?${params}`, {
+    credentials: 'include', headers: { Accept: 'application/json', ...tenantHeaders() }, ...(signal ? { signal } : {}),
+  });
+  if (!response.ok) throw new HQApiError(response.status, `Initial item setup could not be loaded (${response.status}).`);
+  return await response.json() as LegacySetupPage;
+}
+
+export const saveLegacySetupReview = (item: LegacySetupItem, review: LegacySetupReview, csrfToken: string) =>
+  mutateJson<LegacySetupItem>(`/api/medicines/initial-setup/${encodeURIComponent(item.id)}/review/`, 'POST',
+    { review, expected_updated_at: item.updated_at }, csrfToken);
+
 /* ── tenant management ────────────────────────────────────────────────────── */
 
 export interface TenantInput {

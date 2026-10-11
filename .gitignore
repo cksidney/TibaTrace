@@ -20,6 +20,8 @@ build/
 node_modules/
 .next/
 artifacts/generated/
+# Tenant onboarding exports are private source data, not repository assets.
+/outputs/
 media/
 staticfiles/
 *.log

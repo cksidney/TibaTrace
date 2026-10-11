@@ -12,6 +12,7 @@ import { FieldSearch } from './FieldSearch.js';
 import { GS1Workspace } from './GS1Workspace.js';
 import { InsuranceWorkspace } from './InsuranceWorkspace.js';
 import { IntegrationWorkspace } from './IntegrationWorkspace.js';
+import { LegacyItemSetup } from './LegacyItemSetup.js';
 import { PlatformOwnerConsole } from './PlatformOwnerConsole.js';
 import { RegulatoryWorkspace } from './RegulatoryWorkspace.js';
 import { ReportsWorkspace } from './ReportsWorkspace.js';
@@ -6054,6 +6055,8 @@ function CatalogueView({
       </section>
 
       <GovernmentCatalogue csrfToken={csrfToken} overview={overview} />
+
+      <LegacyItemSetup key={overview.tenant_id} csrfToken={csrfToken} />
 
       <BusinessWorkbench csrfToken={csrfToken} data={data} domain="catalogue" onChanged={onWorkspaceChanged} />
 

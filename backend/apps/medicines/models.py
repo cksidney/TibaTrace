@@ -436,6 +436,9 @@ class MedicineIdentifier(TimestampedModel):
         constraints = [models.UniqueConstraint(fields=["system", "value"], name="uq_medicine_identifier")]
 
 
+from .onboarding_models import LegacyCatalogueImport, LegacyCatalogueItem  # noqa: E402,F401
+
+
 class TenantCatalogueProduct(TimestampedModel):
     STATUS_SELECTED = "SELECTED"
     STATUS_REMOVED = "REMOVED"
