@@ -120,7 +120,7 @@ class Phase15ComplianceReportingEngineTests(TestCase):
             tenant_id=self.tenant.id,
         )
         self.assertEqual(result["content_type"], "text/csv; charset=utf-8")
-        self.assertIn("Practitioner Verification", result["content"])
+        self.assertIn("Practitioner Verification", result["content"].decode("utf-8"))
 
     def test_generate_readiness_scorecard(self):
         result = ComplianceReportEngine.generate_report(

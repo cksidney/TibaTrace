@@ -171,8 +171,20 @@ def test_listing_roles_does_not_create_or_modify_roles():
     client = APIClient()
     client.force_authenticate(user=manager)
 
+    roles_before = list(
+        Role.all_objects.filter(tenant=tenant)
+        .order_by("code")
+        .values("id", "code", "name", "is_active", "is_system", "capabilities")
+    )
+
     response = client.get("/api/identity/roles-detail/", HTTP_X_TENANT_ID=str(tenant.pk))
 
     assert response.status_code == 200
-    assert response.json() == []
+    assert {row["code"] for row in response.json()} == {row["code"] for row in roles_before}
+    roles_after = list(
+        Role.all_objects.filter(tenant=tenant)
+        .order_by("code")
+        .values("id", "code", "name", "is_active", "is_system", "capabilities")
+    )
+    assert roles_after == roles_before
     assert not Role.all_objects.filter(tenant=tenant, code="TENANT_ADMIN").exists()
