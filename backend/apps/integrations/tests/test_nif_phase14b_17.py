@@ -119,7 +119,7 @@ class Phase15ComplianceReportingEngineTests(TestCase):
             format_type="csv",
             tenant_id=self.tenant.id,
         )
-        self.assertEqual(result["content_type"], "text/csv")
+        self.assertEqual(result["content_type"], "text/csv; charset=utf-8")
         self.assertIn("Practitioner Verification", result["content"])
 
     def test_generate_readiness_scorecard(self):
@@ -128,7 +128,11 @@ class Phase15ComplianceReportingEngineTests(TestCase):
             format_type="json",
         )
         data = json.loads(result["content"])
-        self.assertEqual(data["readiness"]["dha_readiness_score"], "81.5%")
+        self.assertIsNone(data["readiness"]["dha_readiness_score"])
+        self.assertEqual(
+            data["readiness"]["status"], "NOT_CERTIFIED_EXTERNAL_ACCEPTANCE_PENDING"
+        )
+        self.assertIn("No approved external endpoints", data["readiness"]["basis"])
 
 
 class Phase16CertificationEvidenceEngineTests(TestCase):

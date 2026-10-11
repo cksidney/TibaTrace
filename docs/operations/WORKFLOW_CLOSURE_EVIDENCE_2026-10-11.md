@@ -11,12 +11,17 @@ HTTP endpoint or passing isolated test is not full business acceptance.
 - rc23 commit `48b40458df71e3494016863c996f774fdbb600cb` failed its mandatory
   GitHub gate: 1,868 passed, one baseline test skipped by shallow checkout,
   eight demo readiness setup errors. Images were not published by that run.
-- rc24 fixes the eligible-stock reservation planning error and requests full
-  Git history so baseline evidence no longer skips. Its full CI verdict is pending.
-- rc25 adds a live retail availability check against each batch expiry date, so
+- rc24 fixed the eligible-stock reservation planning error and requests full
+  Git history so baseline evidence no longer skips. Its full suite reached 1,890
+  passes but failed two obsolete reporting assertions: an old fake regulatory
+  score and a CSV content type that omitted its UTF-8 charset. Images were not
+  published.
+- rc25 added a live retail availability check against each batch expiry date, so
   cached NORMAL status cannot make an expired batch sellable. It also removes
   role creation/reactivation from the role-list GET path. The rc25 full CI gate
-  is required before deployment.
+  was cancelled after rc24 exposed the same deterministic stale assertions.
+- rc26 updates those assertions to the truthful `NOT_CERTIFIED_EXTERNAL_ACCEPTANCE_PENDING`
+  contract and the explicit CSV charset. It is the final candidate pending full CI.
 
 ## Verified locally
 
@@ -36,7 +41,7 @@ HTTP endpoint or passing isolated test is not full business acceptance.
 ## Boundaries still requiring closure
 
 - Commit-matched, full CI test evidence and immutable published image digests for
-  the final rc25 candidate.
+  the final rc26 candidate.
 - Backup/restore acceptance and safe production deployment/rollback evidence.
 - Native signed installer publication and real Manager device/hardware tests.
   Managers agreed to arrange the existing Android signing key via secret setup;
