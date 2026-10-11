@@ -7,6 +7,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.permissions import PlatformOwnerRequired
 from apps.platform.reporting.certification_engine import CertificationEvidenceGenerator
 from apps.platform.reporting.compliance_engine import ComplianceReportEngine
 from apps.platform.reporting.services import (
@@ -71,7 +72,7 @@ class HQReportValidateView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, receipt_id: str):
-        payload = validate_receipt(receipt_id)
+        payload = validate_receipt(receipt_id, tenant_id=request.tenant_id)
         if payload is None:
             return Response({"valid": False, "detail": "Receipt not found."}, status=404)
         return Response(payload)
@@ -105,7 +106,7 @@ class ComplianceReportView(APIView):
 class CertificationEvidenceView(APIView):
     """API view to generate Phase 16 Certification Evidence Bundles (JSON/ZIP)."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, PlatformOwnerRequired]
 
     def get(self, request):
         format_type = request.query_params.get("format", "json").lower()

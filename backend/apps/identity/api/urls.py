@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from apps.identity.api.session_views import (
+    PasswordChangeView,
     PasswordForgotView,
     PasswordResetConfirmView,
     SessionView,
@@ -35,6 +36,7 @@ urlpatterns = [
     path("session/", SessionView.as_view(), name="identity-session"),
     path("password/forgot/", PasswordForgotView.as_view(), name="identity-password-forgot"),
     path("password/reset/", PasswordResetConfirmView.as_view(), name="identity-password-reset"),
+    path("password/change/", PasswordChangeView.as_view(), name="identity-password-change"),
     path("me/", MeView.as_view(), name="identity-me"),
     path("roles/", RoleListView.as_view(), name="identity-roles"),
     path("matrix/", CapabilityMatrixView.as_view(), name="identity-capability-matrix"),

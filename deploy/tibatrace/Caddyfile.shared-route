@@ -14,7 +14,7 @@ tibatrace.esenai.co.ke {
 		Permissions-Policy "camera=(), microphone=(), geolocation=()"
 	}
 
-	@backend path /api/* /admin* /admin-shell* /static/* /media/*
+	@backend path /api/* /admin* /admin-shell* /static/* /media/* /pos /pos/*
 	handle @backend {
 		reverse_proxy 172.17.0.1:28110 {
 			header_up Host {host}

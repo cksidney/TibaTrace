@@ -78,31 +78,7 @@ class PriceBookViewSet(TenantScopedReadOnly):
     serializer_class = PriceBookSerializer
 
     def get_queryset(self):
-        queryset = super().get_queryset()
-        tenant_id = self.tenant_id()
-        if tenant_id and not queryset.exists():
-            from apps.tenancy.models import Tenant
-            tenant = Tenant.objects.filter(pk=tenant_id).first()
-            if tenant:
-                book, _ = PriceBook.all_objects.get_or_create(
-                    tenant=tenant,
-                    code="DEFAULT-RETAIL",
-                    defaults={
-                        "name": "Default Tenant Retail Book",
-                        "scope_type": PriceBook.ScopeType.TENANT,
-                        "price_type": PriceBook.PriceType.RETAIL,
-                        "currency": "KES",
-                        "priority": 100,
-                    },
-                )
-                PriceAssignment.all_objects.get_or_create(
-                    tenant=tenant,
-                    price_book=book,
-                    scope_type=PriceBook.ScopeType.TENANT,
-                    defaults={"priority": 100, "is_active": True},
-                )
-                queryset = super().get_queryset()
-        return queryset
+        return super().get_queryset()
 
 
 class PriceBookVersionViewSet(TenantScopedReadOnly):

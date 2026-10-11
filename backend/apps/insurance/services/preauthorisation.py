@@ -84,6 +84,9 @@ class PreauthorisationService:
     def request(cls, *, preauth: PrescriptionPreauthorisation, adapter,
                 lines: list[dict] | None = None) -> PreauthorisationAttempt:
         """Send the request and record the insurer's decision."""
+        from ..adapters.base import require_real_adapter_for_production
+
+        require_real_adapter_for_production(tenant_id=preauth.tenant_id, adapter=adapter)
         if preauth.status in {
             PrescriptionPreauthorisation.Status.APPROVED,
             PrescriptionPreauthorisation.Status.PARTIALLY_APPROVED,

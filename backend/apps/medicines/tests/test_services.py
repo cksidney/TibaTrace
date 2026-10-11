@@ -3,6 +3,7 @@ import decimal
 import pytest
 from django.core.exceptions import ValidationError
 
+from apps.identity.models import User
 from apps.medicines.models import ActiveSubstance, DoseForm, PackageDefinition
 from apps.medicines.services import (
     BranchAssortmentService,
@@ -16,6 +17,7 @@ from apps.tenancy.models import Tenant
 @pytest.mark.django_db
 def test_medicine_catalogue_service_lifecycle():
     tenant = Tenant.objects.create(name="Service Tenant", slug="service-tenant")
+    actor = User.objects.create_user(username="catalogue-service-authority", tenant=tenant, is_superuser=True)
     df = DoseForm.objects.create(code="TAB", name="Tablet")
     sub = ActiveSubstance.objects.create(is_global=True, code="SUB-PAR", canonical_name="Paracetamol")
 
@@ -30,7 +32,7 @@ def test_medicine_catalogue_service_lifecycle():
 
     # 2. Activation fails without ingredients
     with pytest.raises(ValidationError):
-        MedicineCatalogueService.activate_clinical_product(product=cmp)
+        MedicineCatalogueService.activate_clinical_product(product=cmp, actor=actor)
 
     # 3. Add ingredient & activate
     IngredientCompositionService.add_ingredient(
@@ -39,7 +41,7 @@ def test_medicine_catalogue_service_lifecycle():
         numerator_value=decimal.Decimal("500"),
         numerator_unit="mg",
     )
-    activated = MedicineCatalogueService.activate_clinical_product(product=cmp)
+    activated = MedicineCatalogueService.activate_clinical_product(product=cmp, actor=actor)
     assert activated.status == "ACTIVE"
 
     # 4. Register Manufactured Product & SKU

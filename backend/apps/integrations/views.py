@@ -15,6 +15,7 @@ from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 
 from apps.audit.service import log_audit
+from apps.core.permissions import PlatformOwnerRequired
 from apps.integrations.models import (
     ActivationState,
     IntegrationDeadLetter,
@@ -55,7 +56,7 @@ VALID_TRANSITIONS = {
 class ProviderConfigurationViewSet(ModelViewSet):
     """Platform Owner: manage provider configurations."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, PlatformOwnerRequired]
     serializer_class = ProviderConfigurationSerializer
     queryset = ProviderConfiguration.all_objects.all()
 
@@ -126,7 +127,7 @@ class ProviderConfigurationViewSet(ModelViewSet):
 class ProviderActivationRequestViewSet(ModelViewSet):
     """Platform Owner: manage activation requests."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, PlatformOwnerRequired]
     serializer_class = ProviderActivationRequestSerializer
     queryset = ProviderActivationRequest.objects.select_related("provider", "requested_by").all()
 
@@ -214,7 +215,7 @@ class ProviderActivationRequestViewSet(ModelViewSet):
 class DeadLetterReplayView(ReadOnlyModelViewSet):
     """Platform Owner: manage dead-letter queue replay."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, PlatformOwnerRequired]
     serializer_class = IntegrationDeadLetterSerializer
     queryset = IntegrationDeadLetter.objects.select_related("message", "replayed_by").all()
 

@@ -127,6 +127,9 @@ class EligibilityService:
         lets a pharmacy show the patient why cover was declined instead of
         simply failing.
         """
+        from ..adapters.base import require_real_adapter_for_production
+
+        require_real_adapter_for_production(tenant_id=tenant_id, adapter=adapter)
         request = {
             "member_number": member.membership_number,
             "patient_reference": str(patient.pk),

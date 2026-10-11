@@ -131,6 +131,11 @@ class FakeProviderAdapter:
         self.secret = secret
 
     def validate_configuration(self, *, tenant, branch=None) -> None:  # noqa: ARG002
+        from django.conf import settings
+        from django.core.exceptions import ValidationError
+
+        if not settings.DEBUG and not getattr(settings, "TESTING", False) and not tenant.is_demo:
+            raise ValidationError("Simulated payments are restricted to designated demo tenants.")
         if not self.secret:
             raise ValueError("Fake provider requires a secret.")
 

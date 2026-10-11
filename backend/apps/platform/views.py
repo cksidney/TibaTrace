@@ -131,4 +131,4 @@ class HQWorkspaceView(APIView):
                 {"detail": "A tenant workspace is required."},
                 status=403,
             )
-        return Response(build_hq_workspace_context(tenant_id))
+        return Response(build_hq_workspace_context(tenant_id, actor=request.user))

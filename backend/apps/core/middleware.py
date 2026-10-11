@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 
+from django.core.exceptions import ValidationError
 from django.http import JsonResponse
 
 from apps.core.request_context import reset_current_request_id, set_current_request_id
@@ -37,13 +38,38 @@ class TenantContextMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
+        # DRF authenticates after middleware. Resolve Bearer identity here too,
+        # before accepting a workspace header or enforcing tenant lifecycle.
+        # Never decode claims without signature/expiry/revocation validation.
+        from rest_framework.exceptions import AuthenticationFailed
+        from rest_framework_simplejwt.authentication import JWTAuthentication
+
+        try:
+            authenticated = JWTAuthentication().authenticate(request)
+        except AuthenticationFailed:
+            response = JsonResponse({"detail": "Invalid or expired authentication."}, status=401)
+            response["WWW-Authenticate"] = 'Bearer realm="api"'
+            return response
+        if authenticated is not None:
+            request.user, request.auth = authenticated
         header_tenant = str(request.headers.get("X-Tenant-ID") or "").strip()
         user = getattr(request, "user", None)
         user_tenant = str(getattr(user, "tenant_id", "") or "").strip()
-        if header_tenant and user_tenant and header_tenant != user_tenant and not getattr(user, "is_platform_admin", False):
+        platform_authority = bool(getattr(user, "is_platform_admin", False) or getattr(user, "is_superuser", False))
+        if request.path.startswith("/api/nif/platform/") and not platform_authority:
+            return JsonResponse({"detail": "Explicit platform authority is required."}, status=403)
+        if header_tenant and getattr(user, "is_authenticated", False) and header_tenant != user_tenant and not platform_authority:
             return JsonResponse({"detail": "Requested tenant is outside the authenticated identity."}, status=403)
 
         request.tenant_id = header_tenant or user_tenant or None
+        request.tenant = None
+        if request.tenant_id:
+            from apps.tenancy.models import Tenant
+
+            try:
+                request.tenant = Tenant.objects.get(pk=request.tenant_id)
+            except (Tenant.DoesNotExist, ValueError, ValidationError):
+                return JsonResponse({"detail": "Invalid workspace."}, status=403)
 
         # Suspension has to mean something.
         #
@@ -58,6 +84,18 @@ class TenantContextMiddleware:
         refusal = self._refuse_non_operational_tenant(request, user)
         if refusal is not None:
             return refusal
+
+        password_routes = (
+            "/api/identity/session/", "/api/identity/me/", "/api/identity/password/",
+            "/api/identity/token/", "/api/health/",
+        )
+        if (
+            getattr(user, "is_authenticated", False)
+            and getattr(user, "must_change_password", False)
+            and not any(request.path.startswith(prefix) for prefix in password_routes)
+        ):
+            return JsonResponse({"detail": "Change your temporary password before continuing.",
+                                 "code": "password_change_required"}, status=403)
 
         token = set_current_tenant_id(request.tenant_id)
         try:
@@ -75,11 +113,7 @@ class TenantContextMiddleware:
 
         from apps.tenancy.models import Tenant
 
-        status = (
-            Tenant.objects.filter(pk=request.tenant_id)
-            .values_list("status", flat=True)
-            .first()
-        )
+        status = request.tenant.status if request.tenant is not None else None
         # An unknown tenant id is not this check's business; the request will
         # fail on its own terms further in.
         if status is None or status in Tenant.OPERATIONAL_STATUSES:

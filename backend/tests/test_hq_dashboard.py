@@ -126,6 +126,14 @@ def test_tenant_operator_hq_workspace_is_tenant_scoped(client):
 
     assert response.status_code == 200
     body = response.json()
+    # A tenant identity alone does not confer patient-read authority.
+    assert body["people"]["counts"]["patients"] == 0
+    assert body["people"]["patients"] == []
+    from apps.identity.models import Role, UserRole
+
+    role = Role.all_objects.create(tenant=tenant_a, code="PATIENT_READER", name="Patient reader", capabilities=["patients.read"])
+    UserRole.all_objects.create(tenant=tenant_a, user=user, role=role)
+    body = client.get("/api/hq/workspace/").json()
     assert body["people"]["counts"]["patients"] == 1
     assert [patient["full_name"] for patient in body["people"]["patients"]] == [
         "Amina A"

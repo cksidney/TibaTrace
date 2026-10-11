@@ -32,6 +32,8 @@ DUE = Decimal("1000.00")
 
 @pytest.fixture
 def intent(domain):  # noqa: F811
+    domain["sales_order"].total = DUE
+    domain["sales_order"].save(update_fields=["total"])
     return PaymentIntentService.create(
         episode=domain["episode"],
         amount_due=DUE,
@@ -61,9 +63,16 @@ def test_intent_creation_is_idempotent(domain, intent):  # noqa: F811
         amount_due=DUE,
         actor=domain["cashier"],
         idempotency_key="intent-1",
+        device_id=intent.device_id,
+        register_id=intent.register_id,
     )
     assert again.id == intent.id
     assert PaymentIntent.all_objects.filter(dispensing_episode=domain["episode"]).count() == 1
+    with pytest.raises(ValidationError, match="different payment request"):
+        PaymentIntentService.create(
+            episode=domain["episode"], amount_due=DUE + 1, actor=domain["cashier"],
+            idempotency_key="intent-1", device_id=intent.device_id, register_id=intent.register_id,
+        )
 
 
 def test_only_one_active_intent_per_episode(domain, intent):  # noqa: F811
@@ -296,16 +305,16 @@ def test_partially_paid_episode_cannot_pass_the_supply_gate(domain, intent):  # 
         )
 
 
-def test_zero_amount_intent_projects_not_required(domain):  # noqa: F811
-    intent = PaymentIntentService.create(
-        episode=domain["episode"],
-        amount_due=Decimal("0"),
-        actor=domain["cashier"],
-        idempotency_key="intent-zero",
-    )
+def test_zero_amount_intent_requires_governed_zero_balance(domain):  # noqa: F811
+    original_state = domain["episode"].payment_state
+    with pytest.raises(ValidationError, match="authoritative priced order"):
+        PaymentIntentService.create(
+            episode=domain["episode"], amount_due=Decimal("0"),
+            actor=domain["cashier"], idempotency_key="intent-zero",
+        )
     domain["episode"].refresh_from_db()
-    assert domain["episode"].payment_state == "NOT_REQUIRED"
-    assert intent.status == PaymentIntent.Status.SETTLED
+    assert domain["episode"].payment_state == original_state
+    assert PaymentIntent.all_objects.filter(dispensing_episode=domain["episode"]).count() == 0
 
 
 # ---------------------------------------------------------------- reversal

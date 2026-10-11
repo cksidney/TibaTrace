@@ -39,6 +39,8 @@ DUE = Decimal("1000.00")
 
 @pytest.fixture
 def intent(domain):  # noqa: F811
+    domain["sales_order"].total = DUE
+    domain["sales_order"].save(update_fields=["total"])
     return PaymentIntentService.create(
         episode=domain["episode"],
         amount_due=DUE,

@@ -3,6 +3,7 @@ import decimal
 import pytest
 from django.core.exceptions import ValidationError
 
+from apps.identity.models import User
 from apps.medicines.models import (
     ActiveSubstance,
     DoseForm,
@@ -15,6 +16,7 @@ from apps.tenancy.models import Tenant
 @pytest.mark.django_db
 def test_lifecycle_transitions_and_validations():
     tenant = Tenant.objects.create(name="Lifecycle Tenant", slug="lc-tenant")
+    actor = User.objects.create_user(username="catalogue-lifecycle-authority", tenant=tenant, is_superuser=True)
     df = DoseForm.objects.create(code="TAB", name="Tablet")
     sub = ActiveSubstance.objects.create(is_global=True, code="SUB-PAR", canonical_name="Paracetamol")
 
@@ -25,13 +27,13 @@ def test_lifecycle_transitions_and_validations():
     assert cmp.status == "DRAFT"
 
     with pytest.raises(ValidationError):
-        MedicineCatalogueService.activate_clinical_product(product=cmp)
+        MedicineCatalogueService.activate_clinical_product(product=cmp, actor=actor)
 
     IngredientCompositionService.add_ingredient(
         clinical_product=cmp, active_substance=sub, numerator_value=decimal.Decimal("500"), numerator_unit="mg"
     )
 
-    activated_cmp = MedicineCatalogueService.activate_clinical_product(product=cmp)
+    activated_cmp = MedicineCatalogueService.activate_clinical_product(product=cmp, actor=actor)
     assert activated_cmp.status == "ACTIVE"
 
     # 2. Manufactured Product lifecycle

@@ -8,7 +8,7 @@
 		Referrer-Policy "same-origin"
 	}
 
-	@backend path /api/* /admin* /admin-shell* /static/* /media/*
+	@backend path /api/* /admin* /admin-shell* /static/* /media/* /pos /pos/*
 	handle @backend {
 		reverse_proxy api:8000 {
 			header_up Host {http.request.host}

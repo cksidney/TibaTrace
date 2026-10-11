@@ -148,3 +148,15 @@ def get_adapter(insurer_code: str):
             "Claims cannot be submitted until one is implemented and registered."
         )
     return adapter
+
+
+def require_real_adapter_for_production(*, tenant_id, adapter):
+    """Simulation must never establish live eligibility, claims or receivables."""
+    from django.conf import settings
+    from django.core.exceptions import ValidationError
+
+    from apps.tenancy.models import Tenant
+
+    if getattr(adapter, "is_simulated", False) and not (settings.DEBUG or getattr(settings, "TESTING", False)):
+        if not Tenant.objects.filter(pk=tenant_id, is_demo=True).exists():
+            raise ValidationError("Simulated insurer adapters are disabled for real production tenants.")

@@ -1,7 +1,7 @@
 from django.urls import path
 from rest_framework.routers import DefaultRouter
-from apps.medicines.api.onboarding import LegacyItemList, LegacyItemReview
 
+from apps.medicines.api.onboarding import LegacyItemList, LegacyItemReview
 from apps.medicines.api.views import (
     ActiveSubstanceViewSet,
     AdministrationRouteViewSet,

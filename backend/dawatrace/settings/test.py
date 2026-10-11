@@ -9,6 +9,7 @@ os.environ.setdefault("DAWATRACE_OBJECT_SIGNING_KEY", "test-document-signing-key
 from .base import *
 
 DEBUG = False
+TESTING = True
 PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
 EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
 FHIR_WRITE_INTERACTIONS_ENABLED = True

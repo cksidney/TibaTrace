@@ -39,6 +39,25 @@ ALL_CAPABILITIES = [
 ]
 
 
+@pytest.fixture(autouse=True)
+def demo_scenario_clock(request):
+    """Historical demo tests use their declared clock, never today's licence date.
+
+    Production licence guards are unchanged. Restrict clock control to demo
+    test modules, preserving deterministic replay as calendar time advances.
+    """
+    if request.module.__name__.split(".")[-1].startswith("test_demo"):
+        scenario_date = getattr(request.module, "AS_OF", None)
+        if scenario_date is not None:
+            # A test may call its own monkeypatch.undo() while exercising resume.
+            # Keep the scenario clock independently scoped for that whole test.
+            with pytest.MonkeyPatch.context() as clock_patch:
+                clock_patch.setattr(timezone, "localdate", lambda value=None, timezone=None: scenario_date)
+                yield
+            return
+    yield
+
+
 @pytest.fixture
 def tenant_a(db):
     return Tenant.objects.create(name="Tenant A Pharmacy", slug="tenant-a")

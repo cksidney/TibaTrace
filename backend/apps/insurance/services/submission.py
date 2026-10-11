@@ -124,6 +124,9 @@ class ClaimSubmissionService:
         someone else's network, and a rollback after the insurer has already
         accepted the claim loses the only record that we sent it.
         """
+        from ..adapters.base import require_real_adapter_for_production
+
+        require_real_adapter_for_production(tenant_id=claim.tenant_id, adapter=adapter)
         if claim.submission_state not in {
             PrescriptionClaim.SubmissionState.READY_TO_SUBMIT,
             PrescriptionClaim.SubmissionState.SUBMITTED,

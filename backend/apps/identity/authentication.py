@@ -23,4 +23,5 @@ class DawaTraceTokenSerializer(TokenObtainPairSerializer):
         # names nobody on a screen where the operator's identity is part of the
         # clinical record.
         data["username"] = self.user.get_username()
+        data["must_change_password"] = self.user.must_change_password
         return data

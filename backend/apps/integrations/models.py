@@ -46,6 +46,8 @@ class ProviderType(models.TextChoices):
     PPB_PRODUCT_REGISTER = "PPB_PRODUCT_REGISTER", "PPB Product Register"
     PPB_REGULATORY_ALERTS = "PPB_REGULATORY_ALERTS", "PPB Regulatory Alerts"
     PPB_RECALLS = "PPB_RECALLS", "PPB Product Recalls"
+    SHA_INSURER = "SHA_INSURER", "SHA / approved insurer"
+    MPESA = "MPESA", "Safaricom M-PESA"
 
 
 class ProviderEnvironment(models.TextChoices):

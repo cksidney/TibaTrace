@@ -176,6 +176,9 @@ class TillAuthenticationService:
                 credential.record_failure()
             raise TillAuthenticationFailed()
 
+        if credential.user.must_change_password:
+            raise TillAuthenticationFailed("Change your temporary system password in HQ before using the till.")
+
         credential.record_success()
 
         token = secrets.token_urlsafe(48)
@@ -233,6 +236,8 @@ class TillAuthenticationService:
             raise TillAuthenticationFailed("The till session has expired. Sign in again.")
 
         user = session.credential.user
+        if not user.is_active or user.must_change_password:
+            raise TillAuthenticationFailed("Sign in to HQ and complete your password change before using the till.")
 
         if requires_password(capability):
             if not password:

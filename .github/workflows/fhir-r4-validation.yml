@@ -55,6 +55,6 @@ jobs:
       - name: Run FHIR gateway tests
         env:
           DJANGO_SETTINGS_MODULE: dawatrace.settings.test
-          DAWATRACE_DATABASE_URL: sqlite:///:memory:
+          DAWATRACE_DATABASE_URL: "sqlite:///:memory:"
           DAWATRACE_REDIS_URL: locmem://
         run: python -m pytest tests/test_fhir_r4_gateway.py tests/test_fhir_kenya_ig_policy.py tests/test_fhir_kenya_hie_policy.py -q --tb=short

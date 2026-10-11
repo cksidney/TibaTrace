@@ -49,6 +49,7 @@ class FakeInsurerAdapter:
     """A configurable, deterministic insurer."""
 
     insurer_code = "FAKE"
+    is_simulated = True
 
     def __init__(self, *, scenario: str = Scenario.FULL_APPROVAL):
         self.scenario = scenario

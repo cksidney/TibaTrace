@@ -708,7 +708,10 @@ class QualityInventoryValidator(QualityValidator):
             ),
         ).aggregate(s=Sum("accepted_quantity"))["s"] or 0
 
-        ledger_qty = InventoryLedgerEntry.all_objects.filter(tenant=self.tenant).aggregate(s=Sum("quantity_delta"))["s"] or 0
+        # Reservation facts move reserved quantity, not physical on-hand stock.
+        ledger_qty = InventoryLedgerEntry.all_objects.filter(tenant=self.tenant).exclude(
+            entry_type__in=[InventoryLedgerEntry.EntryType.RESERVATION, InventoryLedgerEntry.EntryType.RESERVATION_RELEASE]
+        ).aggregate(s=Sum("base_quantity_delta"))["s"] or 0
 
         if accepted_qty != ledger_qty:
             self._fail("posted_quantity_approved", f"accepted {accepted_qty} != ledger {ledger_qty}")
@@ -720,7 +723,9 @@ class QualityInventoryValidator(QualityValidator):
 
         from apps.inventory.models import InventoryBalance, InventoryLedgerEntry
 
-        ledger_qty = InventoryLedgerEntry.all_objects.filter(tenant=self.tenant).aggregate(s=Sum("quantity_delta"))["s"] or 0
+        ledger_qty = InventoryLedgerEntry.all_objects.filter(tenant=self.tenant).exclude(
+            entry_type__in=[InventoryLedgerEntry.EntryType.RESERVATION, InventoryLedgerEntry.EntryType.RESERVATION_RELEASE]
+        ).aggregate(s=Sum("base_quantity_delta"))["s"] or 0
         balance_qty = InventoryBalance.all_objects.filter(tenant=self.tenant).aggregate(s=Sum("on_hand"))["s"] or 0
 
         if ledger_qty != balance_qty:
@@ -778,21 +783,25 @@ class QualityInventoryValidator(QualityValidator):
             self._ok("location_compatibility", "all released stock in compatible storage locations")
 
     def check_fefo_valid(self):
+        from decimal import Decimal
+
         from apps.inventory.models import InventoryBalance
         from apps.inventory.services import FEFOAllocationService
 
         balances = InventoryBalance.all_objects.filter(
             tenant=self.tenant, available__gt=0
-        ).select_related("branch", "sku")
+        ).select_related("branch", "location", "sku")
 
         tested = set()
         for bal in balances:
-            if bal.sku_id in tested:
+            dimension = (bal.branch_id, bal.location_id, bal.sku_id)
+            if dimension in tested:
                 continue
-            tested.add(bal.sku_id)
+            tested.add(dimension)
 
             allocations = FEFOAllocationService.allocate_stock(
-                tenant=self.tenant, branch=bal.branch, sku=bal.sku, required_quantity=5
+                tenant=self.tenant, branch=bal.branch, location=bal.location, sku=bal.sku,
+                required_quantity=min(Decimal("5"), bal.available)
             )
             if allocations:
                 expiries = [b.expiry_date for b, _qty in allocations]

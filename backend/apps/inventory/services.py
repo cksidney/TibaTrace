@@ -634,6 +634,13 @@ class StockTransferService:
             raise ValidationError("Stock transfers require active inventory locations.")
         if not lines_data:
             raise ValidationError("A stock transfer requires at least one line.")
+        from apps.medicines.provisioning import _is_cold_chain, _is_controlled
+
+        for item in lines_data:
+            if _is_cold_chain(item["sku"]) and not dest_location.cold_chain_capability:
+                raise ValidationError("Cold-chain stock requires a cold-chain destination.")
+            if _is_controlled(item["sku"]) and not dest_location.controlled_drug_capability:
+                raise ValidationError("Controlled stock requires a controlled-drug destination.")
         if StockTransfer.all_objects.filter(
             tenant=tenant,
             transfer_number=transfer_number,

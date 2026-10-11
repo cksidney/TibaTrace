@@ -1,6 +1,6 @@
 import json
 
-from django.core.exceptions import ValidationError, PermissionDenied
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.management.base import BaseCommand, CommandError
 
 from apps.identity.models import User

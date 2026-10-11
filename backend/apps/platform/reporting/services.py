@@ -455,10 +455,13 @@ def create_download(
     return spec, receipt, body, content_type
 
 
-def validate_receipt(receipt_id: str) -> dict[str, Any] | None:
+def validate_receipt(receipt_id: str, *, tenant_id=None) -> dict[str, Any] | None:
+    if tenant_id is None:
+        return None
     event = (
         AuditEvent.all_objects.filter(
             action="REPORT_DOWNLOAD",
+            tenant_id=tenant_id,
             object_id=str(receipt_id),
             model_name="reporting.ReportDownload",
         )

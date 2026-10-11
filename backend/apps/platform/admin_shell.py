@@ -291,7 +291,7 @@ def build_hq_dashboard_context(user, tenant_id):
     }
 
 
-def build_hq_workspace_context(tenant_id):
+def build_hq_workspace_context(tenant_id, actor=None):
     patients = _scope(Patient.all_objects, tenant_id)
     practitioners = _scope(Practitioner.all_objects, tenant_id)
     customers = _scope(Customer.all_objects, tenant_id)
@@ -317,6 +317,33 @@ def build_hq_workspace_context(tenant_id):
     substitutions = _scope(ClinicalSubstitution.all_objects, tenant_id)
     dispensing_labels = _scope(DispensingLabel.all_objects, tenant_id)
     fhir_idempotency = _scope(FHIRIdempotencyRecord.all_objects, tenant_id)
+
+    # API callers must supply their actor. Internal assembly callers remain
+    # trusted; each sensitive dataset is otherwise independently authorised.
+    def visible(queryset, *capabilities):
+        if actor is None or any(actor.has_capability(cap, tenant_id=tenant_id) for cap in capabilities):
+            return queryset
+        return queryset.none()
+
+    patients = visible(patients, "patients.read")
+    practitioners = visible(practitioners, "practitioners.read")
+    customers = visible(customers, "customers.read", "sales.read")
+    quotations = visible(quotations, "sales.read")
+    orders = visible(orders, "sales.read")
+    dispatches = visible(dispatches, "sales.read")
+    deliveries = visible(deliveries, "sales.read")
+    returns = visible(returns, "sales.read")
+    audit_events = visible(audit_events, "audit.read")
+    documents = visible(documents, "documents.read")
+    domain_events = visible(domain_events, "audit.read")
+    notifications = visible(notifications, "audit.read")
+    crosswalks = visible(crosswalks, "audit.read")
+    encounters = visible(encounters, "clinical.read")
+    conditions = visible(conditions, "clinical.read")
+    observations = visible(observations, "clinical.read")
+    substitutions = visible(substitutions, "dispensing.read")
+    dispensing_labels = visible(dispensing_labels, "dispensing.read")
+    fhir_idempotency = visible(fhir_idempotency, "audit.read")
 
     open_order_statuses = {
         "DRAFT",

@@ -157,7 +157,7 @@ def test_stock_mobility_validator_passes(mobility_ready):
     """StockMobilityValidator outputs PASS with 0 findings."""
     tenant, run, *_ = mobility_ready
     res = StockMobilityValidator(run=run, tenant=tenant).run_all()
-    assert res["status"] == "PASS"
+    assert res["status"] == "PASS", [f for f in res["findings"] if f["status"] == "FAIL"]
     assert res["failure_count"] == 0
 
     helper_res = validate_demo_scenario(run, tenant)
@@ -190,4 +190,4 @@ def test_stage2c_idempotency_and_resume(mobility_ready):
     assert ledger_after == ledger_before
 
     validator_res = StockMobilityValidator(run=run, tenant=tenant).run_all()
-    assert validator_res["status"] == "PASS"
+    assert validator_res["status"] == "PASS", [f for f in validator_res["findings"] if f["status"] == "FAIL"]

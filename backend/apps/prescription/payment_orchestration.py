@@ -51,6 +51,8 @@ class PaymentAttemptService:
         _require_capability(actor, tender.tenant_id, "pos.payment.provider.initiate")
 
         tender = PaymentTender.all_objects.select_for_update().get(pk=tender.pk)
+        adapter = adapter or get_adapter(provider_code)
+        adapter.validate_configuration(tenant=tender.tenant, branch=tender.payment_intent.branch)
         if tender.status in {PaymentTender.Status.SETTLED, PaymentTender.Status.CANCELLED}:
             raise ValidationError(f"Tender is {tender.status}; it cannot be initiated.")
 
@@ -107,6 +109,8 @@ class PaymentEventService:
         must leave a trace without moving money.
         """
         raw_payload = raw_payload or {}
+        if provider_code.upper() == "FAKE":
+            get_adapter("FAKE").validate_configuration(tenant=tenant)
 
         if not authenticated:
             # Recorded so a forged or misdirected delivery is visible, but never

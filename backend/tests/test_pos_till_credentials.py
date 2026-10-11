@@ -144,6 +144,14 @@ class TestPinStorage:
 
 
 class TestSignIn:
+    def test_temporary_system_password_cannot_bypass_hq_change_gate(self, tenant):
+        user = make_operator(tenant)
+        user.must_change_password = True
+        user.save(update_fields=["must_change_password"])
+        make_credential(tenant, user, login_id="07", pin="8351")
+        with pytest.raises(TillAuthenticationFailed, match="temporary system password"):
+            TillAuthenticationService.sign_in(tenant=tenant, login_id="07", pin="8351", device_id="TILL-1")
+
     def test_correct_credentials_issue_a_session(self, tenant):
         make_credential(tenant, make_operator(tenant), login_id="07", pin="8351")
         session, token = TillAuthenticationService.sign_in(

@@ -43,7 +43,7 @@ INSPECTED_MODELS: tuple[tuple[str, str, str, bool], ...] = (
     ("payment_intents", "prescription", "PaymentIntent", False),
     ("payment_settlements", "prescription", "PaymentSettlement", False),
     ("purchase_orders", "procurement", "PurchaseOrder", False),
-    ("insurance_claims", "insurance", "InsuranceClaim", False),
+    ("insurance_claims", "insurance", "PrescriptionClaim", False),
     ("audit_events", "audit", "AuditEvent", True),
     ("pos_registers", "pos_shift", "PosRegister", False),
     ("register_sessions", "pos_shift", "RegisterSession", False),
@@ -301,10 +301,14 @@ def _verdict(report: ClassificationReport, tenant) -> str:
     # exemption: normal/custom roles, assigned roles and every clinical,
     # commercial or transactional record remain unclassified and block a seed.
     bootstrap_domains = set()
-    if live.get("users") is not None and live["users"].unaccounted == 1:
-        bootstrap_domains.add("users")
     if live.get("roles") is not None and _is_unassigned_bootstrap_tenant_admin(tenant):
         bootstrap_domains.add("roles")
+    from apps.audit.models import AuditEvent
+
+    audit_rows = list(AuditEvent.all_objects.filter(tenant=tenant))
+    designation_only = len(audit_rows) == 1 and _is_canonical_demo_designation_audit(audit_rows[0], tenant)
+    if designation_only:
+        bootstrap_domains.add("audit_events")
     unaccounted = sum(
         value.unaccounted
         for key, value in live.items()
@@ -312,13 +316,13 @@ def _verdict(report: ClassificationReport, tenant) -> str:
     )
 
     only_bootstrap = (
-        demo_owned == 0
+        demo_owned == (1 if designation_only else 0)
         and bool(bootstrap_domains)
         and unaccounted == 0
     )
     if only_bootstrap:
         report.notes.append(
-            "only canonical provisioning records are unaccounted for; "
+            "only canonical bootstrap provisioning records are present; "
             "treated as empty for seeding"
         )
         return EMPTY_SAFE_TO_SEED

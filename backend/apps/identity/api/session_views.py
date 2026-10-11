@@ -24,7 +24,10 @@ it back either.
 """
 from __future__ import annotations
 
-from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth import authenticate, login, logout, update_session_auth_hash
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as PasswordValidationError
+from django.db import transaction
 from django.middleware.csrf import get_token
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import ensure_csrf_cookie
@@ -66,6 +69,7 @@ class SessionUserSerializer(serializers.Serializer):
     tenant_id = serializers.SerializerMethodField()
     tenant_name = serializers.SerializerMethodField()
     is_platform_admin = serializers.BooleanField(default=False)
+    must_change_password = serializers.BooleanField(default=False)
 
     def get_display_name(self, user) -> str:
         full = f"{user.first_name} {user.last_name}".strip()
@@ -154,6 +158,39 @@ class SessionView(APIView):
     def delete(self, request):
         logout(request)
         return Response({"authenticated": False}, status=status.HTTP_200_OK)
+
+
+class PasswordChangeInput(serializers.Serializer):
+    current_password = serializers.CharField(write_only=True, trim_whitespace=False, max_length=256)
+    new_password = serializers.CharField(write_only=True, trim_whitespace=False, min_length=12, max_length=256)
+
+
+class PasswordChangeView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request):
+        payload = PasswordChangeInput(data=request.data)
+        payload.is_valid(raise_exception=True)
+        user = request.user.__class__.objects.select_for_update().get(pk=request.user.pk)
+        data = payload.validated_data
+        if not user.check_password(data["current_password"]):
+            return Response({"detail": "Current password is incorrect."}, status=400)
+        if user.check_password(data["new_password"]):
+            return Response({"detail": "Choose a different password."}, status=400)
+        try:
+            validate_password(data["new_password"], user=user)
+        except PasswordValidationError as exc:
+            return Response({"detail": " ".join(exc.messages)}, status=400)
+        user.set_password(data["new_password"])
+        user.must_change_password = False
+        user.save(update_fields=["password", "must_change_password"])
+        update_session_auth_hash(request, user)
+        from apps.audit.service import log_audit
+
+        log_audit(tenant_id=user.tenant_id, actor_id=user.pk, action="SELF_PASSWORD_CHANGED",
+                  model_name="identity.User", object_id=str(user.pk))
+        return Response({"user": SessionUserSerializer(user).data, "csrf_token": get_token(request)})
 
 
 # ─── self-service password reset ─────────────────────────────────────────────

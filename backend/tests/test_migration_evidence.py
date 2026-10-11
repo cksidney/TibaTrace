@@ -25,9 +25,11 @@ RELEASE_MIGRATION = "backend/apps/platform/migrations/0002_posrelease_client_ali
 
 #: The full list of migrations this release introduces over the deployed baseline.
 RELEASE_MIGRATIONS = [
+    "backend/apps/medicines/migrations/0004_legacy_catalogue_setup.py",
     "backend/apps/integrations/migrations/0001_initial.py",
     "backend/apps/integrations/migrations/0002_claim_fields.py",
     "backend/apps/integrations/migrations/0003_activation_state_update.py",
+    "backend/apps/integrations/migrations/0004_financial_provider_templates.py",
     "backend/apps/integrations/migrations/__init__.py",
     "backend/apps/inventory/recalls/migrations/0001_initial.py",
     "backend/apps/inventory/recalls/migrations/__init__.py",
@@ -208,7 +210,7 @@ def test_git_baseline_matches_the_declared_release_migration():
     # which went stale the moment the next release added a migration.
     baseline = "24a160214114575bdbbb3059b10ad4e323f3daec"
     result = subprocess.run(
-        ["git", "diff", "--name-only", "--diff-filter=A", f"{baseline}..HEAD",
+        ["git", "diff", "--name-only", "--diff-filter=A", baseline,
          "--", "backend/apps/*/migrations/*.py"],
         cwd=REPO_ROOT, capture_output=True, text=True,
     )

@@ -82,6 +82,13 @@ class MedicineCatalogueService:
     @staticmethod
     @transaction.atomic
     def activate_clinical_product(*, product: ClinicalMedicinalProduct, actor=None) -> ClinicalMedicinalProduct:
+        if product.is_global and not (actor and (actor.is_platform_admin or actor.is_superuser)):
+            raise PermissionDenied("Global catalogue activation requires explicit platform authority.")
+        if actor is None or not actor.has_capability("catalogue.activate", tenant_id=product.tenant_id):
+            raise PermissionDenied("Clinical catalogue activation authority is required.")
+        product = ClinicalMedicinalProduct.all_objects.select_for_update().get(pk=product.pk)
+        if product.status not in {ClinicalMedicinalProduct.STATUS_DRAFT, ClinicalMedicinalProduct.STATUS_UNDER_REVIEW}:
+            raise ValidationError("Only a draft or reviewed product can be activated.")
         if not product.ingredients.exists():
             raise ValidationError("Clinical medicinal product must have at least one active ingredient before activation.")
         product.status = ClinicalMedicinalProduct.STATUS_ACTIVE

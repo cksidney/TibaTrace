@@ -3,6 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.response import Response
 
+from apps.core.permissions import CapabilityPermission
 from apps.core.tenant_context import get_current_tenant_id
 from apps.customers.models import Customer
 from apps.medicines.models import CommercialSKU
@@ -134,6 +135,38 @@ class WritablePricingViewSet(mixins.CreateModelMixin, mixins.UpdateModelMixin,
     here still have no approval step and no audit of who changed a price or why,
     which docs/PRICING_AUTHORITY_DECISION.md records as the outstanding work.
     """
+
+    def get_permissions(self):
+        self.required_capabilities = ("pricing.read", "pricing.manage") if self.request.method in {"GET", "HEAD", "OPTIONS"} else ("pricing.manage",)
+        return [permissions.IsAuthenticated(), CapabilityPermission()]
+
+    def _reason(self):
+        reason = str(self.request.data.get("change_reason", "")).strip()
+        if not reason:
+            raise DRFValidationError({"change_reason": "Explain the pricing change."})
+        return reason[:1000]
+
+    def _audit(self, instance, reason):
+        from apps.audit.service import log_audit
+
+        log_audit(tenant_id=self._tenant_id(), actor_id=self.request.user.pk,
+                  action="B2B_PRICE_CHANGED", model_name=instance._meta.label, object_id=str(instance.pk),
+                  metadata={"reason": reason, "method": self.request.method})
+
+    def perform_create(self, serializer):
+        reason = self._reason()
+        instance = serializer.save(tenant_id=self._tenant_id())
+        self._audit(instance, reason)
+
+    def perform_update(self, serializer):
+        reason = self._reason()
+        instance = serializer.save()
+        self._audit(instance, reason)
+
+    def perform_destroy(self, instance):
+        reason = self._reason()
+        self._audit(instance, reason)
+        instance.delete()
 
 
 class PriceListViewSet(WritablePricingViewSet):

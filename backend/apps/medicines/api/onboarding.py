@@ -10,7 +10,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.core.tenant_context import get_current_tenant_id
-from apps.medicines.onboarding import assert_setup_access, missing_details, save_review, setup_status, StaleSetupReview
+from apps.medicines.onboarding import StaleSetupReview, assert_setup_access, missing_details, save_review, setup_status
 from apps.medicines.onboarding_models import LegacyCatalogueItem
 
 
@@ -72,6 +72,9 @@ class SetupScope(APIView):
 
 class LegacyItemList(SetupScope):
     def get(self, request):
+        if not any(request.user.has_capability(cap, tenant_id=self.tenant_id(request))
+                   for cap in ("inventory.manage", "pricing.manage", "catalogue.manage")):
+            return Response({"detail": "Catalogue setup authority is required."}, status=403)
         qs = self.scoped(request).select_related("import_batch")
         summary_items = list(qs)
         summary = {"total":len(summary_items), "positive_stock":sum(i.source_quantity > 0 for i in summary_items),

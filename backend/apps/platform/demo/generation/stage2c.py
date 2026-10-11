@@ -31,6 +31,7 @@ from apps.inventory.services import (
     InventoryReservationService,
     StockTransferService,
 )
+from apps.medicines.provisioning import _is_cold_chain, _is_controlled
 
 from . import synthetic as syn
 from .stages import REF, Stage
@@ -70,7 +71,14 @@ class StageT1TransferPlanning(Stage):
         for bal in balances:
             branch_balances.setdefault(bal.branch_id, []).append(bal)
 
-        branches = list(branch_balances.keys())
+        # Replenishment destinations often start with no stock. Restricting
+        # destinations to positive balances silently produced zero transfers
+        # when all opening inventory lived in the warehouse.
+        branches = list(InventoryLocation.all_objects.filter(
+            tenant=ctx.tenant, status=InventoryLocation.Status.ACTIVE,
+            location_type__in=[InventoryLocation.LocationType.STORE, InventoryLocation.LocationType.DISPENSARY,
+                               InventoryLocation.LocationType.PHARMACY],
+        ).order_by("branch_id").values_list("branch_id", flat=True).distinct())
 
         # Target numbers: 50 Warehouse -> Branch transfers, 25 Branch -> Branch transfers
         # Outcome distribution: ~90% COMPLETED, ~5% REJECTED, ~5% CANCELLED
@@ -84,9 +92,17 @@ class StageT1TransferPlanning(Stage):
 
             for bal in bal_list[:15]:
                 dest_branch_id = rnd.choice(other_branches)
-                dest_loc = InventoryLocation.all_objects.filter(
-                    tenant=ctx.tenant, branch_id=dest_branch_id, status=InventoryLocation.Status.ACTIVE
-                ).first()
+                destinations = InventoryLocation.all_objects.filter(
+                    tenant=ctx.tenant, branch_id=dest_branch_id, status=InventoryLocation.Status.ACTIVE,
+                    quarantine_capability=False, returns_capability=False, damaged_goods_capability=False,
+                )
+                if _is_cold_chain(bal.sku):
+                    destinations = destinations.filter(cold_chain_capability=True)
+                if _is_controlled(bal.sku):
+                    destinations = destinations.filter(controlled_drug_capability=True)
+                if not (_is_cold_chain(bal.sku) or _is_controlled(bal.sku)):
+                    destinations = destinations.filter(location_type__in=["STORE", "DISPENSARY", "PHARMACY"])
+                dest_loc = destinations.order_by("location_code").first()
 
                 if not dest_loc or bal.location == dest_loc:
                     continue

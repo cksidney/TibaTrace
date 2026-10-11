@@ -1,3 +1,4 @@
+"""Server-side capability checks; UI visibility is never an authority gate."""
 from rest_framework.permissions import BasePermission
 
 
@@ -23,14 +24,25 @@ class TenantCapabilityPermission(BasePermission):
         tenant_id = getattr(request, "tenant_id", None)
         if not tenant_id:
             return False
-        capability = (
-            getattr(view, "write_capability", "")
-            if request.method not in {"GET", "HEAD", "OPTIONS"}
-            else getattr(view, "read_capability", "")
-        )
+        capability = (getattr(view, "write_capability", "") if request.method not in {"GET", "HEAD", "OPTIONS"}
+                      else getattr(view, "read_capability", ""))
         capabilities = request.user.effective_capabilities(tenant_id=tenant_id)
         request.effective_capabilities = capabilities
-        return bool(
-            capability
-            and ("*" in capabilities or capability in capabilities)
-        )
+        return bool(capability and ("*" in capabilities or capability in capabilities))
+
+
+class CapabilityPermission(BasePermission):
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False
+        required = getattr(view, "required_capabilities", ())
+        tenant_id = getattr(request, "tenant_id", None) or getattr(request.user, "tenant_id", None)
+        return bool(required) and any(request.user.has_capability(cap, tenant_id=tenant_id) for cap in required)
+
+
+class PlatformOwnerRequired(BasePermission):
+    message = "Explicit platform authority is required."
+
+    def has_permission(self, request, view):
+        user = request.user
+        return bool(user and user.is_authenticated and (user.is_platform_admin or user.is_superuser))

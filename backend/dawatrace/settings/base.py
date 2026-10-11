@@ -217,6 +217,7 @@ SPECTACULAR_SETTINGS = {
 }
 
 SIMPLE_JWT = {
+    "CHECK_REVOKE_TOKEN": True,
     "AUTH_HEADER_TYPES": ("Bearer",),
     "USER_ID_FIELD": "id",
     "USER_ID_CLAIM": "user_id",

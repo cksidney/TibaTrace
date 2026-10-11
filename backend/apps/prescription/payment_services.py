@@ -166,15 +166,26 @@ class PaymentIntentService:
         if not idempotency_key:
             raise ValidationError({"idempotency_key": "Idempotency key is required."})
 
+        amount_due = Decimal(str(amount_due))
+        if not amount_due.is_finite() or amount_due < ZERO:
+            raise ValidationError("Amount due cannot be negative.")
+        episode = DispensingEpisode.all_objects.select_for_update().get(pk=episode.pk, tenant_id=episode.tenant_id)
         existing = PaymentIntent.all_objects.filter(
             tenant_id=episode.tenant_id, idempotency_key=idempotency_key
         ).first()
         if existing:
+            if (existing.dispensing_episode_id != episode.pk or existing.amount_due != amount_due
+                    or existing.currency != currency or existing.device_id != device_id
+                    or existing.register_id != register_id):
+                raise ValidationError("Idempotency key belongs to a different payment request.")
             return existing
+        from apps.prescription.pos_dispensing_services import PosPaymentOrchestrationService
 
-        amount_due = Decimal(str(amount_due))
-        if amount_due < ZERO:
-            raise ValidationError("Amount due cannot be negative.")
+        expected = PosPaymentOrchestrationService.amount_due(episode=episode)
+        if expected is None or expected <= ZERO:
+            raise ValidationError("An authoritative positive priced order is required; zero-balance approval is separate.")
+        if amount_due != expected:
+            raise ValidationError("Amount due does not match the authoritative priced order.")
 
         active = PaymentIntent.all_objects.filter(
             dispensing_episode=episode, status__in=PaymentIntent.ACTIVE_STATUSES

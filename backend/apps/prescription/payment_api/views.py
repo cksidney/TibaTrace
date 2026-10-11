@@ -22,6 +22,7 @@ from apps.prescription.payment_api.serializers import (
     CreateIntentSerializer,
     InitiateProviderSerializer,
     PaymentIntentSerializer,
+    PaymentSettlementSerializer,
     PaymentTenderSerializer,
     ReverseSettlementSerializer,
 )
@@ -36,7 +37,10 @@ from apps.prescription.payment_services import (
 
 
 def _tenant(request):
-    return getattr(request, "tenant", None)
+    from apps.tenancy.models import Tenant
+
+    tenant_id = getattr(request, "tenant_id", None) or getattr(request.user, "tenant_id", None)
+    return Tenant.objects.filter(pk=tenant_id).first() if tenant_id else None
 
 
 def _handle(fn):
@@ -219,7 +223,7 @@ class PaymentTenderViewSet(viewsets.ReadOnlyModelViewSet):
 
 class PaymentSettlementViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [IsAuthenticated]
-    serializer_class = PaymentTenderSerializer
+    serializer_class = PaymentSettlementSerializer
 
     def get_queryset(self):
         tenant = _tenant(self.request)

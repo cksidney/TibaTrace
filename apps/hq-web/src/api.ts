@@ -2547,6 +2547,7 @@ export interface SessionUser {
   readonly tenant_id: string;
   readonly tenant_name: string;
   readonly is_platform_admin: boolean;
+  readonly must_change_password?: boolean;
 }
 
 export interface SessionState {
@@ -2567,6 +2568,18 @@ export class SignInError extends Error {
 }
 
 const SESSION_PATH = '/api/identity/session/';
+
+export async function changeOwnPassword(currentPassword: string, newPassword: string, csrfToken: string): Promise<void> {
+  const response = await fetch('/api/identity/password/change/', {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null) as { detail?: string } | null;
+    throw new Error(payload?.detail ?? 'Password change failed.');
+  }
+}
 
 /**
  * Read the current session.
