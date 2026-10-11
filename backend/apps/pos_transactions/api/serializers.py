@@ -49,6 +49,13 @@ class PosTransactionLineSerializer(serializers.ModelSerializer):
 
 
 class RetailCashReceiptSerializer(serializers.ModelSerializer):
+    # The persisted receipt is cash-only. Emit a scalar here instead of a
+    # one-value generated enum so it cannot rename the existing shared
+    # PaymentTender.tender_type enum in the OpenAPI contract.
+    tender_type = serializers.CharField(
+        read_only=True,
+        help_text="Cash-only receipt; this value is always CASH.",
+    )
     amount = MoneyField()
     cash_received = MoneyField()
     change_due = MoneyField()
