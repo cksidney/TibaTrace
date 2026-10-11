@@ -56,6 +56,12 @@ The Android Gradle release expects these environment variables:
 - `TIBATRACE_ANDROID_KEY_PASSWORD`
 
 Keep their values outside the repository and chat. A future GitHub build should
-materialize the encrypted keystore secret only on its ephemeral runner, supply the
-remaining secrets through masked environment variables, verify the expected
-certificate fingerprint, and remove the temporary keystore after packaging.
+use the protected `android-release` GitHub environment, materialize the base64
+keystore only on its ephemeral runner, supply the remaining values as environment
+secrets, verify the approved `TIBATRACE_ANDROID_CERT_SHA256` repository variable,
+and remove the temporary keystore after packaging. The release workflow expects
+environment secrets named `TIBATRACE_ANDROID_KEYSTORE_BASE64`,
+`TIBATRACE_ANDROID_STORE_PASSWORD`, `TIBATRACE_ANDROID_KEY_ALIAS`, and
+`TIBATRACE_ANDROID_KEY_PASSWORD`; configure required reviewers on that environment
+before adding them. It runs only for a `pos-android-v<package-version>` tag and
+publishes the APK, AAB, checksums and manifest only after signature verification.

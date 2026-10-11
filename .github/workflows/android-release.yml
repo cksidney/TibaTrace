@@ -1,0 +1,179 @@
+name: Android POS release
+
+on:
+  push:
+    tags:
+      - "pos-android-v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: android-release
+    env:
+      NODE_BINARY: node
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check release tag and signing configuration
+        id: release
+        shell: bash
+        env:
+          TIBATRACE_ANDROID_KEYSTORE_BASE64: ${{ secrets.TIBATRACE_ANDROID_KEYSTORE_BASE64 }}
+          TIBATRACE_ANDROID_STORE_PASSWORD: ${{ secrets.TIBATRACE_ANDROID_STORE_PASSWORD }}
+          TIBATRACE_ANDROID_KEY_ALIAS: ${{ secrets.TIBATRACE_ANDROID_KEY_ALIAS }}
+          TIBATRACE_ANDROID_KEY_PASSWORD: ${{ secrets.TIBATRACE_ANDROID_KEY_PASSWORD }}
+          TIBATRACE_ANDROID_CERT_SHA256: ${{ vars.TIBATRACE_ANDROID_CERT_SHA256 }}
+        run: |
+          version="${GITHUB_REF_NAME#pos-android-v}"
+          package_version="$(node -p "require('./apps/pos-android/package.json').version")"
+          if [[ "$version" != "$package_version" ]]; then
+            echo "::error::Release tag version does not match the Android package version."
+            exit 1
+          fi
+          if [[ -z "$TIBATRACE_ANDROID_KEYSTORE_BASE64" || -z "$TIBATRACE_ANDROID_STORE_PASSWORD" || \
+                -z "$TIBATRACE_ANDROID_KEY_ALIAS" || -z "$TIBATRACE_ANDROID_KEY_PASSWORD" || \
+                -z "$TIBATRACE_ANDROID_CERT_SHA256" ]]; then
+            echo "::error::The protected android-release environment is missing a signing secret or certificate fingerprint."
+            exit 1
+          fi
+          expected="$(printf '%s' "$TIBATRACE_ANDROID_CERT_SHA256" | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]')"
+          if [[ ! "$expected" =~ ^[a-f0-9]{64}$ ]]; then
+            echo "::error::TIBATRACE_ANDROID_CERT_SHA256 must be a SHA-256 certificate fingerprint."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK platform and build tools
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - run: npm ci --ignore-scripts
+
+      - run: npm run build --workspace @dawatrace/shared
+
+      - run: npm run typecheck --workspace @dawatrace/pos-android
+
+      - run: npm run test --workspace @dawatrace/pos-android
+
+      - name: Materialize existing release keystore on the ephemeral runner
+        shell: bash
+        env:
+          TIBATRACE_ANDROID_KEYSTORE_BASE64: ${{ secrets.TIBATRACE_ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set +x
+          keystore="$RUNNER_TEMP/tibatrace-android-release.jks"
+          printf '%s' "$TIBATRACE_ANDROID_KEYSTORE_BASE64" | base64 --decode > "$keystore"
+          chmod 600 "$keystore"
+          test -s "$keystore"
+          echo "TIBATRACE_ANDROID_KEYSTORE=$keystore" >> "$GITHUB_ENV"
+
+      - name: Build signed APK and Android App Bundle
+        run: |
+          npm run android:apk:release --workspace @dawatrace/pos-android
+          npm run android:bundle:release --workspace @dawatrace/pos-android
+        env:
+          TIBATRACE_ANDROID_STORE_PASSWORD: ${{ secrets.TIBATRACE_ANDROID_STORE_PASSWORD }}
+          TIBATRACE_ANDROID_KEY_ALIAS: ${{ secrets.TIBATRACE_ANDROID_KEY_ALIAS }}
+          TIBATRACE_ANDROID_KEY_PASSWORD: ${{ secrets.TIBATRACE_ANDROID_KEY_PASSWORD }}
+
+      - name: Verify signing identity and assemble release evidence
+        shell: bash
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+          EXPECTED_CERT_SHA256: ${{ vars.TIBATRACE_ANDROID_CERT_SHA256 }}
+        run: |
+          set +x
+          shopt -s nullglob
+          apks=(apps/pos-android/android/app/build/outputs/apk/release/*.apk)
+          aabs=(apps/pos-android/android/app/build/outputs/bundle/release/*.aab)
+          if [[ ${#apks[@]} -ne 1 || ${#aabs[@]} -ne 1 ]]; then
+            echo "::error::Expected one release APK and one release AAB."
+            exit 1
+          fi
+          expected="$(printf '%s' "$EXPECTED_CERT_SHA256" | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]')"
+          signature="$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "${apks[0]}")"
+          actual="$(printf '%s\n' "$signature" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n 1 | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]')"
+          if [[ "$actual" != "$expected" ]]; then
+            echo "::error::The APK signing certificate does not match the approved existing certificate."
+            exit 1
+          fi
+          jarsigner -verify "${aabs[0]}" >/dev/null
+          aab_signature="$(keytool -printcert -jarfile "${aabs[0]}")"
+          aab_actual="$(printf '%s\n' "$aab_signature" | sed -n 's/^[[:space:]]*SHA256: *//p' | head -n 1 | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]')"
+          if [[ "$aab_actual" != "$expected" ]]; then
+            echo "::error::The AAB signing certificate does not match the approved existing certificate."
+            exit 1
+          fi
+          mkdir -p apps/pos-android/release
+          apk="apps/pos-android/release/TibaTrace-POS-Android-${VERSION}.apk"
+          aab="apps/pos-android/release/TibaTrace-POS-Android-${VERSION}.aab"
+          cp "${apks[0]}" "$apk"
+          cp "${aabs[0]}" "$aab"
+          (cd apps/pos-android/release && sha256sum "$(basename "$apk")" "$(basename "$aab")" > SHA256SUMS)
+          export GIT_SHA="$(git rev-parse HEAD)"
+          export VERSION
+          export CERT_SHA256="$actual"
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib
+
+          root = pathlib.Path("apps/pos-android/release")
+          files = []
+          for path in sorted(root.glob("TibaTrace-POS-Android-*")):
+              if path.is_file():
+                  files.append({
+                      "name": path.name,
+                      "size_bytes": path.stat().st_size,
+                      "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                  })
+          manifest = {
+              "platform": "ANDROID",
+              "version": os.environ["VERSION"],
+              "release_tag": os.environ["GITHUB_REF_NAME"],
+              "git_sha": os.environ["GIT_SHA"],
+              "application_id": "co.ke.esenai.tibatrace.pos",
+              "certificate_sha256": os.environ["CERT_SHA256"],
+              "artifacts": files,
+          }
+          (root / "release-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tibatrace-pos-android-release-${{ steps.release.outputs.version }}
+          path: apps/pos-android/release/
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Publish signed Android release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          make_latest: false
+          files: |
+            apps/pos-android/release/TibaTrace-POS-Android-${{ steps.release.outputs.version }}.apk
+            apps/pos-android/release/TibaTrace-POS-Android-${{ steps.release.outputs.version }}.aab
+            apps/pos-android/release/SHA256SUMS
+            apps/pos-android/release/release-manifest.json
+          fail_on_unmatched_files: true
+
+      - name: Remove temporary Android keystore
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/tibatrace-android-release.jks"
