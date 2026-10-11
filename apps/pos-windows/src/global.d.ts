@@ -6,6 +6,10 @@ interface TibaTraceSessionInfo {
   readonly username?: string;
   readonly deviceId: string;
   readonly apiBaseUrl: string;
+  readonly deviceFingerprint?: string;
+  readonly appVersion?: string;
+  readonly activationValid?: boolean;
+  readonly activationBranchId?: string;
 }
 
 interface TibaTraceApiResponse {

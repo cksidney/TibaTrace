@@ -19,6 +19,8 @@ from apps.audit.service import log_audit
 from apps.platform.admin_shell import build_hq_dashboard_context
 from apps.platform.reporting.catalogue import ReportSpec, get_report, list_reports
 from apps.platform.reporting.pdf import build_pdf_bytes, qr_matrix
+from apps.platform.reporting.queries import availability, query_report
+from apps.platform.reporting.tabular import csv_bytes, xlsx_bytes
 from apps.tenancy.models import Tenant
 
 SUPPORTED_FORMATS = ("pdf", "csv", "json", "xlsx")
@@ -105,6 +107,7 @@ def catalogue_payload() -> dict[str, Any]:
                 "category": spec.category,
                 "category_label": spec.category_label,
                 "formats": list(SUPPORTED_FORMATS),
+                **availability(spec.id),
             }
         )
     return {
@@ -112,8 +115,8 @@ def catalogue_payload() -> dict[str, Any]:
         "framework": {
             "interactive_dashboards": True,
             "role_based_access": True,
-            "advanced_filters": True,
-            "drill_down": True,
+            "advanced_filters": False,
+            "drill_down": False,
             "exports": list(SUPPORTED_FORMATS),
             "scheduled_reports": False,
             "tenant_isolation": True,
@@ -209,9 +212,15 @@ def _report_rows(
                 ["Reporting window start (UTC)", receipt.period_start],
                 ["Reporting window end (UTC)", receipt.period_end],
                 ["Aggregation granularity", receipt.granularity],
-                ["Data basis", "Authenticated tenant snapshot generated at download time"],
             ]
         )
+    data = overview.get("report_data")
+    rows.append(["Data basis", data.basis if data else "Current authenticated tenant dashboard snapshot; not historical analytics."])
+    if data:
+        rows.append(["Source rows", str(len(data.rows))])
+        if not data.rows:
+            rows.append(["Status", "No matching source records in this tenant and reporting window."])
+        return rows
     for label, value in list(summary.items())[:12]:
         rows.append([f"KPI · {label}", str(value)])
     for item in metrics[:8]:
@@ -231,7 +240,7 @@ def _report_rows(
                 ]
             )
     if not summary and not metrics and not attention:
-        rows.append(["Status", "No transactional rows in current scope for this pack; catalogue shell issued."])
+        rows.append(["Status", "No dashboard metrics available in this authorized scope."])
     return rows
 
 
@@ -243,6 +252,7 @@ def render_report_bytes(
     overview: dict[str, Any],
 ) -> tuple[bytes, str]:
     rows = _report_rows(spec, overview, receipt)
+    data = overview.get("report_data")
     qr_data = _qr_payload(receipt)
     matrix = qr_matrix(qr_data)
 
@@ -259,6 +269,7 @@ def render_report_bytes(
             "receipt": asdict(receipt),
             "validation_qr_payload": json.loads(qr_data),
             "rows": [{"field": row[0], "value": row[1]} for row in rows[1:]],
+            "data": {"basis": data.basis, "columns": data.columns, "rows": data.rows} if data else None,
             "framework_note": (
                 "Each download is audited. Scan the QR or open validation_url to confirm "
                 "who downloaded this pack, when, and from which terminal."
@@ -287,17 +298,19 @@ def render_report_bytes(
             writer.writerow(["Aggregation granularity", receipt.granularity])
         writer.writerow([])
         writer.writerows(rows)
+        if data:
+            writer.writerow([])
+            writer.writerow(data.columns)
+            writer.writerows(data.rows)
         writer.writerow([])
         writer.writerow(["QR payload (scan equivalent)", qr_data])
-        body = buffer.getvalue().encode("utf-8-sig")
+        table = list(csv.reader(io.StringIO(buffer.getvalue())))
+        body = xlsx_bytes(table) if export_format == "xlsx" else csv_bytes(table)
         content_type = (
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             if export_format == "xlsx"
             else "text/csv; charset=utf-8"
         )
-        # Excel-friendly CSV bytes; true XLSX is deferred while keeping the catalogue format label.
-        if export_format == "xlsx":
-            content_type = "text/csv; charset=utf-8"
         return body, content_type
 
     # PDF
@@ -320,6 +333,10 @@ def render_report_bytes(
         pdf.subheading("Report content")
         for row in rows[1:]:
             pdf.key_value(row[0], row[1])
+        if data:
+            pdf.text(" | ".join(data.columns), size=8)
+            for row in data.rows:
+                pdf.text(" | ".join(row), size=8)
         pdf.spacer(8)
         pdf.subheading("Download validation")
         pdf.key_value("Receipt ID", receipt.receipt_id)
@@ -373,7 +390,11 @@ def create_download(
         raise PermissionError("A tenant workspace is required to download reports.")
 
     tenant = Tenant.objects.filter(pk=tenant_id).first()
-    overview = build_hq_dashboard_context(request.user, tenant_id)
+    data = query_report(spec.id, tenant_id, request.user, window)
+    overview = build_hq_dashboard_context(request.user, tenant_id) if data is None else {
+        "tenant_name": tenant.name if tenant else "", "scope_label": "Tenant", "user_name": request.user.username,
+        "report_data": data,
+    }
     receipt_id = str(uuid.uuid4())
     downloaded_at = dj_timezone.now().astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
     terminal = _terminal_id(request, terminal_id)

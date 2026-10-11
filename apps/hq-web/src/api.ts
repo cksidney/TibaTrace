@@ -1930,6 +1930,23 @@ export async function loadCapabilityMatrix(
 export type ReportExportFormat = 'pdf' | 'csv' | 'json' | 'xlsx';
 export type ReportGranularity = 'HOURLY' | 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
 
+export interface ReportAvailability {
+  readonly id: string;
+  readonly available: boolean;
+  readonly period_filter: boolean;
+  readonly availability_note: string;
+}
+
+export async function loadReportAvailability(tenantId: string, signal?: AbortSignal): Promise<readonly ReportAvailability[]> {
+  const response = await fetch('/api/hq/reports/', {
+    credentials: 'include', headers: { Accept: 'application/json', ...tenantHeaders(tenantId) },
+    ...(signal ? { signal } : {}),
+  });
+  if (!response.ok) throw new HQApiError(response.status, 'Report availability could not be verified.');
+  const result = await response.json() as { categories: { reports: ReportAvailability[] }[] };
+  return result.categories.flatMap((category) => category.reports);
+}
+
 export interface ReportDownloadReceipt {
   readonly receiptId: string;
   readonly validationCode: string;

@@ -54,6 +54,13 @@ export function App() {
       })
       .finally(() => setRestoring(false));
   }, []);
+  useEffect(() => {
+    if (!session?.authenticated) return;
+    const timer = setInterval(() => {
+      void runtime.restore().then(setSession).catch(() => setSession((current) => current ? { ...current, activationValid: false } : null));
+    }, 60000);
+    return () => clearInterval(timer);
+  }, [session?.authenticated]);
 
   if (restoring) {
     return <CenteredMessage message="Restoring secure till session…" />;
@@ -73,7 +80,9 @@ export function App() {
 
   return (
     <OperationsConsole
+      key={`${session.userId}:${Boolean(session.activationValid)}`}
       session={session}
+      onActivationRefresh={async () => setSession(await runtime.restore())}
       apiFetch={runtime.fetch}
       onLogout={async () => {
         await runtime.logout();
@@ -87,14 +96,16 @@ function OperationsConsole({
   session,
   apiFetch,
   onLogout,
+  onActivationRefresh,
 }: {
   readonly session: TibaTraceSessionInfo;
   readonly apiFetch: typeof fetch;
   readonly onLogout: () => Promise<void>;
+  readonly onActivationRefresh: () => Promise<void>;
 }) {
   const [workspace, setWorkspace] = useState<
     'clinical' | 'retail' | 'register' | 'print' | 'sync' | 'activation'
-  >('clinical');
+  >(session.activationValid ? 'clinical' : 'activation');
   const { state, refreshQueue, select, refresh, takePayment, confirmCollection, recordCounselling, journal } =
     usePosWorkflow('/api/pos/dispensing', apiFetch, runtime.offline, session.deviceId);
   // Was `useState<ClinicalSummary | null>(null)` with no setter, so the rail
@@ -108,6 +119,18 @@ function OperationsConsole({
   const [clinicalReviewBusy, setClinicalReviewBusy] = useState(false);
   const [clinicalReviewError, setClinicalReviewError] = useState('');
   const [locked, setLocked] = useState(false);
+  const [authority, setAuthority] = useState<{ owner: boolean; capabilities: readonly string[]; mustChangePassword: boolean } | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    void apiFetch('/api/identity/me/', { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Authority unavailable');
+        return response.json() as Promise<{ is_platform_admin?: boolean; is_superuser?: boolean; effective_capabilities?: string[]; must_change_password?: boolean }>;
+      })
+      .then((user) => setAuthority({ owner: Boolean(user.is_platform_admin || user.is_superuser), capabilities: user.effective_capabilities ?? [], mustChangePassword: Boolean(user.must_change_password) }))
+      .catch(() => setAuthority(null));
+    return () => controller.abort();
+  }, [apiFetch]);
   const viewport = useViewport();
   // Below `expanded` the rail cannot hold its 320px and leave the workspace a
   // usable width, so it moves under the workspace instead of beside it. It is
@@ -115,8 +138,8 @@ function OperationsConsole({
   const railBeside = !viewportAtMost(viewport, 'medium');
 
   useEffect(() => {
-    void refreshQueue();
-  }, [refreshQueue]);
+    if (session.activationValid) void refreshQueue();
+  }, [refreshQueue, session.activationValid]);
 
   const stages = useMemo(
     () =>
@@ -273,7 +296,7 @@ function OperationsConsole({
         busy={state.busy}
         operator={session.username ?? session.userId}
         workspace={workspace}
-        onWorkspaceChange={setWorkspace}
+        onWorkspaceChange={(next) => setWorkspace(session.activationValid ? next : 'activation')}
         onLock={() => setLocked(true)}
         onLogout={onLogout}
       />
@@ -293,13 +316,15 @@ function OperationsConsole({
         <PosActivationConsole
           apiFetch={apiFetch}
           userId={session.userId}
-          userRole={session.username === 'platform_owner' ? 'PLATFORM_OWNER' : 'TENANT_ADMIN'}
-          userCapabilities={
-            session.username === 'platform_owner'
-              ? ['platform.pos_activation.review', 'platform.pos_activation.approve', 'platform.pos_activation.activate', 'platform.pos_activation.suspend', 'platform.pos_activation.revoke', 'platform.pos_activation.override_limit']
-              : ['tenant.pos_activation.request', 'tenant.pos_activation.view', 'tenant.pos_activation.withdraw', 'tenant.pos_activation.respond']
-          }
-          isPlatformOwnerContext={session.username === 'platform_owner'}
+          userRole={authority?.owner ? 'PLATFORM_OWNER' : 'TENANT_USER'}
+          userCapabilities={authority?.owner ? ['platform.pos_activation.approve', 'platform.pos_activation.review'] : authority?.capabilities ?? []}
+          isPlatformOwnerContext={authority?.owner ?? false}
+          tenantId={session.tenantId}
+          deviceId={session.deviceId}
+          fingerprint={session.deviceFingerprint ?? ''}
+          appVersion={session.appVersion ?? ''}
+          onEnrolled={onActivationRefresh}
+          passwordChangeRequired={authority?.mustChangePassword ?? false}
         />
       ) : <>
       <PatientSafetyBanner patient={patient} />

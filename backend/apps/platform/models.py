@@ -97,3 +97,4 @@ from apps.platform.demo.models import (  # noqa: E402,F401  (re-export for disco
     DemoScenarioRun,
     DemoSeedApproval,
 )
+from apps.platform.pos_activation import PosActivationRequest  # noqa: E402,F401

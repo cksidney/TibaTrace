@@ -21,8 +21,10 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import platform
 import re
 import zipfile
+from importlib.metadata import PackageNotFoundError, version
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -107,29 +109,31 @@ class CertificationEvidenceGenerator:
         if openapi_path.exists():
             openapi_sha256 = hashlib.sha256(openapi_path.read_bytes()).hexdigest()
 
-        # 2. Version matrix
+        def installed_version(package):
+            try:
+                return version(package)
+            except PackageNotFoundError:
+                return "NOT_INSTALLED"
+
+        # Runtime inventory is not regulator approval or release test evidence.
         version_matrix = {
             **meta,
             "components": {
                 "tibatrace_core": programme_version,
-                "dha_fhir_ig": "4.0.1",
-                "kenya_digital_health_framework": "2025.1",
-                "django_backend": "5.1.15",
-                "python_runtime": "3.11.3",
+                "dha_fhir_ig": "NOT_VERIFIED",
+                "kenya_digital_health_framework": "NOT_VERIFIED",
+                "django_backend": installed_version("Django"),
+                "python_runtime": platform.python_version(),
             },
         }
 
         # 3. Readiness matrix
         readiness_matrix = {
             **meta,
-            "overall_readiness": "81.5%",
-            "readiness_status": "TIBATRACE_CERTIFICATION_READY (Internal Evidence)",
-            "matrices": {
-                "dha_hie_readiness": {"status": "READY_INTERNAL_EVIDENCE", "score": "81.5%"},
-                "dha_hwr_readiness": {"status": "READY_INTERNAL_EVIDENCE", "score": "85.0%"},
-                "ppb_premises_readiness": {"status": "READY_INTERNAL_EVIDENCE", "score": "80.0%"},
-                "ppb_recalls_readiness": {"status": "READY_INTERNAL_EVIDENCE", "score": "90.0%"},
-            },
+            "overall_readiness": None,
+            "readiness_status": "NOT_CERTIFIED_EXTERNAL_ACCEPTANCE_PENDING",
+            "matrices": {name: {"status": "EXTERNAL_ACCEPTANCE_NOT_VERIFIED", "score": None}
+                         for name in ("dha_hie_readiness", "dha_hwr_readiness", "ppb_premises_readiness", "ppb_recalls_readiness")},
             "external_gates_pending": [
                 "DHA OAuth production credentials",
                 "PPB Premises Registry official API endpoint",
@@ -140,27 +144,18 @@ class CertificationEvidenceGenerator:
         # 4. SBOM & SLSA Provenance
         sbom_provenance = {
             **meta,
-            "slsa_level": "SLSA_BUILD_LEVEL_3",
-            "build_environment": "macOS / Docker reproducible sandbox",
-            "dependencies": {
-                "django": "5.1.15",
-                "djangorestframework": "3.15.2",
-                "drf-spectacular": "0.28.0",
-                "pytest": "9.0.3",
-                "bandit": "1.8.3",
-                "ruff": "0.9.10",
-            },
+            "slsa_level": "NOT_VERIFIED",
+            "build_environment": "NOT_VERIFIED_BY_RUNTIME",
+            "dependencies": {name: installed_version(name) for name in
+                             ("Django", "djangorestframework", "drf-spectacular", "pytest", "bandit", "ruff")},
+            "evidence_required": "Verify immutable CI release manifest, SBOM and build attestations for this commit.",
         }
 
         # 5. Quality & Security Evidence
         quality_evidence = {
             **meta,
-            "backend_pytest": {"total": 1549, "passed": 1549, "failed": 0, "status": "PASS"},
-            "nif_focused_tests": {"total": 100, "passed": 100, "failed": 0, "status": "PASS"},
-            "shared_typescript_tests": {"total": 201, "passed": 201, "failed": 0, "status": "PASS"},
-            "windows_pos_tests": {"total": 92, "passed": 92, "failed": 0, "status": "PASS"},
-            "bandit_security": {"high_severity": 0, "med_severity": 0, "status": "CLEAN"},
-            "migration_drift": {"changes_detected": 0, "status": "ZERO_DRIFT"},
+            **{name: {"status": "NOT_VERIFIED", "source": "Commit-matched CI evidence required; runtime does not execute this check."}
+               for name in ("backend_pytest", "nif_focused_tests", "shared_typescript_tests", "windows_pos_tests", "bandit_security", "migration_drift")},
         }
 
         package = {

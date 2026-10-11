@@ -2,12 +2,14 @@ import { useEffect, useMemo, useState } from 'react';
 
 import {
   downloadEnterpriseReport,
+  loadReportAvailability,
   validateReportReceipt,
   type HQOverview,
   type ReportDownloadReceipt,
   type ReportExportFormat,
   type ReportFilterOptions,
   type ReportGranularity,
+  type ReportAvailability,
 } from './api.js';
 import { Icon } from './icons.js';
 import {
@@ -135,6 +137,17 @@ export function ReportsWorkspace({
   const [error, setError] = useState('');
   const [receipt, setReceipt] = useState<ReportDownloadReceipt | null>(null);
   const [validation, setValidation] = useState<Record<string, unknown> | null>(null);
+  const [availability, setAvailability] = useState<ReadonlyMap<string, ReportAvailability>>(new Map());
+  useEffect(() => {
+    const controller = new AbortController();
+    setAvailability(new Map());
+    void loadReportAvailability(overview.tenant_id, controller.signal)
+      .then((items) => setAvailability(new Map(items.map((item) => [item.id, item]))))
+      .catch((cause: unknown) => {
+        if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'Report availability unavailable.');
+      });
+    return () => controller.abort();
+  }, [overview.tenant_id]);
 
   const [datePreset, setDatePreset] = useState<DatePresetId>('THIS_MONTH');
   const initialRange = useMemo(() => calculatePresetRange('THIS_MONTH'), []);
@@ -190,7 +203,12 @@ export function ReportsWorkspace({
   }, [page, safePage]);
 
   const download = async (report: ReportDefinition, exportFormat: ReportExportFormat) => {
-    if (rangeError) {
+    const support = availability.get(report.id);
+    if (!support?.available) {
+      setError(support?.availability_note ?? 'Report availability has not been verified.');
+      return;
+    }
+    if (support.period_filter && rangeError) {
       setError(rangeError);
       return;
     }
@@ -198,11 +216,11 @@ export function ReportsWorkspace({
     setError('');
     setValidation(null);
     try {
-      const filterOpts: ReportFilterOptions = {
+      const filterOpts: ReportFilterOptions = support.period_filter ? {
         fromIso: new Date(startDateTimeIso).toISOString(),
         toIso: new Date(endDateTimeIso).toISOString(),
         granularity,
-      };
+      } : {};
       const next = await downloadEnterpriseReport(
         report.id,
         exportFormat,
@@ -229,7 +247,8 @@ export function ReportsWorkspace({
           <p className="eyebrow">Enterprise reporting</p>
           <h2>Downloadable report packs</h2>
           <p>
-            Professionally formatted exports for every catalogue pack. Each download embeds a unique
+            Source-data exports are available for implemented packs; planned packs are clearly marked.
+            Current snapshots do not apply the date window. Each download embeds a unique
             validation QR with who downloaded it, when, tenant scope, terminal identity and integrity code.
           </p>
         </div>
@@ -416,6 +435,7 @@ export function ReportsWorkspace({
                         <td>
                           <strong>{report.name}</strong>
                           <small className="muted-cell">{report.description}</small>
+                          <small className="muted-cell">{availability.get(report.id)?.availability_note ?? 'Verifying availability…'}</small>
                         </td>
                         <td><small>{report.audience}</small></td>
                         <td><small className="muted-cell">{report.cadence}</small></td>
@@ -429,7 +449,7 @@ export function ReportsWorkspace({
                             <select
                               aria-label={`Export format for ${report.name}`}
                               className="reports-download-select"
-                              disabled={Boolean(busyId) || Boolean(rangeError)}
+                              disabled={Boolean(busyId) || !availability.get(report.id)?.available || Boolean(availability.get(report.id)?.period_filter && rangeError)}
                               onChange={(event) => {
                                 const val = event.target.value as ReportExportFormat;
                                 if (val) {
@@ -440,7 +460,7 @@ export function ReportsWorkspace({
                               value=""
                             >
                               <option value="" disabled>
-                                {busyId.startsWith(`${report.id}:`) ? 'Downloading…' : '📥 Export as…'}
+                                {busyId.startsWith(`${report.id}:`) ? 'Downloading…' : availability.get(report.id)?.available ? 'Export as…' : 'Not available'}
                               </option>
                               <option value="pdf">📄 PDF Document (.pdf)</option>
                               <option value="csv">📊 CSV Data (.csv)</option>
@@ -484,6 +504,7 @@ export function ReportsWorkspace({
                 <div>
                   <dt>Description</dt>
                   <dd>{selected.description}</dd>
+                  <dd>{availability.get(selected.id)?.availability_note ?? 'Verifying availability…'}</dd>
                 </div>
                 <div>
                   <dt>Audience</dt>
@@ -517,7 +538,7 @@ export function ReportsWorkspace({
                   {FORMATS.map((item) => (
                     <button
                       className={item.id === format ? 'primary-button' : 'secondary-button'}
-                      disabled={Boolean(busyId) || Boolean(rangeError)}
+                      disabled={Boolean(busyId) || !availability.get(selected.id)?.available || Boolean(availability.get(selected.id)?.period_filter && rangeError)}
                       key={item.id}
                       onClick={() => {
                         setFormat(item.id);

@@ -31,6 +31,7 @@ urlpatterns = [
     path("admin-shell/", admin_shell, name="admin-shell"),
     path("api/health/", health, name="health"),
     path("api/platform/", PlatformInfoView.as_view(), name="platform-info"),
+    path("api/v1/", include("apps.platform.activation_urls")),
     path("api/hq/overview/", HQOverviewView.as_view(), name="hq-overview"),
     path("api/hq/workspace/", HQWorkspaceView.as_view(), name="hq-workspace"),
     path("api/hq/reports/", HQReportCatalogueView.as_view(), name="hq-report-catalogue"),

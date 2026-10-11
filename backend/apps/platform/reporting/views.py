@@ -1,6 +1,8 @@
 """Phase 15 Compliance Reporting Engine & Phase 16 Certification Evidence Engine views."""
 from __future__ import annotations
 
+from django.core.exceptions import PermissionDenied as DjangoPermissionDenied
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.http import HttpResponse
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
@@ -45,6 +47,8 @@ class HQReportDownloadView(APIView):
                 period_end=str(period_end),
                 granularity=str(granularity),
             )
+        except NotImplementedError as exc:
+            return Response({"detail": str(exc), "code": "report_not_implemented"}, status=501)
         except LookupError:
             return Response({"detail": "Unknown report."}, status=404)
         except ValueError as exc:
@@ -53,7 +57,7 @@ class HQReportDownloadView(APIView):
             return Response({"detail": str(exc)}, status=403)
 
         filename = (
-            f"{spec.id}-{receipt.receipt_id[:8]}.{receipt.export_format if receipt.export_format != 'xlsx' else 'csv'}"
+            f"{spec.id}-{receipt.receipt_id[:8]}.{receipt.export_format}"
         )
         response = HttpResponse(body, content_type=content_type)
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
@@ -88,19 +92,17 @@ class ComplianceReportView(APIView):
         format_type = request.query_params.get("format", "json").lower()
         tenant_id = getattr(request, "tenant_id", None)
 
-        result = ComplianceReportEngine.generate_report(
-            report_type=report_type,
-            format_type=format_type,
-            tenant_id=tenant_id,
-            actor=request.user,
-        )
-
-        if format_type in ("csv", "excel"):
-            response = HttpResponse(result["content"], content_type="text/csv")
-            response["Content-Disposition"] = f'attachment; filename="{result["filename"]}"'
-            return response
-
-        return HttpResponse(result["content"], content_type="application/json")
+        try:
+            result = ComplianceReportEngine.generate_report(
+                report_type=report_type, format_type=format_type, tenant_id=tenant_id, actor=request.user,
+            )
+        except DjangoValidationError as exc:
+            return Response({"detail": exc.messages}, status=400)
+        except DjangoPermissionDenied as exc:
+            return Response({"detail": str(exc)}, status=403)
+        response = HttpResponse(result["content"], content_type=result["content_type"])
+        response["Content-Disposition"] = f'attachment; filename="{result["filename"]}"'
+        return response
 
 
 class CertificationEvidenceView(APIView):

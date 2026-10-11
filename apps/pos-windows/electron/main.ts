@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
@@ -9,6 +9,7 @@ import { app, BrowserWindow, ipcMain, net, session } from 'electron';
 import { EncryptedSessionStore } from './sessionStore.js';
 import type { StoredPosSession } from './sessionStore.js';
 import { EncryptedOfflineStore } from './offlineStore.js';
+import { EncryptedActivationStore, type DeviceActivation } from './activationStore.js';
 
 const currentDirectory = dirname(fileURLToPath(import.meta.url));
 const DEV_SERVER = process.env['VITE_DEV_SERVER_URL'];
@@ -17,7 +18,7 @@ const API_BASE_URL = normaliseApiBaseUrl(
 );
 const MAX_REQUEST_BYTES = 1024 * 1024;
 const MAX_RESPONSE_BYTES = 10 * 1024 * 1024;
-const ALLOWED_API_PREFIXES = ['/api/pos/', '/api/identity/me/', '/api/health/'];
+const ALLOWED_API_PREFIXES = ['/api/pos/', '/api/identity/me/', '/api/health/', '/api/v1/tenant/pos-activations/', '/api/v1/platform/pos-activations/'];
 const ALLOWED_RENDERER_HEADERS = new Set([
   'accept',
   'content-type',
@@ -209,6 +210,14 @@ async function executeApiRequest(
   }
   headers.set('Authorization', `Bearer ${stored.access}`);
   headers.set('X-Tenant-ID', stored.tenantId);
+  if (request.path.startsWith('/api/pos/')) {
+    const activation = await new EncryptedActivationStore(stored.tenantId, deviceId).load();
+    if (activation) {
+      headers.set('X-POS-Activation', activation.signedToken);
+      headers.set('X-POS-Device-ID', deviceId);
+      headers.set('X-POS-Fingerprint', deviceFingerprint());
+    }
+  }
   headers.set('Accept', headers.get('Accept') ?? 'application/json');
 
   const response = await net.fetch(`${API_BASE_URL}${request.path}`, {
@@ -217,9 +226,16 @@ async function executeApiRequest(
     ...(request.body === undefined ? {} : { body: request.body }),
     redirect: 'error',
   });
-  const body = await response.text();
+  let body = await response.text();
   if (Buffer.byteLength(body, 'utf8') > MAX_RESPONSE_BYTES) {
     throw new Error('The server response exceeded the POS safety limit.');
+  }
+  if (response.ok && request.path.startsWith('/api/v1/tenant/pos-activations/requests/') && request.path.endsWith('/enrol/')) {
+    const activation = JSON.parse(body) as DeviceActivation;
+    if (activation.deviceFingerprint !== deviceFingerprint()) throw new Error('Approved activation belongs to another installation.');
+    await new EncryptedActivationStore(stored.tenantId, deviceId).save(activation);
+    // The native process retains the credential; the UI only needs the outcome.
+    body = JSON.stringify({ ...activation, signedToken: undefined });
   }
   return {
     status: response.status,
@@ -299,13 +315,38 @@ function readTokens(payload: unknown): StoredPosSession {
   };
 }
 
-function sessionInfo(stored: StoredPosSession | null) {
+function deviceFingerprint(): string {
+  // Stable installation identity, not a claim of TPM/hardware attestation.
+  return createHash('sha256').update(`tibatrace.windows.v1:${deviceId}`).digest('hex');
+}
+
+async function sessionInfo(stored: StoredPosSession | null) {
+  let activationValid = false;
+  let activationBranchId = '';
+  if (stored) {
+    try {
+      const activation = await new EncryptedActivationStore(stored.tenantId, deviceId).load();
+      if (activation) {
+        const response = await authorizedRequest({ path: '/api/v1/tenant/pos-activations/requests/validate/', method: 'POST',
+          headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ signed_token: activation.signedToken,
+            device_id: deviceId, device_fingerprint: deviceFingerprint() }) });
+        activationValid = response.status === 200 && JSON.parse(response.body).valid === true;
+        activationBranchId = activationValid ? activation.branchId : '';
+      }
+    } catch {
+      activationValid = false;
+    }
+  }
   return {
     authenticated: stored !== null,
     tenantId: stored?.tenantId ?? '',
     userId: stored?.userId ?? '',
     deviceId,
     apiBaseUrl: API_BASE_URL,
+    deviceFingerprint: deviceFingerprint(),
+    appVersion: app.getVersion(),
+    activationValid,
+    activationBranchId,
   };
 }
 

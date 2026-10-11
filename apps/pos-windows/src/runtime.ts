@@ -36,7 +36,7 @@ class MemorySessionStorage implements PosSessionStorage {
 export function createPosRuntime(): PosRuntime {
   if (window.tibatrace) {
     const electronFetch: typeof fetch = async (input, init) => {
-      const request = new Request(input, init);
+      const request = new Request(typeof input === 'string' ? new URL(input, 'https://tibatrace.esenai.co.ke').toString() : input, init);
       const url = new URL(request.url);
       const headers: Record<string, string> = {};
       request.headers.forEach((value, key) => {

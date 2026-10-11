@@ -46,8 +46,9 @@ def _specs() -> list[ReportSpec]:
         ("executive", "exec-regulatory-alerts", "Regulatory Alerts", "Open compliance exceptions requiring management attention.", "Compliance", "Daily"),
         ("executive", "exec-quality-kpis", "Quality KPIs", "Holds, releases, deviations and excursion indicators.", "Quality / Leadership", "Weekly"),
         # Sales
-        ("sales", "sales-period", "Daily/Weekly/Monthly Sales", "Period sales totals with branch and tender breakdown.", "Commercial", "Daily"),
-        ("sales", "sales-by-branch", "Sales by Branch", "Comparative sales performance across network locations.", "Commercial", "Daily"),
+        ("sales", "sales-period", "Dispensing Collections by Period", "Gross settled dispensing collections, separate currencies; refunds and retail carts excluded. Not accrual revenue.", "Commercial", "Daily"),
+        ("sales", "sales-by-branch", "Dispensing Collections by Branch", "Gross settled dispensing collections by branch, currency and tender. Not accrual revenue.", "Commercial", "Daily"),
+        ("sales", "sales-refunds", "Completed Dispensing Refunds", "Completed payment reversals by completion date, branch, currency and tender.", "Finance", "Daily"),
         ("sales", "sales-by-pharmacist", "Sales by Pharmacist", "Dispensing and verification throughput by practitioner.", "Clinical ops", "Daily"),
         ("sales", "sales-by-customer", "Sales by Customer", "Commercial customer order and fulfilment history.", "Commercial", "On demand"),
         ("sales", "sales-by-insurer", "Sales by Insurer", "Insured dispensing volumes and claim values by payer.", "Insurance ops", "Daily"),

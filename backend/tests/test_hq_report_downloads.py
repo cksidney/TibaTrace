@@ -19,7 +19,7 @@ def _manager(tenant):
         tenant=tenant,
         code="REPORT_MANAGER",
         name="Report manager",
-        capabilities=["identity.manage", "inventory.read"],
+        capabilities=["identity.manage", "inventory.read", "reports.view", "payment.read"],
     )
     UserRole.all_objects.create(tenant=tenant, user=user, role=role)
     return user

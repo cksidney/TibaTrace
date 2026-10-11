@@ -8,8 +8,8 @@ Generates structured compliance report packs across 6 domain areas:
   5. Regulatory Readiness Report Pack
   6. Security & Activation Audit Pack
 
-Formats supported: CSV, Excel (CSV-compatible TSV/formatted matrix), PDF (JSON/HTML structured export).
-Features: Scheduled generation, tenant isolation, branch filtering, date filtering, audit logging.
+Formats: CSV, genuine Excel workbook, PDF and JSON. Tenant isolation and audit logging.
+Branch filters and scheduling are not implemented; no external verification is claimed.
 """
 from __future__ import annotations
 
@@ -35,6 +35,8 @@ from apps.inventory.recalls.models import (
 from apps.pharmacy_network.models import (
     PremisesVerificationRequest,
 )
+from apps.platform.reporting.pdf import build_pdf_bytes
+from apps.platform.reporting.tabular import csv_bytes, xlsx_bytes
 from apps.practitioners.models import Practitioner, PractitionerLicence
 
 TRUTH_LABEL = "MANUAL_INTERNAL_VERIFICATION"
@@ -70,6 +72,19 @@ class ComplianceReportEngine:
         ):
             raise PermissionDenied("Capability reports.view is required to generate compliance report packs.")
 
+        if report_type in {ComplianceReportType.PROVIDERS, ComplianceReportType.SECURITY_AUDIT}:
+            if actor is not None and not (actor.is_platform_admin or actor.is_superuser):
+                raise PermissionDenied("Global provider and security reports require platform authority.")
+        if not tenant_id and report_type not in {ComplianceReportType.PROVIDERS, ComplianceReportType.SECURITY_AUDIT}:
+            if actor is not None and not (actor.is_platform_admin or actor.is_superuser):
+                raise PermissionDenied("A tenant scope is required.")
+        if branch_id:
+            raise ValidationError("Branch filtering is not supported by these tenant-level compliance packs.")
+        if start_date or end_date:
+            raise ValidationError("Date filtering is not supported by these current-state compliance packs.")
+        if format_type.lower() not in {"csv", "excel", "xlsx", "pdf", "json"}:
+            raise ValidationError("Unsupported compliance report format.")
+
         if report_type == ComplianceReportType.PREMISES:
             data = ComplianceReportEngine._build_premises_report(tenant_id, start_date, end_date)
         elif report_type == ComplianceReportType.PRACTITIONERS:
@@ -96,11 +111,20 @@ class ComplianceReportEngine:
             )
 
         if format_type.lower() == "csv":
-            return {"content_type": "text/csv", "content": ComplianceReportEngine._to_csv(data), "filename": f"{report_type.lower()}_report.csv"}
-        elif format_type.lower() == "excel":
-            return {"content_type": "text/csv", "content": ComplianceReportEngine._to_csv(data), "filename": f"{report_type.lower()}_report.xlsx"}
+            rows = list(csv.reader(io.StringIO(ComplianceReportEngine._to_csv(data))))
+            return {"content_type": "text/csv; charset=utf-8", "content": csv_bytes(rows), "filename": f"{report_type.lower()}_report.csv"}
+        elif format_type.lower() in {"excel", "xlsx"}:
+            rows = list(csv.reader(io.StringIO(ComplianceReportEngine._to_csv(data))))
+            return {"content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "content": xlsx_bytes(rows), "filename": f"{report_type.lower()}_report.xlsx"}
         elif format_type.lower() == "pdf":
-            return {"content_type": "application/json", "content": json.dumps(data, indent=2, default=str), "filename": f"{report_type.lower()}_report.pdf"}
+            def compose(pdf):
+                pdf.heading(data.get("title", report_type))
+                pdf.text(f"Evidence basis: {data.get('truth_label', TRUTH_LABEL)}")
+                pdf.text(f"Generated: {data.get('generated_at', '')}")
+                for row in csv.reader(io.StringIO(ComplianceReportEngine._to_csv(data))):
+                    pdf.text(" | ".join(row))
+            content = build_pdf_bytes(title=data.get("title", report_type), author=getattr(actor, "username", "System"), builder=compose)
+            return {"content_type": "application/pdf", "content": content, "filename": f"{report_type.lower()}_report.pdf"}
 
         return {"content_type": "application/json", "content": json.dumps(data, indent=2, default=str), "filename": f"{report_type.lower()}_report.json"}
 
@@ -216,10 +240,14 @@ class ComplianceReportEngine:
             "truth_label": TRUTH_LABEL,
             "generated_at": timezone.now().isoformat(),
             "readiness": {
-                "dha_readiness_score": "81.5%",
-                "ppb_readiness_score": "80.0%",
-                "hwr_readiness_score": "85.0%",
-                "status": "TIBATRACE_CERTIFICATION_READY (Internal Evidence)",
+                "dha_readiness_score": None,
+                "ppb_readiness_score": None,
+                "hwr_readiness_score": None,
+                "status": "NOT_CERTIFIED_EXTERNAL_ACCEPTANCE_PENDING",
+                "basis": "No approved external endpoints or regulator acceptance evidence configured. Internal workflows are not certification.",
+                "configured_provider_rows": ProviderConfiguration.all_objects.count(),
+                "tenant_practitioners": Practitioner.all_objects.filter(tenant_id=tenant_id).count() if tenant_id else None,
+                "tenant_licence_records": PractitionerLicence.all_objects.filter(tenant_id=tenant_id).count() if tenant_id else None,
             },
         }
 

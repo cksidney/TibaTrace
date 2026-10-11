@@ -44,7 +44,7 @@ class MeView(APIView):
 
     @extend_schema(responses=UserSummarySerializer)
     def get(self, request):
-        return Response(UserSummarySerializer(request.user).data)
+        return Response(UserSummarySerializer(request.user, context={"request": request}).data)
 
 
 class RoleListView(generics.ListAPIView):

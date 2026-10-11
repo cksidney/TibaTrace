@@ -6,6 +6,8 @@ import {
 import { NativeModules } from 'react-native';
 
 import type { SecureKeyValueStore } from '../offline/secureStore';
+import type { PosDeviceCredentialDTO } from '@dawatrace/shared/dispensing/index.js';
+import { SecureActivationStore } from './activation';
 
 interface SecureStoreNativeModule {
   getItem(key: string): Promise<string | null>;
@@ -92,6 +94,8 @@ export interface AndroidPosRuntime {
   readonly apiBaseUrl: string;
   readonly version: string;
   deviceId(): Promise<string>;
+  fingerprint(): Promise<string>;
+  activation(): Promise<PosDeviceCredentialDTO | null>;
   verify(username: string, password: string): Promise<boolean>;
 }
 
@@ -101,14 +105,47 @@ export function createAndroidPosRuntime(): AndroidPosRuntime {
     configModule?.apiBaseUrl ?? 'https://tibatrace.esenai.co.ke',
     configModule?.isDebug ?? false,
   );
+  const deviceId = async () => {
+    const existing = await secureStore.getItem(DEVICE_KEY);
+    if (existing) return existing;
+    const created = createDeviceId();
+    await secureStore.setItem(DEVICE_KEY, created);
+    return created;
+  };
+  const fingerprint = async () => `tibatrace.android.installation.v1:${await deviceId()}`;
+  let session: PosApiSession;
+  const activation = async () => {
+    const tenantId = session.current?.tenantId;
+    return tenantId ? new SecureActivationStore(secureStore, tenantId, await deviceId()).load() : null;
+  };
+  const activationFetcher: typeof fetch = async (input, init) => {
+    const url = String(input instanceof Request ? input.url : input);
+    const headers = new Headers(init?.headers);
+    if (url.startsWith(`${apiBaseUrl}/api/pos/`)) {
+      const stored = await activation();
+      if (stored) {
+        headers.set('X-POS-Activation', stored.signedToken);
+        headers.set('X-POS-Device-ID', await deviceId());
+        headers.set('X-POS-Fingerprint', await fingerprint());
+      }
+    }
+    const response = await fetch(input, { ...init, headers });
+    if (response.ok && url.startsWith(`${apiBaseUrl}/api/v1/tenant/pos-activations/requests/`) && url.endsWith('/enrol/')) {
+      const issued = await response.clone().json() as PosDeviceCredentialDTO;
+      if (!session.current?.tenantId || issued.deviceFingerprint !== await fingerprint()) throw new Error('Activation is not for this installation.');
+      await new SecureActivationStore(secureStore, session.current.tenantId, await deviceId()).save(issued);
+    }
+    return response;
+  };
+  session = new PosApiSession({ baseUrl: apiBaseUrl, storage: new AndroidSessionStorage(secureStore), fetcher: activationFetcher });
   return {
     secureStore,
     apiBaseUrl,
     version: configModule?.versionName ?? '0.0.0',
-    session: new PosApiSession({
-      baseUrl: apiBaseUrl,
-      storage: new AndroidSessionStorage(secureStore),
-    }),
+    session,
+    deviceId,
+    fingerprint,
+    activation,
     async verify(username, password) {
       const current = this.session.current;
       if (!current) return false;
@@ -120,13 +157,6 @@ export function createAndroidPosRuntime(): AndroidPosRuntime {
       if (!response.ok) return false;
       const payload = (await response.json()) as { user_id?: unknown; tenant_id?: unknown };
       return payload.user_id === current.userId && payload.tenant_id === current.tenantId;
-    },
-    async deviceId() {
-      const existing = await secureStore.getItem(DEVICE_KEY);
-      if (existing) return existing;
-      const created = createDeviceId();
-      await secureStore.setItem(DEVICE_KEY, created);
-      return created;
     },
   };
 }

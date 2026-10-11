@@ -15,12 +15,24 @@ export function PosActivationConsole({
   userRole,
   userCapabilities,
   isPlatformOwnerContext,
+  tenantId,
+  deviceId,
+  fingerprint = '',
+  appVersion = '',
+  onEnrolled,
+  passwordChangeRequired = false,
 }: {
   readonly apiFetch: typeof fetch;
   readonly userId: string;
   readonly userRole: string;
   readonly userCapabilities: readonly string[];
   readonly isPlatformOwnerContext: boolean;
+  readonly tenantId: string;
+  readonly deviceId: string;
+  readonly fingerprint?: string;
+  readonly appVersion?: string;
+  readonly onEnrolled?: () => Promise<void>;
+  readonly passwordChangeRequired?: boolean;
 }) {
   const [requests, setRequests] = useState<readonly PosActivationRequestDTO[]>([]);
   const [busy, setBusy] = useState(false);
@@ -30,17 +42,19 @@ export function PosActivationConsole({
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
 
   // Platform Owner Action Modals
-  const [actionKind, setActionKind] = useState<'APPROVE' | 'REJECT' | 'CLARIFY' | 'SUSPEND' | 'REVOKE' | 'OVERRIDE' | null>(null);
+  const [actionKind, setActionKind] = useState<'APPROVE' | 'REJECT' | 'REVOKE' | null>(null);
   const [rationale, setRationale] = useState('');
 
   // New Request Form State (Tenant Admin)
-  const [newTenantId, setNewTenantId] = useState('');
+  const newTenantId = tenantId;
   const [newBranchId, setNewBranchId] = useState('');
   const [newRegister, setNewRegister] = useState('');
   const [deviceName, setDeviceName] = useState('');
   const [deviceType, setDeviceType] = useState<'DESKTOP_WINDOWS' | 'MOBILE_ANDROID'>('DESKTOP_WINDOWS');
-  const [deviceFingerprint, setDeviceFingerprint] = useState('');
+  const [deviceFingerprint, setDeviceFingerprint] = useState(fingerprint);
   const [justification, setJustification] = useState('');
+  const [challenge, setChallenge] = useState('');
+  const [enrolCode, setEnrolCode] = useState('');
 
   const canApprove = isPlatformOwnerContext && userCapabilities.includes('platform.pos_activation.approve');
 
@@ -74,7 +88,7 @@ export function PosActivationConsole({
   );
 
   const handleApprove = async () => {
-    if (!selectedRequest || !rationale.trim()) return;
+    if (!selectedRequest || !actionKind || rationale.trim().length < 10) return;
     setBusy(true);
     setError('');
     const check = canApproveActivationRequest({
@@ -90,13 +104,15 @@ export function PosActivationConsole({
       return;
     }
     try {
-      const resp = await apiFetch(`/api/v1/platform/pos-activations/requests/${selectedRequest.id}/approve/`, {
+      const resp = await apiFetch(`/api/v1/platform/pos-activations/requests/${selectedRequest.id}/${actionKind.toLowerCase()}/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({ approval_rationale: rationale.trim() }),
+        body: JSON.stringify({ rationale: rationale.trim() }),
       });
       if (resp.ok) {
-        setNotice(`Request ${selectedRequest.id} APPROVED by Platform Owner.`);
+        const result = await resp.json() as { challengeCode?: string };
+        setChallenge(result.challengeCode ?? '');
+        setNotice(`Request ${selectedRequest.id}: ${actionKind} recorded by Platform Owner.`);
         setActionKind(null);
         setRationale('');
         void refresh();
@@ -111,8 +127,8 @@ export function PosActivationConsole({
   };
 
   const handleCreateRequest = async () => {
-    if (!newTenantId.trim() || !newBranchId.trim() || !justification.trim()) {
-      setError('Please fill in Tenant, Branch, and Business Justification.');
+    if (!newTenantId.trim() || !newBranchId.trim() || !newRegister.trim() || !deviceId || deviceFingerprint.trim().length < 16 || justification.trim().length < 10) {
+      setError('Provide the branch UUID, existing register code, stable device fingerprint and at least 10 characters of justification.');
       return;
     }
     setBusy(true);
@@ -124,10 +140,12 @@ export function PosActivationConsole({
         body: JSON.stringify({
           tenant_id: newTenantId.trim(),
           branch_id: newBranchId.trim(),
-          requested_register: newRegister.trim() || 'REG-DEFAULT',
+          requested_register: newRegister.trim(),
+          device_id: deviceId,
+          app_version: appVersion,
           device_name: deviceName.trim() || 'POS Workstation',
           device_type: deviceType,
-          device_fingerprint: deviceFingerprint.trim() || `FP-SHA256-${Date.now()}`,
+          device_fingerprint: deviceFingerprint.trim(),
           business_justification: justification.trim(),
         }),
       });
@@ -140,6 +158,27 @@ export function PosActivationConsole({
       }
     } catch {
       setError('Failed to submit activation request.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleEnrol = async () => {
+    if (!selectedRequest || !enrolCode.trim()) return;
+    setBusy(true);
+    setError('');
+    try {
+      const response = await apiFetch(`/api/v1/tenant/pos-activations/requests/${selectedRequest.id}/enrol/`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ challenge_code: enrolCode.trim(), device_id: deviceId, device_fingerprint: fingerprint }),
+      });
+      if (!response.ok) throw new Error(`Enrolment was not accepted (HTTP ${response.status}).`);
+      setEnrolCode('');
+      setNotice('Device enrolled. Secure credential storage and online activation validation are required before trading.');
+      await onEnrolled?.();
+      await refresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Enrolment could not be completed.');
     } finally {
       setBusy(false);
     }
@@ -171,6 +210,13 @@ export function PosActivationConsole({
       ) : null}
 
       {error ? <BlockingReason status="BLOCKING" reason={error} /> : null}
+      {passwordChangeRequired ? <BlockingReason status="BLOCKING" reason="Change your temporary password in the HQ website at https://tibatrace.esenai.co.ke, then sign out and sign in again on this till." /> : null}
+      {challenge ? <section role="status" style={{ padding: spacing.md, border: `1px solid ${surface.border}`, borderRadius: 8 }}>
+        <strong>One-time enrolment challenge (expires in 15 minutes)</strong>
+        <p>Give this code directly to the requesting Manager. It is shown only once and is not an activation credential.</p>
+        <code style={{ overflowWrap: 'anywhere' }}>{challenge}</code>
+        <button type="button" onClick={() => setChallenge('')}>Hide code</button>
+      </section> : null}
 
       {/* Workspace Tabs */}
       <div style={{ display: 'flex', gap: spacing.sm, borderBottom: `1px solid ${surface.border}` }}>
@@ -217,11 +263,15 @@ export function PosActivationConsole({
 
           <label style={labelStyle}>
             Tenant ID
-            <input value={newTenantId} onChange={(e) => setNewTenantId(e.target.value)} placeholder="e.g. TENANT-DAWA-01" style={inputStyle} />
+            <input value={newTenantId} readOnly style={inputStyle} />
           </label>
           <label style={labelStyle}>
             Branch ID
-            <input value={newBranchId} onChange={(e) => setNewBranchId(e.target.value)} placeholder="e.g. BRANCH-NAIROBI-HQ" style={inputStyle} />
+            <input value={newBranchId} onChange={(e) => setNewBranchId(e.target.value)} placeholder="Branch UUID from your HQ workspace" style={inputStyle} />
+          </label>
+          <label style={labelStyle}>
+            Device ID
+            <input value={deviceId} readOnly style={inputStyle} />
           </label>
           <label style={labelStyle}>
             Requested Register
@@ -239,15 +289,15 @@ export function PosActivationConsole({
             </select>
           </label>
           <label style={labelStyle}>
-            Hardware Device Fingerprint
-            <input value={deviceFingerprint} onChange={(e) => setDeviceFingerprint(e.target.value)} placeholder="Hardware SHA-256 fingerprint" style={inputStyle} />
+            Stable Installation Fingerprint (not hardware attestation)
+            <input value={deviceFingerprint} readOnly={Boolean(fingerprint)} onChange={(e) => setDeviceFingerprint(e.target.value)} placeholder="Stable installation fingerprint" style={inputStyle} />
           </label>
           <label style={labelStyle}>
             Business Justification
             <textarea value={justification} onChange={(e) => setJustification(e.target.value)} rows={3} placeholder="Explain why this POS device activation is required..." style={{ ...inputStyle, minHeight: 80 }} />
           </label>
 
-          <button type="button" disabled={busy} onClick={() => void handleCreateRequest()} style={buttonPrimary}>
+          <button type="button" disabled={busy || passwordChangeRequired} onClick={() => void handleCreateRequest()} style={buttonPrimary}>
             {busy ? 'Submitting…' : 'Submit Activation Request'}
           </button>
         </section>
@@ -318,20 +368,23 @@ export function PosActivationConsole({
               </div>
 
               {/* Platform Owner Governance Actions */}
+              {!isPlatformOwnerContext && selectedRequest.state === 'APPROVED' && selectedRequest.deviceId === deviceId ? <section>
+                <label style={labelStyle}>One-time enrolment challenge
+                  <input value={enrolCode} onChange={(event) => setEnrolCode(event.target.value)} autoComplete="off" style={inputStyle} />
+                </label>
+                <button type="button" disabled={busy || passwordChangeRequired || !enrolCode.trim()} onClick={() => void handleEnrol()} style={buttonPrimary}>Complete device enrolment</button>
+              </section> : null}
               {canApprove ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.md, borderTop: `1px solid ${surface.border}`, paddingTop: spacing.md }}>
                   <h4 style={{ margin: 0, fontSize: fontSize.caption, textTransform: 'uppercase', color: text.tertiary }}>
                     Platform Owner Approval Governance
                   </h4>
                   <div style={{ display: 'flex', gap: spacing.sm, flexWrap: 'wrap' }}>
-                    <button type="button" onClick={() => setActionKind('APPROVE')} style={buttonPrimary}>
+                    <button type="button" disabled={busy || selectedRequest.state !== 'SUBMITTED'} onClick={() => setActionKind('APPROVE')} style={buttonPrimary}>
                       Approve & Issue Challenge
                     </button>
-                    <button type="button" onClick={() => setActionKind('REJECT')} style={buttonSecondary}>
+                    <button type="button" disabled={busy || selectedRequest.state !== 'SUBMITTED'} onClick={() => setActionKind('REJECT')} style={buttonSecondary}>
                       Reject Request
-                    </button>
-                    <button type="button" onClick={() => setActionKind('SUSPEND')} style={buttonSecondary}>
-                      Suspend Activation
                     </button>
                     <button type="button" onClick={() => setActionKind('REVOKE')} style={buttonSecondary}>
                       Revoke Device
@@ -344,7 +397,7 @@ export function PosActivationConsole({
                         Approval / Governance Rationale (Required)
                         <input value={rationale} onChange={(e) => setRationale(e.target.value)} placeholder="Provide rationale for regulatory & audit log..." style={inputStyle} />
                       </label>
-                      <button type="button" disabled={busy || !rationale.trim()} onClick={() => void handleApprove()} style={buttonPrimary}>
+                      <button type="button" disabled={busy || rationale.trim().length < 10} onClick={() => void handleApprove()} style={buttonPrimary}>
                         {busy ? 'Processing…' : `Confirm ${actionKind}`}
                       </button>
                     </div>

@@ -266,7 +266,10 @@ class StageU1ReservationPlanning(Stage):
 
     def run(self, ctx):
         rnd = syn.rng(ctx.seed, "stage2c-reservation-planning")
-        balances = list(_scenario_balances(ctx))
+        balances = list(_scenario_balances(ctx).filter(
+            inventory_batch__quality_status="RELEASED", inventory_batch__recall_status="NONE",
+            inventory_batch__expiry_date__gte=ctx.as_of,
+        ))
 
         if not balances:
             ctx.put("mobility:reservation_plan", [])
@@ -274,12 +277,20 @@ class StageU1ReservationPlanning(Stage):
 
         planned_reservations = []
         res_seq = 1
+        budgets = {}
+        for bal in balances:
+            group = (bal.location_id, bal.sku_id)
+            budgets[group] = budgets.get(group, Decimal("0")) + bal.available
 
         # Target: 180 reservations across available balances
         # Outcome distribution: ~80% ALLOCATED/FULFILLED, ~10% EXPIRED, ~10% RELEASED
         for _ in range(180):
-            bal = rnd.choice(balances)
-            qty = max(Decimal("1"), Decimal(str(rnd.randint(1, min(10, int(bal.available) or 1)))))
+            candidates = [bal for bal in balances if budgets[(bal.location_id, bal.sku_id)] >= 1]
+            if not candidates:
+                break
+            bal = rnd.choice(candidates)
+            group = (bal.location_id, bal.sku_id)
+            qty = Decimal(rnd.randint(1, min(10, int(budgets[group]))))
 
             roll = rnd.random()
             if roll < 0.80:
@@ -288,6 +299,8 @@ class StageU1ReservationPlanning(Stage):
                 outcome = "EXPIRED"
             else:
                 outcome = "RELEASED"
+            if outcome == "ALLOCATED":
+                budgets[group] -= qty
 
             key = f"RES-{ctx.as_of.strftime('%Y%m%d')}-{res_seq:04d}"
             res_seq += 1

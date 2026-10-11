@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import uuid
 
 from django.core.exceptions import ValidationError
@@ -99,9 +100,39 @@ class TenantContextMiddleware:
 
         token = set_current_tenant_id(request.tenant_id)
         try:
+            refusal = self._refuse_unactivated_pos_mutation(request)
+            if refusal is not None:
+                return refusal
             return self.get_response(request)
         finally:
             reset_current_tenant_id(token)
+
+    @staticmethod
+    def _refuse_unactivated_pos_mutation(request):
+        from django.conf import settings
+        from django.core.exceptions import PermissionDenied
+
+        protected = ("/api/pos/dispensing/", "/api/pos/payments/", "/api/pos/retail/", "/api/pos/clinical-screening/")
+        if (request.method in {"GET", "HEAD", "OPTIONS"} or not request.path.startswith(protected)
+                or not getattr(request.user, "is_authenticated", False) or request.tenant is None
+                or request.tenant.is_demo or settings.DEBUG or getattr(settings, "TESTING", False)):
+            return None
+        from apps.platform.pos_activation import verify_device_credential
+
+        try:
+            device_id = request.headers.get("X-POS-Device-ID", "")
+            record = verify_device_credential(tenant_id=request.tenant_id,
+                credential=request.headers.get("X-POS-Activation", ""), device_id=device_id,
+                fingerprint=request.headers.get("X-POS-Fingerprint", ""))
+            if request.content_type == "application/json" and request.body:
+                body = json.loads(request.body)
+                if isinstance(body, dict) and body.get("device_id", device_id) != record.device_id:
+                    raise PermissionDenied("Transaction device differs from its activation credential.")
+        except (PermissionDenied, ValueError):
+            return JsonResponse({"detail": "An approved, current device activation is required for POS operations.",
+                                 "code": "pos_activation_required"}, status=403)
+        request.pos_activation = record
+        return None
 
     def _refuse_non_operational_tenant(self, request, user):
         if not request.tenant_id:

@@ -52,6 +52,7 @@ import { PrintCentreScreen } from './screens/PrintCentreScreen';
 import { RegisterCentreScreen } from './screens/RegisterCentreScreen';
 import { RetailScreen } from './screens/RetailScreen';
 import { SyncCentreScreen } from './screens/SyncCentreScreen';
+import { ActivationScreen } from './screens/ActivationScreen';
 
 type WorkspaceScreen = 'queue' | 'episode' | 'clinical-review' | 'payment' | 'counselling' | 'collection' | 'retail' | 'register' | 'print' | 'sync';
 
@@ -112,12 +113,15 @@ export default function App() {
     <SafeAreaView style={styles.safe}>
       <StatusBar barStyle="dark-content" backgroundColor={surface.page} />
       {authenticated ? (
-        <PosWorkspace
-          onLogout={async () => {
+        <ActivationScreen runtime={runtime} onLogout={async () => {
+          await runtime.session.logout();
+          setAuthenticated(false);
+        }}>
+          <PosWorkspace onLogout={async () => {
             await runtime.session.logout();
             setAuthenticated(false);
-          }}
-        />
+          }} />
+        </ActivationScreen>
       ) : (
         <LoginScreen
           initialError={error}

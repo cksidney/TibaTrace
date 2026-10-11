@@ -5,9 +5,16 @@ from apps.identity.services import account_status_for, user_category_label
 
 
 class UserSummarySerializer(serializers.ModelSerializer):
+    effective_capabilities = serializers.SerializerMethodField()
+
     class Meta:
         model = User
-        fields = ("id", "username", "email", "first_name", "last_name", "tenant_id", "is_platform_admin")
+        fields = ("id", "username", "email", "first_name", "last_name", "tenant_id", "is_platform_admin", "is_superuser", "effective_capabilities", "must_change_password")
+
+    def get_effective_capabilities(self, user):
+        request = self.context.get("request")
+        tenant_id = getattr(request, "tenant_id", None) or user.tenant_id
+        return sorted(user.effective_capabilities(tenant_id=tenant_id))
 
 
 class RoleSerializer(serializers.ModelSerializer):
