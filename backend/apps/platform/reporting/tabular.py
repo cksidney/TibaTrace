@@ -3,7 +3,9 @@ import csv
 import io
 import re
 import zipfile
-from xml.sax.saxutils import escape
+
+# This escapes generated XLSX XML content; the module never parses XML.
+from xml.sax.saxutils import escape  # nosec B406
 
 
 def csv_bytes(rows):

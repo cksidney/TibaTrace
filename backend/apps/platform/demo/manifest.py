@@ -16,7 +16,7 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
-import subprocess  # nosec B404 - fixed argv, no shell, see _code_commit
+import subprocess  # nosec B404
 from datetime import date
 from typing import Any
 
@@ -26,7 +26,7 @@ from apps.platform.demo.profiles import SCENARIO_NAME, SCENARIO_VERSION, DemoPro
 
 
 def _code_commit() -> str:
-    """Best-effort commit id. Absent in a container build; that is not fatal."""
+    """Best-effort fixed-argv local Git lookup; absent in a container is fine."""
     git = shutil.which("git")
     if not git:
         return ""

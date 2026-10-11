@@ -108,7 +108,8 @@ def rng_for(seed: int, *parts: object) -> random.Random:
     produces is a secret: passwords come from the guarded demo-password
     mechanism, never from this module.
     """
-    return random.Random(stable_int(seed, *parts))
+    # Deterministic synthetic data, never credential or security material.
+    return random.Random(stable_int(seed, *parts))  # nosec B311
 
 
 rng = rng_for  # noqa: S311 - deterministic by design
