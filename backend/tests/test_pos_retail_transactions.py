@@ -567,6 +567,7 @@ def test_settlement_reopens_basket_if_eligible_stock_disappears(world):
             "idempotency_key": f"retail-{draft['id']}",
         },
         format="json",
+        HTTP_X_TENANT_ID=str(world["tenant"].pk),
     )
 
     assert response.status_code == 200
