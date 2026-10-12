@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: DawaTrace API
-  version: 1.0.0-rc30
+  version: 1.0.0-rc31
   description: Independent pharmacy and healthcare clinical-core API
 paths:
   /api/audit/events/:

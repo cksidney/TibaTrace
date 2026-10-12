@@ -15030,7 +15030,7 @@
   "info": {
     "description": "Independent pharmacy and healthcare clinical-core API",
     "title": "DawaTrace API",
-    "version": "1.0.0-rc30"
+    "version": "1.0.0-rc31"
   },
   "openapi": "3.0.3",
   "paths": {
