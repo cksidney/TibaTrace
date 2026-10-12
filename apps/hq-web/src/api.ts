@@ -83,7 +83,43 @@ export interface HQPatient {
   readonly verification_status: string;
 }
 
+export interface PatientIntakeInput {
+  readonly internal_reference_id: string;
+  readonly patient_number: string;
+  readonly first_name: string;
+  readonly last_name: string;
+  readonly preferred_name: string;
+  readonly date_of_birth: string | null;
+  readonly sex: string;
+  readonly phone: string;
+  readonly email: string;
+  readonly preferred_language: string;
+  readonly communication_preference: string;
+  readonly consent_status: string;
+}
+
+export interface PatientIdentifierItem {
+  readonly expiry_date: string | null;
+  readonly id: string;
+  readonly identifier_type: string;
+  readonly issue_date: string | null;
+  readonly issuing_authority: string;
+  readonly masked_value: string;
+  readonly system: string;
+  readonly verification_status: string;
+}
+
+export interface PatientIdentifierInput {
+  readonly identifier_type: string;
+  readonly value: string;
+  readonly system: string;
+  readonly issuing_authority: string;
+  readonly issue_date: string | null;
+  readonly expiry_date: string | null;
+}
+
 export interface HQPractitioner {
+  readonly controlled_medicine_authority: boolean;
   readonly full_name: string;
   readonly id: string;
   readonly licence_status: string;
@@ -91,6 +127,28 @@ export interface HQPractitioner {
   readonly registration_number: string;
   readonly status: string;
   readonly verification_state: string;
+}
+
+export interface PractitionerIntakeInput {
+  readonly first_name: string;
+  readonly last_name: string;
+  readonly professional_name: string;
+  readonly registration_number: string;
+  readonly profession: string;
+  readonly licensing_body: string;
+  readonly licence_issue_date: string | null;
+  readonly licence_expiry_date: string | null;
+  readonly prescribing_scope: readonly string[];
+  readonly organization: string | null;
+  readonly phone: string;
+  readonly email: string;
+}
+
+export interface PractitionerVerificationInput {
+  readonly verification_state: string;
+  readonly licence_status: string;
+  readonly verification_note: string;
+  readonly evidence_reference: string;
 }
 
 export interface HQCustomer {
@@ -316,6 +374,22 @@ export interface HQObservation {
   readonly interpretation: string;
   readonly encounter_id: string;
 }
+
+export type ClinicalIntakeKind = 'encounters' | 'conditions' | 'observations';
+
+export type ClinicalIntakeInput = Readonly<Record<string, string | number | null>>;
+
+export const ingestClinicalRecord = (
+  kind: ClinicalIntakeKind,
+  input: ClinicalIntakeInput,
+  csrfToken: string,
+): Promise<HQEncounter | HQCondition | HQObservation> =>
+  mutateJson<HQEncounter | HQCondition | HQObservation>(
+    `/api/clinical/${kind}/`,
+    'POST',
+    input,
+    csrfToken,
+  );
 
 export interface HQFhirIdempotencyRecord {
   readonly id: string;
@@ -587,6 +661,17 @@ async function getTenantCollection<T>(
     throw new HQApiError(response.status, `${path} failed with ${response.status}.`);
   }
   return collectionRows<T>(await response.json());
+}
+
+async function getTenantJson<T>(path: string, tenantId: string, signal?: AbortSignal): Promise<T> {
+  const request: RequestInit = {
+    credentials: 'include',
+    headers: { Accept: 'application/json', ...tenantHeaders(tenantId) },
+  };
+  if (signal) request.signal = signal;
+  const response = await fetch(path, request);
+  if (!response.ok) throw new HQApiError(response.status, `${path} failed with ${response.status}.`);
+  return (await response.json()) as T;
 }
 
 async function mutateJson<T>(
@@ -1113,6 +1198,50 @@ export interface InsuranceClaim {
   readonly currency: string;
 }
 
+export interface ClaimIntakeSupplyLine {
+  readonly sku_id: string;
+  readonly sku_code: string;
+  readonly display_name: string;
+  readonly quantity: string;
+  readonly unit: string;
+}
+
+export interface ClaimIntakeCoverage {
+  readonly id: string;
+  readonly insurer_code: string;
+  readonly insurer_name: string;
+  readonly scheme_name: string;
+  readonly membership_number: string;
+}
+
+export interface ClaimIntakeSupply {
+  readonly id: string;
+  readonly supply_number: string;
+  readonly dispensing_number: string;
+  readonly supplied_at: string;
+  readonly status: string;
+  readonly coverage_options: readonly ClaimIntakeCoverage[];
+  readonly blocked_reason: string;
+  readonly lines: readonly ClaimIntakeSupplyLine[];
+}
+
+export interface CreateDraftClaimFromSupplyInput {
+  readonly supply_id: string;
+  readonly coverage_id: string;
+  readonly claim_number: string;
+  readonly pricing_reference: string;
+  readonly unit_prices: Readonly<Record<string, string>>;
+}
+
+export const loadClaimIntakeSupplies = (tenantId: string, signal?: AbortSignal) =>
+  getTenantCollection<ClaimIntakeSupply>('/api/insurance/claims/intake-supplies/', tenantId, signal);
+
+export const createDraftClaimFromSupply = (
+  input: CreateDraftClaimFromSupplyInput,
+  tenantId: string,
+  csrfToken: string,
+) => mutateJson<InsuranceClaim>('/api/insurance/claims/from-supply/', 'POST', input, csrfToken, tenantId);
+
 export interface Insurer {
   readonly id: string;
   readonly code: string;
@@ -1142,6 +1271,42 @@ export const createInsurer = (
   tenantId = '',
 ): Promise<Insurer> =>
   mutateJson<Insurer>('/api/insurance/insurers/', 'POST', input, csrfToken, tenantId);
+
+export interface InsuranceCoverageSetupOptions {
+  readonly insurers: readonly Insurer[];
+  readonly patients: readonly { readonly id: string; readonly patient_number: string; readonly full_name: string }[];
+  readonly skus: readonly { readonly id: string; readonly sku_code: string; readonly display_name: string; readonly unit: string }[];
+}
+
+export interface InsuranceCoverageSetupInput {
+  readonly insurer_id: string;
+  readonly scheme_code: string;
+  readonly scheme_name: string;
+  readonly plan_code: string;
+  readonly plan_name: string;
+  readonly patient_id: string;
+  readonly membership_number: string;
+  readonly principal_name: string;
+  readonly contact_phone: string;
+  readonly email: string;
+  readonly valid_from: string;
+  readonly valid_to: string;
+  readonly relationship: string;
+  readonly dependent_code: string;
+  readonly annual_limit: string;
+  readonly copay_amount: string;
+  readonly coinsurance_percentage: string;
+  readonly item_mappings: readonly { readonly sku_id: string; readonly insurer_item_code: string; readonly insurer_item_name: string }[];
+}
+
+export const loadInsuranceCoverageSetupOptions = (tenantId: string, signal?: AbortSignal) =>
+  getTenantJson<InsuranceCoverageSetupOptions>('/api/insurance/insurers/setup-options/', tenantId, signal);
+
+export const createInsuranceCoverageSetup = (
+  input: InsuranceCoverageSetupInput,
+  tenantId: string,
+  csrfToken: string,
+) => mutateJson<InsuranceCoverage>('/api/insurance/insurers/setup-coverage/', 'POST', input, csrfToken, tenantId);
 
 /** Claims the insurer agreed to pay and has not paid. The money owed. */
 export const loadApprovedUnpaidClaims = (tenantId: string, signal?: AbortSignal) =>
@@ -1209,6 +1374,68 @@ export const loadCoverages = (tenantId: string, signal?: AbortSignal) =>
   getTenantCollection<InsuranceCoverage>('/api/insurance/coverages/', tenantId, signal);
 
 /* ── tenancy & counterparty customers ─────────────────────────────────────── */
+
+export const createPatient = (input: PatientIntakeInput, csrfToken: string) =>
+  mutateJson<HQPatient>('/api/patients/', 'POST', input, csrfToken);
+
+export const loadPatientIdentifiers = (patientId: string, tenantId: string, signal?: AbortSignal) =>
+  getTenantCollection<PatientIdentifierItem>(
+    `/api/patients/${encodeURIComponent(patientId)}/identifiers/`,
+    tenantId,
+    signal,
+  );
+
+export const addPatientIdentifier = (
+  patientId: string,
+  input: PatientIdentifierInput,
+  csrfToken: string,
+  tenantId: string,
+) => mutateJson<PatientIdentifierItem>(
+  `/api/patients/${encodeURIComponent(patientId)}/identifiers/`,
+  'POST',
+  input,
+  csrfToken,
+  tenantId,
+);
+
+export const verifyPatientIdentifier = (
+  patientId: string,
+  identifierId: string,
+  input: { readonly verification_status: string; readonly verification_note: string; readonly evidence_reference: string },
+  csrfToken: string,
+  tenantId: string,
+) => mutateJson<PatientIdentifierItem>(
+  `/api/patients/${encodeURIComponent(patientId)}/identifiers/${encodeURIComponent(identifierId)}/verify/`,
+  'POST',
+  input,
+  csrfToken,
+  tenantId,
+);
+
+export const createPractitioner = (input: PractitionerIntakeInput, csrfToken: string) =>
+  mutateJson<HQPractitioner>('/api/practitioners/', 'POST', input, csrfToken);
+
+export const verifyPractitioner = (
+  id: string,
+  input: PractitionerVerificationInput,
+  csrfToken: string,
+) => mutateJson<HQPractitioner>(
+  `/api/practitioners/${encodeURIComponent(id)}/verify/`,
+  'POST',
+  input,
+  csrfToken,
+);
+
+export const setPractitionerControlledAuthority = (
+  id: string,
+  input: { readonly action: 'GRANT' | 'REVOKE'; readonly reason: string; readonly evidence_reference?: string },
+  csrfToken: string,
+) => mutateJson<HQPractitioner>(
+  `/api/practitioners/${encodeURIComponent(id)}/controlled-authority/`,
+  'POST',
+  input,
+  csrfToken,
+);
 
 export interface TenantItem {
   readonly id: string;
@@ -2113,6 +2340,31 @@ export interface ManufacturerSummary {
   readonly is_active: boolean;
 }
 
+export interface CatalogueIntakeOptions {
+  readonly dose_forms: readonly { readonly id: string; readonly code: string; readonly name: string }[];
+  readonly substances: readonly ActiveSubstanceSummary[];
+  readonly manufacturers: readonly ManufacturerSummary[];
+  readonly packages: readonly { readonly id: string; readonly code: string; readonly description: string; readonly unit_of_measure: string }[];
+}
+
+export interface CatalogueIntakeInput {
+  readonly clinical_code: string;
+  readonly canonical_name: string;
+  readonly dose_form_id: string;
+  readonly active_substance_id: string;
+  readonly strength_value: string;
+  readonly strength_unit: string;
+  readonly manufactured_code: string;
+  readonly brand_name: string;
+  readonly manufacturer_id: string | null;
+  readonly market_authorisation_number: string;
+  readonly sku_code: string;
+  readonly display_name: string;
+  readonly package_definition_id: string;
+  readonly default_barcode: string;
+  readonly tax_category: string;
+}
+
 export interface GovernmentCatalogueMedicine {
   readonly id: string;
   readonly code: string;
@@ -2205,6 +2457,24 @@ export const loadManufacturedProducts = (signal?: AbortSignal) =>
 
 export const loadManufacturers = (signal?: AbortSignal) =>
   getCollection<ManufacturerSummary>('/api/medicines/manufacturers/', signal);
+
+export async function loadCatalogueIntakeOptions(tenantId: string, signal?: AbortSignal): Promise<CatalogueIntakeOptions> {
+  const [doseForms, substances, manufacturers, packages] = await Promise.all([
+    getTenantCollection<{ id: string; code: string; name: string; is_active: boolean }>('/api/medicines/dose-forms/', tenantId, signal),
+    getTenantCollection<ActiveSubstanceSummary>('/api/medicines/substances/', tenantId, signal),
+    getTenantCollection<ManufacturerSummary>('/api/medicines/manufacturers/', tenantId, signal),
+    getTenantCollection<{ id: string; code: string; description: string; unit_of_measure: string; is_active: boolean }>('/api/medicines/packages/', tenantId, signal),
+  ]);
+  return {
+    dose_forms: doseForms.filter((item) => item.is_active),
+    substances: substances.filter((item) => item.status === 'ACTIVE'),
+    manufacturers: manufacturers.filter((item) => item.is_active),
+    packages: packages.filter((item) => item.is_active),
+  };
+}
+
+export const createCatalogueSku = (input: CatalogueIntakeInput, tenantId: string, csrfToken: string) =>
+  mutateJson<HQSku>('/api/medicines/skus/intake/', 'POST', input, csrfToken, tenantId);
 
 export async function loadGovernmentCatalogue(
   filters: GovernmentCatalogueFilters = {},
@@ -2822,6 +3092,13 @@ export interface HQInventoryLocationItem {
   readonly returns_capability?: boolean;
 }
 
+export interface HQInventoryBranch {
+  readonly code: string;
+  readonly id: string;
+  readonly name: string;
+  readonly organization_name: string;
+}
+
 export interface HQInventoryBalanceItem {
   readonly inventory_batch?: string | null;
   readonly id: string;
@@ -2958,8 +3235,57 @@ export interface HQStockTransferReceipt {
   }[];
 }
 
+export interface HQStocktakeCount {
+  readonly id: string;
+  readonly location: string;
+  readonly location_name: string;
+  readonly sku: string;
+  readonly sku_code: string;
+  readonly sku_name: string;
+  readonly batch: string | null;
+  readonly batch_number: string | null;
+  readonly expected_quantity: string;
+  readonly counted_quantity: string | null;
+  readonly variance: string | null;
+  readonly reason: string;
+  readonly counter: string | null;
+  readonly timestamp: string | null;
+}
+
+export interface HQStocktakeSession {
+  readonly id: string;
+  readonly branch: string;
+  readonly branch_name: string;
+  readonly locations: readonly string[];
+  readonly scope: string;
+  readonly status: string;
+  readonly document_number: string;
+  readonly start_time: string | null;
+  readonly end_time: string | null;
+  readonly created_by_username: string | null;
+  readonly approved_by_username: string | null;
+  readonly counts: readonly HQStocktakeCount[];
+  readonly created_at: string;
+  readonly updated_at: string;
+}
+
 export const loadInventoryLocations = (tenantId: string, signal?: AbortSignal) =>
   getTenantCollection<HQInventoryLocationItem>('/api/inventory/locations/', tenantId, signal);
+
+export const loadInventoryBranches = (tenantId: string, signal?: AbortSignal) =>
+  getTenantCollection<HQInventoryBranch>('/api/inventory/locations/branches/', tenantId, signal);
+
+export const provisionInventoryLocation = (
+  payload: { readonly branch_id: string; readonly location_code: string; readonly name: string; readonly location_type: string },
+  tenantId: string,
+  csrfToken: string,
+) => mutateJson<HQInventoryLocationItem>(
+  '/api/inventory/locations/provision/',
+  'POST',
+  payload,
+  csrfToken,
+  tenantId,
+);
 
 export const loadInventoryBalances = (tenantId: string, signal?: AbortSignal) =>
   getTenantCollection<HQInventoryBalanceItem>('/api/inventory/balances/', tenantId, signal);
@@ -2975,6 +3301,25 @@ export const loadInventoryReservations = (tenantId: string, signal?: AbortSignal
 
 export const loadStockTransfers = (tenantId: string, signal?: AbortSignal) =>
   getTenantCollection<HQStockTransfer>('/api/inventory/transfers/', tenantId, signal);
+
+export const loadStocktakes = (tenantId: string, signal?: AbortSignal) =>
+  getTenantCollection<HQStocktakeSession>('/api/inventory/stocktakes/', tenantId, signal);
+
+export const openStocktake = (
+  payload: { readonly branch_id: string; readonly location_ids: readonly string[]; readonly scope: string; readonly document_number: string },
+  tenantId: string,
+  csrfToken: string,
+) => mutateJson<HQStocktakeSession>('/api/inventory/stocktakes/', 'POST', payload, csrfToken, tenantId);
+
+export const recordStocktakeCount = (
+  sessionId: string,
+  payload: { readonly location_id: string; readonly sku_id: string; readonly batch_id: string | null; readonly counted_quantity: string; readonly reason: string },
+  tenantId: string,
+  csrfToken: string,
+) => mutateJson<HQStocktakeSession>(`/api/inventory/stocktakes/${encodeURIComponent(sessionId)}/counts/`, 'POST', payload, csrfToken, tenantId);
+
+export const postStocktakeVariances = (sessionId: string, tenantId: string, csrfToken: string) =>
+  mutateJson<HQStocktakeSession>(`/api/inventory/stocktakes/${encodeURIComponent(sessionId)}/post-variances/`, 'POST', {}, csrfToken, tenantId);
 
 export const createStockTransfer = (
   payload: HQStockTransferDraft,
@@ -3118,3 +3463,97 @@ export const loadSalesReturns = (signal?: AbortSignal) =>
 
 export const loadSalesOrderHolds = (signal?: AbortSignal) =>
   getCollection<HQSalesOrderHoldItem>('/api/sales/order-holds/', signal);
+
+/* ── regulatory alerts and recalls ────────────────────────────────────────── */
+
+export interface RegulatoryAlert {
+  readonly id: string;
+  readonly alert_reference: string;
+  readonly title: string;
+  readonly severity: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
+  readonly status: string;
+  readonly issuing_regulator?: string;
+  readonly regulator_issue_date: string | null;
+  readonly ppb_registration_number: string;
+  readonly gtin: string;
+  readonly product_name: string;
+  readonly manufacturer_name?: string;
+  readonly affected_batches?: readonly string[];
+  readonly description?: string;
+  readonly recommended_action?: string;
+  readonly truth_label: string;
+  readonly ingested_at: string;
+}
+
+export interface RegulatoryImpact {
+  readonly id: string;
+  readonly alert: string;
+  readonly alert_reference: string;
+  readonly alert_title: string;
+  readonly alert_severity: string;
+  readonly tenant: string;
+  readonly tenant_name: string;
+  readonly state: string;
+  readonly quarantined_at: string | null;
+  readonly affected_batches: readonly string[];
+  readonly quarantined_stock_count: number;
+  readonly prior_dispense_trace_required: boolean;
+  readonly prior_dispense_patient_count: number;
+  readonly notes: string;
+  readonly actions: readonly RegulatoryAction[];
+  readonly created_at: string;
+}
+
+export interface RegulatoryAction {
+  readonly id: string;
+  readonly impact: string;
+  readonly action_type: string;
+  readonly performed_at: string;
+  readonly performed_by_name: string;
+  readonly notes: string;
+  readonly evidence_payload: Readonly<Record<string, unknown>>;
+}
+
+const platformRecallPath = '/api/nif/platform/recalls/';
+const tenantRecallImpactPath = '/api/nif/recalls/impacts/';
+
+export const loadRegulatoryAlerts = (signal?: AbortSignal) =>
+  getCollection<RegulatoryAlert>(platformRecallPath, signal);
+
+export const loadRegulatoryImpacts = (tenantId: string, signal?: AbortSignal) =>
+  getTenantCollection<RegulatoryImpact>(tenantRecallImpactPath, tenantId, signal);
+
+export const ingestRegulatoryAlert = (
+  payload: Readonly<Record<string, unknown>>,
+  csrfToken: string,
+) => mutateJson<RegulatoryAlert>(platformRecallPath, 'POST', payload, csrfToken);
+
+export const activateRegulatoryAlert = (alertId: string, csrfToken: string) =>
+  mutateJson<RegulatoryAlert>(`${platformRecallPath}${encodeURIComponent(alertId)}/activate/`, 'POST', {}, csrfToken);
+
+export const quarantineRegulatoryBatches = (
+  alertId: string,
+  payload: Readonly<Record<string, unknown>>,
+  csrfToken: string,
+) => mutateJson<RegulatoryImpact>(`${platformRecallPath}${encodeURIComponent(alertId)}/quarantine/`, 'POST', payload, csrfToken);
+
+export const quarantineTenantRegulatoryImpact = (
+  impactId: string,
+  payload: Readonly<Record<string, unknown>>,
+  csrfToken: string,
+  tenantId: string,
+) => mutateJson<RegulatoryImpact>(`${tenantRecallImpactPath}${encodeURIComponent(impactId)}/quarantine/`, 'POST', payload, csrfToken, tenantId);
+
+export const recordRegulatoryAction = (
+  impactId: string,
+  payload: Readonly<Record<string, unknown>>,
+  csrfToken: string,
+  tenantId: string,
+) => mutateJson<RegulatoryAction>(`${tenantRecallImpactPath}${encodeURIComponent(impactId)}/actions/`, 'POST', payload, csrfToken, tenantId);
+
+export const closeRegulatoryImpact = (
+  impactId: string,
+  payload: Readonly<Record<string, unknown>>,
+  csrfToken: string,
+  tenantId: string,
+) => mutateJson<unknown>(`${tenantRecallImpactPath}${encodeURIComponent(impactId)}/close/`, 'POST', payload, csrfToken, tenantId);

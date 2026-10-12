@@ -74,9 +74,13 @@ class PractitionerSerializer(serializers.ModelSerializer):
         )
         read_only_fields = (
             "id",
+            "licence_status",
+            "controlled_medicine_authority",
             "verification_state",
             "verified_by",
             "verified_at",
+            "status",
+            "metadata",
             "created_at",
             "updated_at",
         )
@@ -87,5 +91,22 @@ class PrescriberVerificationSerializer(serializers.Serializer):
         choices=Practitioner.VERIFICATION_CHOICES,
         default="VERIFIED",
     )
-    licence_status = serializers.CharField(required=False)
-    controlled_medicine_authority = serializers.BooleanField(required=False)
+    licence_status = serializers.ChoiceField(
+        choices=("VALID", "ACTIVE", "EXPIRED", "SUSPENDED", "REVOKED", "UNVERIFIED"),
+        required=False,
+    )
+    verification_note = serializers.CharField(max_length=1000)
+    evidence_reference = serializers.CharField(max_length=255, required=False, allow_blank=True)
+
+    def validate(self, attrs):
+        if attrs["verification_state"] == "VERIFIED" and not attrs.get("evidence_reference", "").strip():
+            raise serializers.ValidationError(
+                {"evidence_reference": "Verification requires a regulator or licence evidence reference."}
+            )
+        return attrs
+
+
+class ControlledAuthorityActionSerializer(serializers.Serializer):
+    action = serializers.ChoiceField(choices=("GRANT", "REVOKE"))
+    reason = serializers.CharField(max_length=1000)
+    evidence_reference = serializers.CharField(max_length=255, required=False, allow_blank=True)

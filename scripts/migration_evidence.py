@@ -50,6 +50,36 @@ class EvidenceError(RuntimeError):
     """Raised for any condition that must fail the release rather than degrade."""
 
 
+def _reviewed_recall_constraint_replacement(app_label, name, operations):
+    """Only rc32's reviewed constraint replacement is acknowledged automatically.
+
+    No rows/columns are removed. Non-recall deltas remain nonzero; only recall
+    hold/release events may carry two zero deltas. Rollback restrictions are
+    documented in docs/deployment/RC32_RELEASE_SCOPE.md. Any other removal, or
+    any change to this operation sequence, still requires explicit approval.
+    """
+    from django.db.models import Q
+
+    reviewed_condition = (
+        Q(entry_type__in=["RECALL_HOLD", "RECALL_RELEASE"], quantity_delta=0, base_quantity_delta=0)
+        | (
+            ~Q(entry_type__in=["RECALL_HOLD", "RECALL_RELEASE"])
+            & ~Q(quantity_delta=0)
+            & ~Q(base_quantity_delta=0)
+        )
+    )
+    return (
+        (app_label, name) == ("inventory", "0005_recall_ledger_events")
+        and [type(op).__name__ for op in operations]
+        == ["RemoveConstraint", "RemoveConstraint", "AddConstraint"]
+        and all(op.model_name == "inventoryledgerentry" for op in operations)
+        and [op.name for op in operations[:2]]
+        == ["chk_ledger_delta_nonzero", "chk_ledger_base_delta_nonzero"]
+        and operations[2].constraint.name == "chk_ledger_recall_zero_or_delta"
+        and operations[2].constraint.condition == reviewed_condition
+    )
+
+
 def _migration_key(path: str) -> tuple[str, str]:
     """('backend/apps/platform/migrations/0002_x.py') -> ('platform', '0002_x')."""
 
@@ -96,6 +126,9 @@ def build_inventory(new_files: list[str]) -> list[dict]:
                 ),
                 "destructive": bool(destructive),
                 "destructive_operations": destructive,
+                "reviewed_constraint_replacement": _reviewed_recall_constraint_replacement(
+                    app_label, name, migration.operations
+                ),
                 "data_migration": bool(set(operation_types) & DATA_MIGRATION_OPERATIONS),
                 "sql_operation": bool(set(operation_types) & SQL_OPERATIONS),
                 "source_path": source_path,
@@ -133,7 +166,10 @@ def main() -> int:
     ]
     inventory = build_inventory(new_files)
 
-    destructive = [m for m in inventory if m["destructive"]]
+    destructive = [
+        m for m in inventory
+        if m["destructive"] and not m.get("reviewed_constraint_replacement", False)
+    ]
     if destructive and not args.allow_destructive:
         names = ", ".join(f"{m['app']}.{m['migration']}" for m in destructive)
         raise EvidenceError(

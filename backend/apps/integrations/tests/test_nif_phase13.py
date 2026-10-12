@@ -731,6 +731,47 @@ class TestRegulatoryRecallService(TestCase):
                 compliance_review_notes="Notes",
             )
 
+    def test_close_alert_requires_prior_dispensing_trace_evidence_when_flagged(self):
+        from apps.inventory.recalls.services import close_alert_for_tenant
+
+        actor = MagicMock()
+        actor.id = 1
+        actor.has_capability = MagicMock(return_value=True)
+        impact = MagicMock()
+        impact.tenant_id = 1
+        impact.state = "QUARANTINED"
+        impact.prior_dispense_trace_required = True
+        impact.actions.all.return_value = []
+
+        with self.assertRaises(ValidationError) as ctx:
+            close_alert_for_tenant(
+                impact=impact,
+                actor=actor,
+                regulator_withdrawal_reference="PPB/WD/001",
+                compliance_review_notes="Review complete.",
+            )
+        self.assertIn("prior dispensing trace", str(ctx.exception).lower())
+
+    def test_patient_trace_action_requires_count_and_evidence_reference(self):
+        from apps.inventory.recalls.services import record_regulatory_action
+
+        actor = MagicMock()
+        actor.id = 1
+        actor.has_capability = MagicMock(return_value=True)
+        impact = MagicMock()
+        impact.tenant_id = 1
+        impact.state = "QUARANTINED"
+
+        with self.assertRaises(ValidationError) as ctx:
+            record_regulatory_action(
+                impact=impact,
+                actor=actor,
+                action_type="PATIENT_CONTACT",
+                notes="Trace reviewed.",
+                evidence_payload={},
+            )
+        self.assertIn("number of patients", str(ctx.exception).lower())
+
     def test_quarantine_tenant_stock_requires_compliance_capability(self):
         """Stock quarantine must require recalls.manage capability."""
         from apps.inventory.recalls.services import quarantine_tenant_stock

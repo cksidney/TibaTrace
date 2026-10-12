@@ -639,13 +639,19 @@ class Command(BaseCommand):
             },
         )
         if not patient_nka.identifiers.exists():
-            PatientGovernanceService.add_identifier(
+            identifier = PatientGovernanceService.add_identifier(
                 patient=patient_nka,
                 actor=pharmacist,
                 identifier_type="HOSPITAL_NUMBER",
                 value="SEED-HOSPITAL-0001",
-                verification_status="VERIFIED",
                 issuing_authority="DawaTrace demonstration facility",
+            )
+            PatientGovernanceService.verify_identifier(
+                identifier=identifier,
+                actor=checker,
+                verification_status="VERIFIED",
+                verification_note="Manual review of a synthetic demonstration facility identifier.",
+                evidence_reference="PHASE5-DEMO-HOSPITAL-0001",
             )
         active_prescriber = self._prescriber(
             tenant,

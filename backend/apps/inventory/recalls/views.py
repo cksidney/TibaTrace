@@ -23,25 +23,28 @@ from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 
 from apps.inventory.recalls.models import (
-    RegulatoryAction,
     RegulatoryAlert,
     RegulatoryTenantImpact,
 )
 from apps.inventory.recalls.serializers import (
-    RegulatoryActionSerializer,
+    RegulatoryActionCreateSerializer,
+    RegulatoryActionReadSerializer,
     RegulatoryAlertDetailSerializer,
     RegulatoryAlertIngestSerializer,
     RegulatoryAlertListSerializer,
     RegulatoryAlertVersionSerializer,
     RegulatoryClosureCreateSerializer,
     RegulatoryClosureSerializer,
+    RegulatoryQuarantineSerializer,
     RegulatoryTenantImpactSerializer,
+    RegulatoryTenantQuarantineSerializer,
 )
 from apps.inventory.recalls.services import (
     activate_alert,
     close_alert_for_tenant,
     ingest_alert,
     quarantine_tenant_stock,
+    record_regulatory_action,
 )
 
 logger = logging.getLogger(__name__)
@@ -98,18 +101,15 @@ class PlatformRegulatoryAlertViewSet(ModelViewSet):
     def quarantine(self, request, pk=None):
         """Quarantine affected stock for a specific tenant."""
         alert = self.get_object()
-        tenant_id = request.data.get("tenant_id")
-        affected_batches = request.data.get("affected_batches", [])
-        quarantined_stock_count = request.data.get("quarantined_stock_count", 0)
-        if not tenant_id:
-            return Response({"detail": "tenant_id is required."}, status=400)
+        serializer = RegulatoryQuarantineSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
         try:
             impact = quarantine_tenant_stock(
                 alert=alert,
-                tenant_id=tenant_id,
+                tenant_id=serializer.validated_data["tenant_id"],
                 actor=request.user,
-                affected_batches=affected_batches,
-                quarantined_stock_count=quarantined_stock_count,
+                affected_batches=serializer.validated_data["affected_batches"],
+                prior_dispense_trace_required=serializer.validated_data["prior_dispense_trace_required"],
             )
         except Exception as exc:
             return Response({"detail": str(exc)}, status=400)
@@ -126,21 +126,43 @@ class TenantRegulatoryImpactViewSet(ReadOnlyModelViewSet):
         tenant_id = getattr(self.request, "tenant_id", None)
         if not tenant_id:
             return RegulatoryTenantImpact.all_objects.none()
-        return RegulatoryTenantImpact.all_objects.filter(tenant_id=tenant_id).select_related("alert")
+        return RegulatoryTenantImpact.all_objects.filter(tenant_id=tenant_id).select_related(
+            "alert", "tenant"
+        ).prefetch_related("actions__performed_by").order_by("-created_at")
+
+    @action(detail=True, methods=["post"], url_path="quarantine")
+    def quarantine(self, request, pk=None):
+        impact = self.get_object()
+        serializer = RegulatoryTenantQuarantineSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            impact = quarantine_tenant_stock(
+                alert=impact.alert,
+                tenant_id=impact.tenant_id,
+                actor=request.user,
+                affected_batches=serializer.validated_data["affected_batches"],
+                prior_dispense_trace_required=serializer.validated_data["prior_dispense_trace_required"],
+            )
+        except Exception as exc:
+            return Response({"detail": str(exc)}, status=400)
+        return Response(RegulatoryTenantImpactSerializer(impact).data)
 
     @action(detail=True, methods=["post"], url_path="actions")
     def add_action(self, request, pk=None):
         impact = self.get_object()
-        serializer = RegulatoryActionSerializer(data=request.data)
+        serializer = RegulatoryActionCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        action_obj = RegulatoryAction.objects.create(
-            impact=impact,
-            action_type=serializer.validated_data["action_type"],
-            performed_by=request.user,
-            notes=serializer.validated_data.get("notes", ""),
-            evidence_payload=serializer.validated_data.get("evidence_payload", {}),
-        )
-        return Response(RegulatoryActionSerializer(action_obj).data, status=status.HTTP_201_CREATED)
+        try:
+            action_obj = record_regulatory_action(
+                impact=impact,
+                actor=request.user,
+                action_type=serializer.validated_data["action_type"],
+                notes=serializer.validated_data.get("notes", ""),
+                evidence_payload=serializer.validated_data.get("evidence_payload", {}),
+            )
+        except Exception as exc:
+            return Response({"detail": str(exc)}, status=400)
+        return Response(RegulatoryActionReadSerializer(action_obj).data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=["post"], url_path="close")
     def close(self, request, pk=None):

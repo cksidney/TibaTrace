@@ -36,7 +36,7 @@ from apps.organizations.services import (
 from apps.patients.models import Patient
 from apps.patients.services import PatientGovernanceService
 from apps.practitioners.models import Practitioner
-from apps.practitioners.services import PractitionerRegistrationService
+from apps.practitioners.services import PractitionerRegistrationService, PrescriberGovernanceService
 from apps.procurement.models import Supplier
 from apps.procurement.services.supplier_governance_service import SupplierGovernanceService
 
@@ -317,7 +317,7 @@ ROLES = (
     # domain: verifying prescriber credentials and authorising controlled
     # prescribing is a superintendent responsibility, not an administrator one.
     ("NC-SUPERINTENDENT", "Superintendent Pharmacist",
-     ["dispensing.read", "dispensing.check", "dispensing.supply", "dispensing.counsel",
+     ["practitioners.read", "dispensing.read", "dispensing.check", "dispensing.supply", "dispensing.counsel",
       "prescriptions.controlled_verify", "quality.release", "prescribers.verify"]),
     ("NC-BRANCH-MANAGER", "Branch Manager",
      ["inventory.read", "dispensing.read", "pos.shift.manage", "pos.report.z.generate"]),
@@ -338,7 +338,7 @@ ROLES = (
     # be someone else, which the verification service enforces.
     ("NC-QUALITY", "Quality and Compliance Officer",
      ["quality.release", "inventory.read", "premises.verify"]),
-    ("NC-CLAIMS", "Insurance and Claims Officer", ["insurance.read", "dispensing.read"]),
+    ("NC-CLAIMS", "Insurance and Claims Officer", ["insurance.read", "insurance.manage", "dispensing.read"]),
     ("NC-AUDITOR", "Auditor", ["inventory.read", "dispensing.read", "documents.read"]),
 )
 
@@ -554,6 +554,7 @@ class StageEPractitioners(Stage):
                     tenant=ctx.tenant, first_name=first, last_name=last,
                     profession=profession, registration_number=registration,
                     licence_expiry_date=ctx.as_of + timedelta(days=offset),
+                    actor=actor,
                 )
                 ctx.add_count("practitioners_created", 1)
             else:
@@ -591,9 +592,15 @@ class StageEPractitioners(Stage):
         metadata = dict(practitioner.metadata or {})
         metadata["verification_basis"] = syn.TRUTH_MANUAL
         metadata["external_connectivity"] = syn.TRUTH_NOT_CONNECTED
-        Practitioner.all_objects.filter(
-            pk=practitioner.pk, tenant=ctx.tenant
-        ).update(verification_state="VERIFIED", metadata=metadata)
+        practitioner.metadata = metadata
+        practitioner.save(update_fields=["metadata", "updated_at"])
+        PrescriberGovernanceService.verify(
+            practitioner=practitioner,
+            actor=actor,
+            licence_status="VALID",
+            verification_note="Manual internal review of the synthetic demo prescriber; no registry contacted.",
+            evidence_reference=f"{REF}-DEMO-{practitioner.registration_number}",
+        )
         practitioner.refresh_from_db()
         ctx.add_count("practitioners_verified", 1)
 

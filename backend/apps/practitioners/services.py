@@ -14,7 +14,9 @@ def _require_capability(actor, tenant_id):
         actor.has_capability(capability, tenant_id=tenant_id)
         for capability in ("prescribers.verify", "practitioners.write")
     ):
-        raise PermissionDenied("Capability prescribers.verify is required.")
+        raise PermissionDenied(
+            "Capability prescribers.verify or practitioners.write is required."
+        )
 
 
 class PrescriberGovernanceService:
@@ -91,8 +93,17 @@ class PrescriberGovernanceService:
         actor,
         verification_state="VERIFIED",
         licence_status=None,
-        controlled_medicine_authority=None,
+        verification_note="",
+        evidence_reference="",
     ):
+        verification_note = str(verification_note or "").strip()
+        evidence_reference = str(evidence_reference or "").strip()
+        if not verification_note:
+            raise ValidationError("A practitioner verification decision requires a note.")
+        if verification_state == "VERIFIED" and licence_status not in {None, "VALID", "ACTIVE"}:
+            raise ValidationError("A verified practitioner must have a valid or active licence.")
+        if verification_state == "REJECTED" and licence_status in {"VALID", "ACTIVE"}:
+            raise ValidationError("A rejected practitioner cannot have a valid or active licence.")
         _require_capability(actor, practitioner.tenant_id)
         locked = Practitioner.all_objects.select_for_update().get(
             id=practitioner.id,
@@ -100,8 +111,6 @@ class PrescriberGovernanceService:
         )
         if licence_status is not None:
             locked.licence_status = licence_status
-        if controlled_medicine_authority is not None:
-            locked.controlled_medicine_authority = controlled_medicine_authority
         if verification_state == "VERIFIED":
             findings = cls.authority_findings(
                 practitioner=locked,
@@ -119,23 +128,44 @@ class PrescriberGovernanceService:
         locked.verification_state = verification_state
         locked.verified_by = actor
         locked.verified_at = timezone.now()
+        metadata = dict(locked.metadata or {})
+        history = list(metadata.get("verification_history") or [])
+        history.append(
+            {
+                "state": verification_state,
+                "licence_status": locked.licence_status,
+                "note": verification_note,
+                "evidence_reference": evidence_reference,
+                "actor": getattr(actor, "username", ""),
+                "recorded_at": locked.verified_at.isoformat(),
+            }
+        )
+        metadata["verification_history"] = history[-20:]
+        locked.metadata = metadata
         locked.save()
+        licence_updates = {
+            "verification_state": verification_state,
+            "verified_by": actor,
+            "verified_at": locked.verified_at,
+        }
+        if licence_status is not None:
+            licence_updates["status"] = licence_status
         PractitionerLicence.all_objects.filter(
             tenant_id=locked.tenant_id,
             practitioner=locked,
-            status__in=["VALID", "ACTIVE"],
-        ).update(
-            verification_state=verification_state,
-            verified_by=actor,
-            verified_at=locked.verified_at,
-        )
+        ).update(**licence_updates)
         log_audit(
             tenant_id=locked.tenant_id,
             action="PRESCRIBER_VERIFIED",
             model_name="Practitioner",
             object_id=locked.id,
             actor_id=actor.id,
-            metadata={"verification_state": verification_state},
+            metadata={
+                "verification_state": verification_state,
+                "licence_status": locked.licence_status,
+                "verification_note": verification_note,
+                "evidence_reference": evidence_reference,
+            },
         )
         emit_event(
             tenant_id=locked.tenant_id,
@@ -147,6 +177,8 @@ class PrescriberGovernanceService:
                 "actor": str(actor.id),
                 "prescriber": str(locked.id),
                 "verification_state": verification_state,
+                "licence_status": locked.licence_status,
+                "evidence_reference": evidence_reference,
                 "event_version": 1,
                 "timestamp": timezone.now().isoformat(),
             },
@@ -181,6 +213,7 @@ class PractitionerRegistrationService:
         first_name: str,
         last_name: str,
         profession: str,
+        professional_name: str = "",
         registration_number: str = "",
         licensing_body: str = "",
         licence_issue_date=None,
@@ -201,6 +234,12 @@ class PractitionerRegistrationService:
         first_name = str(first_name or "").strip()
         last_name = str(last_name or "").strip()
         registration_number = str(registration_number or "").strip()
+        licensing_body = str(licensing_body or "").strip()
+        # API callers are capability-gated by the tenant viewset. Actor-less
+        # calls remain available to trusted seeding and migration workflows;
+        # their registration is still audited with a null actor.
+        if actor is not None:
+            _require_capability(actor, tenant.id)
 
         if not first_name or not last_name:
             raise ValidationError("A practitioner requires a first and last name.")
@@ -209,6 +248,10 @@ class PractitionerRegistrationService:
             raise ValidationError(f"Unknown profession {profession!r}. Known: {known}")
         if licence_issue_date and licence_expiry_date and licence_expiry_date < licence_issue_date:
             raise ValidationError("A licence cannot expire before it was issued.")
+        if registration_number and licensing_body and len(registration_number) > 100:
+            raise ValidationError("A licence number may not exceed 100 characters.")
+        if len(licensing_body) > 100:
+            raise ValidationError("A licensing body name may not exceed 100 characters.")
         if organization is not None and organization.tenant_id != tenant.id:
             raise ValidationError("A practitioner's organisation must belong to their tenant.")
 
@@ -219,13 +262,14 @@ class PractitionerRegistrationService:
             if existing is not None:
                 return existing
 
-        return Practitioner.all_objects.create(
+        practitioner = Practitioner.all_objects.create(
             tenant=tenant,
             first_name=first_name,
             last_name=last_name,
+            professional_name=str(professional_name or "").strip(),
             profession=profession,
             registration_number=registration_number,
-            licensing_body=str(licensing_body or "").strip(),
+            licensing_body=licensing_body,
             licence_issue_date=licence_issue_date,
             licence_expiry_date=licence_expiry_date,
             prescribing_scope=prescribing_scope or [],
@@ -239,6 +283,47 @@ class PractitionerRegistrationService:
             status="ACTIVE",
             metadata={"verification_basis": verification_note},
         )
+        if registration_number and licensing_body:
+            PractitionerLicence.all_objects.create(
+                tenant=tenant,
+                practitioner=practitioner,
+                licence_number=registration_number,
+                issuer=licensing_body,
+                jurisdiction=tenant.country_code,
+                status="UNVERIFIED",
+                issue_date=licence_issue_date,
+                expiry_date=licence_expiry_date,
+                prescribing_scope=prescribing_scope or [],
+                controlled_medicine_authority=False,
+                verification_state="UNVERIFIED",
+            )
+        log_audit(
+            tenant_id=tenant.id,
+            action="PRACTITIONER_REGISTERED",
+            model_name="Practitioner",
+            object_id=practitioner.id,
+            actor_id=getattr(actor, "id", None),
+            metadata={
+                "profession": profession,
+                "has_registration_number": bool(registration_number),
+                "verification_state": practitioner.verification_state,
+            },
+        )
+        emit_event(
+            tenant_id=tenant.id,
+            aggregate_type="Practitioner",
+            aggregate_id=practitioner.id,
+            event_type="PractitionerRegistered",
+            payload={
+                "tenant": str(tenant.id),
+                "actor": str(getattr(actor, "id", "") or ""),
+                "practitioner": str(practitioner.id),
+                "verification_state": practitioner.verification_state,
+                "event_version": 1,
+                "timestamp": timezone.now().isoformat(),
+            },
+        )
+        return practitioner
 
     @staticmethod
     @transaction.atomic
@@ -261,6 +346,13 @@ class PractitionerRegistrationService:
                 "Controlled-medicine authority requires a verified practitioner. "
                 f"This one is {practitioner.verification_state}."
             )
+        if practitioner.status != "ACTIVE":
+            raise ValidationError("Controlled-medicine authority requires an active practitioner.")
+        if practitioner.licence_status not in {"VALID", "ACTIVE"}:
+            raise ValidationError(
+                "Controlled-medicine authority requires a valid or active licence. "
+                f"This licence is {practitioner.licence_status}."
+            )
         expiry = practitioner.licence_expiry_date
         if expiry and expiry < timezone.now().date():
             raise ValidationError(
@@ -279,6 +371,10 @@ class PractitionerRegistrationService:
         practitioner.save(
             update_fields=["controlled_medicine_authority", "metadata", "updated_at"]
         )
+        PractitionerLicence.all_objects.filter(
+            tenant_id=practitioner.tenant_id,
+            practitioner=practitioner,
+        ).update(controlled_medicine_authority=True)
         log_audit(
             tenant_id=practitioner.tenant_id,
             action="PRACTITIONER_CONTROLLED_AUTHORITY_GRANTED",
@@ -286,6 +382,21 @@ class PractitionerRegistrationService:
             object_id=practitioner.pk,
             actor_id=actor.id,
             metadata={"reason": reason, "evidence_reference": evidence_reference},
+        )
+        emit_event(
+            tenant_id=practitioner.tenant_id,
+            aggregate_type="Practitioner",
+            aggregate_id=practitioner.id,
+            event_type="PractitionerControlledAuthorityGranted",
+            payload={
+                "tenant": str(practitioner.tenant_id),
+                "actor": str(actor.id),
+                "practitioner": str(practitioner.id),
+                "reason": reason,
+                "evidence_reference": evidence_reference,
+                "event_version": 1,
+                "timestamp": timezone.now().isoformat(),
+            },
         )
         return practitioner
 
@@ -310,6 +421,10 @@ class PractitionerRegistrationService:
         practitioner.save(
             update_fields=["controlled_medicine_authority", "metadata", "updated_at"]
         )
+        PractitionerLicence.all_objects.filter(
+            tenant_id=practitioner.tenant_id,
+            practitioner=practitioner,
+        ).update(controlled_medicine_authority=False)
         log_audit(
             tenant_id=practitioner.tenant_id,
             action="PRACTITIONER_CONTROLLED_AUTHORITY_REVOKED",
@@ -317,5 +432,19 @@ class PractitionerRegistrationService:
             object_id=practitioner.pk,
             actor_id=actor.id,
             metadata={"reason": reason},
+        )
+        emit_event(
+            tenant_id=practitioner.tenant_id,
+            aggregate_type="Practitioner",
+            aggregate_id=practitioner.id,
+            event_type="PractitionerControlledAuthorityRevoked",
+            payload={
+                "tenant": str(practitioner.tenant_id),
+                "actor": str(actor.id),
+                "practitioner": str(practitioner.id),
+                "reason": reason,
+                "event_version": 1,
+                "timestamp": timezone.now().isoformat(),
+            },
         )
         return practitioner

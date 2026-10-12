@@ -38,3 +38,33 @@ class AuditEvent(TimestampedModel):
 
     def delete(self, *args, **kwargs):
         raise ValidationError("Audit events cannot be deleted through the application.")
+
+
+class PlatformAuditEvent(TimestampedModel):
+    """Platform operations have their own append-only trail, never a fake tenant."""
+
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="platform_audit_events"
+    )
+    action = models.CharField(max_length=120)
+    model_name = models.CharField(max_length=120)
+    object_id = models.CharField(max_length=160)
+    correlation_id = models.CharField(max_length=160, blank=True)
+    outcome = models.CharField(max_length=40, default="SUCCESS")
+    metadata = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["model_name", "object_id"], name="ix_platform_audit_object"),
+            models.Index(fields=["created_at"], name="ix_platform_audit_created"),
+        ]
+
+    def save(self, *args, **kwargs):
+        if self.pk and PlatformAuditEvent.objects.filter(pk=self.pk).exists():
+            raise ValidationError("Platform audit events are immutable.")
+        if not self.actor_id:
+            raise ValidationError({"actor": "Platform audit events require an explicit actor."})
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("Platform audit events cannot be deleted through the application.")

@@ -8,6 +8,7 @@ from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 from django.utils import timezone
 
+from apps.audit.service import log_audit
 from apps.medicines.government_catalogue import SOURCE_NAME
 from apps.medicines.models import (
     ActiveSubstance,
@@ -41,6 +42,106 @@ def _emit_medicine_event(event_type: str, tenant, aggregate_id: str, payload: di
 
 
 class MedicineCatalogueService:
+    @staticmethod
+    @transaction.atomic
+    def create_tenant_sku(
+        *,
+        tenant,
+        clinical_code: str,
+        canonical_name: str,
+        dose_form: DoseForm,
+        active_substance: ActiveSubstance,
+        strength_value,
+        strength_unit: str,
+        manufactured_code: str,
+        brand_name: str,
+        manufacturer: Manufacturer | None,
+        market_authorisation_number: str,
+        sku_code: str,
+        display_name: str,
+        package_definition: PackageDefinition,
+        default_barcode: str = "",
+        tax_category: str = "STANDARD",
+        actor=None,
+    ) -> CommercialSKU:
+        """Create a tenant product chain as drafts, ready for catalogue review.
+
+        Reference data may be global or tenant-owned, but a reference owned by
+        another tenant is never accepted. The SKU stays non-transactional until
+        the separate clinical-product activation decision.
+        """
+        if actor is None or not actor.has_capability("catalogue.manage", tenant_id=tenant.pk):
+            raise PermissionDenied("Catalogue authoring authority is required.")
+        if dose_form is None or not dose_form.is_active:
+            raise ValidationError("Select an active dose form.")
+        if active_substance is None or active_substance.status != "ACTIVE":
+            raise ValidationError("Select an active ingredient.")
+        if active_substance.tenant_id not in (None, tenant.pk):
+            raise ValidationError("The selected ingredient belongs to another tenant.")
+        if manufacturer is not None:
+            if not manufacturer.is_active:
+                raise ValidationError("Select an active manufacturer.")
+            if manufacturer.tenant_id not in (None, tenant.pk):
+                raise ValidationError("The selected manufacturer belongs to another tenant.")
+        if package_definition is None or not package_definition.is_active:
+            raise ValidationError("Select an active package definition.")
+
+        clinical_product = MedicineCatalogueService.create_clinical_product(
+            tenant=tenant,
+            code=str(clinical_code).strip().upper(),
+            canonical_name=str(canonical_name).strip(),
+            dose_form=dose_form,
+            status=ClinicalMedicinalProduct.STATUS_DRAFT,
+            actor=actor,
+        )
+        IngredientComposition.objects.create(
+            clinical_product=clinical_product,
+            active_substance=active_substance,
+            numerator_value=strength_value,
+            numerator_unit=str(strength_unit).strip(),
+            denominator_value=1,
+            denominator_unit="unit",
+            role="ACTIVE",
+            sequence=1,
+            basis_of_strength="ACTIVE_MOIETY",
+            is_exact=True,
+        )
+        manufactured_product = MedicineCatalogueService.register_manufactured_product(
+            tenant=tenant,
+            code=str(manufactured_code).strip().upper(),
+            brand_name=str(brand_name).strip(),
+            clinical_product=clinical_product,
+            manufacturer=manufacturer,
+            market_authorisation_number=str(market_authorisation_number or "").strip(),
+            status=ManufacturedMedicinalProduct.STATUS_DRAFT,
+            actor=actor,
+        )
+        sku = MedicineCatalogueService.register_sku(
+            tenant=tenant,
+            sku_code=str(sku_code).strip().upper(),
+            display_name=str(display_name).strip(),
+            manufactured_product=manufactured_product,
+            package_definition=package_definition,
+            default_barcode=str(default_barcode or "").strip(),
+            tax_category=tax_category,
+            status=CommercialSKU.STATUS_DRAFT,
+            actor=actor,
+        )
+        log_audit(
+            tenant_id=tenant.pk,
+            action="MEDICINE_CATALOGUE_ITEM_INGESTED",
+            model_name="CommercialSKU",
+            object_id=sku.pk,
+            actor_id=actor.pk,
+            metadata={
+                "clinical_product_id": str(clinical_product.pk),
+                "manufactured_product_id": str(manufactured_product.pk),
+                "sku_code": sku.sku_code,
+                "status": sku.status,
+            },
+        )
+        return sku
+
     @staticmethod
     @transaction.atomic
     def create_clinical_product(
@@ -93,6 +194,17 @@ class MedicineCatalogueService:
             raise ValidationError("Clinical medicinal product must have at least one active ingredient before activation.")
         product.status = ClinicalMedicinalProduct.STATUS_ACTIVE
         product.save()
+
+        ManufacturedMedicinalProduct.all_objects.filter(
+            tenant_id=product.tenant_id,
+            clinical_product=product,
+            status=ManufacturedMedicinalProduct.STATUS_DRAFT,
+        ).update(status=ManufacturedMedicinalProduct.STATUS_ACTIVE)
+        CommercialSKU.all_objects.filter(
+            tenant_id=product.tenant_id,
+            manufactured_product__clinical_product=product,
+            status=CommercialSKU.STATUS_DRAFT,
+        ).update(status=CommercialSKU.STATUS_ACTIVE)
 
         _emit_medicine_event(
             event_type="ClinicalMedicinalProductActivated",

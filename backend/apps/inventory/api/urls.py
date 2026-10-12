@@ -7,6 +7,7 @@ from .views import (
     InventoryLedgerEntryViewSet,
     InventoryLocationViewSet,
     InventoryReservationViewSet,
+    StocktakeViewSet,
     StockTransferViewSet,
 )
 
@@ -17,6 +18,7 @@ router.register(r"ledger", InventoryLedgerEntryViewSet, basename="inventory-ledg
 router.register(r"balances", InventoryBalanceViewSet, basename="inventory-balance")
 router.register(r"reservations", InventoryReservationViewSet, basename="inventory-reservation")
 router.register(r"transfers", StockTransferViewSet, basename="stock-transfer")
+router.register(r"stocktakes", StocktakeViewSet, basename="stocktake")
 
 urlpatterns = [
     path("", include(router.urls)),

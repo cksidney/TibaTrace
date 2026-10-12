@@ -199,6 +199,36 @@ class CommercialSKUSerializer(serializers.ModelSerializer):
         )
 
 
+class CatalogueIntakeSerializer(serializers.Serializer):
+    clinical_code = serializers.CharField(max_length=100)
+    canonical_name = serializers.CharField(max_length=255)
+    dose_form_id = serializers.UUIDField()
+    active_substance_id = serializers.UUIDField()
+    strength_value = serializers.DecimalField(max_digits=14, decimal_places=4, min_value=0)
+    strength_unit = serializers.CharField(max_length=50)
+    manufactured_code = serializers.CharField(max_length=100)
+    brand_name = serializers.CharField(max_length=255)
+    manufacturer_id = serializers.UUIDField(required=False, allow_null=True)
+    market_authorisation_number = serializers.CharField(max_length=150, required=False, allow_blank=True)
+    sku_code = serializers.CharField(max_length=100)
+    display_name = serializers.CharField(max_length=255)
+    package_definition_id = serializers.UUIDField()
+    default_barcode = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    tax_category = serializers.CharField(max_length=80, default="STANDARD")
+
+    def validate(self, attrs):
+        for field in ("clinical_code", "canonical_name", "strength_unit", "manufactured_code", "brand_name", "sku_code", "display_name"):
+            attrs[field] = attrs[field].strip()
+            if not attrs[field]:
+                raise serializers.ValidationError({field: "This field cannot be blank."})
+        attrs["clinical_code"] = attrs["clinical_code"].upper()
+        attrs["manufactured_code"] = attrs["manufactured_code"].upper()
+        attrs["sku_code"] = attrs["sku_code"].upper()
+        if attrs["strength_value"] <= 0:
+            raise serializers.ValidationError({"strength_value": "Strength must be greater than zero."})
+        return attrs
+
+
 class ProductIdentifierSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProductIdentifier

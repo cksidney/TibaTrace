@@ -25,6 +25,7 @@ ALL_CAPABILITIES = [
     "dispensing.counsel", "dispensing.repeat.authorize", "dispensing.return.receive",
     "dispensing.return.quality", "dispensing.return.restock",
     "clinical.read", "clinical.write", "cds.read", "cds.configure.read", "cds.configure", "cds.override",
+    "insurance.manage",
     "terminology.read", "terminology.manage", "audit.read", "documents.read", "documents.write",
     "system/Organization.read", "system/Location.read", "system/Patient.read", "system/Patient.write",
     "system/Practitioner.read", "system/Medication.read", "system/MedicationRequest.read",

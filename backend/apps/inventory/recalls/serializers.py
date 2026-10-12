@@ -46,6 +46,7 @@ class RegulatoryAlertIngestSerializer(serializers.Serializer):
     alert_reference = serializers.CharField(max_length=100)
     title = serializers.CharField(max_length=300)
     severity = serializers.ChoiceField(choices=["CRITICAL", "HIGH", "MEDIUM", "LOW"])
+    issuing_regulator = serializers.CharField(required=False, default="PPB", max_length=80)
     ppb_registration_number = serializers.CharField(required=False, default="")
     gtin = serializers.CharField(required=False, default="")
     product_name = serializers.CharField(required=False, default="")
@@ -57,19 +58,73 @@ class RegulatoryAlertIngestSerializer(serializers.Serializer):
     recommended_action = serializers.CharField(required=False, default="")
     regulator_issue_date = serializers.DateField(required=False, allow_null=True)
 
+    def validate_gtin(self, value):
+        if not value:
+            return value
+        if len(value) != 14 or not value.isdigit():
+            raise serializers.ValidationError("GTIN must contain exactly 14 numeric digits.")
+        digits = [int(digit) for digit in value[:-1]]
+        check_digit = int(value[-1])
+        total = sum(
+            digit * (3 if offset % 2 == 0 else 1)
+            for offset, digit in enumerate(reversed(digits))
+        )
+        expected = (10 - total % 10) % 10
+        if expected != check_digit:
+            raise serializers.ValidationError("GTIN check digit is invalid.")
+        return value
+
 
 class RegulatoryTenantImpactSerializer(serializers.ModelSerializer):
+    alert_reference = serializers.CharField(source="alert.alert_reference", read_only=True)
+    alert_title = serializers.CharField(source="alert.title", read_only=True)
+    alert_severity = serializers.CharField(source="alert.severity", read_only=True)
+    tenant_name = serializers.CharField(source="tenant.name", read_only=True)
+    actions = serializers.SerializerMethodField()
+
     class Meta:
         model = RegulatoryTenantImpact
         fields = [
-            "id", "alert", "tenant", "state",
+            "id", "alert", "alert_reference", "alert_title", "alert_severity",
+            "tenant", "tenant_name", "state",
             "quarantined_at", "affected_batches",
             "quarantined_stock_count",
             "prior_dispense_trace_required",
-            "prior_dispense_patient_count",
-            "notes", "created_at",
+            "prior_dispense_patient_count", "notes", "actions", "created_at",
         ]
         read_only_fields = fields
+
+    def get_actions(self, impact):
+        return RegulatoryActionReadSerializer(impact.actions.select_related("performed_by"), many=True).data
+
+
+class RegulatoryActionReadSerializer(serializers.ModelSerializer):
+    performed_by_name = serializers.CharField(source="performed_by.get_username", read_only=True)
+
+    class Meta:
+        model = RegulatoryAction
+        fields = [
+            "id", "impact", "action_type", "performed_at",
+            "performed_by_name", "notes", "evidence_payload",
+        ]
+        read_only_fields = fields
+
+
+class RegulatoryQuarantineSerializer(serializers.Serializer):
+    tenant_id = serializers.UUIDField()
+    affected_batches = serializers.ListField(
+        child=serializers.CharField(max_length=100, allow_blank=False),
+        allow_empty=False,
+    )
+    prior_dispense_trace_required = serializers.BooleanField(required=False, default=False)
+
+
+class RegulatoryTenantQuarantineSerializer(serializers.Serializer):
+    affected_batches = serializers.ListField(
+        child=serializers.CharField(max_length=100, allow_blank=False),
+        allow_empty=False,
+    )
+    prior_dispense_trace_required = serializers.BooleanField(required=False, default=False)
 
 
 class RegulatoryActionSerializer(serializers.ModelSerializer):
@@ -81,6 +136,12 @@ class RegulatoryActionSerializer(serializers.ModelSerializer):
             "notes", "evidence_payload",
         ]
         read_only_fields = ["id", "performed_by", "performed_at"]
+
+
+class RegulatoryActionCreateSerializer(serializers.Serializer):
+    action_type = serializers.ChoiceField(choices=RegulatoryAction.ActionType.choices)
+    notes = serializers.CharField(required=False, allow_blank=True, default="")
+    evidence_payload = serializers.DictField(required=False, default=dict)
 
 
 class RegulatoryAlertVersionSerializer(serializers.ModelSerializer):

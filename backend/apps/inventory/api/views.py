@@ -1,28 +1,35 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
-from rest_framework import permissions, status, viewsets
+from rest_framework import mixins, permissions, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 
 from apps.core.tenant_context import get_current_tenant_id
+from apps.inventory.location_services import InventoryLocationProvisioningService
 from apps.inventory.models import (
     InventoryBalance,
     InventoryBatch,
     InventoryLedgerEntry,
     InventoryLocation,
     InventoryReservation,
+    StocktakeSession,
     StockTransfer,
 )
-from apps.inventory.services import StockTransferService
+from apps.inventory.services import StocktakeService, StockTransferService
 from apps.medicines.models import CommercialSKU
+from apps.organizations.models import Location
 from apps.tenancy.models import Tenant
 
 from .serializers import (
     InventoryBalanceSerializer,
     InventoryBatchSerializer,
     InventoryLedgerEntrySerializer,
+    InventoryLocationProvisionSerializer,
     InventoryLocationSerializer,
     InventoryReservationSerializer,
+    StocktakeCountInputSerializer,
+    StocktakeOpenSerializer,
+    StocktakeSessionSerializer,
     StockTransferCreateSerializer,
     StockTransferReceiveSerializer,
     StockTransferSerializer,
@@ -75,6 +82,66 @@ class InventoryLocationViewSet(TenantScopedQuerysetMixin, viewsets.ReadOnlyModel
     select_related = ['branch']
     serializer_class = InventoryLocationSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    @action(detail=False, methods=["get"], url_path="branches")
+    def branches(self, request):
+        tenant_id = self.tenant_id()
+        if not tenant_id or not any(
+            request.user.has_capability(capability, tenant_id=tenant_id)
+            for capability in ("inventory.read", "inventory.manage")
+        ):
+            raise PermissionDenied("Reading inventory branches requires inventory.read.")
+        branches = Location.all_objects.filter(
+            tenant_id=tenant_id,
+            status="ACTIVE",
+            organization__status="ACTIVE",
+        ).select_related("organization").order_by("organization__name", "name")
+        return Response([
+            {
+                "id": str(branch.id),
+                "name": branch.name,
+                "code": branch.code,
+                "organization_name": branch.organization.name,
+            }
+            for branch in branches
+        ])
+
+    @action(detail=False, methods=["post"], url_path="provision")
+    def provision(self, request):
+        tenant_id = self.tenant_id()
+        if not tenant_id or not request.user.has_capability("inventory.manage", tenant_id=tenant_id):
+            raise PermissionDenied("Storage location provisioning requires inventory.manage.")
+        payload = InventoryLocationProvisionSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        values = payload.validated_data
+        branch = Location.all_objects.filter(
+            tenant_id=tenant_id,
+            pk=values["branch_id"],
+            status="ACTIVE",
+            organization__status="ACTIVE",
+        ).first()
+        if branch is None:
+            raise ValidationError({"branch_id": "Select an active branch in this tenant."})
+        existing = InventoryLocation.all_objects.filter(
+            tenant_id=tenant_id,
+            branch=branch,
+            location_code=values["location_code"].strip().upper(),
+        ).exists()
+        try:
+            location = InventoryLocationProvisioningService.provision_location(
+                tenant=Tenant.objects.get(pk=tenant_id),
+                branch=branch,
+                location_code=values["location_code"],
+                name=values["name"],
+                location_type=values["location_type"],
+                actor=request.user,
+            )
+        except DjangoValidationError as exc:
+            raise ValidationError(getattr(exc, "message_dict", None) or exc.messages) from exc
+        return Response(
+            InventoryLocationSerializer(location).data,
+            status=status.HTTP_200_OK if existing else status.HTTP_201_CREATED,
+        )
 
 class InventoryBatchViewSet(TenantScopedQuerysetMixin, viewsets.ReadOnlyModelViewSet):
     """
@@ -254,3 +321,107 @@ class StockTransferViewSet(TenantScopedQuerysetMixin, viewsets.ReadOnlyModelView
                 idempotency_key=payload.validated_data["idempotency_key"],
             )
         )
+
+
+class StocktakeViewSet(mixins.CreateModelMixin, TenantScopedQuerysetMixin, viewsets.ReadOnlyModelViewSet):
+    model = StocktakeSession
+    serializer_class = StocktakeSessionSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return (
+            super()
+            .get_queryset()
+            .select_related("branch", "created_by", "approved_by")
+            .prefetch_related("locations", "counts__sku__package_definition", "counts__location", "counts__batch")
+            .order_by("-created_at")
+        )
+
+    def _require_stocktake_authority(self, request):
+        tenant_id = self.tenant_id()
+        if not tenant_id or not request.user.has_capability("inventory.manage", tenant_id=tenant_id):
+            raise PermissionDenied("Stocktake writes require the inventory.manage capability.")
+        return tenant_id
+
+    def _refresh_session(self, session):
+        return self.get_queryset().get(pk=session.pk)
+
+    def create(self, request, *args, **kwargs):
+        tenant_id = self._require_stocktake_authority(request)
+        payload = StocktakeOpenSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        values = payload.validated_data
+        branch = Location.all_objects.filter(tenant_id=tenant_id, pk=values["branch_id"]).first()
+        if branch is None:
+            raise ValidationError({"branch_id": "Select a branch in this tenant."})
+        locations = list(
+            InventoryLocation.all_objects.filter(
+                tenant_id=tenant_id,
+                branch=branch,
+                pk__in=values["location_ids"],
+                status=InventoryLocation.Status.ACTIVE,
+            )
+        )
+        if len(locations) != len(values["location_ids"]):
+            raise ValidationError({"location_ids": "Select active inventory locations from the chosen branch."})
+        try:
+            session = StocktakeService.open_stocktake(
+                tenant=Tenant.objects.get(pk=tenant_id),
+                branch=branch,
+                locations=locations,
+                scope=values["scope"],
+                creator=request.user,
+            )
+        except DjangoValidationError as exc:
+            raise ValidationError({"detail": list(getattr(exc, "messages", [str(exc)]))}) from exc
+        session.document_number = values.get("document_number", "").strip()
+        session.save(update_fields=["document_number", "updated_at"])
+        return Response(self.get_serializer(self._refresh_session(session)).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["post"], url_path="counts")
+    def record_count(self, request, pk=None):
+        tenant_id = self._require_stocktake_authority(request)
+        payload = StocktakeCountInputSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        values = payload.validated_data
+        session = self.get_object()
+        location = InventoryLocation.all_objects.filter(
+            tenant_id=tenant_id, pk=values["location_id"], branch_id=session.branch_id
+        ).first()
+        sku = CommercialSKU.all_objects.filter(
+            tenant_id=tenant_id, pk=values["sku_id"], status=CommercialSKU.STATUS_ACTIVE
+        ).select_related("package_definition").first()
+        batch = None
+        if values.get("batch_id"):
+            batch = InventoryBatch.all_objects.filter(
+                tenant_id=tenant_id, pk=values["batch_id"], sku_id=values["sku_id"]
+            ).first()
+            if batch is None:
+                raise ValidationError({"batch_id": "Select a batch belonging to the selected SKU."})
+        if location is None:
+            raise ValidationError({"location_id": "Select a location in this stocktake's branch."})
+        if sku is None:
+            raise ValidationError({"sku_id": "Select an active SKU in this tenant."})
+        try:
+            StocktakeService.record_count(
+                session=session,
+                location=location,
+                sku=sku,
+                batch=batch,
+                counted_quantity=values["counted_quantity"],
+                counter=request.user,
+                reason=values.get("reason", ""),
+            )
+        except DjangoValidationError as exc:
+            raise ValidationError({"detail": list(getattr(exc, "messages", [str(exc)]))}) from exc
+        return Response(self.get_serializer(self._refresh_session(session)).data)
+
+    @action(detail=True, methods=["post"], url_path="post-variances")
+    def post_variances(self, request, pk=None):
+        self._require_stocktake_authority(request)
+        session = self.get_object()
+        try:
+            updated = StocktakeService.post_variances(session=session, approver=request.user)
+        except DjangoValidationError as exc:
+            raise ValidationError({"detail": list(getattr(exc, "messages", [str(exc)]))}) from exc
+        return Response(self.get_serializer(self._refresh_session(updated)).data)

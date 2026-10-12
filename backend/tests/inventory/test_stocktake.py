@@ -1,6 +1,7 @@
 import pytest
 from django.utils import timezone
 
+from apps.identity.models import User
 from apps.inventory.models import InventoryBalance, InventoryLedgerEntry
 from apps.inventory.services import ExpiryControlService, InventoryLedgerService, StocktakeService
 
@@ -18,7 +19,8 @@ class TestStocktakeAndExpiry:
         
         StocktakeService.record_count(session=session, location=inventory_location, sku=sku, batch=inventory_batch, counted_quantity=95, counter=admin_user)
         
-        StocktakeService.post_variances(session=session, approver=admin_user)
+        approver = User.objects.create_user(username="stocktake-approver", tenant=tenant_a)
+        StocktakeService.post_variances(session=session, approver=approver)
         
         balance = InventoryBalance.all_objects.get(tenant=tenant_a, sku=sku)
         assert balance.on_hand == 95

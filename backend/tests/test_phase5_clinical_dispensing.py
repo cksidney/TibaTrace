@@ -20,6 +20,16 @@ from apps.cds.services import ClinicalDecisionSupportService
 from apps.core.tenant_context import reset_current_tenant_id, set_current_tenant_id
 from apps.documents.models import StoredClinicalDocument
 from apps.identity.models import User, UserRole
+from apps.insurance.models import (
+    InsuranceCoverage,
+    InsuranceMember,
+    Insurer,
+    InsurerPlan,
+    InsurerScheme,
+    MedicineClaimCodeMap,
+    PrescriptionClaim,
+    PrescriptionClaimLine,
+)
 from apps.inventory.models import InventoryBatch, InventoryLedgerEntry, InventoryLocation
 from apps.inventory.services import InventoryLedgerService
 from apps.medicines.models import (
@@ -367,7 +377,13 @@ def test_sensitive_identifier_is_protected_masked_and_audited(phase5_setup):
         actor=phase5_setup["user"],
         identifier_type="NATIONAL_ID",
         value="1234567890",
+    )
+    identifier = PatientGovernanceService.verify_identifier(
+        identifier=identifier,
+        actor=phase5_setup["user"],
         verification_status="VERIFIED",
+        verification_note="Reviewed test identity evidence.",
+        evidence_reference="TEST-IDENTITY-1234567890",
     )
     assert identifier.value == ""
     assert "1234567890" not in identifier.protected_value
@@ -610,6 +626,110 @@ def test_supply_is_batch_exact_partial_and_idempotent(phase5_setup):
         "COUNSELLING_ACKNOWLEDGEMENT",
         "PARTIAL_DISPENSING_BALANCE_RECORD",
     }.issubset(document_types)
+
+
+def test_claim_intake_builds_an_audited_draft_from_supplied_medicine(phase5_setup):
+    prescription = _receive(phase5_setup, "RX-PHASE5-CLAIM-INTAKE")
+    _approve(phase5_setup, prescription)
+    episode, lines = _prepare_episode(phase5_setup, prescription, Decimal("6"))
+    _check_and_counsel(phase5_setup, episode)
+    supply = MedicineSupplyService.supply(
+        episode=episode,
+        actor=phase5_setup["user"],
+        idempotency_key="supply:RX-PHASE5-CLAIM-INTAKE",
+        line_quantities={str(lines[0].id): Decimal("3")},
+        partial_reason="PATIENT_REQUEST",
+        next_eligible_date=date.today() + timedelta(days=1),
+    )
+
+    insurer = Insurer.all_objects.create(
+        tenant=phase5_setup["tenant"],
+        code="INTAKE-INS",
+        name="Intake Test Insurer",
+    )
+    scheme = InsurerScheme.all_objects.create(
+        tenant=phase5_setup["tenant"],
+        insurer=insurer,
+        code="INTAKE-SCHEME",
+        name="Intake Test Scheme",
+    )
+    plan = InsurerPlan.all_objects.create(
+        tenant=phase5_setup["tenant"],
+        scheme=scheme,
+        code="INTAKE-PLAN",
+        name="Intake Test Plan",
+    )
+    member = InsuranceMember.all_objects.create(
+        tenant=phase5_setup["tenant"],
+        membership_number="MEM-INTAKE-7721",
+        principal_name="Amina Kamau",
+    )
+    coverage = InsuranceCoverage.all_objects.create(
+        tenant=phase5_setup["tenant"],
+        member=member,
+        patient=phase5_setup["patient"],
+        scheme=scheme,
+        plan=plan,
+        valid_from=date.today() - timedelta(days=30),
+        valid_to=date.today() + timedelta(days=30),
+    )
+    MedicineClaimCodeMap.all_objects.create(
+        tenant=phase5_setup["tenant"],
+        insurer=insurer,
+        sku=phase5_setup["sku"],
+        insurer_item_code="INTAKE-SKU-CODE",
+        insurer_item_name="PhaseFive tablets",
+        is_active=True,
+        is_covered=True,
+    )
+    client = APIClient()
+    client.force_authenticate(user=phase5_setup["user"])
+
+    sources = client.get("/api/insurance/claims/intake-supplies/")
+    assert sources.status_code == 200, sources.content
+    source = next(row for row in sources.json() if row["id"] == str(supply.pk))
+    assert source["coverage_options"][0]["id"] == str(coverage.pk)
+    assert source["lines"][0]["quantity"] == "3.0000"
+
+    response = client.post(
+        "/api/insurance/claims/from-supply/",
+        {
+            "supply_id": str(supply.pk),
+            "coverage_id": str(coverage.pk),
+            "claim_number": "CLM-PHASE5-INTAKE",
+            "pricing_reference": "TEST-TARIFF-2026-10",
+            "unit_prices": {str(phase5_setup["sku"].pk): "15.25"},
+        },
+        format="json",
+    )
+
+    assert response.status_code == 201, response.content
+    claim = PrescriptionClaim.all_objects.get(claim_number="CLM-PHASE5-INTAKE")
+    assert claim.supply_id == supply.pk
+    assert claim.submission_state == PrescriptionClaim.SubmissionState.DRAFT
+    assert claim.claimed_gross_amount == Decimal("45.75")
+    claim_line = PrescriptionClaimLine.all_objects.get(claim=claim)
+    assert claim_line.quantity == Decimal("3")
+    assert claim_line.insurer_item_code == "INTAKE-SKU-CODE"
+    event = AuditEvent.all_objects.get(
+        action="INSURANCE_CLAIM_DRAFT_CREATED",
+        object_id=str(claim.pk),
+    )
+    assert event.metadata["pricing_reference"] == "TEST-TARIFF-2026-10"
+
+    duplicate = client.post(
+        "/api/insurance/claims/from-supply/",
+        {
+            "supply_id": str(supply.pk),
+            "coverage_id": str(coverage.pk),
+            "claim_number": "CLM-PHASE5-INTAKE-2",
+            "pricing_reference": "TEST-TARIFF-2026-10",
+            "unit_prices": {str(phase5_setup["sku"].pk): "15.25"},
+        },
+        format="json",
+    )
+    assert duplicate.status_code == 400
+    assert PrescriptionClaim.all_objects.filter(supply=supply).count() == 1
 
 
 def test_reversal_and_return_do_not_restock_saleable_inventory(phase5_setup):
@@ -934,12 +1054,18 @@ def test_repeat_queue_interval_and_repeat_document(
 def test_controlled_supply_closes_queue_and_generates_register_document(
     phase5_setup,
 ):
-    PatientGovernanceService.add_identifier(
+    identifier = PatientGovernanceService.add_identifier(
         patient=phase5_setup["patient"],
         actor=phase5_setup["user"],
         identifier_type="NATIONAL_ID",
         value="CONTROLLED-IDENTITY-1",
+    )
+    PatientGovernanceService.verify_identifier(
+        identifier=identifier,
+        actor=phase5_setup["user"],
         verification_status="VERIFIED",
+        verification_note="Reviewed test controlled-supply identity evidence.",
+        evidence_reference="TEST-CONTROLLED-IDENTITY-1",
     )
     prescription = _receive(
         phase5_setup,

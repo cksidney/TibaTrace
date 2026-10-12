@@ -38,7 +38,10 @@ from apps.insurance.models import (
     InsuranceMember,
     Insurer,
     InsurerPlan,
+    InsurerScheme,
+    MedicineClaimCodeMap,
 )
+from apps.workflows.service import emit_event
 
 PENNY = Decimal("0.01")
 
@@ -322,6 +325,7 @@ class InsuranceMembershipService:
         )
         return coverage
 
+
     @staticmethod
     @transaction.atomic
     def add_dependent(
@@ -391,5 +395,149 @@ class InsuranceMembershipService:
             tenant_id=coverage.tenant_id, action="INSURANCE_COVERAGE_SUSPENDED",
             model_name="InsuranceCoverage", object_id=coverage.pk,
             actor_id=actor.id, metadata={"reason": reason},
+        )
+        return coverage
+
+class InsuranceSetupService:
+    """Create the sandbox policy and member records needed for claim intake."""
+
+    @staticmethod
+    @transaction.atomic
+    def configure_member_coverage(
+        *, tenant, insurer: Insurer, scheme_code: str, scheme_name: str,
+        plan_code: str, plan_name: str, patient, membership_number: str,
+        principal_name: str, valid_from: date, valid_to: date,
+        relationship: str = InsuranceCoverage.Relationship.SELF,
+        dependent_code: str = "00", annual_limit=None, copay_amount=None,
+        coinsurance_percentage=None, contact_phone: str = "", email: str = "",
+        benefit_category: str = "OUTPATIENT_MEDICINE", item_mappings=(), actor=None,
+    ) -> InsuranceCoverage:
+        """Set up scheme, plan, benefit, member coverage, and insurer item codes.
+
+        Every relationship is tenant checked, and authoring is restricted to
+        sandbox insurers. Repeating the same submission updates mappings while
+        preserving the identity of the existing scheme, plan, member, and cover.
+        """
+        if insurer.tenant_id != tenant.pk:
+            raise ValidationError("The insurer belongs to another tenant.")
+        if insurer.status != Insurer.Status.ACTIVE:
+            raise ValidationError("Only an active insurer can receive coverage setup.")
+        _assert_sandbox(insurer)
+        if patient is None or patient.tenant_id != tenant.pk:
+            raise ValidationError("Select a patient in this tenant.")
+        scheme_code = str(scheme_code or "").strip().upper()
+        scheme_name = str(scheme_name or "").strip()
+        plan_code = str(plan_code or "").strip().upper()
+        plan_name = str(plan_name or "").strip()
+        if not all((scheme_code, scheme_name, plan_code, plan_name)):
+            raise ValidationError("Scheme and plan codes and names are required.")
+
+        scheme, scheme_created = InsurerScheme.all_objects.get_or_create(
+            tenant=tenant,
+            insurer=insurer,
+            code=scheme_code,
+            defaults={"name": scheme_name, "status": "ACTIVE"},
+        )
+        if scheme.name != scheme_name or scheme.status != "ACTIVE":
+            raise ValidationError("The existing scheme code is inactive or has a different name.")
+        plan, plan_created = InsurerPlan.all_objects.get_or_create(
+            tenant=tenant,
+            scheme=scheme,
+            code=plan_code,
+            defaults={"name": plan_name, "plan_class": "STANDARD", "status": "ACTIVE"},
+        )
+        if plan.name != plan_name or plan.status != "ACTIVE":
+            raise ValidationError("The existing plan code is inactive or has a different name.")
+
+        benefit = InsuranceBenefitService.define_benefit(
+            plan=plan,
+            category=benefit_category,
+            covered=True,
+            benefit_limit=annual_limit,
+            actor=actor,
+        )
+        member = InsuranceMembershipService.register_member(
+            tenant=tenant,
+            membership_number=membership_number,
+            principal_name=principal_name,
+            contact_phone=contact_phone,
+            email=email,
+            actor=actor,
+        )
+        coverage = InsuranceMembershipService.enrol_patient(
+            member=member,
+            patient=patient,
+            plan=plan,
+            valid_from=valid_from,
+            valid_to=valid_to,
+            relationship=relationship,
+            dependent_code=dependent_code,
+            annual_limit=annual_limit,
+            copay_amount=copay_amount,
+            coinsurance_percentage=coinsurance_percentage,
+            actor=actor,
+        )
+
+        mappings = list(item_mappings)
+        if not mappings:
+            raise ValidationError("Map at least one active tenant SKU to an insurer item code.")
+        seen_skus = set()
+        for item in mappings:
+            sku = item["sku"]
+            if sku.tenant_id != tenant.pk or sku.status != "ACTIVE":
+                raise ValidationError("Every mapped SKU must be active and belong to this tenant.")
+            if sku.pk in seen_skus:
+                raise ValidationError("A SKU may only appear once in the item mapping list.")
+            seen_skus.add(sku.pk)
+            code = str(item.get("insurer_item_code") or "").strip()
+            name = str(item.get("insurer_item_name") or "").strip()
+            if not code or not name:
+                raise ValidationError("Each SKU mapping needs the insurer item code and description.")
+            mapping, _ = MedicineClaimCodeMap.all_objects.update_or_create(
+                tenant=tenant,
+                insurer=insurer,
+                sku=sku,
+                defaults={
+                    "insurer_item_code": code,
+                    "insurer_item_name": name,
+                    "is_covered": True,
+                    "is_active": True,
+                },
+            )
+            log_audit(
+                tenant_id=tenant.pk,
+                action="INSURANCE_ITEM_MAPPING_CONFIGURED",
+                model_name="MedicineClaimCodeMap",
+                object_id=mapping.pk,
+                actor_id=getattr(actor, "pk", None),
+                metadata={"insurer_id": str(insurer.pk), "sku_id": str(sku.pk)},
+            )
+
+        if scheme_created:
+            log_audit(tenant_id=tenant.pk, action="INSURANCE_SCHEME_CREATED", model_name="InsurerScheme", object_id=scheme.pk, actor_id=getattr(actor, "pk", None), metadata={"insurer_id": str(insurer.pk), "scheme_code": scheme.code})
+        if plan_created:
+            log_audit(tenant_id=tenant.pk, action="INSURANCE_PLAN_CREATED", model_name="InsurerPlan", object_id=plan.pk, actor_id=getattr(actor, "pk", None), metadata={"scheme_id": str(scheme.pk), "plan_code": plan.code})
+        log_audit(
+            tenant_id=tenant.pk,
+            action="INSURANCE_COVERAGE_SETUP_COMPLETED",
+            model_name="InsuranceCoverage",
+            object_id=coverage.pk,
+            actor_id=getattr(actor, "pk", None),
+            metadata={
+                "insurer_id": str(insurer.pk),
+                "scheme_id": str(scheme.pk),
+                "plan_id": str(plan.pk),
+                "patient_id": str(patient.pk),
+                "mapped_sku_count": len(seen_skus),
+                "benefit_id": str(benefit.pk),
+            },
+        )
+        emit_event(
+            tenant_id=tenant.pk,
+            aggregate_type="InsuranceCoverage",
+            aggregate_id=str(coverage.pk),
+            event_type="insurance.coverage.setup_completed",
+            payload={"coverage_id": str(coverage.pk), "plan_id": str(plan.pk)},
+            auto_process=False,
         )
         return coverage

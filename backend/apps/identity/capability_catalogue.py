@@ -33,6 +33,30 @@ CAPABILITY_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
         ),
     ),
     (
+        "Medicine catalogue",
+        (
+            "catalogue.read",
+            "catalogue.manage",
+            "catalogue.activate",
+        ),
+    ),
+    (
+        "People & practitioner governance",
+        (
+            "patients.read",
+            "patients.create",
+            "patients.write",
+            "patients.sensitive.view",
+            "patients.identity.view",
+            "patients.identity.manage",
+            "patients.allergy.record",
+            "patients.clinical_summary.manage",
+            "practitioners.read",
+            "practitioners.write",
+            "prescribers.verify",
+        ),
+    ),
+    (
         "Procurement & quality",
         (
             "procurement.read",
@@ -71,7 +95,6 @@ CAPABILITY_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
             "prescriptions.clinical_review",
             "prescriptions.pharmacist_verify",
             "prescriptions.review",
-            "patients.identity.manage",
             "cds.read",
             "dispensing.read",
         ),

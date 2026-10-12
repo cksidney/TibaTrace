@@ -172,8 +172,21 @@ class InventoryLedgerEntry(TenantConsistencyMixin, TimestampedModel):
         ordering = ["-transaction_timestamp"]
         constraints = [
             models.UniqueConstraint(fields=["tenant", "idempotency_key"], name="uq_ledger_idempotency"),
-            models.CheckConstraint(condition=~Q(quantity_delta=0), name="chk_ledger_delta_nonzero"),
-            models.CheckConstraint(condition=~Q(base_quantity_delta=0), name="chk_ledger_base_delta_nonzero")
+            models.CheckConstraint(
+                condition=(
+                    Q(
+                        entry_type__in=["RECALL_HOLD", "RECALL_RELEASE"],
+                        quantity_delta=0,
+                        base_quantity_delta=0,
+                    )
+                    | (
+                        ~Q(entry_type__in=["RECALL_HOLD", "RECALL_RELEASE"])
+                        & ~Q(quantity_delta=0)
+                        & ~Q(base_quantity_delta=0)
+                    )
+                ),
+                name="chk_ledger_recall_zero_or_delta",
+            ),
         ]
         indexes = [
             models.Index(fields=["tenant", "sku", "location", "inventory_batch"], name="ix_ledger_sku_loc_batch"),

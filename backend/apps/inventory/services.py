@@ -6,6 +6,7 @@ from django.db import transaction
 from django.db.models import F, Sum
 from django.utils import timezone
 
+from apps.audit.service import log_audit
 from apps.inventory.models import (
     InventoryBalance,
     InventoryBatch,
@@ -50,7 +51,15 @@ class InventoryLedgerService:
         notes="",
         reversal_reference=None,
     ):
-        if quantity_delta == 0 or base_quantity_delta == 0:
+        zero_recall_event = (
+            quantity_delta == 0
+            and base_quantity_delta == 0
+            and entry_type in (
+                InventoryLedgerEntry.EntryType.RECALL_HOLD,
+                InventoryLedgerEntry.EntryType.RECALL_RELEASE,
+            )
+        )
+        if not zero_recall_event and (quantity_delta == 0 or base_quantity_delta == 0):
             raise ValidationError("Ledger entries must have a non-zero quantity delta.")
 
         # Idempotency check handled partially by DB unique constraint, but we check here too
@@ -191,13 +200,29 @@ class InventoryBalanceService:
         elif balance.location.expiry_hold_capability or balance.quality_status == InventoryBatch.QualityStatus.EXPIRED:
             balance.expired = balance.on_hand
             
+        balance.recalled = (
+            balance.on_hand
+            if balance.inventory_batch
+            and balance.inventory_batch.recall_status != InventoryBatch.RecallStatus.NONE
+            else 0
+        )
         balance.available = (
             balance.on_hand
             - balance.reserved
+            - balance.quarantined
+            - balance.damaged
+            - balance.expired
+            - balance.recalled
         )
         
         # If the location is a holding area, it's not available
-        if balance.location.quarantine_capability or balance.location.damaged_goods_capability or balance.location.expiry_hold_capability or balance.quality_status == InventoryBatch.QualityStatus.EXPIRED:
+        if (
+            balance.location.quarantine_capability
+            or balance.location.damaged_goods_capability
+            or balance.location.expiry_hold_capability
+            or balance.quality_status == InventoryBatch.QualityStatus.EXPIRED
+            or balance.recalled > 0
+        ):
             balance.available = 0
             
         balance.save()
@@ -1080,6 +1105,17 @@ class StocktakeService:
     @staticmethod
     @transaction.atomic
     def open_stocktake(*, tenant, branch, locations, scope, creator):
+        locations = list(locations)
+        if not locations:
+            raise ValidationError("A stocktake needs at least one inventory location.")
+        if branch.tenant_id != tenant.pk or any(
+            location.tenant_id != tenant.pk or location.branch_id != branch.pk
+            for location in locations
+        ):
+            raise ValidationError("The branch and every count location must belong to this tenant and branch.")
+        scope = str(scope or "").strip().upper()
+        if scope not in {"FULL", "PARTIAL", "CYCLE"}:
+            raise ValidationError("Stocktake scope must be FULL, PARTIAL, or CYCLE.")
         session = StocktakeSession.objects.create(
             tenant=tenant,
             branch=branch,
@@ -1090,13 +1126,41 @@ class StocktakeService:
         )
         session.locations.set(locations)
         emit_event(tenant_id=str(tenant.pk), aggregate_type="StocktakeSession", aggregate_id=str(session.pk), event_type="StocktakeOpened", payload={})
+        log_audit(
+            tenant_id=tenant.pk,
+            action="INVENTORY_STOCKTAKE_OPENED",
+            model_name="StocktakeSession",
+            object_id=session.pk,
+            actor_id=creator.pk,
+            metadata={"branch_id": str(branch.pk), "location_ids": [str(item.pk) for item in locations], "scope": scope},
+        )
         return session
 
     @staticmethod
     @transaction.atomic
-    def record_count(*, session, location, sku, batch, counted_quantity, counter):
+    def record_count(*, session, location, sku, batch, counted_quantity, counter, reason=""):
+        session = StocktakeSession.all_objects.select_for_update().get(pk=session.pk)
         if session.status != StocktakeSession.Status.OPEN:
             raise ValidationError("Stocktake is not open.")
+        if location.tenant_id != session.tenant_id or location.branch_id != session.branch_id:
+            raise ValidationError("The count location is outside this stocktake.")
+        if not InventoryLocation.all_objects.filter(
+            tenant_id=session.tenant_id, pk=location.pk, stocktake_sessions=session
+        ).exists():
+            raise ValidationError("The count location was not included when this stocktake opened.")
+        if sku.tenant_id != session.tenant_id:
+            raise ValidationError("The selected SKU belongs to another tenant.")
+        if batch is not None and (batch.tenant_id != session.tenant_id or batch.sku_id != sku.pk):
+            raise ValidationError("The selected batch does not belong to this tenant and SKU.")
+        existing = StocktakeCount.all_objects.select_for_update().filter(
+            tenant_id=session.tenant_id,
+            session=session,
+            location=location,
+            sku=sku,
+            batch=batch,
+        ).first()
+        if existing is not None:
+            raise ValidationError("This SKU and batch have already been counted at this location.")
             
         balance = InventoryBalanceService.get_balance(tenant=session.tenant, branch=session.branch, location=location, sku=sku, inventory_batch=batch)
         expected = balance.on_hand
@@ -1109,19 +1173,44 @@ class StocktakeService:
             batch=batch,
             expected_quantity=expected,
             counted_quantity=counted_quantity,
+            first_count=counted_quantity,
             variance=counted_quantity - expected,
+            reason=str(reason or "").strip(),
             counter=counter,
             timestamp=timezone.now()
+        )
+        log_audit(
+            tenant_id=session.tenant_id,
+            action="INVENTORY_STOCKTAKE_COUNT_RECORDED",
+            model_name="StocktakeCount",
+            object_id=count.pk,
+            actor_id=counter.pk,
+            metadata={
+                "session_id": str(session.pk),
+                "location_id": str(location.pk),
+                "sku_id": str(sku.pk),
+                "batch_id": str(batch.pk) if batch else None,
+                "counted_quantity": str(counted_quantity),
+                "variance": str(count.variance),
+            },
         )
         return count
 
     @staticmethod
     @transaction.atomic
     def post_variances(*, session, approver):
+        session = StocktakeSession.all_objects.select_for_update().get(pk=session.pk)
         if session.status != StocktakeSession.Status.OPEN:
             raise ValidationError("Stocktake must be open to post variances.")
-            
-        for count in StocktakeCount.all_objects.filter(session=session):
+        counts = StocktakeCount.all_objects.filter(tenant_id=session.tenant_id, session=session)
+        if not counts.exists():
+            raise ValidationError("Record at least one count before posting stocktake variances.")
+        if counts.filter(counter=approver).exists() or session.created_by_id == approver.pk:
+            raise ValidationError("A different authorised operator must approve and post this stocktake.")
+        if counts.filter(counted_quantity__isnull=True).exists():
+            raise ValidationError("Every stocktake line needs a physical count before posting.")
+
+        for count in counts:
             if count.variance != 0:
                 entry_type = InventoryLedgerEntry.EntryType.STOCKTAKE_GAIN if count.variance > 0 else InventoryLedgerEntry.EntryType.STOCKTAKE_LOSS
                 InventoryLedgerService.post_entry(
@@ -1148,6 +1237,14 @@ class StocktakeService:
         session.end_time = timezone.now()
         session.save()
         emit_event(tenant_id=str(session.tenant.pk), aggregate_type="StocktakeSession", aggregate_id=str(session.pk), event_type="StocktakeVariancePosted", payload={})
+        log_audit(
+            tenant_id=session.tenant_id,
+            action="INVENTORY_STOCKTAKE_VARIANCES_POSTED",
+            model_name="StocktakeSession",
+            object_id=session.pk,
+            actor_id=approver.pk,
+            metadata={"counted_lines": counts.count()},
+        )
         return session
 
 
@@ -1190,27 +1287,75 @@ class ExpiryControlService:
 class RecallInventoryService:
     @staticmethod
     @transaction.atomic
-    def initiate_recall(*, tenant, manufacturer_batch_number, sku=None):
+    def initiate_recall(*, tenant, manufacturer_batch_number, sku=None, actor=None, source_document_id=""):
         query = {"tenant": tenant, "manufacturer_batch_number": manufacturer_batch_number}
         if sku:
             query["sku"] = sku
             
-        batches = InventoryBatch.all_objects.filter(**query)
+        batches = InventoryBatch.all_objects.select_for_update().filter(**query)
         for batch in batches:
             batch.recall_status = InventoryBatch.RecallStatus.RECALLED
-            batch.save()
+            batch.save(update_fields=["recall_status", "updated_at"])
             
-            balances = InventoryBalance.all_objects.filter(tenant=tenant, inventory_batch=batch)
+            balances = InventoryBalance.all_objects.filter(
+                tenant=tenant,
+                inventory_batch=batch,
+            ).select_related("branch", "location", "sku", "inventory_batch")
             for balance in balances:
-                # Trigger availability recalculation
-                InventoryBalanceService.apply_ledger_entry(
-                    InventoryLedgerEntry(
-                        tenant=tenant, 
-                        branch=balance.branch, 
-                        location=balance.location, 
-                        sku=balance.sku, 
-                        inventory_batch=batch,
-                        entry_type=InventoryLedgerEntry.EntryType.RECALL_HOLD,
-                        base_quantity_delta=0
-                    )
+                InventoryLedgerService.post_entry(
+                    tenant=tenant,
+                    branch=balance.branch,
+                    location=balance.location,
+                    sku=balance.sku,
+                    inventory_batch=batch,
+                    entry_type=InventoryLedgerEntry.EntryType.RECALL_HOLD,
+                    quantity_delta=0,
+                    unit=balance.sku.package_definition.unit_of_measure,
+                    base_quantity_delta=0,
+                    effective_timestamp=timezone.now(),
+                    source_document_type="REGULATORY_ALERT",
+                    source_document_id=str(source_document_id or batch.pk),
+                    idempotency_key=f"recall-hold:{source_document_id or batch.pk}:{batch.pk}:{balance.pk}",
+                    actor=actor,
+                    reason_code="REGULATORY_RECALL",
+                    notes=f"Regulatory hold for manufacturer batch {manufacturer_batch_number}.",
+                )
+
+    @staticmethod
+    @transaction.atomic
+    def release_recall(*, tenant, manufacturer_batch_number, sku=None, actor=None, source_document_id=""):
+        query = {
+            "tenant": tenant,
+            "manufacturer_batch_number": manufacturer_batch_number,
+            "recall_status": InventoryBatch.RecallStatus.RECALLED,
+        }
+        if sku:
+            query["sku"] = sku
+
+        batches = InventoryBatch.all_objects.select_for_update().filter(**query)
+        for batch in batches:
+            batch.recall_status = InventoryBatch.RecallStatus.NONE
+            batch.save(update_fields=["recall_status", "updated_at"])
+            balances = InventoryBalance.all_objects.filter(
+                tenant=tenant,
+                inventory_batch=batch,
+            ).select_related("branch", "location", "sku", "inventory_batch")
+            for balance in balances:
+                InventoryLedgerService.post_entry(
+                    tenant=tenant,
+                    branch=balance.branch,
+                    location=balance.location,
+                    sku=balance.sku,
+                    inventory_batch=batch,
+                    entry_type=InventoryLedgerEntry.EntryType.RECALL_RELEASE,
+                    quantity_delta=0,
+                    unit=balance.sku.package_definition.unit_of_measure,
+                    base_quantity_delta=0,
+                    effective_timestamp=timezone.now(),
+                    source_document_type="REGULATORY_CLOSURE",
+                    source_document_id=str(source_document_id or batch.pk),
+                    idempotency_key=f"recall-release:{source_document_id or batch.pk}:{batch.pk}:{balance.pk}",
+                    actor=actor,
+                    reason_code="REGULATOR_WITHDRAWAL_CONFIRMED",
+                    notes=f"Recall hold released for manufacturer batch {manufacturer_batch_number}.",
                 )

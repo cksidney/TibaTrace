@@ -1,9 +1,11 @@
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
+from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
-from rest_framework import filters, status, viewsets
+from rest_framework import filters, serializers, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -13,6 +15,7 @@ from apps.medicines.api.serializers import (
     ActiveSubstanceSerializer,
     AdministrationRouteSerializer,
     BranchAssortmentSerializer,
+    CatalogueIntakeSerializer,
     ClinicalMedicinalProductSerializer,
     CommercialSKUSerializer,
     DoseFormSerializer,
@@ -139,6 +142,14 @@ class ManufacturerViewSet(TenantScopedQuerysetMixin, viewsets.ReadOnlyModelViewS
     filter_backends = [filters.SearchFilter]
     search_fields = ["code", "legal_name", "trading_name"]
 
+    def get_queryset(self):
+        tenant_id = self.tenant_id()
+        if tenant_id is None:
+            return Manufacturer.all_objects.none()
+        return Manufacturer.all_objects.filter(
+            Q(tenant_id=tenant_id) | Q(tenant__isnull=True, is_global=True)
+        )
+
 
 class TherapeuticClassificationViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = TherapeuticClassification.objects.all()
@@ -152,6 +163,14 @@ class ActiveSubstanceViewSet(TenantScopedQuerysetMixin, viewsets.ReadOnlyModelVi
     serializer_class = ActiveSubstanceSerializer
     filter_backends = [filters.SearchFilter]
     search_fields = ["code", "canonical_name", "display_name", "search_name"]
+
+    def get_queryset(self):
+        tenant_id = self.tenant_id()
+        if tenant_id is None:
+            return ActiveSubstance.all_objects.none()
+        return ActiveSubstance.all_objects.filter(
+            Q(tenant_id=tenant_id) | Q(tenant__isnull=True, is_global=True)
+        )
 
 
 class ClinicalMedicinalProductViewSet(TenantScopedQuerysetMixin, viewsets.ReadOnlyModelViewSet):
@@ -210,6 +229,59 @@ class CommercialSKUViewSet(TenantScopedQuerysetMixin, viewsets.ReadOnlyModelView
     serializer_class = CommercialSKUSerializer
     filter_backends = [filters.SearchFilter]
     search_fields = ["sku_code", "display_name", "default_barcode", "manufactured_product__brand_name"]
+
+    @action(detail=False, methods=["post"], url_path="intake")
+    def intake(self, request):
+        """Create a complete tenant product chain in DRAFT for review."""
+        tenant_id = self.tenant_id()
+        if not tenant_id or not request.user.has_capability("catalogue.manage", tenant_id=tenant_id):
+            raise PermissionDenied("Catalogue authoring requires the catalogue.manage capability.")
+        payload = CatalogueIntakeSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        values = payload.validated_data
+
+        tenant = get_object_or_404(Tenant, pk=tenant_id)
+        dose_form = get_object_or_404(DoseForm.objects.filter(is_active=True), pk=values["dose_form_id"])
+        substance = ActiveSubstance.all_objects.filter(
+            pk=values["active_substance_id"], status="ACTIVE"
+        ).filter(Q(tenant_id=tenant_id) | Q(tenant__isnull=True, is_global=True)).first()
+        if substance is None:
+            raise serializers.ValidationError({"active_substance_id": "Select an active ingredient available to this tenant."})
+        package = get_object_or_404(PackageDefinition.objects.filter(is_active=True), pk=values["package_definition_id"])
+        manufacturer = None
+        if values.get("manufacturer_id"):
+            manufacturer = Manufacturer.all_objects.filter(pk=values["manufacturer_id"]).filter(
+                Q(tenant_id=tenant_id) | Q(tenant__isnull=True, is_global=True)
+            ).first()
+            if manufacturer is None:
+                raise serializers.ValidationError({"manufacturer_id": "Select a manufacturer available to this tenant."})
+
+        from apps.medicines.services import MedicineCatalogueService
+
+        try:
+            with transaction.atomic():
+                sku = MedicineCatalogueService.create_tenant_sku(
+                    tenant=tenant,
+                    clinical_code=values["clinical_code"],
+                    canonical_name=values["canonical_name"],
+                    dose_form=dose_form,
+                    active_substance=substance,
+                    strength_value=values["strength_value"],
+                    strength_unit=values["strength_unit"],
+                    manufactured_code=values["manufactured_code"],
+                    brand_name=values["brand_name"],
+                    manufacturer=manufacturer,
+                    market_authorisation_number=values.get("market_authorisation_number", ""),
+                    sku_code=values["sku_code"],
+                    display_name=values["display_name"],
+                    package_definition=package,
+                    default_barcode=values.get("default_barcode", ""),
+                    tax_category=values["tax_category"],
+                    actor=request.user,
+                )
+        except IntegrityError as exc:
+            raise serializers.ValidationError({"sku_code": "A clinical, manufactured or SKU code already exists."}) from exc
+        return Response(self.get_serializer(sku).data, status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=["get"], url_path="lookup")
     def lookup(self, request):

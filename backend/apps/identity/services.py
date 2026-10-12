@@ -214,9 +214,13 @@ class UserAdministrationService:
                     "identity.manage",
                     "inventory.read",
                     "inventory.manage",
+                    "catalogue.read",
+                    "catalogue.manage",
+                    "catalogue.activate",
                     "procurement.read",
                     "pricing.read",
                     "insurance.read",
+                    "insurance.manage",
                     "dispensing.read",
                     "prescriptions.read",
                     "pos.shift.manage",
@@ -229,6 +233,10 @@ class UserAdministrationService:
             desired = {
                 *(role.capabilities or []),
                 "identity.manage",
+                "insurance.manage",
+                "catalogue.read",
+                "catalogue.manage",
+                "catalogue.activate",
             }
             merged = sorted(desired)
             if role.capabilities != merged or not role.is_active:

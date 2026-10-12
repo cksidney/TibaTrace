@@ -25,14 +25,17 @@ RELEASE_MIGRATION = "backend/apps/platform/migrations/0002_posrelease_client_ali
 
 #: The full list of migrations this release introduces over the deployed baseline.
 RELEASE_MIGRATIONS = [
+    "backend/apps/audit/migrations/0003_platformauditevent.py",
     "backend/apps/medicines/migrations/0004_legacy_catalogue_setup.py",
     "backend/apps/integrations/migrations/0001_initial.py",
     "backend/apps/integrations/migrations/0002_claim_fields.py",
     "backend/apps/integrations/migrations/0003_activation_state_update.py",
     "backend/apps/integrations/migrations/0004_financial_provider_templates.py",
+    "backend/apps/integrations/migrations/0005_activation_request_state_choices.py",
     "backend/apps/integrations/migrations/__init__.py",
     "backend/apps/inventory/recalls/migrations/0001_initial.py",
     "backend/apps/inventory/recalls/migrations/__init__.py",
+    "backend/apps/inventory/migrations/0005_recall_ledger_events.py",
     "backend/apps/notifications/migrations/0002_nif_notifications.py",
     "backend/apps/pharmacy_network/migrations/0003_nif_premises_verification.py",
     "backend/apps/platform/migrations/0002_posrelease_client_alignment.py",
@@ -216,6 +219,38 @@ def test_destructive_classification_unit():
     assert "RunSQL" in me.SQL_OPERATIONS
     # AddField must never be treated as destructive, or every release blocks.
     assert "AddField" not in me.DESTRUCTIVE_OPERATIONS
+
+
+def test_rc32_recall_constraint_replacement_is_declared_without_hiding_removals(tmp_path):
+    source = "backend/apps/inventory/migrations/0005_recall_ledger_events.py"
+    out = tmp_path / "MIGRATIONS.json"
+    result = run(source, out)
+    assert result.returncode == 0, result.stderr
+    entry = json.loads(out.read_text())[0]
+    assert entry["destructive"] is True
+    assert entry["destructive_operations"] == ["RemoveConstraint"]
+    assert entry["reviewed_constraint_replacement"] is True
+    assert entry["operation_types"] == ["RemoveConstraint", "RemoveConstraint", "AddConstraint"]
+
+
+def test_recall_acknowledgement_rejects_changed_or_unrelated_operations():
+    import importlib
+
+    from django.db.models import Q
+
+    sys.path.insert(0, str(REPO_ROOT / "scripts"))
+    import migration_evidence as me
+
+    module = importlib.import_module("apps.inventory.migrations.0005_recall_ledger_events")
+    operations = module.Migration.operations
+    assert not me._reviewed_recall_constraint_replacement("inventory", "0006_other", operations)
+    assert not me._reviewed_recall_constraint_replacement("inventory", "0005_recall_ledger_events", operations[:2])
+    original_condition = operations[2].constraint.condition
+    try:
+        operations[2].constraint.condition = Q(quantity_delta__gte=0)
+        assert not me._reviewed_recall_constraint_replacement("inventory", "0005_recall_ledger_events", operations)
+    finally:
+        operations[2].constraint.condition = original_condition
 
 
 def test_git_baseline_matches_the_declared_release_migration():

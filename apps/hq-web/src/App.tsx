@@ -10,7 +10,6 @@ import { AccessWorkspace } from './AccessWorkspace.js';
 import { ExecutiveDashboard } from './ExecutiveDashboard.js';
 import { FieldSearch } from './FieldSearch.js';
 import { GS1Workspace } from './GS1Workspace.js';
-import { InsuranceWorkspace } from './InsuranceWorkspace.js';
 import { IntegrationWorkspace } from './IntegrationWorkspace.js';
 import { LegacyItemSetup } from './LegacyItemSetup.js';
 import { PlatformOwnerConsole } from './PlatformOwnerConsole.js';
@@ -21,8 +20,14 @@ import {
   approveCustomer,
   approveCashMovement,
   approveStockTransfer,
+  addPatientIdentifier,
   beginCustomerReview,
   CLAIM_STATES,
+  createDraftClaimFromSupply,
+  createCatalogueSku,
+  createInsuranceCoverageSetup,
+  createPatient,
+  createPractitioner,
   confirmPasswordReset,
   createCustomer,
   createInsurer,
@@ -32,6 +37,7 @@ import {
   executeHQBusinessAction,
   formatMoney,
   loadActiveSubstances,
+  loadCatalogueIntakeOptions,
   loadApprovedUnpaidClaims,
   loadClaimsAwaitingDecision,
   loadClaimsNeedingAttention,
@@ -41,7 +47,9 @@ import {
   importGovernmentCatalogueSelection,
   loadHQOverview,
   loadHQWorkspace,
+  loadPatientIdentifiers,
   loadInsurers,
+  loadInsuranceCoverageSetupOptions,
   loadRemittances,
   loadRejections,
   loadCoverages,
@@ -54,7 +62,9 @@ import {
   loadOpenRegisterSessions,
   loadUnclosedRegisterSessions,
   loadClaims,
+  loadClaimIntakeSupplies,
   loadClinicalProducts,
+  ingestClinicalRecord,
   loadManufacturedProducts,
   loadManufacturers,
   loadPriceBooks,
@@ -69,6 +79,7 @@ import {
   saveTenantPriceDraft,
   importTenantPriceDraft,
   setHQTenantContext,
+  setPractitionerControlledAuthority,
   startCashExceptionReview,
   loadRolesDetail,
   loadUserRoles,
@@ -87,13 +98,17 @@ import {
   signOut,
   suspendCustomer,
   transitionPriceBookVersion,
+  verifyPatientIdentifier,
   updateGovernmentCatalogueSelection,
   loadInventoryLocations,
+  loadInventoryBranches,
+  provisionInventoryLocation,
   loadInventoryBalances,
   loadInventoryLedger,
   loadInventoryBatches,
   loadInventoryReservations,
   loadStockTransfers,
+  loadStocktakes,
   loadQuotations,
   loadPickingWaves,
   loadPickingTasks,
@@ -104,10 +119,16 @@ import {
   loadSalesOrderHolds,
   dispatchStockTransfer,
   receiveStockTransfer,
+  openStocktake,
+  recordStocktakeCount,
+  postStocktakeVariances,
+  verifyPractitioner,
 } from './api.js';
 import { CsvBulkImportDialog } from './CsvBulkImportDialog.js';
 import type {
   ActiveSubstanceSummary,
+  CatalogueIntakeOptions,
+  CatalogueIntakeInput,
   SystemHealth,
   PosRelease,
   PosReleaseCatalogue,
@@ -126,12 +147,24 @@ import type {
   HQEncounter,
   HQCondition,
   HQObservation,
+  ClaimIntakeSupply,
+  ClinicalIntakeInput,
+  ClinicalIntakeKind,
+  PatientIntakeInput,
+  PatientIdentifierInput,
+  PatientIdentifierItem,
+  PractitionerIntakeInput,
+  PractitionerVerificationInput,
+  HQPractitioner,
+  HQPatient,
   HQFhirIdempotencyRecord,
   InsuranceClaim,
   Insurer,
   InsuranceRemittance,
   ClaimRejection,
   InsuranceCoverage,
+  InsuranceCoverageSetupInput,
+  InsuranceCoverageSetupOptions,
   CustomerItem,
   EndpointHeartbeat,
   PosDeviceHealthItem,
@@ -140,6 +173,7 @@ import type {
   CashDeclarationItem,
   BusinessDayItem,
   HQInventoryLocationItem,
+  HQInventoryBranch,
   HQInventoryBalanceItem,
   HQInventoryLedgerItem,
   HQInventoryBatchItem,
@@ -147,6 +181,7 @@ import type {
   HQStockTransfer,
   HQStockTransferDraft,
   HQStockTransferReceipt,
+  HQStocktakeSession,
   HQQuotationItem,
   HQPickingWaveItem,
   HQPickingTaskItem,
@@ -723,7 +758,7 @@ function Dashboard({
           {activeView === 'overview' ? <OverviewView overview={overview} onNavigate={setActiveView} /> : null}
           {activeView === 'executive' ? <ExecutiveDashboard csrfToken={csrfToken} onNavigate={(tab) => setActiveView((tab.toLowerCase() === 'dispensing' ? 'commerce' : tab.toLowerCase() === 'inventory' ? 'inventory' : tab.toLowerCase() === 'insurance' ? 'insurance' : tab.toLowerCase() === 'regulatory' ? 'regulatory' : tab.toLowerCase() === 'sales' ? 'commerce' : tab.toLowerCase() === 'procurement' ? 'operations' : 'overview') as WorkspaceView)} /> : null}
           {activeView === 'network' ? <NetworkView csrfToken={csrfToken} onChanged={onRefresh} overview={overview} /> : null}
-          {activeView === 'people' ? <PeopleView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} /> : null}
+          {activeView === 'people' ? <PeopleView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} overview={overview} /> : null}
           {activeView === 'catalogue' ? <CatalogueView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} overview={overview} /> : null}
           {activeView === 'inventory' ? <InventoryView csrfToken={csrfToken} overview={overview} /> : null}
           {activeView === 'operations' ? <OperationsView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} overview={overview} /> : null}
@@ -731,14 +766,11 @@ function Dashboard({
           {activeView === 'pricing' ? <PricingView csrfToken={csrfToken} overview={overview} /> : null}
           {activeView === 'cash' ? <CashControlView csrfToken={csrfToken} overview={overview} /> : null}
           {activeView === 'insurance' ? (
-            <div>
-              <InsuranceWorkspace csrfToken={csrfToken} />
-              <InsuranceView csrfToken={csrfToken} overview={overview} />
-            </div>
+            <InsuranceView csrfToken={csrfToken} overview={overview} />
           ) : null}
           {activeView === 'clinical' ? <ClinicalView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} overview={overview} /> : null}
-          {activeView === 'regulatory' ? <RegulatoryWorkspace csrfToken={csrfToken} /> : null}
-          {activeView === 'gs1' ? <GS1Workspace csrfToken={csrfToken} /> : null}
+          {activeView === 'regulatory' ? <RegulatoryWorkspace csrfToken={csrfToken} overview={overview} /> : null}
+          {activeView === 'gs1' ? <GS1Workspace overview={overview} /> : null}
           {activeView === 'reports' ? <ReportsWorkspace csrfToken={csrfToken} overview={overview} onNavigate={setActiveView} /> : null}
           {activeView === 'governance' ? <GovernanceView data={workspaceData} failed={workspaceFailed} /> : null}
           {activeView === 'integration' ? <IntegrationWorkspace csrfToken={csrfToken} /> : null}
@@ -1233,7 +1265,7 @@ function HeartbeatsTelemetryPanel() {
   );
 }
 
-type InventoryTab = 'balances' | 'ledger' | 'batches' | 'locations' | 'reservations' | 'transfers';
+type InventoryTab = 'balances' | 'ledger' | 'batches' | 'locations' | 'reservations' | 'transfers' | 'stocktakes';
 
 type StockTransferDialogMode =
   | { readonly kind: 'create' }
@@ -1261,9 +1293,13 @@ function InventoryView({
   const [ledger, setLedger] = useState<readonly HQInventoryLedgerItem[] | null>(null);
   const [batches, setBatches] = useState<readonly HQInventoryBatchItem[] | null>(null);
   const [locations, setLocations] = useState<readonly HQInventoryLocationItem[] | null>(null);
+  const [branches, setBranches] = useState<readonly HQInventoryBranch[] | null>(null);
   const [reservations, setReservations] = useState<readonly HQInventoryReservationItem[] | null>(null);
   const [transfers, setTransfers] = useState<readonly HQStockTransfer[] | null>(null);
+  const [stocktakes, setStocktakes] = useState<readonly HQStocktakeSession[] | null>(null);
+  const [skus, setSkus] = useState<readonly HQSku[] | null>(null);
   const [dialog, setDialog] = useState<StockTransferDialogMode>(null);
+  const [locationDialogOpen, setLocationDialogOpen] = useState(false);
   const [notice, setNotice] = useState('');
   const [failed, setFailed] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -1281,20 +1317,26 @@ function InventoryView({
     setLoading(true);
     setFailed(false);
     try {
-      const [b, l, bt, loc, r, t] = await Promise.all([
+      const [b, l, bt, loc, r, t, st, s, branchOptions] = await Promise.all([
         loadInventoryBalances(tenantId, signal),
         loadInventoryLedger(tenantId, signal),
         loadInventoryBatches(tenantId, signal),
         loadInventoryLocations(tenantId, signal),
         loadInventoryReservations(tenantId, signal),
         loadStockTransfers(tenantId, signal),
+        loadStocktakes(tenantId, signal),
+        loadTenantSkus(tenantId, signal),
+        loadInventoryBranches(tenantId, signal).catch(() => [] as const),
       ]);
       setBalances(b);
       setLedger(l);
       setBatches(bt);
       setLocations(loc);
+      setBranches(branchOptions);
       setReservations(r);
       setTransfers(t);
+      setStocktakes(st);
+      setSkus(s);
     } catch {
       if (!signal?.aborted) setFailed(true);
     } finally {
@@ -1428,6 +1470,13 @@ function InventoryView({
             type="button"
           >
             Transfers ({transfers?.length ?? 0})
+          </button>
+          <button
+            className={tab === 'stocktakes' ? 'segmented-option is-active' : 'segmented-option'}
+            onClick={() => setTab('stocktakes')}
+            type="button"
+          >
+            Stocktakes ({stocktakes?.length ?? 0})
           </button>
           </div>
         </div>
@@ -1605,9 +1654,13 @@ function InventoryView({
 
       {tab === 'locations' && (
         <>
-          <p className="panel-note">
-            Physical and logical inventory locations, zone classifications, and storage capabilities.
-          </p>
+          <div className="inventory-location-heading">
+            <p className="panel-note">Physical and logical inventory locations, zone classifications, and storage capabilities.</p>
+            {!branches?.length ? <small className="muted-cell">An active branch is required. Register or activate one in Pharmacy network first.</small> : null}
+            <button className="primary-button" disabled={!branches?.length} onClick={() => setLocationDialogOpen(true)} type="button">
+              <Icon name="building" /> Add storage location
+            </button>
+          </div>
           {locations && locations.length > 0 ? (
             <div className="table-scroll">
               <table>
@@ -1718,6 +1771,20 @@ function InventoryView({
             transfers={transfers ?? []}
           />
         ) : null}
+        {tab === 'stocktakes' ? (
+          <StocktakeRegister
+            batches={batches ?? []}
+            csrfToken={csrfToken}
+            locations={locations ?? []}
+            onChanged={async (message) => {
+              setNotice(message);
+              await reload();
+            }}
+            sessions={stocktakes ?? []}
+            skus={(skus ?? []).filter((sku) => sku.status === 'ACTIVE')}
+            tenantId={tenantId}
+          />
+        ) : null}
       </article>
       {dialog ? (
         <StockTransferDialog
@@ -1738,7 +1805,346 @@ function InventoryView({
           tenantId={tenantId}
         />
       ) : null}
+      {locationDialogOpen ? (
+        <InventoryLocationDialog
+          branches={branches ?? []}
+          csrfToken={csrfToken}
+          onClose={() => setLocationDialogOpen(false)}
+          onSaved={async (location) => {
+            setLocationDialogOpen(false);
+            setNotice(`${location.name} provisioned for ${location.branch_name || 'the selected branch'}.`);
+            await reload();
+          }}
+          tenantId={tenantId}
+        />
+      ) : null}
     </>
+  );
+}
+
+function InventoryLocationDialog({
+  branches,
+  csrfToken,
+  onClose,
+  onSaved,
+  tenantId,
+}: {
+  readonly branches: readonly HQInventoryBranch[];
+  readonly csrfToken: string;
+  readonly onClose: () => void;
+  readonly onSaved: (location: HQInventoryLocationItem) => Promise<void>;
+  readonly tenantId: string;
+}) {
+  const [branchId, setBranchId] = useState(branches[0]?.id ?? '');
+  const [locationCode, setLocationCode] = useState('');
+  const [name, setName] = useState('');
+  const [locationType, setLocationType] = useState('STORE');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      const location = await provisionInventoryLocation(
+        {
+          branch_id: branchId,
+          location_code: locationCode.trim().toUpperCase(),
+          name: name.trim(),
+          location_type: locationType,
+        },
+        tenantId,
+        csrfToken,
+      );
+      await onSaved(location);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Could not provision storage location.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="business-dialog-backdrop" onClick={(event) => { if (event.target === event.currentTarget && !busy) onClose(); }} role="presentation">
+      <section aria-labelledby="inventory-location-title" aria-modal="true" className="business-dialog inventory-location-dialog" role="dialog">
+        <header>
+          <div><p className="eyebrow">Inventory setup</p><h2 id="inventory-location-title">Add storage location</h2></div>
+          <button aria-label="Close dialog" disabled={busy} onClick={onClose} type="button"><Icon name="close" /></button>
+        </header>
+        <form onSubmit={(event) => void submit(event)}>
+          <p className="business-dialog-confirm"><Icon name="shield" /> Storage safety flags are derived from the location type. A controlled vault or cold room appears only when explicitly selected.</p>
+          <div className="stocktake-form-grid">
+            <label className="business-field"><span>Branch</span><select onChange={(event) => setBranchId(event.target.value)} required value={branchId}>{branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.organization_name} · {branch.name} ({branch.code})</option>)}</select></label>
+            <label className="business-field"><span>Location type</span><select onChange={(event) => setLocationType(event.target.value)} value={locationType}><option value="STORE">Main store</option><option value="DISPENSARY">Dispensary</option><option value="RECEIVING">Receiving bay</option><option value="QUARANTINE">Quarantine</option><option value="RETURNS">Returns</option><option value="DAMAGED">Damaged goods</option><option value="EXPIRED">Expired stock</option><option value="COLD_ROOM">Cold room</option><option value="FREEZER">Freezer</option><option value="CONTROLLED_VAULT">Controlled vault</option><option value="PICKING">Picking zone</option><option value="TRANSIT">Transit</option><option value="PHARMACY">Pharmacy</option><option value="WAREHOUSE">Warehouse</option></select></label>
+            <label className="business-field"><span>Location code</span><input autoComplete="off" onChange={(event) => setLocationCode(event.target.value)} required value={locationCode} /></label>
+            <label className="business-field"><span>Display name</span><input onChange={(event) => setName(event.target.value)} required value={name} /></label>
+          </div>
+          {error ? <p className="business-dialog-error" role="alert"><Icon name="alert" /> {error}</p> : null}
+          <footer><button className="secondary-button" disabled={busy} onClick={onClose} type="button">Cancel</button><button className="primary-button" disabled={busy || !branchId || !locationCode.trim() || !name.trim()} type="submit">{busy ? 'Provisioning…' : 'Add location'}</button></footer>
+        </form>
+      </section>
+    </div>
+  );
+}
+
+function StocktakeRegister({
+  batches,
+  csrfToken,
+  locations,
+  onChanged,
+  sessions,
+  skus,
+  tenantId,
+}: {
+  readonly batches: readonly HQInventoryBatchItem[];
+  readonly csrfToken: string;
+  readonly locations: readonly HQInventoryLocationItem[];
+  readonly onChanged: (message: string) => Promise<void>;
+  readonly sessions: readonly HQStocktakeSession[];
+  readonly skus: readonly HQSku[];
+  readonly tenantId: string;
+}) {
+  const [dialog, setDialog] = useState<{ readonly kind: 'open' } | { readonly kind: 'count'; readonly session: HQStocktakeSession } | null>(null);
+  const [busySession, setBusySession] = useState('');
+  const [error, setError] = useState('');
+  const postVariances = async (session: HQStocktakeSession) => {
+    setBusySession(session.id);
+    setError('');
+    try {
+      await postStocktakeVariances(session.id, tenantId, csrfToken);
+      await onChanged(`Variances posted for ${session.document_number || session.branch_name}.`);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Could not post stocktake variances.');
+    } finally {
+      setBusySession('');
+    }
+  };
+
+  return (
+    <section className="stocktake-register">
+      <div className="stocktake-heading">
+        <div>
+          <p className="eyebrow">Physical count &amp; reconciliation</p>
+          <h2>Stocktake sessions</h2>
+          <p className="panel-note">Capture a physical count by location, SKU, and batch. A separate authorized user posts the resulting ledger variances.</p>
+        </div>
+        <button className="primary-button" disabled={locations.every((location) => location.status !== 'ACTIVE')} onClick={() => { setError(''); setDialog({ kind: 'open' }); }} type="button">
+          <Icon name="inventory" /> Open stocktake
+        </button>
+      </div>
+      {error ? <p className="business-dialog-error" role="alert"><Icon name="alert" /> {error}</p> : null}
+      {sessions.length === 0 ? (
+        <EmptyState icon="inventory" title="No stocktakes recorded" detail="Open a stocktake for one or more active locations to start recording physical quantities." />
+      ) : (
+        <div className="stocktake-session-list">
+          {sessions.map((session) => (
+            <article className="stocktake-session-card" key={session.id}>
+              <header>
+                <div>
+                  <strong>{session.document_number || session.branch_name}</strong>
+                  <small>{session.branch_name} · {titleCase(session.scope)} · Opened {formatDate(session.created_at)}</small>
+                </div>
+                <span className={`status-badge ${session.status === 'OPEN' ? 'status-warning' : 'status-active'}`}><i />{titleCase(session.status)}</span>
+              </header>
+              <div className="stocktake-session-meta">
+                <span>{session.locations.length} location{session.locations.length === 1 ? '' : 's'}</span>
+                <span>{session.counts.length} count{session.counts.length === 1 ? '' : 's'}</span>
+                <span>{session.created_by_username ? `Opened by ${session.created_by_username}` : 'Operator recorded'}</span>
+                {session.approved_by_username ? <span>Posted by {session.approved_by_username}</span> : null}
+              </div>
+              {session.counts.length ? (
+                <div className="table-scroll stocktake-count-table">
+                  <table>
+                    <thead><tr><th>Location</th><th>SKU / Batch</th><th>Expected</th><th>Counted</th><th>Variance</th><th>Reason</th></tr></thead>
+                    <tbody>{session.counts.map((count) => (
+                      <tr key={count.id}>
+                        <td>{count.location_name}</td>
+                        <td><strong>{count.sku_name || count.sku_code}</strong><small className="row-detail">{count.sku_code} · {count.batch_number || 'No batch'}</small></td>
+                        <td>{count.expected_quantity}</td>
+                        <td>{count.counted_quantity ?? '—'}</td>
+                        <td><strong>{count.variance ?? '—'}</strong></td>
+                        <td><small>{count.reason || '—'}</small></td>
+                      </tr>
+                    ))}</tbody>
+                  </table>
+                </div>
+              ) : <p className="stocktake-empty-counts">No physical counts recorded yet.</p>}
+              {session.status === 'OPEN' ? (
+                <footer>
+                  <button className="secondary-button" onClick={() => { setError(''); setDialog({ kind: 'count', session }); }} type="button">Record physical count</button>
+                  <button className="primary-button" disabled={!session.counts.length || Boolean(busySession)} onClick={() => void postVariances(session)} type="button">
+                    {busySession === session.id ? 'Posting…' : 'Post variances'}
+                  </button>
+                </footer>
+              ) : null}
+            </article>
+          ))}
+        </div>
+      )}
+      {dialog?.kind === 'open' ? (
+        <OpenStocktakeDialog
+          csrfToken={csrfToken}
+          locations={locations}
+          onClose={() => setDialog(null)}
+          onSaved={async (session) => {
+            setDialog(null);
+            await onChanged(`Stocktake ${session.document_number || session.branch_name} opened.`);
+          }}
+          tenantId={tenantId}
+        />
+      ) : null}
+      {dialog?.kind === 'count' ? (
+        <RecordStocktakeCountDialog
+          batches={batches}
+          csrfToken={csrfToken}
+          locations={locations}
+          onClose={() => setDialog(null)}
+          onSaved={async (session) => {
+            setDialog(null);
+            await onChanged(`Count recorded for ${session.document_number || session.branch_name}.`);
+          }}
+          session={dialog.session}
+          skus={skus}
+          tenantId={tenantId}
+        />
+      ) : null}
+    </section>
+  );
+}
+
+function OpenStocktakeDialog({
+  csrfToken,
+  locations,
+  onClose,
+  onSaved,
+  tenantId,
+}: {
+  readonly csrfToken: string;
+  readonly locations: readonly HQInventoryLocationItem[];
+  readonly onClose: () => void;
+  readonly onSaved: (session: HQStocktakeSession) => Promise<void>;
+  readonly tenantId: string;
+}) {
+  const activeLocations = locations.filter((location) => location.status === 'ACTIVE');
+  const branches = Array.from(new Map(activeLocations.map((location) => [location.branch, location.branch_name || 'Branch'])).entries());
+  const [branchId, setBranchId] = useState(branches[0]?.[0] ?? '');
+  const [locationIds, setLocationIds] = useState<readonly string[]>([]);
+  const [scope, setScope] = useState('PARTIAL');
+  const [reference, setReference] = useState(() => newTransferReference('STK'));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const branchLocations = activeLocations.filter((location) => location.branch === branchId);
+
+  useEffect(() => {
+    setLocationIds(locations.filter((location) => location.status === 'ACTIVE' && location.branch === branchId).map((location) => location.id));
+  }, [branchId, locations]);
+
+  const toggleLocation = (locationId: string) => setLocationIds((current) => (
+    current.includes(locationId) ? current.filter((id) => id !== locationId) : [...current, locationId]
+  ));
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      const session = await openStocktake({ branch_id: branchId, location_ids: locationIds, scope, document_number: reference.trim() }, tenantId, csrfToken);
+      await onSaved(session);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Could not open this stocktake.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="business-dialog-backdrop" onClick={(event) => { if (event.target === event.currentTarget && !busy) onClose(); }} role="presentation">
+      <section aria-labelledby="open-stocktake-title" aria-modal="true" className="business-dialog stocktake-dialog" role="dialog">
+        <header><div><p className="eyebrow">Inventory control</p><h2 id="open-stocktake-title">Open stocktake</h2></div><button aria-label="Close dialog" disabled={busy} onClick={onClose} type="button"><Icon name="close" /></button></header>
+        <form onSubmit={(event) => void submit(event)}>
+          {error ? <p className="business-dialog-error" role="alert"><Icon name="alert" /> {error}</p> : null}
+          {!branches.length ? <p className="inline-alert" role="status">Create an active inventory location before opening a stocktake.</p> : null}
+          <div className="stocktake-form-grid">
+            <label className="business-field"><span>Branch</span><select onChange={(event) => setBranchId(event.target.value)} required value={branchId}>{branches.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></label>
+            <label className="business-field"><span>Count scope</span><select onChange={(event) => setScope(event.target.value)} value={scope}><option value="FULL">Full count</option><option value="PARTIAL">Partial count</option><option value="CYCLE">Cycle count</option></select></label>
+            <label className="business-field stocktake-reference-field"><span>Document reference</span><input maxLength={100} onChange={(event) => setReference(event.target.value)} required value={reference} /></label>
+          </div>
+          <fieldset className="stocktake-location-picker"><legend>Locations to count</legend>
+            {branchLocations.map((location) => <label key={location.id}><input checked={locationIds.includes(location.id)} onChange={() => toggleLocation(location.id)} type="checkbox" /><span>{location.name}</span><small>{location.location_code}</small></label>)}
+            {!branchLocations.length ? <small>No active locations for this branch.</small> : null}
+          </fieldset>
+          <footer><button className="secondary-button" disabled={busy} onClick={onClose} type="button">Cancel</button><button className="primary-button" disabled={busy || !branchId || !locationIds.length} type="submit">{busy ? 'Opening…' : 'Open stocktake'}</button></footer>
+        </form>
+      </section>
+    </div>
+  );
+}
+
+function RecordStocktakeCountDialog({
+  batches,
+  csrfToken,
+  locations,
+  onClose,
+  onSaved,
+  session,
+  skus,
+  tenantId,
+}: {
+  readonly batches: readonly HQInventoryBatchItem[];
+  readonly csrfToken: string;
+  readonly locations: readonly HQInventoryLocationItem[];
+  readonly onClose: () => void;
+  readonly onSaved: (session: HQStocktakeSession) => Promise<void>;
+  readonly session: HQStocktakeSession;
+  readonly skus: readonly HQSku[];
+  readonly tenantId: string;
+}) {
+  const allowedLocations = locations.filter((location) => session.locations.includes(location.id));
+  const [locationId, setLocationId] = useState(allowedLocations[0]?.id ?? '');
+  const [skuId, setSkuId] = useState(skus[0]?.id ?? '');
+  const [batchId, setBatchId] = useState('');
+  const [quantity, setQuantity] = useState('');
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const skuBatches = batches.filter((batch) => batch.sku === skuId);
+  const alreadyCounted = session.counts.some((count) => count.location === locationId && count.sku === skuId && (count.batch ?? '') === batchId);
+
+  useEffect(() => setBatchId(''), [skuId]);
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      const updated = await recordStocktakeCount(session.id, { location_id: locationId, sku_id: skuId, batch_id: batchId || null, counted_quantity: quantity, reason: reason.trim() }, tenantId, csrfToken);
+      await onSaved(updated);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Could not record the physical count.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="business-dialog-backdrop" onClick={(event) => { if (event.target === event.currentTarget && !busy) onClose(); }} role="presentation">
+      <section aria-labelledby="stocktake-count-title" aria-modal="true" className="business-dialog stocktake-dialog" role="dialog">
+        <header><div><p className="eyebrow">{session.document_number || session.branch_name}</p><h2 id="stocktake-count-title">Record physical count</h2></div><button aria-label="Close dialog" disabled={busy} onClick={onClose} type="button"><Icon name="close" /></button></header>
+        <form onSubmit={(event) => void submit(event)}>
+          {error ? <p className="business-dialog-error" role="alert"><Icon name="alert" /> {error}</p> : null}
+          <div className="stocktake-form-grid">
+            <label className="business-field"><span>Location</span><select onChange={(event) => setLocationId(event.target.value)} required value={locationId}>{allowedLocations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
+            <label className="business-field"><span>SKU</span><select onChange={(event) => setSkuId(event.target.value)} required value={skuId}><option value="">Select SKU</option>{skus.map((sku) => <option key={sku.id} value={sku.id}>{sku.sku_code} · {sku.display_name}</option>)}</select></label>
+            <label className="business-field"><span>Batch</span><select onChange={(event) => setBatchId(event.target.value)} value={batchId}><option value="">No batch / untracked stock</option>{skuBatches.map((batch) => <option key={batch.id} value={batch.id}>{batch.manufacturer_batch_number}</option>)}</select></label>
+            <label className="business-field"><span>Counted quantity</span><input min="0" onChange={(event) => setQuantity(event.target.value)} required step="0.0001" type="number" value={quantity} /></label>
+            <label className="business-field stocktake-reference-field"><span>Count note / reason</span><input maxLength={1000} onChange={(event) => setReason(event.target.value)} placeholder="Optional explanation for a variance" value={reason} /></label>
+          </div>
+          {alreadyCounted ? <p className="inline-alert" role="status">This SKU and batch already have a count at this location. Select another item or batch.</p> : <p className="business-dialog-confirm"><Icon name="shield" /> Record each SKU and batch separately at every selected location. Posting requires a different authorized user from the opener and counters.</p>}
+          <footer><button className="secondary-button" disabled={busy} onClick={onClose} type="button">Cancel</button><button className="primary-button" disabled={busy || !locationId || !skuId || !quantity || alreadyCounted} type="submit">{busy ? 'Saving…' : 'Save physical count'}</button></footer>
+        </form>
+      </section>
+    </div>
   );
 }
 
@@ -4632,7 +5038,7 @@ function TenantCashControlView({
   );
 }
 
-function ClaimsRegister({ tenantId }: { readonly tenantId: string }) {
+function ClaimsRegister({ tenantId, refreshKey }: { readonly tenantId: string; readonly refreshKey: number }) {
   const [filters, setFilters] = useState<ClaimFilters>({});
   const [claims, setClaims] = useState<readonly InsuranceClaim[] | null>(null);
   const [failed, setFailed] = useState(false);
@@ -4650,7 +5056,7 @@ function ClaimsRegister({ tenantId }: { readonly tenantId: string }) {
         if (!controller.signal.aborted) setFailed(true);
       });
     return () => controller.abort();
-  }, [filters, tenantId]);
+  }, [filters, refreshKey, tenantId]);
 
   const setFilter = useCallback((key: keyof ClaimFilters, value: string) => {
     setFilters((current) => {
@@ -4846,6 +5252,12 @@ function TenantInsuranceView({
   const [env, setEnv] = useState('SANDBOX');
   const [createBusy, setCreateBusy] = useState(false);
   const [createError, setCreateError] = useState('');
+  const [claimIntakeOpen, setClaimIntakeOpen] = useState(false);
+  const [claimsReload, setClaimsReload] = useState(0);
+  const [claimIntakeNotice, setClaimIntakeNotice] = useState('');
+  const [insuranceReload, setInsuranceReload] = useState(0);
+  const [coverageSetupOpen, setCoverageSetupOpen] = useState(false);
+  const [coverageSetupNotice, setCoverageSetupNotice] = useState('');
 
   const fetchInsurers = useCallback((signal?: AbortSignal) => {
     loadInsurers(tenantId, signal)
@@ -4887,7 +5299,7 @@ function TenantInsuranceView({
         if (!controller.signal.aborted) setFailed(true);
       });
     return () => controller.abort();
-  }, [tenantId]);
+  }, [tenantId, insuranceReload]);
 
   const handleCreateInsurer = async (e: FormEvent) => {
     e.preventDefault();
@@ -4932,6 +5344,23 @@ function TenantInsuranceView({
 
   return (
     <>
+      <section className="insurance-intake-bar">
+        <div>
+          <p className="eyebrow">Claims intake</p>
+          <strong>Build a draft from an actual medicine supply event.</strong>
+          <small>Supply, current member coverage, insurer item codes, and the tariff reference are checked and audited.</small>
+        </div>
+        <div className="insurance-intake-actions">
+          <button className="secondary-button" onClick={() => { setCoverageSetupNotice(''); setCoverageSetupOpen(true); }} type="button">
+            <Icon name="building" /> Set up member coverage
+          </button>
+          <button className="primary-button" onClick={() => setClaimIntakeOpen(true)} type="button">
+            <Icon name="insurance" /> Create draft claim
+          </button>
+        </div>
+      </section>
+      {coverageSetupNotice ? <p className="inline-success" role="status">{coverageSetupNotice}</p> : null}
+      {claimIntakeNotice ? <p className="inline-success" role="status">{claimIntakeNotice}</p> : null}
       <section className="metric-grid network-metrics" aria-label="Insurance claim positions">
         <SummaryCard targetId="insurance-register" icon="insurance" label="Awaiting insurer decision" value={awaiting.length} detail="Sent and acknowledged, not yet adjudicated" />
         <SummaryCard targetId="insurance-unpaid" icon="check" label="Approved, unpaid" value={unpaid.length} detail="Insurer agreed to pay and has not paid" tone="teal" />
@@ -5184,7 +5613,7 @@ function TenantInsuranceView({
       ) : null}
 
       <div id="insurance-register">
-        <ClaimsRegister tenantId={tenantId} />
+        <ClaimsRegister refreshKey={claimsReload} tenantId={tenantId} />
       </div>
 
       {createModalOpen ? (
@@ -5294,7 +5723,356 @@ function TenantInsuranceView({
           </section>
         </div>
       ) : null}
+      {claimIntakeOpen ? (
+        <ClaimIntakeDialog
+          csrfToken={csrfToken}
+          onClose={() => setClaimIntakeOpen(false)}
+          onCreated={(claim) => {
+            setClaimIntakeOpen(false);
+            setClaimsReload((current) => current + 1);
+            setClaimIntakeNotice(`Draft ${claim.claim_number} created for ${formatMoney(claim.claimed_gross_amount, claim.currency)}. It has not been submitted to the insurer.`);
+          }}
+          tenantId={tenantId}
+        />
+      ) : null}
+      {coverageSetupOpen ? (
+        <InsuranceCoverageSetupDialog
+          csrfToken={csrfToken}
+          onClose={() => setCoverageSetupOpen(false)}
+          onCreated={() => {
+            setCoverageSetupOpen(false);
+            setInsuranceReload((current) => current + 1);
+            setClaimsReload((current) => current + 1);
+            setCoverageSetupNotice('Member coverage and insurer medicine codes are ready for claim intake.');
+          }}
+          tenantId={tenantId}
+        />
+      ) : null}
     </>
+  );
+}
+
+function InsuranceCoverageSetupDialog({
+  csrfToken,
+  onClose,
+  onCreated,
+  tenantId,
+}: {
+  readonly csrfToken: string;
+  readonly onClose: () => void;
+  readonly onCreated: (coverage: InsuranceCoverage) => void;
+  readonly tenantId: string;
+}) {
+  const [options, setOptions] = useState<InsuranceCoverageSetupOptions | null>(null);
+  const [loadingError, setLoadingError] = useState('');
+  const [insurerId, setInsurerId] = useState('');
+  const [patientId, setPatientId] = useState('');
+  const [schemeCode, setSchemeCode] = useState('');
+  const [schemeName, setSchemeName] = useState('');
+  const [planCode, setPlanCode] = useState('');
+  const [planName, setPlanName] = useState('');
+  const [membershipNumber, setMembershipNumber] = useState('');
+  const [principalName, setPrincipalName] = useState('');
+  const [contactPhone, setContactPhone] = useState('');
+  const [email, setEmail] = useState('');
+  const [validFrom, setValidFrom] = useState('');
+  const [validTo, setValidTo] = useState('');
+  const [relationship, setRelationship] = useState('SELF');
+  const [dependentCode, setDependentCode] = useState('00');
+  const [annualLimit, setAnnualLimit] = useState('');
+  const [copayAmount, setCopayAmount] = useState('0');
+  const [coinsurance, setCoinsurance] = useState('0');
+  const [mappings, setMappings] = useState<InsuranceCoverageSetupInput['item_mappings']>([{ sku_id: '', insurer_item_code: '', insurer_item_name: '' }]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const controller = new AbortController();
+    loadInsuranceCoverageSetupOptions(tenantId, controller.signal)
+      .then((result) => {
+        setOptions(result);
+        setInsurerId(result.insurers[0]?.id ?? '');
+        setPatientId(result.patients[0]?.id ?? '');
+      })
+      .catch((err: unknown) => {
+        if (!controller.signal.aborted) setLoadingError(err instanceof Error ? err.message : 'Could not load setup options.');
+      });
+    return () => controller.abort();
+  }, [tenantId]);
+
+  const updateMapping = (index: number, field: keyof InsuranceCoverageSetupInput['item_mappings'][number], value: string) => {
+    setMappings((current) => current.map((mapping, row) => row === index ? { ...mapping, [field]: value } : mapping));
+  };
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      const payload: InsuranceCoverageSetupInput = {
+        insurer_id: insurerId,
+        scheme_code: schemeCode,
+        scheme_name: schemeName,
+        plan_code: planCode,
+        plan_name: planName,
+        patient_id: patientId,
+        membership_number: membershipNumber,
+        principal_name: principalName,
+        contact_phone: contactPhone,
+        email,
+        valid_from: validFrom,
+        valid_to: validTo,
+        relationship,
+        dependent_code: dependentCode,
+        annual_limit: annualLimit,
+        copay_amount: copayAmount,
+        coinsurance_percentage: coinsurance,
+        item_mappings: mappings,
+      };
+      const coverage = await createInsuranceCoverageSetup(payload, tenantId, csrfToken);
+      onCreated(coverage);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Could not configure member coverage.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const canSubmit = Boolean(
+    options && insurerId && patientId && schemeCode.trim() && schemeName.trim() && planCode.trim()
+    && planName.trim() && membershipNumber.trim() && principalName.trim() && validFrom && validTo
+    && annualLimit && mappings.length && mappings.every((mapping) => mapping.sku_id && mapping.insurer_item_code.trim() && mapping.insurer_item_name.trim()),
+  );
+
+  return (
+    <div className="business-dialog-backdrop" onClick={(event) => { if (event.target === event.currentTarget && !busy) onClose(); }} role="presentation">
+      <section aria-labelledby="coverage-setup-title" aria-modal="true" className="business-dialog insurance-coverage-setup-dialog" role="dialog">
+        <header><div><p className="eyebrow">Insurance eligibility</p><h2 id="coverage-setup-title">Set up member coverage</h2></div><button aria-label="Close dialog" disabled={busy} onClick={onClose} type="button"><Icon name="close" /></button></header>
+        {!options && !loadingError ? <p className="panel-note">Loading tenant insurers, patients, and active catalogue items…</p> : null}
+        {loadingError ? <p className="business-dialog-error" role="alert"><Icon name="alert" /> {loadingError}</p> : null}
+        {options ? (
+          <form onSubmit={(event) => void submit(event)}>
+            {error ? <p className="business-dialog-error" role="alert"><Icon name="alert" /> {error}</p> : null}
+            {!options.insurers.length || !options.patients.length || !options.skus.length ? <p className="inline-alert" role="status">Setup needs an active sandbox insurer, patient record, and active medicine SKU in this tenant.</p> : null}
+            <div className="insurance-setup-grid">
+              <label className="business-field"><span>Sandbox insurer</span><select onChange={(event) => setInsurerId(event.target.value)} required value={insurerId}><option value="">Select insurer</option>{options.insurers.map((insurer) => <option key={insurer.id} value={insurer.id}>{insurer.name}</option>)}</select></label>
+              <label className="business-field"><span>Covered patient</span><select onChange={(event) => setPatientId(event.target.value)} required value={patientId}><option value="">Select patient</option>{options.patients.map((patient) => <option key={patient.id} value={patient.id}>{patient.full_name} · {patient.patient_number}</option>)}</select></label>
+              <label className="business-field"><span>Scheme code</span><input maxLength={64} onChange={(event) => setSchemeCode(event.target.value)} required value={schemeCode} /></label>
+              <label className="business-field"><span>Scheme name</span><input maxLength={255} onChange={(event) => setSchemeName(event.target.value)} required value={schemeName} /></label>
+              <label className="business-field"><span>Plan code</span><input maxLength={64} onChange={(event) => setPlanCode(event.target.value)} required value={planCode} /></label>
+              <label className="business-field"><span>Plan name</span><input maxLength={255} onChange={(event) => setPlanName(event.target.value)} required value={planName} /></label>
+              <label className="business-field"><span>Membership number</span><input maxLength={128} onChange={(event) => setMembershipNumber(event.target.value)} required value={membershipNumber} /></label>
+              <label className="business-field"><span>Principal member name</span><input maxLength={255} onChange={(event) => setPrincipalName(event.target.value)} required value={principalName} /></label>
+              <label className="business-field"><span>Phone</span><input maxLength={64} onChange={(event) => setContactPhone(event.target.value)} type="tel" value={contactPhone} /></label>
+              <label className="business-field"><span>Email</span><input maxLength={254} onChange={(event) => setEmail(event.target.value)} type="email" value={email} /></label>
+              <label className="business-field"><span>Coverage starts</span><input onChange={(event) => setValidFrom(event.target.value)} required type="date" value={validFrom} /></label>
+              <label className="business-field"><span>Coverage ends</span><input min={validFrom || undefined} onChange={(event) => setValidTo(event.target.value)} required type="date" value={validTo} /></label>
+              <label className="business-field"><span>Patient relationship</span><select onChange={(event) => setRelationship(event.target.value)} value={relationship}><option value="SELF">Principal member</option><option value="SPOUSE">Spouse</option><option value="CHILD">Child</option><option value="PARENT">Parent</option><option value="OTHER">Other dependent</option></select></label>
+              <label className="business-field"><span>Dependent code</span><input maxLength={32} onChange={(event) => setDependentCode(event.target.value)} required value={dependentCode} /></label>
+              <label className="business-field"><span>Annual benefit limit (KES)</span><input min="0" onChange={(event) => setAnnualLimit(event.target.value)} required step="0.01" type="number" value={annualLimit} /></label>
+              <label className="business-field"><span>Copay (KES)</span><input min="0" onChange={(event) => setCopayAmount(event.target.value)} step="0.01" type="number" value={copayAmount} /></label>
+              <label className="business-field"><span>Coinsurance (%)</span><input max="100" min="0" onChange={(event) => setCoinsurance(event.target.value)} step="0.01" type="number" value={coinsurance} /></label>
+            </div>
+            <section className="insurance-mapping-editor">
+              <div><strong>Insurer medicine item codes</strong><small>Each active SKU needs the code and description used by this insurer.</small></div>
+              {mappings.map((mapping, index) => (
+                <div className="insurance-mapping-row" key={index}>
+                  <label className="business-field"><span>Medicine SKU</span><select onChange={(event) => updateMapping(index, 'sku_id', event.target.value)} required value={mapping.sku_id}><option value="">Select SKU</option>{options.skus.filter((sku) => sku.id === mapping.sku_id || !mappings.some((other, row) => row !== index && other.sku_id === sku.id)).map((sku) => <option key={sku.id} value={sku.id}>{sku.sku_code} · {sku.display_name} · {sku.unit}</option>)}</select></label>
+                  <label className="business-field"><span>Insurer item code</span><input maxLength={128} onChange={(event) => updateMapping(index, 'insurer_item_code', event.target.value)} required value={mapping.insurer_item_code} /></label>
+                  <label className="business-field"><span>Insurer item name</span><input maxLength={255} onChange={(event) => updateMapping(index, 'insurer_item_name', event.target.value)} required value={mapping.insurer_item_name} /></label>
+                  <button aria-label="Remove item mapping" className="icon-button" disabled={mappings.length < 2} onClick={() => setMappings((current) => current.filter((_, row) => row !== index))} type="button"><Icon name="close" /></button>
+                </div>
+              ))}
+              <button className="secondary-button insurance-add-mapping" disabled={mappings.length >= 200} onClick={() => setMappings((current) => [...current, { sku_id: '', insurer_item_code: '', insurer_item_name: '' }])} type="button">+ Add item code</button>
+            </section>
+            <p className="business-dialog-confirm"><Icon name="shield" /> This creates the sandbox scheme, plan, medicine benefit, member enrollment, active coverage, and insurer item mappings in one audited transaction.</p>
+            <footer><button className="secondary-button" disabled={busy} onClick={onClose} type="button">Cancel</button><button className="primary-button" disabled={busy || !canSubmit} type="submit">{busy ? 'Saving coverage…' : 'Save member coverage'}</button></footer>
+          </form>
+        ) : null}
+      </section>
+    </div>
+  );
+}
+
+function ClaimIntakeDialog({
+  csrfToken,
+  onClose,
+  onCreated,
+  tenantId,
+}: {
+  readonly csrfToken: string;
+  readonly onClose: () => void;
+  readonly onCreated: (claim: InsuranceClaim) => void;
+  readonly tenantId: string;
+}) {
+  const [supplies, setSupplies] = useState<readonly ClaimIntakeSupply[] | null>(null);
+  const [supplyId, setSupplyId] = useState('');
+  const [coverageId, setCoverageId] = useState('');
+  const [claimNumber, setClaimNumber] = useState('');
+  const [pricingReference, setPricingReference] = useState('');
+  const [unitPrices, setUnitPrices] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const controller = new AbortController();
+    loadClaimIntakeSupplies(tenantId, controller.signal)
+      .then(setSupplies)
+      .catch((reason: unknown) => {
+        if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : 'Supplied episodes could not be loaded.');
+      });
+    return () => controller.abort();
+  }, [tenantId]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !busy) onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [busy, onClose]);
+
+  const readySupplies = supplies?.filter((supply) => supply.coverage_options.length > 0) ?? [];
+  const selectedSupply = readySupplies.find((supply) => supply.id === supplyId) ?? readySupplies[0];
+  const skuLines = selectedSupply
+    ? [...new Map(selectedSupply.lines.map((line) => [line.sku_id, line])).values()]
+    : [];
+
+  useEffect(() => {
+    if (!selectedSupply) {
+      setSupplyId('');
+      setCoverageId('');
+      setUnitPrices((current) => Object.keys(current).length ? {} : current);
+      return;
+    }
+    if (selectedSupply.id !== supplyId) setSupplyId(selectedSupply.id);
+    if (!selectedSupply.coverage_options.some((coverage) => coverage.id === coverageId)) {
+      setCoverageId(selectedSupply.coverage_options[0]?.id ?? '');
+    }
+    setClaimNumber((current) => current || `CLM-${selectedSupply.supply_number}`.slice(0, 64));
+    setUnitPrices((current) => {
+      const next = { ...current };
+      let changed = false;
+      for (const line of selectedSupply.lines) {
+        if (!(line.sku_id in next)) {
+          next[line.sku_id] = '';
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+  }, [coverageId, selectedSupply, supplyId]);
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!selectedSupply) return;
+    setBusy(true);
+    setError('');
+    try {
+      const claim = await createDraftClaimFromSupply(
+        {
+          supply_id: selectedSupply.id,
+          coverage_id: coverageId,
+          claim_number: claimNumber.trim(),
+          pricing_reference: pricingReference.trim(),
+          unit_prices: Object.fromEntries(skuLines.map((line) => [line.sku_id, unitPrices[line.sku_id] ?? ''])),
+        },
+        tenantId,
+        csrfToken,
+      );
+      onCreated(claim);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'The draft claim could not be created.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div
+      className="business-dialog-backdrop"
+      onClick={(event) => { if (event.target === event.currentTarget && !busy) onClose(); }}
+      role="presentation"
+    >
+      <section aria-labelledby="claim-intake-title" aria-modal="true" className="business-dialog claim-intake-dialog" role="dialog">
+        <header>
+          <div>
+            <p className="eyebrow">Insurance claim intake</p>
+            <h2 id="claim-intake-title">Create draft claim</h2>
+          </div>
+          <button aria-label="Close dialog" disabled={busy} onClick={onClose} type="button"><Icon name="close" /></button>
+        </header>
+        {supplies === null ? (
+          error ? <p className="business-dialog-error" role="alert"><Icon name="alert" /> {error}</p> : <p className="muted-cell">Loading unclaimed supply events…</p>
+        ) : readySupplies.length === 0 ? (
+          <>
+            {error ? <p className="business-dialog-error" role="alert"><Icon name="alert" /> {error}</p> : null}
+            <EmptyState
+              icon="insurance"
+              title={supplies.length ? 'No eligible supply events' : 'No unclaimed supply events'}
+              detail={supplies.length ? 'Add current coverage and covered insurer item mappings for the supplied products.' : 'Claims can only be drafted from medicine recorded as supplied.'}
+            />
+            <div className="claim-intake-footer"><button className="secondary-button" onClick={onClose} type="button">Close</button></div>
+          </>
+        ) : (
+          <form onSubmit={(event) => void submit(event)}>
+            <label className="business-field">
+              <span>Supplied episode</span>
+              <select
+                onChange={(event) => {
+                  const next = readySupplies.find((supply) => supply.id === event.target.value);
+                  setSupplyId(event.target.value);
+                  setCoverageId(next?.coverage_options[0]?.id ?? '');
+                  setClaimNumber(next ? `CLM-${next.supply_number}`.slice(0, 64) : '');
+                  setUnitPrices(next ? Object.fromEntries(next.lines.map((line) => [line.sku_id, ''])) : {});
+                }}
+                value={selectedSupply?.id ?? ''}
+              >
+                {readySupplies.map((supply) => <option key={supply.id} value={supply.id}>{supply.supply_number} · {supply.dispensing_number} · {titleCase(supply.status)}</option>)}
+              </select>
+            </label>
+            <div className="clinical-intake-grid">
+              <label className="business-field">
+                <span>Current coverage</span>
+                <select onChange={(event) => setCoverageId(event.target.value)} required value={coverageId}>
+                  {(selectedSupply?.coverage_options ?? []).map((coverage) => (
+                    <option key={coverage.id} value={coverage.id}>{coverage.insurer_name} · {coverage.scheme_name} · {coverage.membership_number}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="business-field"><span>Claim reference</span><input maxLength={64} onChange={(event) => setClaimNumber(event.target.value)} required value={claimNumber} /></label>
+            </div>
+            <div className="claim-intake-lines">
+              <p className="eyebrow">Tariff unit prices</p>
+              {skuLines.map((line) => (
+                <label className="claim-intake-line" key={line.sku_id}>
+                  <span><strong>{line.display_name}</strong><small>{line.sku_code} · supplied quantity {line.quantity} {line.unit}</small></span>
+                  <input
+                    aria-label={`Tariff unit price for ${line.display_name}`}
+                    min="0.01"
+                    onChange={(event) => setUnitPrices((current) => ({ ...current, [line.sku_id]: event.target.value }))}
+                    required
+                    step="0.01"
+                    type="number"
+                    value={unitPrices[line.sku_id] ?? ''}
+                  />
+                </label>
+              ))}
+            </div>
+            <label className="business-field">
+              <span>Pricing basis / tariff reference</span>
+              <input maxLength={160} onChange={(event) => setPricingReference(event.target.value)} placeholder="Tariff version or authorised price source" required value={pricingReference} />
+            </label>
+            <p className="business-dialog-confirm"><Icon name="shield" /> The claim is derived from recorded supply and active coverage. Prices and their reference are audited. Creating this draft does not submit it to the insurer.</p>
+            {error ? <p className="business-dialog-error" role="alert"><Icon name="alert" /> {error}</p> : null}
+            <footer>
+              <button className="secondary-button" disabled={busy} onClick={onClose} type="button">Cancel</button>
+              <button className="primary-button" disabled={busy} type="submit">{busy ? 'Creating…' : 'Create draft claim'}</button>
+            </footer>
+          </form>
+        )}
+      </section>
+    </div>
   );
 }
 
@@ -5303,11 +6081,17 @@ function PeopleView({
   data,
   failed,
   onWorkspaceChanged,
-}: BusinessViewProps) {
+  overview,
+}: BusinessViewProps & { readonly overview: HQOverview }) {
   const [counterparties, setCounterparties] = useState<readonly CustomerItem[] | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [patientIntakeOpen, setPatientIntakeOpen] = useState(false);
+  const [identityTarget, setIdentityTarget] = useState<HQPatient | null>(null);
+  const [practitionerIntakeOpen, setPractitionerIntakeOpen] = useState(false);
+  const [verificationTarget, setVerificationTarget] = useState<HQPractitioner | null>(null);
+  const [authorityTarget, setAuthorityTarget] = useState<HQPractitioner | null>(null);
   const [custNumber, setCustNumber] = useState('');
   const [legalName, setLegalName] = useState('');
   const [tradingName, setTradingName] = useState('');
@@ -5413,6 +6197,7 @@ function PeopleView({
   if (!data) return <WorkspaceSectionLoading domain="people and customer" />;
 
   const { counts, patients, practitioners } = data.people;
+  const tenantSelected = Boolean(overview.tenant_id);
   const activeCustomersCount = counterparties ? counterparties.filter((c) => c.status === 'ACTIVE' || c.status === 'APPROVED').length : counts.customers;
   const scrollPeople = (id: string) => {
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -5433,11 +6218,16 @@ function PeopleView({
 
       <section className="content-grid content-grid-primary">
         <article className="panel" id="people-patients">
-          <PanelHeader eyebrow="Care records" title="Recently updated patients" />
+          <div className="people-panel-heading">
+            <PanelHeader eyebrow="Care records" title="Recently updated patients" />
+            <button className="primary-button" disabled={!tenantSelected} onClick={() => setPatientIntakeOpen(true)} type="button">
+              <Icon name="patients" /> Register patient
+            </button>
+          </div>
           {patients.length ? (
             <div className="table-scroll">
               <table>
-                <thead><tr><th>Patient</th><th>Reference</th><th>Verification</th><th>Consent</th><th>Updated</th></tr></thead>
+                <thead><tr><th>Patient</th><th>Reference</th><th>Verification</th><th>Consent</th><th>Updated</th><th>Identity</th></tr></thead>
                 <tbody>
                   {patients.map((patient) => (
                     <tr key={patient.id}>
@@ -5446,6 +6236,7 @@ function PeopleView({
                       <td><StatusBadge value={patient.verification_status} /></td>
                       <td><small>{titleCase(patient.consent_status)}</small></td>
                       <td><span className="muted-cell">{formatDate(patient.updated_at)}</span></td>
+                      <td><button className="segmented-option" disabled={!tenantSelected} onClick={() => setIdentityTarget(patient)} type="button">Identifiers</button></td>
                     </tr>
                   ))}
                 </tbody>
@@ -5455,11 +6246,16 @@ function PeopleView({
         </article>
 
         <article className="panel" id="people-practitioners">
-          <PanelHeader eyebrow="Clinical workforce" title="Practitioner verification" />
+          <div className="people-panel-heading">
+            <PanelHeader eyebrow="Clinical workforce" title="Practitioner verification" />
+            <button className="primary-button" disabled={!tenantSelected} onClick={() => setPractitionerIntakeOpen(true)} type="button">
+              <Icon name="clinical" /> Register practitioner
+            </button>
+          </div>
           {practitioners.length ? (
             <div className="table-scroll">
               <table>
-                <thead><tr><th>Practitioner</th><th>Profession</th><th>Registration</th><th>Licence</th><th>Verification</th></tr></thead>
+                <thead><tr><th>Practitioner</th><th>Profession</th><th>Registration</th><th>Licence</th><th>Verification</th><th>Controlled authority</th><th>Action</th></tr></thead>
                 <tbody>
                   {practitioners.map((practitioner) => (
                     <tr key={practitioner.id}>
@@ -5468,6 +6264,20 @@ function PeopleView({
                       <td><code>{practitioner.registration_number || '—'}</code></td>
                       <td><StatusBadge value={practitioner.licence_status} /></td>
                       <td><StatusBadge value={practitioner.verification_state} /></td>
+                      <td>
+                        {practitioner.controlled_medicine_authority ? <StatusBadge value="GRANTED" /> : <StatusBadge value="NOT_GRANTED" />}
+                      </td>
+                      <td>
+                        {practitioner.verification_state !== 'VERIFIED' ? (
+                          <button className="segmented-option is-active" disabled={!tenantSelected} onClick={() => setVerificationTarget(practitioner)} type="button">
+                            Review licence
+                          </button>
+                        ) : (
+                          <button className={practitioner.controlled_medicine_authority ? 'segmented-option' : 'segmented-option is-active'} disabled={!tenantSelected} onClick={() => setAuthorityTarget(practitioner)} type="button">
+                            {practitioner.controlled_medicine_authority ? 'Revoke authority' : 'Grant authority'}
+                          </button>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -5787,6 +6597,60 @@ function PeopleView({
         </div>
       ) : null}
 
+      {patientIntakeOpen ? (
+        <PatientIntakeDialog
+          csrfToken={csrfToken}
+          onClose={() => setPatientIntakeOpen(false)}
+          onCreated={async () => {
+            setPatientIntakeOpen(false);
+            await onWorkspaceChanged();
+          }}
+        />
+      ) : null}
+      {identityTarget ? (
+        <PatientIdentityDialog
+          csrfToken={csrfToken}
+          onUpdated={async () => {
+            setIdentityTarget(null);
+            await onWorkspaceChanged();
+          }}
+          patient={identityTarget}
+          tenantId={overview.tenant_id}
+        />
+      ) : null}
+      {practitionerIntakeOpen ? (
+        <PractitionerIntakeDialog
+          csrfToken={csrfToken}
+          onClose={() => setPractitionerIntakeOpen(false)}
+          onCreated={async () => {
+            setPractitionerIntakeOpen(false);
+            await onWorkspaceChanged();
+          }}
+        />
+      ) : null}
+      {verificationTarget ? (
+        <PractitionerVerificationDialog
+          csrfToken={csrfToken}
+          practitioner={verificationTarget}
+          onClose={() => setVerificationTarget(null)}
+          onUpdated={async () => {
+            setVerificationTarget(null);
+            await onWorkspaceChanged();
+          }}
+        />
+      ) : null}
+      {authorityTarget ? (
+        <PractitionerAuthorityDialog
+          csrfToken={csrfToken}
+          practitioner={authorityTarget}
+          onClose={() => setAuthorityTarget(null)}
+          onUpdated={async () => {
+            setAuthorityTarget(null);
+            await onWorkspaceChanged();
+          }}
+        />
+      ) : null}
+
       {pendingAction ? (
         <div className="business-dialog-backdrop" role="presentation">
           <section aria-labelledby="customer-action-title" aria-modal="true" className="business-dialog" role="dialog">
@@ -5870,6 +6734,423 @@ function PeopleView({
         </div>
       ) : null}
     </>
+  );
+}
+
+function PatientIntakeDialog({
+  csrfToken,
+  onClose,
+  onCreated,
+}: {
+  readonly csrfToken: string;
+  readonly onClose: () => void;
+  readonly onCreated: () => Promise<void>;
+}) {
+  const [draft, setDraft] = useState({
+    internal_reference_id: '',
+    patient_number: '',
+    first_name: '',
+    last_name: '',
+    preferred_name: '',
+    date_of_birth: '',
+    sex: 'UNKNOWN',
+    phone: '',
+    email: '',
+    preferred_language: '',
+    communication_preference: '',
+    consent_status: 'NOT_RECORDED',
+  });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const update = (field: keyof typeof draft, value: string) => setDraft((current) => ({ ...current, [field]: value }));
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      const input: PatientIntakeInput = { ...draft, date_of_birth: draft.date_of_birth || null };
+      await createPatient(input, csrfToken);
+      await onCreated();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Could not register patient.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="business-dialog-backdrop" onClick={(event) => { if (event.target === event.currentTarget && !busy) onClose(); }} role="presentation">
+      <section aria-labelledby="patient-intake-title" aria-modal="true" className="business-dialog people-intake-dialog" role="dialog">
+        <header>
+          <div><p className="eyebrow">Patient record</p><h2 id="patient-intake-title">Register patient</h2></div>
+          <button aria-label="Close dialog" disabled={busy} onClick={onClose} type="button"><Icon name="close" /></button>
+        </header>
+        <form onSubmit={(event) => void submit(event)}>
+          <p className="business-dialog-confirm"><Icon name="shield" /> Create the record with minimum identity and contact details. Do not enter national IDs, insurance numbers, or clinical information here.</p>
+          <div className="people-intake-grid">
+            <label className="business-field"><span>Internal reference</span><input autoComplete="off" onChange={(event) => update('internal_reference_id', event.target.value)} required value={draft.internal_reference_id} /></label>
+            <label className="business-field"><span>Patient number <small>Optional</small></span><input onChange={(event) => update('patient_number', event.target.value)} value={draft.patient_number} /></label>
+            <label className="business-field"><span>First name</span><input autoComplete="given-name" onChange={(event) => update('first_name', event.target.value)} required value={draft.first_name} /></label>
+            <label className="business-field"><span>Last name</span><input autoComplete="family-name" onChange={(event) => update('last_name', event.target.value)} required value={draft.last_name} /></label>
+            <label className="business-field"><span>Preferred name</span><input onChange={(event) => update('preferred_name', event.target.value)} value={draft.preferred_name} /></label>
+            <label className="business-field"><span>Date of birth</span><input onChange={(event) => update('date_of_birth', event.target.value)} type="date" value={draft.date_of_birth} /></label>
+            <label className="business-field"><span>Sex</span><select onChange={(event) => update('sex', event.target.value)} value={draft.sex}><option value="UNKNOWN">Not recorded</option><option value="FEMALE">Female</option><option value="MALE">Male</option><option value="OTHER">Other</option></select></label>
+            <label className="business-field"><span>Preferred language</span><input onChange={(event) => update('preferred_language', event.target.value)} placeholder="e.g. English, Kiswahili" value={draft.preferred_language} /></label>
+            <label className="business-field"><span>Phone</span><input autoComplete="tel" onChange={(event) => update('phone', event.target.value)} type="tel" value={draft.phone} /></label>
+            <label className="business-field"><span>Email</span><input autoComplete="email" onChange={(event) => update('email', event.target.value)} type="email" value={draft.email} /></label>
+            <label className="business-field"><span>Communication preference</span><select onChange={(event) => update('communication_preference', event.target.value)} value={draft.communication_preference}><option value="">Not specified</option><option value="PHONE">Phone</option><option value="SMS">SMS</option><option value="EMAIL">Email</option></select></label>
+            <label className="business-field"><span>Consent status</span><select onChange={(event) => update('consent_status', event.target.value)} value={draft.consent_status}><option value="NOT_RECORDED">Not recorded</option><option value="GRANTED">Granted</option><option value="DECLINED">Declined</option></select></label>
+          </div>
+          {error ? <p className="business-dialog-error" role="alert"><Icon name="alert" /> {error}</p> : null}
+          <footer><button className="secondary-button" disabled={busy} onClick={onClose} type="button">Cancel</button><button className="primary-button" disabled={busy || !draft.internal_reference_id.trim() || !draft.first_name.trim() || !draft.last_name.trim()} type="submit">{busy ? 'Registering…' : 'Register patient'}</button></footer>
+        </form>
+      </section>
+    </div>
+  );
+}
+
+function PatientIdentityDialog({
+  csrfToken,
+  onUpdated,
+  patient,
+  tenantId,
+}: {
+  readonly csrfToken: string;
+  readonly onUpdated: () => Promise<void>;
+  readonly patient: HQPatient;
+  readonly tenantId: string;
+}) {
+  const [identifiers, setIdentifiers] = useState<readonly PatientIdentifierItem[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [identifierType, setIdentifierType] = useState('NATIONAL_ID');
+  const [value, setValue] = useState('');
+  const [system, setSystem] = useState('');
+  const [issuingAuthority, setIssuingAuthority] = useState('');
+  const [issueDate, setIssueDate] = useState('');
+  const [expiryDate, setExpiryDate] = useState('');
+  const [reviewTarget, setReviewTarget] = useState<PatientIdentifierItem | null>(null);
+  const [reviewState, setReviewState] = useState('VERIFIED');
+  const [reviewNote, setReviewNote] = useState('');
+  const [evidenceReference, setEvidenceReference] = useState('');
+
+  const refreshIdentifiers = useCallback(async (signal?: AbortSignal) => {
+    setLoading(true);
+    setError('');
+    try {
+      const rows = await loadPatientIdentifiers(patient.id, tenantId, signal);
+      if (!signal?.aborted) setIdentifiers(rows);
+    } catch (err: unknown) {
+      if (!signal?.aborted) setError(err instanceof Error ? err.message : 'Could not load protected identifiers.');
+    } finally {
+      if (!signal?.aborted) setLoading(false);
+    }
+  }, [patient.id, tenantId]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void refreshIdentifiers(controller.signal);
+    return () => controller.abort();
+  }, [refreshIdentifiers]);
+
+  const submitIdentifier = async (event: FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      const input: PatientIdentifierInput = {
+        identifier_type: identifierType,
+        value: value.trim(),
+        system: system.trim(),
+        issuing_authority: issuingAuthority.trim(),
+        issue_date: issueDate || null,
+        expiry_date: expiryDate || null,
+      };
+      await addPatientIdentifier(patient.id, input, csrfToken, tenantId);
+      setValue('');
+      setSystem('');
+      setIssuingAuthority('');
+      setIssueDate('');
+      setExpiryDate('');
+      await refreshIdentifiers();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Could not save the protected identifier.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitReview = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!reviewTarget) return;
+    setBusy(true);
+    setError('');
+    try {
+      await verifyPatientIdentifier(
+        patient.id,
+        reviewTarget.id,
+        {
+          verification_status: reviewState,
+          verification_note: reviewNote.trim(),
+          evidence_reference: evidenceReference.trim(),
+        },
+        csrfToken,
+        tenantId,
+      );
+      setReviewTarget(null);
+      setReviewNote('');
+      setEvidenceReference('');
+      await refreshIdentifiers();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Could not record the identifier review.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="business-dialog-backdrop" onClick={(event) => { if (event.target === event.currentTarget && !busy) onUpdated(); }} role="presentation">
+      <section aria-labelledby="patient-identifiers-title" aria-modal="true" className="business-dialog patient-identity-dialog" role="dialog">
+        <header>
+          <div><p className="eyebrow">Protected patient identity</p><h2 id="patient-identifiers-title">Identifiers · {patient.full_name}</h2></div>
+          <button aria-label="Close dialog" disabled={busy} onClick={() => void onUpdated()} type="button"><Icon name="close" /></button>
+        </header>
+        <p className="business-dialog-confirm"><Icon name="shield" /> Values are encrypted at rest. This screen only shows the masked value. New identifiers remain unverified until a reviewer records evidence.</p>
+        {loading ? <p className="muted-cell">Loading masked identifiers…</p> : identifiers?.length ? (
+          <div className="patient-identifier-list">
+            {identifiers.map((identifier) => (
+              <article key={identifier.id}>
+                <div><strong>{titleCase(identifier.identifier_type)}</strong><code>{identifier.masked_value}</code><small>{identifier.issuing_authority || identifier.system}</small></div>
+                <StatusBadge value={identifier.verification_status} />
+                {identifier.verification_status === 'UNVERIFIED' ? <button className="segmented-option is-active" disabled={busy} onClick={() => { setReviewTarget(identifier); setReviewState('VERIFIED'); setReviewNote(''); setEvidenceReference(''); }} type="button">Review</button> : null}
+              </article>
+            ))}
+          </div>
+        ) : !error ? <p className="muted-cell">No patient identifiers recorded.</p> : null}
+
+        {reviewTarget ? (
+          <form className="patient-identifier-review" onSubmit={(event) => void submitReview(event)}>
+            <strong>Review {titleCase(reviewTarget.identifier_type)} · {reviewTarget.masked_value}</strong>
+            <div className="people-intake-grid">
+              <label className="business-field"><span>Decision</span><select onChange={(event) => setReviewState(event.target.value)} value={reviewState}><option value="VERIFIED">Verified</option><option value="REJECTED">Rejected</option><option value="EXPIRED">Expired</option></select></label>
+              <label className="business-field"><span>Review note</span><input onChange={(event) => setReviewNote(event.target.value)} required value={reviewNote} /></label>
+              <label className="business-field people-intake-wide"><span>Evidence reference {reviewState !== 'VERIFIED' ? <small>Optional</small> : null}</span><input onChange={(event) => setEvidenceReference(event.target.value)} required={reviewState === 'VERIFIED'} value={evidenceReference} /></label>
+            </div>
+            <div className="patient-identifier-review-actions"><button className="secondary-button" disabled={busy} onClick={() => setReviewTarget(null)} type="button">Cancel review</button><button className="primary-button" disabled={busy || !reviewNote.trim() || (reviewState === 'VERIFIED' && !evidenceReference.trim())} type="submit">{busy ? 'Saving…' : 'Record decision'}</button></div>
+          </form>
+        ) : null}
+
+        <form onSubmit={(event) => void submitIdentifier(event)}>
+          <p className="eyebrow">Add identifier</p>
+          <div className="people-intake-grid">
+            <label className="business-field"><span>Identifier type</span><select onChange={(event) => setIdentifierType(event.target.value)} value={identifierType}><option value="NATIONAL_ID">National ID</option><option value="PASSPORT">Passport</option><option value="BIRTH_CERTIFICATE">Birth certificate</option><option value="HOSPITAL_NUMBER">Hospital number</option><option value="INSURANCE_NUMBER">Insurance number</option><option value="REFUGEE_ID">Refugee ID</option><option value="OTHER">Other</option></select></label>
+            <label className="business-field"><span>Identifier value</span><input autoComplete="off" onChange={(event) => setValue(event.target.value)} required value={value} /></label>
+            <label className="business-field"><span>Issuing authority</span><input onChange={(event) => setIssuingAuthority(event.target.value)} value={issuingAuthority} /></label>
+            <label className="business-field"><span>System</span><input onChange={(event) => setSystem(event.target.value)} placeholder="Optional identifier system" value={system} /></label>
+            <label className="business-field"><span>Issue date</span><input onChange={(event) => setIssueDate(event.target.value)} type="date" value={issueDate} /></label>
+            <label className="business-field"><span>Expiry date</span><input onChange={(event) => setExpiryDate(event.target.value)} type="date" value={expiryDate} /></label>
+          </div>
+          <div className="patient-identifier-review-actions"><button className="secondary-button" disabled={busy} onClick={() => void onUpdated()} type="button">Done</button><button className="primary-button" disabled={busy || !value.trim()} type="submit">{busy ? 'Saving…' : 'Save unverified identifier'}</button></div>
+        </form>
+        {error ? <p className="business-dialog-error" role="alert"><Icon name="alert" /> {error}</p> : null}
+      </section>
+    </div>
+  );
+}
+
+function PractitionerIntakeDialog({
+  csrfToken,
+  onClose,
+  onCreated,
+}: {
+  readonly csrfToken: string;
+  readonly onClose: () => void;
+  readonly onCreated: () => Promise<void>;
+}) {
+  const [draft, setDraft] = useState({
+    first_name: '',
+    last_name: '',
+    professional_name: '',
+    registration_number: '',
+    profession: 'DOCTOR',
+    licensing_body: '',
+    licence_issue_date: '',
+    licence_expiry_date: '',
+    prescribing_scope: '',
+    phone: '',
+    email: '',
+  });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const update = (field: keyof typeof draft, value: string) => setDraft((current) => ({ ...current, [field]: value }));
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      const input: PractitionerIntakeInput = {
+        ...draft,
+        licence_issue_date: draft.licence_issue_date || null,
+        licence_expiry_date: draft.licence_expiry_date || null,
+        prescribing_scope: draft.prescribing_scope.split(',').map((item) => item.trim()).filter(Boolean),
+        organization: null,
+      };
+      await createPractitioner(input, csrfToken);
+      await onCreated();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Could not register practitioner.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="business-dialog-backdrop" onClick={(event) => { if (event.target === event.currentTarget && !busy) onClose(); }} role="presentation">
+      <section aria-labelledby="practitioner-intake-title" aria-modal="true" className="business-dialog people-intake-dialog" role="dialog">
+        <header>
+          <div><p className="eyebrow">Clinical workforce</p><h2 id="practitioner-intake-title">Register practitioner</h2></div>
+          <button aria-label="Close dialog" disabled={busy} onClick={onClose} type="button"><Icon name="close" /></button>
+        </header>
+        <form onSubmit={(event) => void submit(event)}>
+          <p className="business-dialog-confirm"><Icon name="shield" /> Registration records an unverified credential claim. It grants no prescribing or controlled-medicine authority until a separate review is recorded.</p>
+          <div className="people-intake-grid">
+            <label className="business-field"><span>First name</span><input onChange={(event) => update('first_name', event.target.value)} required value={draft.first_name} /></label>
+            <label className="business-field"><span>Last name</span><input onChange={(event) => update('last_name', event.target.value)} required value={draft.last_name} /></label>
+            <label className="business-field"><span>Professional name</span><input onChange={(event) => update('professional_name', event.target.value)} value={draft.professional_name} /></label>
+            <label className="business-field"><span>Profession</span><select onChange={(event) => update('profession', event.target.value)} value={draft.profession}><option value="DOCTOR">Doctor</option><option value="DENTIST">Dentist</option><option value="CLINICAL_OFFICER">Clinical officer</option><option value="NURSE_PRESCRIBER">Nurse prescriber</option><option value="VETERINARY_PRESCRIBER">Veterinary prescriber</option><option value="OTHER_AUTHORIZED_PRESCRIBER">Other authorized prescriber</option></select></label>
+            <label className="business-field"><span>Registration / licence number</span><input maxLength={100} onChange={(event) => update('registration_number', event.target.value)} required value={draft.registration_number} /></label>
+            <label className="business-field"><span>Licensing body</span><input maxLength={100} onChange={(event) => update('licensing_body', event.target.value)} required value={draft.licensing_body} /></label>
+            <label className="business-field"><span>Licence issue date</span><input onChange={(event) => update('licence_issue_date', event.target.value)} type="date" value={draft.licence_issue_date} /></label>
+            <label className="business-field"><span>Licence expiry date</span><input onChange={(event) => update('licence_expiry_date', event.target.value)} type="date" value={draft.licence_expiry_date} /></label>
+            <label className="business-field people-intake-wide"><span>Prescribing scope <small>Comma separated</small></span><input onChange={(event) => update('prescribing_scope', event.target.value)} placeholder="e.g. GENERAL, PAEDIATRIC" value={draft.prescribing_scope} /></label>
+            <label className="business-field"><span>Phone</span><input onChange={(event) => update('phone', event.target.value)} type="tel" value={draft.phone} /></label>
+            <label className="business-field"><span>Email</span><input onChange={(event) => update('email', event.target.value)} type="email" value={draft.email} /></label>
+          </div>
+          {error ? <p className="business-dialog-error" role="alert"><Icon name="alert" /> {error}</p> : null}
+          <footer><button className="secondary-button" disabled={busy} onClick={onClose} type="button">Cancel</button><button className="primary-button" disabled={busy || !draft.first_name.trim() || !draft.last_name.trim() || !draft.registration_number.trim() || !draft.licensing_body.trim()} type="submit">{busy ? 'Registering…' : 'Register unverified'}</button></footer>
+        </form>
+      </section>
+    </div>
+  );
+}
+
+function PractitionerVerificationDialog({
+  csrfToken,
+  practitioner,
+  onClose,
+  onUpdated,
+}: {
+  readonly csrfToken: string;
+  readonly practitioner: HQPractitioner;
+  readonly onClose: () => void;
+  readonly onUpdated: () => Promise<void>;
+}) {
+  const [verificationState, setVerificationState] = useState('VERIFIED');
+  const [licenceStatus, setLicenceStatus] = useState('VALID');
+  const [verificationNote, setVerificationNote] = useState('');
+  const [evidenceReference, setEvidenceReference] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      const input: PractitionerVerificationInput = {
+        verification_state: verificationState,
+        licence_status: licenceStatus,
+        verification_note: verificationNote.trim(),
+        evidence_reference: evidenceReference.trim(),
+      };
+      await verifyPractitioner(practitioner.id, input, csrfToken);
+      await onUpdated();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Could not record the practitioner review.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="business-dialog-backdrop" onClick={(event) => { if (event.target === event.currentTarget && !busy) onClose(); }} role="presentation">
+      <section aria-labelledby="practitioner-verification-title" aria-modal="true" className="business-dialog people-review-dialog" role="dialog">
+        <header>
+          <div><p className="eyebrow">Credential review</p><h2 id="practitioner-verification-title">Review practitioner licence</h2></div>
+          <button aria-label="Close dialog" disabled={busy} onClick={onClose} type="button"><Icon name="close" /></button>
+        </header>
+        <form onSubmit={(event) => void submit(event)}>
+          <div className="business-dialog-record"><div><code>{practitioner.registration_number || 'No registration number'}</code><strong>{practitioner.full_name}</strong><small>{titleCase(practitioner.profession)}</small></div></div>
+          <p className="business-dialog-confirm"><Icon name="shield" /> Record the source checked and decision reason. Verification does not grant controlled-medicine authority.</p>
+          <div className="people-intake-grid">
+            <label className="business-field"><span>Review decision</span><select onChange={(event) => setVerificationState(event.target.value)} value={verificationState}><option value="VERIFIED">Verified</option><option value="MANUAL_REVIEW">Manual review</option><option value="REJECTED">Rejected</option></select></label>
+            <label className="business-field"><span>Licence status</span><select onChange={(event) => setLicenceStatus(event.target.value)} value={licenceStatus}><option value="VALID">Valid</option><option value="ACTIVE">Active</option><option value="UNVERIFIED">Unverified</option><option value="EXPIRED">Expired</option><option value="SUSPENDED">Suspended</option><option value="REVOKED">Revoked</option></select></label>
+            <label className="business-field people-intake-wide"><span>Review note</span><textarea onChange={(event) => setVerificationNote(event.target.value)} placeholder="What was checked and what decision was made?" required rows={3} value={verificationNote} /></label>
+            <label className="business-field people-intake-wide"><span>Evidence reference {verificationState !== 'VERIFIED' ? <small>Optional</small> : null}</span><input onChange={(event) => setEvidenceReference(event.target.value)} placeholder="Regulator register, document reference, or case number" required={verificationState === 'VERIFIED'} value={evidenceReference} /></label>
+          </div>
+          {error ? <p className="business-dialog-error" role="alert"><Icon name="alert" /> {error}</p> : null}
+          <footer><button className="secondary-button" disabled={busy} onClick={onClose} type="button">Cancel</button><button className="primary-button" disabled={busy || !verificationNote.trim() || (verificationState === 'VERIFIED' && !evidenceReference.trim())} type="submit">{busy ? 'Saving review…' : 'Record review'}</button></footer>
+        </form>
+      </section>
+    </div>
+  );
+}
+
+function PractitionerAuthorityDialog({
+  csrfToken,
+  practitioner,
+  onClose,
+  onUpdated,
+}: {
+  readonly csrfToken: string;
+  readonly practitioner: HQPractitioner;
+  readonly onClose: () => void;
+  readonly onUpdated: () => Promise<void>;
+}) {
+  const action = practitioner.controlled_medicine_authority ? 'REVOKE' : 'GRANT';
+  const [reason, setReason] = useState('');
+  const [evidenceReference, setEvidenceReference] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      await setPractitionerControlledAuthority(
+        practitioner.id,
+        { action, reason: reason.trim(), evidence_reference: evidenceReference.trim() },
+        csrfToken,
+      );
+      await onUpdated();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Could not update controlled-medicine authority.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="business-dialog-backdrop" onClick={(event) => { if (event.target === event.currentTarget && !busy) onClose(); }} role="presentation">
+      <section aria-labelledby="practitioner-authority-title" aria-modal="true" className="business-dialog people-review-dialog" role="dialog">
+        <header>
+          <div><p className="eyebrow">Controlled-medicine governance</p><h2 id="practitioner-authority-title">{action === 'GRANT' ? 'Grant prescriber authority' : 'Revoke prescriber authority'}</h2></div>
+          <button aria-label="Close dialog" disabled={busy} onClick={onClose} type="button"><Icon name="close" /></button>
+        </header>
+        <form onSubmit={(event) => void submit(event)}>
+          <div className="business-dialog-record"><div><code>{practitioner.registration_number || 'No registration number'}</code><strong>{practitioner.full_name}</strong><small>{titleCase(practitioner.profession)} · Licence {titleCase(practitioner.licence_status)}</small></div></div>
+          <p className="business-dialog-confirm"><Icon name={action === 'GRANT' ? 'shield' : 'alert'} /> {action === 'GRANT' ? 'This authority affects controlled-medicine prescribing. Grant only after checking current regulator evidence.' : 'This immediately removes controlled-medicine authority for this practitioner.'}</p>
+          <label className="business-field"><span>Reason</span><textarea onChange={(event) => setReason(event.target.value)} placeholder="Record the business reason for this decision" required rows={3} value={reason} /></label>
+          {action === 'GRANT' ? <label className="business-field"><span>Evidence reference</span><input onChange={(event) => setEvidenceReference(event.target.value)} placeholder="Regulator evidence or approval reference" required value={evidenceReference} /></label> : null}
+          {error ? <p className="business-dialog-error" role="alert"><Icon name="alert" /> {error}</p> : null}
+          <footer><button className="secondary-button" disabled={busy} onClick={onClose} type="button">Cancel</button><button className={action === 'GRANT' ? 'primary-button' : 'business-action-danger'} disabled={busy || !reason.trim() || (action === 'GRANT' && !evidenceReference.trim())} type="submit">{busy ? 'Saving…' : action === 'GRANT' ? 'Grant authority' : 'Revoke authority'}</button></footer>
+        </form>
+      </section>
+    </div>
   );
 }
 
@@ -6042,6 +7323,8 @@ function CatalogueView({
   onWorkspaceChanged,
   overview,
 }: BusinessViewProps & { readonly overview: HQOverview }) {
+  const [intakeOpen, setIntakeOpen] = useState(false);
+  const [createdNotice, setCreatedNotice] = useState('');
   if (failed) return <WorkspaceSectionError domain="medicine catalogue" />;
   if (!data) return <WorkspaceSectionLoading domain="medicine catalogue" />;
 
@@ -6067,7 +7350,11 @@ function CatalogueView({
       <article className="panel table-panel" id="catalogue-skus">
         <div className="table-toolbar">
           <PanelHeader eyebrow="Product master" title="Commercial medicine catalogue" />
+          <button className="primary-button" onClick={() => setIntakeOpen(true)} type="button">
+            <Icon name="plus" /> Create product &amp; SKU
+          </button>
         </div>
+        {createdNotice ? <p className="inline-success" role="status">{createdNotice}</p> : null}
         {skus.length ? (
           <div className="table-scroll">
             <table>
@@ -6093,7 +7380,132 @@ function CatalogueView({
       <div id="catalogue-layers">
         <CatalogueLayers />
       </div>
+      {intakeOpen ? (
+        <CatalogueSkuIntakeDialog
+          csrfToken={csrfToken}
+          initialTenantId={overview.tenant_id || overview.network_items.find((tenant) => tenant.status === 'ACTIVE')?.id || ''}
+          tenants={overview.is_platform_overview ? overview.network_items.filter((tenant) => tenant.status === 'ACTIVE') : []}
+          onClose={() => setIntakeOpen(false)}
+          onCreated={async (sku) => {
+            setIntakeOpen(false);
+            setCreatedNotice(`${sku.sku_code} created as a draft. Activate its clinical product after review to make the SKU available to operations.`);
+            await onWorkspaceChanged();
+          }}
+        />
+      ) : null}
     </>
+  );
+}
+
+function CatalogueSkuIntakeDialog({
+  csrfToken,
+  initialTenantId,
+  tenants,
+  onClose,
+  onCreated,
+}: {
+  readonly csrfToken: string;
+  readonly initialTenantId: string;
+  readonly tenants: readonly { readonly id: string; readonly name: string }[];
+  readonly onClose: () => void;
+  readonly onCreated: (sku: HQSku) => Promise<void>;
+}) {
+  const [tenantId, setTenantId] = useState(initialTenantId);
+  const [options, setOptions] = useState<CatalogueIntakeOptions | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [form, setForm] = useState({
+    clinical_code: '', canonical_name: '', dose_form_id: '', active_substance_id: '',
+    strength_value: '', strength_unit: 'mg', manufactured_code: '', brand_name: '',
+    manufacturer_id: '', market_authorisation_number: '', sku_code: '', display_name: '',
+    package_definition_id: '', default_barcode: '', tax_category: 'STANDARD',
+  });
+
+  useEffect(() => {
+    if (!tenantId) {
+      setOptions(null);
+      setLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    setLoading(true);
+    setError('');
+    loadCatalogueIntakeOptions(tenantId, controller.signal)
+      .then((value) => {
+        if (controller.signal.aborted) return;
+        setOptions(value);
+        setForm((current) => ({
+          ...current,
+          dose_form_id: value.dose_forms.some((item) => item.id === current.dose_form_id) ? current.dose_form_id : value.dose_forms[0]?.id ?? '',
+          active_substance_id: value.substances.some((item) => item.id === current.active_substance_id) ? current.active_substance_id : value.substances[0]?.id ?? '',
+          manufacturer_id: value.manufacturers.some((item) => item.id === current.manufacturer_id) ? current.manufacturer_id : '',
+          package_definition_id: value.packages.some((item) => item.id === current.package_definition_id) ? current.package_definition_id : value.packages[0]?.id ?? '',
+        }));
+      })
+      .catch((cause: unknown) => {
+        if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'Catalogue reference data could not be loaded.');
+      })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [tenantId]);
+
+  const setField = (name: keyof typeof form, value: string) => setForm((current) => ({ ...current, [name]: value }));
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      const input: CatalogueIntakeInput = {
+        ...form,
+        manufacturer_id: form.manufacturer_id || null,
+      };
+      const sku = await createCatalogueSku(input, tenantId, csrfToken);
+      await onCreated(sku);
+    } catch (cause: unknown) {
+      setError(cause instanceof Error ? cause.message : 'The product draft could not be created.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="business-dialog-backdrop" onClick={(event) => { if (event.target === event.currentTarget && !busy) onClose(); }} role="presentation">
+      <section aria-labelledby="catalogue-intake-title" aria-modal="true" className="business-dialog catalogue-intake-dialog" role="dialog">
+        <header>
+          <div><p className="eyebrow">Governed product onboarding</p><h2 id="catalogue-intake-title">Create product &amp; SKU</h2></div>
+          <button aria-label="Close dialog" disabled={busy} onClick={onClose} type="button"><Icon name="close" /></button>
+        </header>
+        {tenants.length ? (
+          <label className="business-field"><span>Operating tenant</span><select onChange={(event) => setTenantId(event.target.value)} required value={tenantId}>{tenants.map((tenant) => <option key={tenant.id} value={tenant.id}>{tenant.name}</option>)}</select></label>
+        ) : null}
+        {loading ? <p className="muted-cell">Loading active forms, ingredients, manufacturers, and packages…</p> : null}
+        {error && !options ? <p className="business-dialog-error" role="alert"><Icon name="alert" /> {error}</p> : null}
+        {options ? (
+          <form onSubmit={(event) => void submit(event)}>
+            <p className="business-dialog-confirm"><Icon name="shield" /> This creates a draft clinical product, brand record, and tenant SKU. It will not enter stock or sales until a catalogue reviewer activates it.</p>
+            <div className="catalogue-intake-grid">
+              <label className="business-field"><span>Clinical product code<b>Required</b></span><input maxLength={100} onChange={(event) => setField('clinical_code', event.target.value)} required value={form.clinical_code} /></label>
+              <label className="business-field"><span>Canonical medicine name<b>Required</b></span><input maxLength={255} onChange={(event) => setField('canonical_name', event.target.value)} required value={form.canonical_name} /></label>
+              <label className="business-field"><span>Dose form<b>Required</b></span><select onChange={(event) => setField('dose_form_id', event.target.value)} required value={form.dose_form_id}>{options.dose_forms.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+              <label className="business-field"><span>Active ingredient<b>Required</b></span><select onChange={(event) => setField('active_substance_id', event.target.value)} required value={form.active_substance_id}>{options.substances.map((item) => <option key={item.id} value={item.id}>{item.canonical_name}</option>)}</select></label>
+              <label className="business-field"><span>Strength<b>Required</b></span><input min="0.0001" onChange={(event) => setField('strength_value', event.target.value)} required step="0.0001" type="number" value={form.strength_value} /></label>
+              <label className="business-field"><span>Strength unit<b>Required</b></span><input maxLength={50} onChange={(event) => setField('strength_unit', event.target.value)} required value={form.strength_unit} /></label>
+              <label className="business-field"><span>Manufactured product code<b>Required</b></span><input maxLength={100} onChange={(event) => setField('manufactured_code', event.target.value)} required value={form.manufactured_code} /></label>
+              <label className="business-field"><span>Brand name<b>Required</b></span><input maxLength={255} onChange={(event) => setField('brand_name', event.target.value)} required value={form.brand_name} /></label>
+              <label className="business-field"><span>Manufacturer</span><select onChange={(event) => setField('manufacturer_id', event.target.value)} value={form.manufacturer_id}><option value="">Not recorded</option>{options.manufacturers.map((item) => <option key={item.id} value={item.id}>{item.legal_name}</option>)}</select></label>
+              <label className="business-field"><span>Market authorisation number</span><input maxLength={150} onChange={(event) => setField('market_authorisation_number', event.target.value)} value={form.market_authorisation_number} /></label>
+              <label className="business-field"><span>Tenant SKU code<b>Required</b></span><input maxLength={100} onChange={(event) => setField('sku_code', event.target.value)} required value={form.sku_code} /></label>
+              <label className="business-field"><span>SKU display name<b>Required</b></span><input maxLength={255} onChange={(event) => setField('display_name', event.target.value)} required value={form.display_name} /></label>
+              <label className="business-field"><span>Package definition<b>Required</b></span><select onChange={(event) => setField('package_definition_id', event.target.value)} required value={form.package_definition_id}>{options.packages.map((item) => <option key={item.id} value={item.id}>{item.description} · {item.unit_of_measure}</option>)}</select></label>
+              <label className="business-field"><span>Barcode / GTIN</span><input maxLength={100} onChange={(event) => setField('default_barcode', event.target.value)} value={form.default_barcode} /></label>
+            </div>
+            {error ? <p className="business-dialog-error" role="alert"><Icon name="alert" /> {error}</p> : null}
+            <footer><button className="secondary-button" disabled={busy} onClick={onClose} type="button">Cancel</button><button className="primary-button" disabled={busy || loading} type="submit">{busy ? 'Creating draft…' : 'Create draft product'}</button></footer>
+          </form>
+        ) : null}
+      </section>
+    </div>
   );
 }
 
@@ -7609,6 +9021,8 @@ function ClinicalView({
   const summary = useSummary(overview);
   const [clinicalTable, setClinicalTable] = useState<ClinicalTable>('encounters');
   const [selection, setSelection] = useState<ClinicalSelection | null>(null);
+  const [intakeOpen, setIntakeOpen] = useState(false);
+  const [intakeNotice, setIntakeNotice] = useState('');
   const openPrescriptions = metricValue(overview, 'Open prescriptions');
   const substitutions = data?.clinical.counts.substitutions ?? 0;
   const labels = data?.clinical.counts.dispensing_labels ?? 0;
@@ -7668,6 +9082,16 @@ function ClinicalView({
 
   return (
     <>
+      <section className="clinical-intake-bar">
+        <div>
+          <p className="eyebrow">Clinical record intake</p>
+          <strong>Record a governed encounter, condition or observation.</strong>
+        </div>
+        <button className="primary-button" onClick={() => setIntakeOpen(true)} type="button">
+          <Icon name="clinical" /> Add clinical record
+        </button>
+      </section>
+      {intakeNotice ? <p className="inline-success" role="status">{intakeNotice}</p> : null}
       <section className="metric-grid network-metrics" aria-label="Clinical governance totals">
         {clinicalMetrics.map((metric) => (
           <SummaryCard
@@ -7769,8 +9193,247 @@ function ClinicalView({
       </section>
 
       {selection ? <ClinicalEntityDetailDialog onClose={() => setSelection(null)} selection={selection} /> : null}
+      {intakeOpen ? (
+        <ClinicalIntakeDialog
+          csrfToken={csrfToken}
+          data={data}
+          onClose={() => setIntakeOpen(false)}
+          onCreated={async (kind) => {
+            setIntakeOpen(false);
+            setIntakeNotice(`${titleCase(kind.slice(0, -1))} recorded in the tenant clinical ledger.`);
+            await onWorkspaceChanged();
+          }}
+        />
+      ) : null}
     </>
   );
+}
+
+function ClinicalIntakeDialog({
+  csrfToken,
+  data,
+  onClose,
+  onCreated,
+}: {
+  readonly csrfToken: string;
+  readonly data: HQWorkspaceData | null;
+  readonly onClose: () => void;
+  readonly onCreated: (kind: ClinicalIntakeKind) => Promise<void>;
+}) {
+  const patients = data?.people.patients.filter((patient) => patient.is_active) ?? [];
+  const [kind, setKind] = useState<ClinicalIntakeKind>('encounters');
+  const [patientId, setPatientId] = useState(patients[0]?.id ?? '');
+  const [status, setStatus] = useState('IN_PROGRESS');
+  const [encounterClass, setEncounterClass] = useState('AMB');
+  const [code, setCode] = useState('');
+  const [system, setSystem] = useState('');
+  const [display, setDisplay] = useState('');
+  const [category, setCategory] = useState('');
+  const [verificationStatus, setVerificationStatus] = useState('UNCONFIRMED');
+  const [reasonCode, setReasonCode] = useState('');
+  const [startTime, setStartTime] = useState(() => localDateTimeValue());
+  const [endTime, setEndTime] = useState('');
+  const [onsetDate, setOnsetDate] = useState('');
+  const [effectiveTime, setEffectiveTime] = useState(() => localDateTimeValue());
+  const [valueKind, setValueKind] = useState<'quantity' | 'string'>('quantity');
+  const [valueQuantity, setValueQuantity] = useState('');
+  const [valueUnit, setValueUnit] = useState('');
+  const [valueString, setValueString] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const firstPatient = patients[0];
+    if (!patientId && firstPatient) setPatientId(firstPatient.id);
+  }, [patientId, patients]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !busy) onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [busy, onClose]);
+
+  const changeKind = (next: ClinicalIntakeKind) => {
+    setKind(next);
+    setStatus(next === 'encounters' ? 'IN_PROGRESS' : next === 'conditions' ? 'ACTIVE' : 'FINAL');
+    setError('');
+  };
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      let payload: ClinicalIntakeInput;
+      if (kind === 'encounters') {
+        payload = {
+          patient_id: patientId,
+          status,
+          encounter_class: encounterClass,
+          ...(startTime ? { start_time: new Date(startTime).toISOString() } : {}),
+          ...(endTime ? { end_time: new Date(endTime).toISOString() } : {}),
+          ...(reasonCode.trim() ? { reason_code: reasonCode.trim() } : {}),
+        };
+      } else if (kind === 'conditions') {
+        payload = {
+          patient_id: patientId,
+          clinical_status: status,
+          verification_status: verificationStatus,
+          code: code.trim(),
+          ...(system.trim() ? { system: system.trim() } : {}),
+          ...(display.trim() ? { display: display.trim() } : {}),
+          ...(category.trim() ? { category: category.trim() } : {}),
+          ...(onsetDate ? { onset_date: new Date(onsetDate).toISOString() } : {}),
+        };
+      } else {
+        payload = {
+          patient_id: patientId,
+          status,
+          code: code.trim(),
+          ...(system.trim() ? { system: system.trim() } : {}),
+          ...(display.trim() ? { display: display.trim() } : {}),
+          ...(category.trim() ? { category: category.trim() } : {}),
+          ...(effectiveTime ? { effective_time: new Date(effectiveTime).toISOString() } : {}),
+          ...(valueKind === 'quantity'
+            ? { value_quantity: valueQuantity, value_unit: valueUnit.trim() }
+            : { value_string: valueString.trim() }),
+        };
+      }
+      await ingestClinicalRecord(kind, payload, csrfToken);
+      await onCreated(kind);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'The clinical record could not be saved.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div
+      className="business-dialog-backdrop"
+      onClick={(event) => { if (event.target === event.currentTarget && !busy) onClose(); }}
+      role="presentation"
+    >
+      <section aria-labelledby="clinical-intake-title" aria-modal="true" className="business-dialog clinical-intake-dialog" role="dialog">
+        <header>
+          <div>
+            <p className="eyebrow">Tenant clinical ledger</p>
+            <h2 id="clinical-intake-title">Add clinical record</h2>
+          </div>
+          <button aria-label="Close dialog" disabled={busy} onClick={onClose} type="button"><Icon name="close" /></button>
+        </header>
+        {patients.length === 0 ? (
+          <EmptyState icon="patients" title="No active patients available" detail="Create or activate a patient record before adding clinical data." />
+        ) : (
+          <form onSubmit={(event) => void submit(event)}>
+            <div className="clinical-intake-grid">
+              <label className="business-field">
+                <span>Record type</span>
+                <select onChange={(event) => changeKind(event.target.value as ClinicalIntakeKind)} value={kind}>
+                  <option value="encounters">Encounter</option>
+                  <option value="conditions">Condition</option>
+                  <option value="observations">Observation</option>
+                </select>
+              </label>
+              <label className="business-field">
+                <span>Patient</span>
+                <select onChange={(event) => setPatientId(event.target.value)} required value={patientId}>
+                  {patients.map((patient) => (
+                    <option key={patient.id} value={patient.id}>{patient.full_name} · {patient.patient_number}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            {kind === 'encounters' ? (
+              <>
+                <div className="clinical-intake-grid">
+                  <label className="business-field">
+                    <span>Encounter status</span>
+                    <select onChange={(event) => setStatus(event.target.value)} value={status}>
+                      {['PLANNED', 'ARRIVED', 'TRIAGED', 'IN_PROGRESS', 'ONLEAVE', 'FINISHED', 'CANCELLED'].map((item) => <option key={item} value={item}>{titleCase(item)}</option>)}
+                    </select>
+                  </label>
+                  <label className="business-field">
+                    <span>Encounter class</span>
+                    <select onChange={(event) => setEncounterClass(event.target.value)} value={encounterClass}>
+                      {['AMB', 'EMER', 'FLD', 'HH', 'IMP', 'OBSENC', 'PRENC', 'SS', 'VR'].map((item) => <option key={item} value={item}>{item}</option>)}
+                    </select>
+                  </label>
+                </div>
+                <div className="clinical-intake-grid">
+                  <label className="business-field"><span>Start time</span><input onChange={(event) => setStartTime(event.target.value)} type="datetime-local" value={startTime} /></label>
+                  <label className="business-field"><span>End time <small>Required when finished</small></span><input onChange={(event) => setEndTime(event.target.value)} type="datetime-local" value={endTime} /></label>
+                </div>
+                <label className="business-field"><span>Reason code <small>Optional</small></span><input maxLength={100} onChange={(event) => setReasonCode(event.target.value)} value={reasonCode} /></label>
+              </>
+            ) : (
+              <>
+                <div className="clinical-intake-grid">
+                  <label className="business-field">
+                    <span>{kind === 'conditions' ? 'Clinical status' : 'Observation status'}</span>
+                    <select onChange={(event) => setStatus(event.target.value)} value={status}>
+                      {(kind === 'conditions'
+                        ? ['ACTIVE', 'RECURRENCE', 'RELAPSE', 'INACTIVE', 'REMISSION', 'RESOLVED']
+                        : ['REGISTERED', 'PRELIMINARY', 'FINAL', 'AMENDED', 'CORRECTED', 'CANCELLED', 'UNKNOWN']
+                      ).map((item) => <option key={item} value={item}>{titleCase(item)}</option>)}
+                    </select>
+                  </label>
+                  {kind === 'conditions' ? (
+                    <label className="business-field">
+                      <span>Verification</span>
+                      <select onChange={(event) => setVerificationStatus(event.target.value)} value={verificationStatus}>
+                        {['UNCONFIRMED', 'PROVISIONAL', 'DIFFERENTIAL', 'CONFIRMED', 'REFUTED', 'ENTERED_IN_ERROR'].map((item) => <option key={item} value={item}>{titleCase(item)}</option>)}
+                      </select>
+                    </label>
+                  ) : (
+                    <label className="business-field"><span>Category <small>Optional</small></span><input maxLength={100} onChange={(event) => setCategory(event.target.value)} value={category} /></label>
+                  )}
+                </div>
+                {kind === 'conditions' ? (
+                  <label className="business-field"><span>Category <small>Optional</small></span><input maxLength={100} onChange={(event) => setCategory(event.target.value)} value={category} /></label>
+                ) : null}
+                <div className="clinical-intake-grid">
+                  <label className="business-field"><span>Code</span><input maxLength={100} onChange={(event) => setCode(event.target.value)} required value={code} /></label>
+                  <label className="business-field"><span>Code system <small>Optional</small></span><input maxLength={255} onChange={(event) => setSystem(event.target.value)} placeholder="https://…" value={system} /></label>
+                </div>
+                <label className="business-field"><span>Display text <small>Optional</small></span><input maxLength={255} onChange={(event) => setDisplay(event.target.value)} value={display} /></label>
+                {kind === 'conditions' ? (
+                  <label className="business-field"><span>Onset time <small>Optional</small></span><input onChange={(event) => setOnsetDate(event.target.value)} type="datetime-local" value={onsetDate} /></label>
+                ) : (
+                  <>
+                    <label className="business-field"><span>Effective time</span><input onChange={(event) => setEffectiveTime(event.target.value)} type="datetime-local" value={effectiveTime} /></label>
+                    <div className="clinical-intake-grid">
+                      <label className="business-field"><span>Value type</span><select onChange={(event) => setValueKind(event.target.value as 'quantity' | 'string')} value={valueKind}><option value="quantity">Measured quantity</option><option value="string">Text value</option></select></label>
+                      {valueKind === 'quantity' ? (
+                        <label className="business-field"><span>Value</span><input inputMode="decimal" onChange={(event) => setValueQuantity(event.target.value)} required type="number" value={valueQuantity} /></label>
+                      ) : (
+                        <label className="business-field"><span>Value</span><input maxLength={255} onChange={(event) => setValueString(event.target.value)} required value={valueString} /></label>
+                      )}
+                    </div>
+                    {valueKind === 'quantity' ? <label className="business-field"><span>Unit</span><input maxLength={50} onChange={(event) => setValueUnit(event.target.value)} required value={valueUnit} /></label> : null}
+                  </>
+                )}
+              </>
+            )}
+
+            {error ? <p className="business-dialog-error" role="alert"><Icon name="alert" /> {error}</p> : null}
+            <footer>
+              <button className="secondary-button" disabled={busy} onClick={onClose} type="button">Cancel</button>
+              <button className="primary-button" disabled={busy} type="submit">{busy ? 'Saving…' : 'Record clinical data'}</button>
+            </footer>
+          </form>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function localDateTimeValue(): string {
+  const now = new Date();
+  return new Date(now.getTime() - now.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
 }
 
 function AccessView({

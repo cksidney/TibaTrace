@@ -397,6 +397,7 @@ def build_hq_workspace_context(tenant_id, actor=None):
                     "registration_number": practitioner.registration_number,
                     "licence_status": practitioner.licence_status,
                     "verification_state": practitioner.verification_state,
+                    "controlled_medicine_authority": practitioner.controlled_medicine_authority,
                     "status": practitioner.status,
                 }
                 for practitioner in practitioners.order_by("-updated_at")[:20]

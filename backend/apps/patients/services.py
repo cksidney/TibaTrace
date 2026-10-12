@@ -131,6 +131,12 @@ class PatientGovernanceService:
             "patients.write",
         )
         identifier_type = str(identifier_type or "OTHER").upper()
+        if verification_status != "UNVERIFIED":
+            raise ValidationError(
+                "A new patient identifier starts unverified. Use the evidence-backed review workflow to change its status."
+            )
+        if issue_date and expiry_date and expiry_date < issue_date:
+            raise ValidationError({"expiry_date": "An identifier cannot expire before it was issued."})
         normalized = PatientIdentifierProtector.normalize(value)
         identifier = PatientIdentifier.all_objects.create(
             tenant_id=patient.tenant_id,
@@ -167,6 +173,71 @@ class PatientGovernanceService:
             },
         )
         return identifier
+
+    @staticmethod
+    @transaction.atomic
+    def verify_identifier(
+        *, identifier, actor, verification_status, verification_note, evidence_reference=""
+    ):
+        _require_capability(
+            actor,
+            identifier.tenant_id,
+            "patients.identity.manage",
+            "patients.write",
+        )
+        verification_note = str(verification_note or "").strip()
+        evidence_reference = str(evidence_reference or "").strip()
+        if not verification_note:
+            raise ValidationError({"verification_note": "A review note is required."})
+        if verification_status == "VERIFIED" and not evidence_reference:
+            raise ValidationError({"evidence_reference": "Verification requires an evidence reference."})
+        if verification_status not in {"VERIFIED", "REJECTED", "EXPIRED"}:
+            raise ValidationError({"verification_status": "Choose a review outcome."})
+
+        locked = PatientIdentifier.all_objects.select_for_update().get(
+            pk=identifier.pk,
+            tenant_id=identifier.tenant_id,
+        )
+        today = timezone.localdate()
+        if verification_status == "VERIFIED":
+            if locked.expiry_date and locked.expiry_date < today:
+                raise ValidationError("An expired patient identifier cannot be marked verified.")
+            if locked.issue_date and locked.issue_date > today:
+                raise ValidationError("A future-dated patient identifier cannot be marked verified.")
+        locked.verification_status = verification_status
+        locked.verified_by = actor if verification_status == "VERIFIED" else None
+        locked.save(update_fields=["verification_status", "verified_by", "updated_at"])
+        log_audit(
+            tenant_id=locked.tenant_id,
+            action="PATIENT_IDENTIFIER_REVIEWED",
+            model_name="PatientIdentifier",
+            object_id=locked.id,
+            actor_id=actor.id,
+            metadata={
+                "patient_id": str(locked.patient_id),
+                "verification_status": verification_status,
+                "verification_note": verification_note,
+                "evidence_reference": evidence_reference,
+                "masked_value": locked.masked_value,
+            },
+        )
+        emit_event(
+            tenant_id=locked.tenant_id,
+            aggregate_type="PatientIdentifier",
+            aggregate_id=locked.id,
+            event_type="PatientIdentifierReviewed",
+            payload={
+                "tenant": str(locked.tenant_id),
+                "actor": str(actor.id),
+                "patient": str(locked.patient_id),
+                "identifier": str(locked.id),
+                "verification_status": verification_status,
+                "evidence_reference": evidence_reference,
+                "event_version": 1,
+                "timestamp": timezone.now().isoformat(),
+            },
+        )
+        return locked
 
     @staticmethod
     def reveal_identifier(*, identifier, actor, reason):

@@ -9,9 +9,64 @@ from apps.inventory.models import (
     InventoryLedgerEntry,
     InventoryLocation,
     InventoryReservation,
+    StocktakeCount,
+    StocktakeSession,
     StockTransfer,
     StockTransferLine,
 )
+
+
+class StocktakeCountSerializer(serializers.ModelSerializer):
+    sku_code = serializers.CharField(source="sku.sku_code", read_only=True)
+    sku_name = serializers.CharField(source="sku.display_name", read_only=True)
+    location_name = serializers.CharField(source="location.name", read_only=True)
+    batch_number = serializers.CharField(
+        source="batch.manufacturer_batch_number", read_only=True, allow_null=True
+    )
+
+    class Meta:
+        model = StocktakeCount
+        fields = [
+            "id", "location", "location_name", "sku", "sku_code", "sku_name",
+            "batch", "batch_number", "expected_quantity", "counted_quantity",
+            "variance", "reason", "counter", "timestamp",
+        ]
+
+
+class StocktakeSessionSerializer(serializers.ModelSerializer):
+    branch_name = serializers.CharField(source="branch.name", read_only=True)
+    locations = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
+    created_by_username = serializers.CharField(source="created_by.username", read_only=True, allow_null=True)
+    approved_by_username = serializers.CharField(source="approved_by.username", read_only=True, allow_null=True)
+    counts = StocktakeCountSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = StocktakeSession
+        fields = [
+            "id", "branch", "branch_name", "locations", "scope", "status",
+            "document_number", "start_time", "end_time", "created_by_username",
+            "approved_by_username", "counts", "created_at", "updated_at",
+        ]
+
+
+class StocktakeOpenSerializer(serializers.Serializer):
+    branch_id = serializers.UUIDField()
+    location_ids = serializers.ListField(child=serializers.UUIDField(), min_length=1, max_length=100)
+    scope = serializers.ChoiceField(choices=["FULL", "PARTIAL", "CYCLE"], default="PARTIAL")
+    document_number = serializers.CharField(max_length=100, required=False, allow_blank=True)
+
+    def validate_location_ids(self, value):
+        if len(set(value)) != len(value):
+            raise serializers.ValidationError("Choose each count location only once.")
+        return value
+
+
+class StocktakeCountInputSerializer(serializers.Serializer):
+    location_id = serializers.UUIDField()
+    sku_id = serializers.UUIDField()
+    batch_id = serializers.UUIDField(required=False, allow_null=True)
+    counted_quantity = serializers.DecimalField(max_digits=15, decimal_places=4, min_value=0)
+    reason = serializers.CharField(max_length=1000, required=False, allow_blank=True)
 
 
 class InventoryLocationSerializer(serializers.ModelSerializer):
@@ -37,6 +92,16 @@ class InventoryLocationSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
+
+
+class InventoryLocationProvisionSerializer(serializers.Serializer):
+    branch_id = serializers.UUIDField()
+    location_code = serializers.CharField(max_length=100)
+    name = serializers.CharField(max_length=255)
+    location_type = serializers.ChoiceField(
+        choices=InventoryLocation.LocationType.choices,
+        default=InventoryLocation.LocationType.STORE,
+    )
 
 
 class InventoryBatchSerializer(serializers.ModelSerializer):

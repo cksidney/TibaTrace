@@ -33,15 +33,33 @@ class PatientIdentifierCreateSerializer(serializers.Serializer):
     identifier_type = serializers.ChoiceField(
         choices=PatientIdentifier.IDENTIFIER_TYPES
     )
-    value = serializers.CharField(write_only=True)
-    system = serializers.CharField(required=False, allow_blank=True)
-    verification_status = serializers.ChoiceField(
-        choices=PatientIdentifier.VERIFICATION_STATUSES,
-        default="UNVERIFIED",
-    )
-    issuing_authority = serializers.CharField(required=False, allow_blank=True)
+    value = serializers.CharField(max_length=255, write_only=True)
+    system = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    issuing_authority = serializers.CharField(max_length=160, required=False, allow_blank=True)
     issue_date = serializers.DateField(required=False, allow_null=True)
     expiry_date = serializers.DateField(required=False, allow_null=True)
+
+    def validate(self, attrs):
+        if "verification_status" in self.initial_data:
+            raise serializers.ValidationError(
+                {"verification_status": "New identifiers always start unverified. Use the review action to record a decision."}
+            )
+        return attrs
+
+
+class PatientIdentifierVerificationSerializer(serializers.Serializer):
+    verification_status = serializers.ChoiceField(
+        choices=("VERIFIED", "REJECTED", "EXPIRED")
+    )
+    verification_note = serializers.CharField(max_length=1000)
+    evidence_reference = serializers.CharField(max_length=255, required=False, allow_blank=True)
+
+    def validate(self, attrs):
+        if attrs["verification_status"] == "VERIFIED" and not attrs.get("evidence_reference", "").strip():
+            raise serializers.ValidationError(
+                {"evidence_reference": "Verification requires an identity evidence reference."}
+            )
+        return attrs
 
 
 class PatientAllergySerializer(serializers.ModelSerializer):
@@ -67,7 +85,16 @@ class PatientAllergySerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         )
-        read_only_fields = ("id", "recorded_by", "created_at", "updated_at")
+        read_only_fields = (
+            "id",
+            "verification_status",
+            "recorded_by",
+            "reviewed_by",
+            "status",
+            "is_active",
+            "created_at",
+            "updated_at",
+        )
 
 
 class PatientMedicationSerializer(serializers.ModelSerializer):

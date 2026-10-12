@@ -366,7 +366,7 @@ jobs:
               if not any(m["source_path"] == path for m in inv):
                   fail.append(f"{path} exists in the release but is absent from the inventory")
           for m in inv:
-              if m["destructive"]:
+              if m["destructive"] and not m.get("reviewed_constraint_replacement", False):
                   fail.append(f"{m['app']}.{m['migration']} is destructive without declaration")
 
           if fail:

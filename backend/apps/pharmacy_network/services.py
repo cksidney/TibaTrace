@@ -211,6 +211,7 @@ class PharmacyOnboardingService:
         from. Until now only the demo seed created these, which meant real
         onboarding had no path at all.
         """
+        from apps.inventory.location_services import InventoryLocationProvisioningService
         from apps.organizations.models import Location, Organization
 
         if tenant.status != Tenant.STATUS_PROSPECT:
@@ -232,6 +233,12 @@ class PharmacyOnboardingService:
         branch = Location.all_objects.create(
             tenant=tenant, organization=organization,
             code=branch_code.strip().upper(), name=branch_name.strip(),
+        )
+        InventoryLocationProvisioningService.provision_standard_layout(
+            tenant=tenant,
+            branch=branch,
+            prefix=branch.code,
+            actor=actor,
         )
 
         profile = getattr(tenant, "pharmacy_profile", None)

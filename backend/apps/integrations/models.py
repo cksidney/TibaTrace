@@ -376,15 +376,18 @@ class ProviderActivationRequest(TimestampedModel):
     class RequestState(models.TextChoices):
         REQUESTED = "REQUESTED", "Requested"
         UNDER_REVIEW = "UNDER_REVIEW", "Under review"
+        SECURITY_REVIEW = "SECURITY_REVIEW", "Security review"
         SANDBOX_CONFIGURED = "SANDBOX_CONFIGURED", "Sandbox configured"
         SANDBOX_TESTING = "SANDBOX_TESTING", "Sandbox testing"
         SANDBOX_PASSED = "SANDBOX_PASSED", "Sandbox passed"
+        CERTIFICATION_REVIEW = "CERTIFICATION_REVIEW", "Certification review"
         SECURITY_APPROVED = "SECURITY_APPROVED", "Security approved"
         PRODUCTION_APPROVED = "PRODUCTION_APPROVED", "Production approved"
         ACTIVE = "ACTIVE", "Active"
-        REJECTED = "REJECTED", "Rejected"
         SUSPENDED = "SUSPENDED", "Suspended"
+        REVOKED = "REVOKED", "Revoked"
         DECOMMISSIONED = "DECOMMISSIONED", "Decommissioned"
+        REJECTED = "REJECTED", "Rejected"
 
     provider = models.ForeignKey(
         ProviderConfiguration,

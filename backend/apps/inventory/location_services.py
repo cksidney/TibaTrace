@@ -17,7 +17,9 @@ from __future__ import annotations
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 
+from apps.audit.service import log_audit
 from apps.inventory.models import InventoryLocation
+from apps.workflows.service import emit_event
 
 LocationType = InventoryLocation.LocationType
 
@@ -69,7 +71,7 @@ class InventoryLocationProvisioningService:
         `extra_capabilities` may add to them but is applied after, so it cannot
         quietly remove a safety flag the type implies.
         """
-        location_code = str(location_code or "").strip()
+        location_code = str(location_code or "").strip().upper()
         name = str(name or "").strip()
         if not location_code:
             raise ValidationError("A storage location requires a code.")
@@ -81,6 +83,8 @@ class InventoryLocationProvisioningService:
             raise ValidationError(
                 "The branch belongs to a different tenant than the storage location."
             )
+        if branch.status != "ACTIVE" or branch.organization.status != "ACTIVE":
+            raise ValidationError("Storage locations can only be provisioned for an active branch and organisation.")
         if location_type not in LocationType.values:
             known = ", ".join(LocationType.values)
             raise ValidationError(f"Unknown storage type {location_type!r}. Known: {known}")
@@ -109,7 +113,7 @@ class InventoryLocationProvisioningService:
                 )
             capabilities[key] = value
 
-        return InventoryLocation.all_objects.create(
+        location = InventoryLocation.all_objects.create(
             tenant=tenant,
             branch=branch,
             parent_location=parent_location,
@@ -119,6 +123,35 @@ class InventoryLocationProvisioningService:
             status=InventoryLocation.Status.ACTIVE,
             **capabilities,
         )
+        log_audit(
+            tenant_id=tenant.id,
+            action="INVENTORY_LOCATION_PROVISIONED",
+            model_name="InventoryLocation",
+            object_id=location.id,
+            actor_id=getattr(actor, "id", None),
+            metadata={
+                "branch_id": str(branch.id),
+                "location_code": location.location_code,
+                "location_type": location.location_type,
+                "capabilities": capabilities,
+            },
+        )
+        emit_event(
+            tenant_id=tenant.id,
+            aggregate_type="InventoryLocation",
+            aggregate_id=location.id,
+            event_type="InventoryLocationProvisioned",
+            payload={
+                "tenant": str(tenant.id),
+                "actor": str(getattr(actor, "id", "") or ""),
+                "branch": str(branch.id),
+                "location": str(location.id),
+                "location_code": location.location_code,
+                "location_type": location.location_type,
+                "event_version": 1,
+            },
+        )
+        return location
 
     @staticmethod
     @transaction.atomic
