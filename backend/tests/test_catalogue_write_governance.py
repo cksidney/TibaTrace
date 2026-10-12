@@ -18,6 +18,7 @@ from rest_framework.test import APIClient
 from apps.customers.models import Customer
 from apps.identity.models import User
 from apps.medicines.models import (
+    ActiveSubstance,
     ClinicalMedicinalProduct,
     CommercialSKU,
     DoseForm,
@@ -28,6 +29,45 @@ from apps.medicines.models import (
 from apps.tenancy.models import Tenant
 
 PASSWORD = "governance-password-long"
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("reference_scope", ["tenant", "global", "other-substance", "other-manufacturer"])
+def test_intake_accepts_only_visible_catalogue_references(admin_user, reference_scope):
+    tenant = Tenant.objects.create(name="Intake tenant", slug="intake-tenant")
+    other = Tenant.objects.create(name="Other intake tenant", slug="other-intake-tenant")
+    substance_owner = None if reference_scope == "global" else other if reference_scope == "other-substance" else tenant
+    manufacturer_owner = None if reference_scope == "global" else other if reference_scope == "other-manufacturer" else tenant
+    substance = ActiveSubstance.all_objects.create(
+        tenant=substance_owner, is_global=substance_owner is None,
+        code="INTAKE-INGREDIENT", canonical_name="Synthetic intake ingredient", display_name="Synthetic ingredient",
+    )
+    manufacturer = Manufacturer.all_objects.create(
+        tenant=manufacturer_owner, is_global=manufacturer_owner is None,
+        code="INTAKE-MANUFACTURER", legal_name="Synthetic manufacturer",
+    )
+    dose = DoseForm.objects.create(code="INTAKE-TAB", name="Synthetic tablet")
+    package = PackageDefinition.objects.create(code="INTAKE-PACK", description="Synthetic pack", unit_of_measure="tablet")
+    client = APIClient()
+    client.force_login(admin_user)
+    response = client.post("/api/medicines/skus/intake/", {
+        "clinical_code": "INTAKE-CLINICAL", "canonical_name": "Synthetic intake medicine",
+        "dose_form_id": str(dose.pk), "active_substance_id": str(substance.pk),
+        "strength_value": "5", "strength_unit": "mg", "manufactured_code": "INTAKE-MANUFACTURED",
+        "brand_name": "Synthetic brand", "manufacturer_id": str(manufacturer.pk),
+        "sku_code": "INTAKE-SKU", "display_name": "Synthetic intake SKU",
+        "package_definition_id": str(package.pk),
+    }, format="json", HTTP_X_TENANT_ID=str(tenant.pk))
+    if reference_scope.startswith("other-"):
+        assert response.status_code == 400, response.content
+        key = "active_substance_id" if reference_scope == "other-substance" else "manufacturer_id"
+        assert key in response.data
+        assert not CommercialSKU.all_objects.filter(tenant=tenant).exists()
+    else:
+        assert response.status_code == 201, response.content
+        sku = CommercialSKU.all_objects.get(tenant=tenant)
+        assert sku.status == "DRAFT"
+        assert sku.manufactured_product.manufacturer_id == manufacturer.pk
 
 
 @pytest.fixture(autouse=True)

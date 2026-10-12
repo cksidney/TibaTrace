@@ -242,17 +242,18 @@ class CommercialSKUViewSet(TenantScopedQuerysetMixin, viewsets.ReadOnlyModelView
 
         tenant = get_object_or_404(Tenant, pk=tenant_id)
         dose_form = get_object_or_404(DoseForm.objects.filter(is_active=True), pk=values["dose_form_id"])
+        # Bound reference visibility before resolving the submitted identifier.
         substance = ActiveSubstance.all_objects.filter(
-            pk=values["active_substance_id"], status="ACTIVE"
-        ).filter(Q(tenant_id=tenant_id) | Q(tenant__isnull=True, is_global=True)).first()
+            Q(tenant_id=tenant_id) | Q(tenant__isnull=True, is_global=True)
+        ).filter(pk=values["active_substance_id"], status="ACTIVE").first()
         if substance is None:
             raise serializers.ValidationError({"active_substance_id": "Select an active ingredient available to this tenant."})
         package = get_object_or_404(PackageDefinition.objects.filter(is_active=True), pk=values["package_definition_id"])
         manufacturer = None
         if values.get("manufacturer_id"):
-            manufacturer = Manufacturer.all_objects.filter(pk=values["manufacturer_id"]).filter(
+            manufacturer = Manufacturer.all_objects.filter(
                 Q(tenant_id=tenant_id) | Q(tenant__isnull=True, is_global=True)
-            ).first()
+            ).filter(pk=values["manufacturer_id"]).first()
             if manufacturer is None:
                 raise serializers.ValidationError({"manufacturer_id": "Select a manufacturer available to this tenant."})
 

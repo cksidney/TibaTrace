@@ -24,6 +24,7 @@ def log_audit(
 def log_platform_audit(*, actor_id, action, model_name, object_id, metadata=None, outcome="SUCCESS"):
     from apps.identity.models import User
 
+    # tenant-safety: platform-audit-authority-check
     actor = User.objects.filter(pk=actor_id, is_active=True).first()
     if not actor or not (actor.is_platform_admin or actor.is_superuser):
         raise PermissionDenied("Platform audit writes require explicit platform authority.")

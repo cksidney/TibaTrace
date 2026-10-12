@@ -33,7 +33,7 @@ from apps.organizations.services import (
     SiteProvisioningService,
 )
 from apps.practitioners.models import Practitioner
-from apps.practitioners.services import PractitionerRegistrationService
+from apps.practitioners.services import PractitionerRegistrationService, PrescriberGovernanceService
 from apps.tenancy.models import Tenant
 
 LocationType = InventoryLocation.LocationType
@@ -380,9 +380,17 @@ def test_controlled_authority_refused_for_expired_licence(db, tenant, actor):
     p = PractitionerRegistrationService.register_practitioner(
         tenant=tenant, first_name="Daniel", last_name="Kiptoo", profession="DOCTOR",
         registration_number="KMPDC-1004",
-        licence_expiry_date=date.today() - timedelta(days=1),
+        licence_expiry_date=date.today() + timedelta(days=365),
     )
-    Practitioner.all_objects.filter(pk=p.pk).update(verification_state="VERIFIED")
+    p = PrescriberGovernanceService.verify(
+        practitioner=p, actor=actor, licence_status="VALID",
+        verification_note="Synthetic manual verification for the expiry regression.",
+        evidence_reference="TEST-LICENCE-1004",
+    )
+    # Model the previously verified licence reaching its expiry date.
+    Practitioner.all_objects.filter(tenant=tenant, pk=p.pk).update(
+        licence_expiry_date=date.today() - timedelta(days=1)
+    )
     p.refresh_from_db()
     with pytest.raises(ValidationError, match="expired"):
         PractitionerRegistrationService.grant_controlled_medicine_authority(
@@ -396,8 +404,11 @@ def test_controlled_authority_granted_and_revoked_with_attribution(db, tenant, a
         registration_number="KMPDC-1005",
         licence_expiry_date=date.today() + timedelta(days=365),
     )
-    Practitioner.all_objects.filter(pk=p.pk).update(verification_state="VERIFIED")
-    p.refresh_from_db()
+    p = PrescriberGovernanceService.verify(
+        practitioner=p, actor=actor, licence_status="VALID",
+        verification_note="Synthetic manual verification for the authority regression.",
+        evidence_reference="TEST-LICENCE-1005",
+    )
 
     PractitionerRegistrationService.grant_controlled_medicine_authority(
         practitioner=p, actor=actor, reason="authorised prescriber", evidence_reference="REF-1",

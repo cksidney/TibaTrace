@@ -60,6 +60,7 @@ class PlatformAuditEvent(TimestampedModel):
         ]
 
     def save(self, *args, **kwargs):
+        # tenant-safety: immutable-existence-check
         if self.pk and PlatformAuditEvent.objects.filter(pk=self.pk).exists():
             raise ValidationError("Platform audit events are immutable.")
         if not self.actor_id:

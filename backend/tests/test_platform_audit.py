@@ -29,6 +29,31 @@ def test_platform_audit_is_separate_and_model_immutable(admin_user, cashier_user
     assert PlatformAuditEvent.objects.count() == 1
 
 
+def test_platform_audit_refuses_inactive_authority(admin_user):
+    admin_user.is_active = False
+    admin_user.save(update_fields=["is_active"])
+    with pytest.raises(PermissionDenied):
+        log_platform_audit(
+            actor_id=admin_user.pk, action="INACTIVE_AUTHORITY", model_name="ProviderConfiguration", object_id="test",
+        )
+    assert not PlatformAuditEvent.objects.exists()
+
+
+def test_platform_audit_lookup_exception_is_confined_to_writer(tmp_path):
+    from apps.prescription.management.lookup_safety import find_unscoped_uuid_lookups
+
+    source = "# tenant-safety: platform-audit-authority-check\nUser.objects.filter(pk=actor_id, is_active=True)\n"
+    approved = tmp_path / "audit" / "service.py"
+    approved.parent.mkdir()
+    approved.write_text(source)
+    assert find_unscoped_uuid_lookups(tmp_path) == []
+    unrelated = tmp_path / "unrelated.py"
+    unrelated.write_text(source)
+    findings = find_unscoped_uuid_lookups(tmp_path)
+    assert len(findings) == 1
+    assert findings[0].path == "unrelated.py"
+
+
 def test_platform_provider_forms_write_audit_without_tenant(admin_user):
     client = APIClient()
     client.force_login(admin_user)

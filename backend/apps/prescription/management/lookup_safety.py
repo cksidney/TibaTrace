@@ -54,6 +54,11 @@ REVIEWED_SITE_MARKERS: dict[str, str | None] = {
     # that token is bound to the user's pk, password hash and last_login, so it
     # cannot be replayed against a different user.
     "# tenant-safety: global-credential-recovery": "identity/api/session_views.py",
+    # Platform audit writes are global, not tenant operations. This lookup only
+    # resolves the named actor before checking active platform-admin/superuser
+    # authority; it does not expose user data or authorize a tenant operation.
+    # Reviewed on 2026-10-12 and confined to the platform audit writer.
+    "# tenant-safety: platform-audit-authority-check": "audit/service.py",
 }
 
 
