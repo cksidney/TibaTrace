@@ -81,7 +81,6 @@ import {
   probeEndpointHeartbeat,
   loadTenantSkus,
   readSession,
-  changeOwnPassword,
   reactivateCustomer,
   SignInError,
   signIn,
@@ -175,6 +174,7 @@ import type {
   ShiftReportSummary,
 } from './api.js';
 import { Icon } from './icons.js';
+import { RequiredPasswordChange } from './RequiredPasswordChange.js';
 import type { IconName } from './icons.js';
 import { ProcurementWorkspace } from './ProcurementWorkspace.js';
 import { TenantManagement } from './TenantManagement.js';
@@ -326,38 +326,6 @@ const viewMeta: Record<WorkspaceView, { readonly eyebrow: string; readonly title
     description: 'Understand the current security scope and move into audited identity administration.',
   },
 };
-
-function RequiredPasswordChange({ csrfToken, onChanged, onSignOut }: {
-  csrfToken: string; onChanged: () => Promise<void>; onSignOut: () => Promise<void>;
-}) {
-  const [current, setCurrent] = useState('');
-  const [next, setNext] = useState('');
-  const [confirmation, setConfirmation] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  return <main className="auth-page"><section className="panel" style={{ maxWidth: 520, margin: '10vh auto', padding: 32 }}>
-    <h1>Secure your account</h1><p>Replace your temporary password before opening your workspace.</p>
-    <form onSubmit={(event) => {
-      event.preventDefault(); setError('');
-      if (next !== confirmation) { setError('New passwords do not match.'); return; }
-      setBusy(true);
-      void changeOwnPassword(current, next, csrfToken).then(async () => {
-        setCurrent(''); setNext(''); setConfirmation(''); await onChanged();
-      }).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : 'Password change failed.'))
-        .finally(() => setBusy(false));
-    }}>
-      <label htmlFor="temporary-password">Current temporary password</label>
-      <input id="temporary-password" type="password" autoComplete="current-password" required value={current} onChange={(event) => setCurrent(event.target.value)} />
-      <label htmlFor="replacement-password">New password</label>
-      <input id="replacement-password" type="password" autoComplete="new-password" required minLength={12} value={next} onChange={(event) => setNext(event.target.value)} />
-      <label htmlFor="replacement-confirm">Confirm new password</label>
-      <input id="replacement-confirm" type="password" autoComplete="new-password" required value={confirmation} onChange={(event) => setConfirmation(event.target.value)} />
-      {error && <p role="alert">{error}</p>}
-      <button type="submit" className="primary-button" disabled={busy}>{busy ? 'Updating…' : 'Change password'}</button>
-      <button type="button" className="secondary-button" disabled={busy} onClick={() => void onSignOut()}>Sign out</button>
-    </form>
-  </section></main>;
-}
 
 export function App() {
   const [session, setSession] = useState<SessionState | null>(null);
