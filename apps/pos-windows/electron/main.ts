@@ -11,6 +11,7 @@ import type { StoredPosSession } from './sessionStore.js';
 import { EncryptedOfflineStore } from './offlineStore.js';
 import { EncryptedActivationStore, type DeviceActivation } from './activationStore.js';
 import { renderPrintDocument } from './printDocument.js';
+import { installedClientMetadata } from './clientMetadata.js';
 
 const currentDirectory = dirname(fileURLToPath(import.meta.url));
 const DEV_SERVER = process.env['VITE_DEV_SERVER_URL'];
@@ -54,6 +55,7 @@ interface TokenPayload {
 
 let sessionStore: EncryptedSessionStore;
 let deviceId = '';
+let clientMetadata: { version: string; buildNumber: number };
 
 function createWindow(): void {
   const window = new BrowserWindow({
@@ -95,6 +97,7 @@ function createWindow(): void {
 }
 
 app.whenReady().then(async () => {
+  clientMetadata = installedClientMetadata(app.getVersion(), JSON.parse(await readFile(join(app.getAppPath(), 'package.json'), 'utf8')));
   sessionStore = new EncryptedSessionStore();
   deviceId = await readDeviceId();
   registerIpc();
@@ -125,6 +128,7 @@ app.on('window-all-closed', () => {
 });
 
 function registerIpc(): void {
+  ipcMain.on('app:metadata', (event) => { event.returnValue = clientMetadata; });
   ipcMain.handle('print:printers', async (event) => {
     await requireSession();
     return (await event.sender.getPrintersAsync()).map(({ name, displayName }) => ({ name, displayName }));
@@ -244,6 +248,9 @@ async function executeApiRequest(
   headers.set('Authorization', `Bearer ${stored.access}`);
   headers.set('X-Tenant-ID', stored.tenantId);
   if (request.path.startsWith('/api/pos/')) {
+    headers.set('X-POS-Client-Platform', 'WINDOWS');
+    headers.set('X-POS-Client-Version', clientMetadata.version);
+    headers.set('X-POS-Client-Build', String(clientMetadata.buildNumber));
     const activation = await new EncryptedActivationStore(stored.tenantId, deviceId).load();
     if (activation) {
       headers.set('X-POS-Activation', activation.signedToken);

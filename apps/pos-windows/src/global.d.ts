@@ -22,6 +22,7 @@ interface Window {
   readonly tibatrace?: {
     readonly platform: 'windows';
     readonly version: string;
+    readonly buildNumber?: number;
     readonly auth: {
       restore(): Promise<TibaTraceSessionInfo>;
       login(username: string, password: string): Promise<TibaTraceSessionInfo>;

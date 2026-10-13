@@ -614,7 +614,10 @@ class GoodsReceivingService:
             raise ValidationError(f"Batch {batch.manufacturer_batch_number} is subject to a regulatory recall.")
 
         arrival_dt = getattr(receipt, "arrival_time", None)
-        receipt_date = arrival_dt.date() if arrival_dt and hasattr(arrival_dt, "date") else as_of_date
+        receipt_date = (
+            (timezone.localtime(arrival_dt) if timezone.is_aware(arrival_dt) else arrival_dt).date()
+            if arrival_dt else as_of_date
+        )
 
         from apps.procurement.models import SupplierQualification
         if SupplierQualification.all_objects.filter(tenant=receipt.tenant, supplier=receipt.supplier).exists():

@@ -1,8 +1,11 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
+const clientMetadata = ipcRenderer.sendSync('app:metadata') as { version: string; buildNumber: number };
+
 contextBridge.exposeInMainWorld('tibatrace', {
   platform: 'windows' as const,
-  version: process.env['npm_package_version'] ?? '0.0.0',
+  version: clientMetadata.version,
+  buildNumber: clientMetadata.buildNumber,
   auth: {
     restore: () => ipcRenderer.invoke('auth:restore'),
     login: (username: string, password: string) =>

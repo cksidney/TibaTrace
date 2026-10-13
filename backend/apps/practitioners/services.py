@@ -354,7 +354,7 @@ class PractitionerRegistrationService:
                 f"This licence is {practitioner.licence_status}."
             )
         expiry = practitioner.licence_expiry_date
-        if expiry and expiry < timezone.now().date():
+        if expiry and expiry < timezone.localdate():
             raise ValidationError(
                 f"The practitioner's licence expired on {expiry}. Renew it before "
                 "granting controlled-medicine authority."

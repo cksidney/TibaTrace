@@ -13,10 +13,11 @@ problem rather than a cosmetic one.
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from django.core.exceptions import PermissionDenied, ValidationError
+from django.utils import timezone
 
 from apps.audit.models import AuditEvent
 from apps.identity.models import AttributePolicy, Role, User, UserRole
@@ -396,6 +397,20 @@ def test_controlled_authority_refused_for_expired_licence(db, tenant, actor):
         PractitionerRegistrationService.grant_controlled_medicine_authority(
             practitioner=p, actor=actor, reason="senior prescriber",
         )
+
+
+def test_controlled_licence_expiry_uses_nairobi_business_date(db, tenant, actor, monkeypatch):
+    monkeypatch.setattr(timezone, "now", lambda: datetime(2026, 10, 13, 21, 30, tzinfo=UTC))
+    with timezone.override("Africa/Nairobi"):
+        p = PractitionerRegistrationService.register_practitioner(tenant=tenant, first_name="Midnight",
+            last_name="Prescriber", profession="DOCTOR", registration_number="MIDNIGHT-PRAC",
+            licence_expiry_date=date(2027, 10, 13))
+        p = PrescriberGovernanceService.verify(practitioner=p, actor=actor, licence_status="VALID",
+            verification_note="Synthetic verification", evidence_reference="TEST-MIDNIGHT")
+        Practitioner.all_objects.filter(pk=p.pk, tenant=tenant).update(licence_expiry_date=date(2026, 10, 13))
+        p.refresh_from_db()
+        with pytest.raises(ValidationError, match="expired"):
+            PractitionerRegistrationService.grant_controlled_medicine_authority(practitioner=p, actor=actor, reason="Regression")
 
 
 def test_controlled_authority_granted_and_revoked_with_attribution(db, tenant, actor):

@@ -80,6 +80,7 @@ export function SyncCentre({ apiFetch, deviceId, journal, onOpenPrint, initialSn
         checkPosClientVersion({
           platform: 'WINDOWS',
           version: localClientVersion(),
+          buildNumber: window.tibatrace?.buildNumber ?? 0,
           fetcher: apiFetch,
         }, { force: true }),
       ]);
