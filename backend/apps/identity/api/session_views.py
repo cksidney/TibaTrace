@@ -185,11 +185,21 @@ class PasswordChangeView(APIView):
         user.set_password(data["new_password"])
         user.must_change_password = False
         user.save(update_fields=["password", "must_change_password"])
-        update_session_auth_hash(request, user)
-        from apps.audit.service import log_audit
+        from apps.audit.service import log_audit, log_platform_audit
 
-        log_audit(tenant_id=user.tenant_id, actor_id=user.pk, action="SELF_PASSWORD_CHANGED",
-                  model_name="identity.User", object_id=str(user.pk))
+        audit_fields = {
+            "actor_id": user.pk,
+            "action": "SELF_PASSWORD_CHANGED",
+            "model_name": "identity.User",
+            "object_id": str(user.pk),
+        }
+        if user.tenant_id:
+            log_audit(tenant_id=user.tenant_id, **audit_fields)
+        else:
+            log_platform_audit(**audit_fields)
+        # An audit refusal must roll back the password before the browser's
+        # session is rotated, so the user can retry with their current password.
+        update_session_auth_hash(request, user)
         return Response({"user": SessionUserSerializer(user).data, "csrf_token": get_token(request)})
 
 

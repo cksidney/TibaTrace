@@ -285,6 +285,10 @@ export interface HQWorkItem {
 }
 
 export interface HQBusinessModule {
+  readonly count?: number;
+  readonly page?: number;
+  readonly pages?: number;
+  readonly page_size?: number;
   readonly description: string;
   readonly domain: string;
   readonly key: string;
@@ -513,14 +517,15 @@ export async function loadHQOverview(signal?: AbortSignal): Promise<HQOverview> 
   return (await response.json()) as HQOverview;
 }
 
-export async function loadHQWorkspace(signal?: AbortSignal): Promise<HQWorkspaceData> {
+export async function loadHQWorkspace(signal?: AbortSignal, business?: { readonly module: string; readonly q: string; readonly page: number }): Promise<HQWorkspaceData> {
   const request: RequestInit = {
     credentials: 'include',
     headers: { Accept: 'application/json', ...tenantHeaders() },
   };
   if (signal) request.signal = signal;
 
-  const response = await fetch('/api/hq/workspace/', request);
+  const parameters = business ? `?${new URLSearchParams({ business_module: business.module, business_q: business.q, business_page: String(business.page) })}` : '';
+  const response = await fetch(`/api/hq/workspace/${parameters}`, request);
   if (!response.ok) {
     throw new HQApiError(response.status, `HQ workspace request failed with ${response.status}.`);
   }
@@ -2863,8 +2868,8 @@ export async function changeOwnPassword(currentPassword: string, newPassword: st
     body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
   });
   if (!response.ok) {
-    const payload = await response.json().catch(() => null) as { detail?: string } | null;
-    throw new Error(payload?.detail ?? 'Password change failed.');
+    const payload: unknown = await response.json().catch(() => null);
+    throw new Error(apiErrorMessage(payload) ?? 'Password change failed.');
   }
 }
 
