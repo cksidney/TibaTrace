@@ -6,5 +6,5 @@
     "lib": ["ES2022"],
     "types": []
   },
-  "include": ["electron/**/*.ts"]
+  "include": ["electron/**/*.ts", "electron/**/*.cts"]
 }

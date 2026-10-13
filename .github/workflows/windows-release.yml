@@ -449,6 +449,12 @@ jobs:
           Write-Host "Publisher        : $($entry.Publisher)"
           Write-Host "Install location : $($entry.InstallLocation)"
 
+          $env:TIBATRACE_INSTALLED_EXE = $appExe
+          $env:TIBATRACE_EXPECTED_VERSION = '${{ steps.posver.outputs.version }}'
+          $env:TIBATRACE_EXPECTED_BUILD = [string]((Get-Content apps/pos-windows/package.json | ConvertFrom-Json).tibatraceBuildNumber)
+          node apps/pos-windows/managed-install/verify-installed-app.mjs
+          if ($LASTEXITCODE -ne 0) { Write-Error 'Installed application launch/secure bridge check failed.'; exit 1 }
+
           Write-Host "Clean-environment test passed: untrusted before enrolment, Valid after, application installed."
           exit 0
 
