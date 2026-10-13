@@ -5,9 +5,10 @@ from rest_framework.response import Response
 
 from apps.core.permissions import CapabilityPermission
 from apps.core.tenant_context import get_current_tenant_id
-from apps.customers.models import Customer
+from apps.customers.models import Customer, CustomerDeliveryAddress
 from apps.medicines.models import CommercialSKU
 from apps.organizations.models import Location
+from apps.sales.api.fulfilment import command
 from apps.sales.api.serializers import (
     CustomerPriceAgreementSerializer,
     DeliveryRecordSerializer,
@@ -91,6 +92,10 @@ class BaseSalesViewSet(viewsets.ReadOnlyModelViewSet):
     """
 
     permission_classes = [permissions.IsAuthenticated]
+
+    def get_permissions(self):
+        self.required_capabilities = ("sales.read", "sales.manage") if self.request.method in {"GET", "HEAD", "OPTIONS"} else ("sales.manage",)
+        return [permissions.IsAuthenticated(), CapabilityPermission()]
 
     def get_queryset(self):
         tenant_id = get_current_tenant_id() or getattr(self.request, "tenant_id", None)
@@ -285,6 +290,58 @@ class SalesOrderViewSet(BaseSalesViewSet):
     model = SalesOrder
     serializer_class = SalesOrderSerializer
 
+    @action(detail=False, methods=["get"], url_path="workspace-options")
+    def workspace_options(self, request):
+        tenant_id = self._tenant_id()
+        return Response({
+            "branches": list(Location.all_objects.filter(tenant_id=tenant_id, status="ACTIVE", organization__status="ACTIVE").order_by("name").values("id", "name", "code")),
+            "customers": list(Customer.all_objects.filter(tenant_id=tenant_id, status="ACTIVE").order_by("legal_name").values("id", "legal_name", "customer_number")),
+            "addresses": list(CustomerDeliveryAddress.all_objects.filter(tenant_id=tenant_id, is_active=True, customer__status="ACTIVE").order_by("address_code").values("id", "customer_id", "address_code", "address_line1", "city")),
+        })
+
+    @action(detail=True, methods=["post"], url_path="picking-wave")
+    def picking_wave(self, request, pk=None):
+        def create(order):
+            allocations = list(SalesOrderAllocation.all_objects.filter(tenant=order.tenant, sales_order_line__sales_order=order,
+                status="ALLOCATED").select_related("sales_order_line__sku", "inventory_batch", "location"))
+            if not allocations:
+                raise DRFValidationError("Allocate actual stock before creating a picking wave.")
+            if PickingTask.all_objects.filter(tenant=order.tenant, sales_order=order).exists():
+                raise DRFValidationError("This order already has picking tasks. Continue its existing wave.")
+            wave = PickingWaveService.create_wave(tenant=order.tenant, branch=order.branch, scope={"sales_order_id":str(order.pk)}, created_by=request.user)
+            PickingWaveService.release_wave(wave=wave)
+            for allocation in allocations:
+                PickingService.create_picking_task(tenant=order.tenant, sales_order=order, sales_order_line=allocation.sales_order_line,
+                    allocation=allocation, source_location=allocation.location, sku=allocation.sales_order_line.sku,
+                    batch=allocation.inventory_batch, requested_quantity=allocation.quantity, picking_wave=wave)
+            return PickingWaveSerializer(wave).data
+        return command(request, self.get_object(), "HQPickingWaveCreated", create)
+
+    @action(detail=True, methods=["post"], url_path="packing-session")
+    def packing_session(self, request, pk=None):
+        return command(request, self.get_object(), "HQPackingSessionCreated", lambda order: PackingSessionSerializer(
+            PackingService.create_session(tenant=order.tenant, branch=order.branch, sales_order=order, packer=request.user)).data)
+
+    @action(detail=True, methods=["post"], url_path="create-dispatch")
+    def create_dispatch(self, request, pk=None):
+        def create(order):
+            address = _tenant_scoped(CustomerDeliveryAddress, order.tenant_id, request.data.get("delivery_address_id"), "delivery_address_id")
+            package_ids = request.data.get("package_ids", [])
+            if not isinstance(package_ids, list) or not package_ids or len(set(package_ids)) != len(package_ids):
+                raise DRFValidationError("Select one or more distinct sealed packages.")
+            packages = list(Package.all_objects.filter(tenant=order.tenant, sales_order=order, pk__in=package_ids, status="SEALED").prefetch_related("lines"))
+            if len(packages) != len(package_ids):
+                raise DRFValidationError("Every package must be sealed and belong to this order.")
+            dispatch = DispatchService.create_dispatch(tenant=order.tenant, branch=order.branch, customer=order.customer,
+                delivery_address=address, sales_order=order, carrier=str(request.data.get("carrier", ""))[:200], created_by=request.user)
+            for package in packages:
+                for line in package.lines.all():
+                    DispatchService.add_dispatch_line(dispatch=dispatch, sales_order_line=line.sales_order_line, package=package,
+                        sku=line.sku, batch=line.batch, quantity=line.quantity, unit=line.unit,
+                        idempotency_key=f"HQ_DISPATCH:{dispatch.pk}:{line.pk}")
+            return DispatchOrderSerializer(dispatch).data
+        return command(request, self.get_object(), "HQDispatchCreated", create)
+
     def create(self, request, *args, **kwargs):
         """Raise a sales order through the service.
 
@@ -451,12 +508,16 @@ class PickingTaskViewSet(BaseSalesViewSet):
     @action(detail=True, methods=["post"])
     def start(self, request, pk=None):
         obj = self.get_object()
+        if obj.assigned_picker_id != request.user.pk:
+            raise DRFValidationError("Only the assigned picker may start this physical pick.")
         PickingService.start_task(task=obj)
         return Response(self.get_serializer(obj).data)
 
     @action(detail=True, methods=["post"])
     def record(self, request, pk=None):
         obj = self.get_object()
+        if obj.assigned_picker_id != request.user.pk:
+            raise DRFValidationError("Only the assigned picker may record physical quantities.")
         PickingService.record_pick(
             task=obj,
             picked_quantity=request.data.get("picked_quantity", 0),
@@ -475,14 +536,37 @@ class PackingSessionViewSet(BaseSalesViewSet):
     model = PackingSession
     serializer_class = PackingSessionSerializer
 
+    @action(detail=True, methods=["post"], url_path="create-package")
+    def create_package(self, request, pk=None):
+        def create(session):
+            zone = request.data.get("temperature_zone", "AMBIENT")
+            if zone not in {"AMBIENT", "COLD_CHAIN", "FROZEN"}:
+                raise DRFValidationError("Confirm an actual package temperature zone.")
+            return PackageSerializer(PackingService.create_package(session=session, sales_order=session.sales_order,
+                temperature_zone=zone, package_type=str(request.data.get("package_type", ""))[:100], packer=request.user)).data
+        return command(request, self.get_object(), "HQPackageCreated", create)
+
 
 class PackageViewSet(BaseSalesViewSet):
     model = Package
     serializer_class = PackageSerializer
 
+    @action(detail=True, methods=["post"], url_path="pack-line")
+    def pack_line(self, request, pk=None):
+        def pack(package):
+            task = _tenant_scoped(PickingTask, package.tenant_id, request.data.get("picking_task_id"), "picking_task_id")
+            if task.sales_order_id != package.sales_order_id:
+                raise DRFValidationError("The selected picking task belongs to another order.")
+            PackingService.pack_line(package=package, sales_order_line=task.sales_order_line, picking_task=task,
+                sku=task.sku, batch=task.batch, quantity=request.data.get("quantity", ""), unit=task.sales_order_line.unit)
+            return PackageSerializer(package).data
+        return command(request, self.get_object(), "HQPackageLinePacked", pack)
+
     @action(detail=True, methods=["post"])
     def seal(self, request, pk=None):
         obj = self.get_object()
+        if not str(request.data.get("seal_number", "")).strip():
+            raise DRFValidationError({"seal_number":"Record the actual tamper-seal number."})
         PackingService.seal_package(package=obj, seal_number=request.data.get("seal_number", ""), verifier=request.user)
         return Response(self.get_serializer(obj).data)
 
@@ -490,6 +574,18 @@ class PackageViewSet(BaseSalesViewSet):
 class DispatchOrderViewSet(BaseSalesViewSet):
     model = DispatchOrder
     serializer_class = DispatchOrderSerializer
+
+    @action(detail=True, methods=["post"], url_path="delivery")
+    def delivery(self, request, pk=None):
+        dispatch = self.get_object()
+        return command(request, dispatch, "HQDeliveryRecorded", lambda locked: DeliveryRecordSerializer(DeliveryService.confirm_delivery(
+            dispatch=locked, recipient_name=str(request.data.get("recipient_name", "")).strip(),
+            recipient_role=str(request.data.get("recipient_role", "")), recipient_phone=str(request.data.get("recipient_phone", "")),
+            proof_type=str(request.data.get("proof_type", "")), signature_ref=str(request.data.get("signature_ref", "")),
+            photo_ref=str(request.data.get("photo_ref", "")), coordinates=str(request.data.get("coordinates", "")),
+            temperature_evidence=str(request.data.get("temperature_evidence", "")), delivery_notes=str(request.data.get("delivery_notes", "")),
+            recorded_by=request.user, delivery_lines_data=request.data.get("delivery_lines_data", []),
+            idempotency_key=str(request.data.get("idempotency_key", "")))).data)
 
     @action(detail=True, methods=["post"])
     def approve(self, request, pk=None):

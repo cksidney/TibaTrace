@@ -102,6 +102,44 @@ class PosClinicalScreeningResultSerializer(serializers.ModelSerializer):
     screening_id = serializers.UUIDField(read_only=True)
     blocking_findings = serializers.IntegerField(source='blocking_count', read_only=True)
 
+    def to_representation(self, screening):
+        from apps.prescription.pos_permissions import can_read_clinical_details
+        payload = super().to_representation(screening)
+        visible = can_read_clinical_details(self.context.get("request"), screening.tenant_id)
+        payload["clinical_details_visible"] = visible
+        if not visible:
+            for finding in payload["findings"]:
+                # IDs and gating flags permit acknowledgement/escalation; the
+                # clinical reason remains with an authorised pharmacist.
+                for field in ("clinical_explanation", "recommendation", "evidence_source", "summary"):
+                    if field in finding:
+                        finding[field] = ""
+                finding["title"] = "Pharmacist review required" if finding.get("blocking") else "Clinical screening notice"
+                for field in ("patient_context", "criteria", "metadata", "category"):
+                    finding.pop(field, None)
+                finding["rule_id"] = None
+                finding["rule_id_ref"] = ""
+            for decision in payload["decisions"]:
+                for field in ("clinical_justification", "counselling_notes", "prescriber_contact_ref", "follow_up_actions"):
+                    decision[field] = ""
+            for override in payload["overrides"]:
+                for field in ("clinical_justification", "supporting_notes", "requested_reason", "override_reason"):
+                    override[field] = ""
+                override["scope"] = {}
+                override["rejection_reason"] = ""
+                override["revocation_reason"] = ""
+        else:
+            from apps.cds.pos_screening_models import PosClinicalAuditEvent
+            PosClinicalAuditEvent.all_objects.create(
+                tenant_id=screening.tenant_id,
+                screening=screening,
+                event_type="FINDING_DISPLAYED",
+                pharmacist=self.context["request"].user,
+                transaction_id=screening.transaction_id,
+                payload={"surface": "pos", "detail_access": True},
+            )
+        return payload
+
     class Meta:
         model = PosClinicalScreening
         fields = [

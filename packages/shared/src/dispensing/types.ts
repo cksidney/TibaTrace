@@ -67,6 +67,10 @@ export interface DispensingLineDTO {
   prescription_item: string;
   prescribed_sku: string;
   supplied_sku: string;
+  prescribed_medicine_name?: string;
+  supplied_medicine_name?: string;
+  package_description?: string;
+  prepared_by?: string | null;
   inventory_batch: string;
   quantity_authorized: string;
   quantity_prepared: string;
@@ -152,9 +156,29 @@ export interface DispensingEpisodeDTO {
    */
   allergies: DispensingAllergyDTO[];
   lines: DispensingLineDTO[];
+  clinical_details_visible?: boolean;
+  authorized_items?: AuthorizedDispensingItem[];
 }
 
+export interface AuthorizedDispensingItem {
+  id: string;
+  medicine_name: string;
+  sku_id: string | null;
+  quantity_remaining: string;
+  reserved_quantity: string;
+  unit: string;
+}
+
+/** Each checkbox is an explicit operator assertion, never a default true. */
+export const FINAL_CHECK_ITEMS = [
+  ['patient', 'Patient identity'], ['medicine', 'Medicine'], ['strength', 'Strength'],
+  ['dosage_form', 'Dosage form'], ['quantity', 'Quantity'], ['batch', 'Batch number'],
+  ['expiry', 'Expiry date'], ['instructions', 'Dosage instructions'],
+  ['warnings', 'Warnings'], ['package_integrity', 'Package integrity'],
+] as const;
+
 export interface BatchVerificationRequest {
+  episode_id?: string;
   sku_id: string;
   batch_number: string;
   expiry_date?: string | null;

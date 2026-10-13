@@ -12,6 +12,8 @@ import { FieldSearch } from './FieldSearch.js';
 import { GS1Workspace } from './GS1Workspace.js';
 import { IntegrationWorkspace } from './IntegrationWorkspace.js';
 import { LegacyItemSetup } from './LegacyItemSetup.js';
+import { CommerceOperations } from './CommerceOperations.js';
+import { PrescriptionOrigination } from './PrescriptionOrigination.js';
 import { PlatformOwnerConsole } from './PlatformOwnerConsole.js';
 import { RegulatoryWorkspace } from './RegulatoryWorkspace.js';
 import { ReportsWorkspace } from './ReportsWorkspace.js';
@@ -121,6 +123,7 @@ import {
   receiveStockTransfer,
   openStocktake,
   recordStocktakeCount,
+  reviseStocktake,
   postStocktakeVariances,
   verifyPractitioner,
 } from './api.js';
@@ -137,6 +140,7 @@ import type {
   DashboardMetric,
   GovernmentCataloguePage,
   HQBusinessAction,
+  HQBusinessModule,
   HQOverview,
   HQSku,
   HQWorkItem,
@@ -528,6 +532,7 @@ function Dashboard({
 }) {
   const [activeView, setActiveView] = useState<WorkspaceView>(() => viewFromHash());
   const [workspaceData, setWorkspaceData] = useState<HQWorkspaceData | null>(null);
+  const [workspaceTenantId, setWorkspaceTenantId] = useState(selectedTenantId);
   const [workspaceFailed, setWorkspaceFailed] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -546,17 +551,22 @@ function Dashboard({
   const reloadWorkspace = useCallback(async (signal?: AbortSignal) => {
     setWorkspaceFailed(false);
     try {
-      setWorkspaceData(await loadHQWorkspace(signal));
+      const workspace = await loadHQWorkspace(signal);
+      if (signal?.aborted) return;
+      setWorkspaceTenantId(selectedTenantId);
+      setWorkspaceData(workspace);
     } catch {
       if (!signal?.aborted) setWorkspaceFailed(true);
     }
-  }, []);
+  }, [selectedTenantId]);
 
   useEffect(() => {
     const controller = new AbortController();
+    setWorkspaceData(null);
     void reloadWorkspace(controller.signal);
     return () => controller.abort();
   }, [overview.generated_at, reloadWorkspace]);
+  const scopedWorkspace = workspaceTenantId === selectedTenantId ? workspaceData : null;
 
   const toggleTheme = () => {
     setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
@@ -758,24 +768,24 @@ function Dashboard({
           {activeView === 'overview' ? <OverviewView overview={overview} onNavigate={setActiveView} /> : null}
           {activeView === 'executive' ? <ExecutiveDashboard csrfToken={csrfToken} onNavigate={(tab) => setActiveView((tab.toLowerCase() === 'dispensing' ? 'commerce' : tab.toLowerCase() === 'inventory' ? 'inventory' : tab.toLowerCase() === 'insurance' ? 'insurance' : tab.toLowerCase() === 'regulatory' ? 'regulatory' : tab.toLowerCase() === 'sales' ? 'commerce' : tab.toLowerCase() === 'procurement' ? 'operations' : 'overview') as WorkspaceView)} /> : null}
           {activeView === 'network' ? <NetworkView csrfToken={csrfToken} onChanged={onRefresh} overview={overview} /> : null}
-          {activeView === 'people' ? <PeopleView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} overview={overview} /> : null}
-          {activeView === 'catalogue' ? <CatalogueView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} overview={overview} /> : null}
+          {activeView === 'people' ? <PeopleView csrfToken={csrfToken} data={scopedWorkspace} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} overview={overview} /> : null}
+          {activeView === 'catalogue' ? <CatalogueView csrfToken={csrfToken} data={scopedWorkspace} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} overview={overview} /> : null}
           {activeView === 'inventory' ? <InventoryView csrfToken={csrfToken} overview={overview} /> : null}
-          {activeView === 'operations' ? <OperationsView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} overview={overview} /> : null}
-          {activeView === 'commerce' ? <CommerceView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} /> : null}
+          {activeView === 'operations' ? <OperationsView csrfToken={csrfToken} data={scopedWorkspace} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} overview={overview} /> : null}
+          {activeView === 'commerce' ? <CommerceView key={selectedTenantId} csrfToken={csrfToken} data={scopedWorkspace} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} /> : null}
           {activeView === 'pricing' ? <PricingView csrfToken={csrfToken} overview={overview} /> : null}
           {activeView === 'cash' ? <CashControlView csrfToken={csrfToken} overview={overview} /> : null}
           {activeView === 'insurance' ? (
             <InsuranceView csrfToken={csrfToken} overview={overview} />
           ) : null}
-          {activeView === 'clinical' ? <ClinicalView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} overview={overview} /> : null}
+          {activeView === 'clinical' ? <ClinicalView csrfToken={csrfToken} data={scopedWorkspace} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} overview={overview} /> : null}
           {activeView === 'regulatory' ? <RegulatoryWorkspace csrfToken={csrfToken} overview={overview} /> : null}
           {activeView === 'gs1' ? <GS1Workspace overview={overview} /> : null}
           {activeView === 'reports' ? <ReportsWorkspace csrfToken={csrfToken} overview={overview} onNavigate={setActiveView} /> : null}
-          {activeView === 'governance' ? <GovernanceView data={workspaceData} failed={workspaceFailed} /> : null}
+          {activeView === 'governance' ? <GovernanceView data={scopedWorkspace} failed={workspaceFailed} /> : null}
           {activeView === 'integration' ? <IntegrationWorkspace csrfToken={csrfToken} /> : null}
           {activeView === 'platform_owner' ? <PlatformOwnerConsole csrfToken={csrfToken} /> : null}
-          {activeView === 'access' ? <AccessView csrfToken={csrfToken} data={workspaceData} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} overview={overview} /> : null}
+          {activeView === 'access' ? <AccessView csrfToken={csrfToken} data={scopedWorkspace} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} overview={overview} /> : null}
         </main>
       </div>
 
@@ -976,7 +986,7 @@ function OverviewView({ overview, onNavigate }: { readonly overview: HQOverview;
             <CommandLink href="#commerce/orders" title="Sales & fulfilment" detail="Quotations, orders, pick, pack and delivery" icon="store" onNavigate={onNavigate} />
             <CommandLink href="#pricing/books" title="Branch price books" detail="Price books, assignments and overrides" icon="docs" onNavigate={onNavigate} />
             <CommandLink href="#cash/tills" title="Shifts & cash control" detail="Tills, variances and forced closures" icon="activity" onNavigate={onNavigate} />
-            <CommandLink href="/pos/" title="Point of sale" detail="Dispensing and sales operations" icon="store" />
+            <CommandLink href="/pos/" title="Install / open POS till" detail="Signed Windows and Android till handoff" icon="store" />
             <CommandLink href="#reports" title="Reports catalogue" detail="Enterprise, audit and security packs" icon="docs" onNavigate={onNavigate} />
             <CommandLink href="#access" title="System controls" detail="Identity, security and governance" icon="settings" onNavigate={onNavigate} />
             <CommandLink href="/api/docs/" title="API workspace" detail="Integration contracts and testing" icon="docs" />
@@ -1920,6 +1930,25 @@ function StocktakeRegister({
       setBusySession('');
     }
   };
+  const [exception, setException] = useState<{ readonly session: HQStocktakeSession; readonly action: 'recount' | 'void-count' | 'cancel' | 'confirm-empty-location'; readonly countId?: string; readonly locationId?: string } | null>(null);
+  const [exceptionReason, setExceptionReason] = useState('');
+  const [recountQuantity, setRecountQuantity] = useState('');
+  const [exceptionKey, setExceptionKey] = useState(() => window.crypto.randomUUID());
+  const saveException = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!exception) return;
+    setBusySession(exception.session.id); setError('');
+    const count = exception.session.counts.find((entry) => entry.id === exception.countId);
+    try {
+      await reviseStocktake(exception.session.id, exception.action, { reason: exceptionReason.trim(), idempotency_key: exceptionKey,
+        ...(count ? { count_id: count.id, expected_updated_at: count.updated_at } : {}),
+        ...(exception.action === 'recount' ? { counted_quantity: recountQuantity } : {}),
+        ...(exception.locationId ? { location_id: exception.locationId } : {}) }, tenantId, csrfToken);
+      setException(null); setExceptionReason(''); setRecountQuantity(''); setExceptionKey(window.crypto.randomUUID());
+      await onChanged('Stocktake exception recorded with its audit evidence.');
+    } catch (cause: unknown) { setError(cause instanceof Error ? cause.message : 'Could not record the stocktake exception.'); }
+    finally { setBusySession(''); }
+  };
 
   return (
     <section className="stocktake-register">
@@ -1956,7 +1985,7 @@ function StocktakeRegister({
               {session.counts.length ? (
                 <div className="table-scroll stocktake-count-table">
                   <table>
-                    <thead><tr><th>Location</th><th>SKU / Batch</th><th>Expected</th><th>Counted</th><th>Variance</th><th>Reason</th></tr></thead>
+                    <thead><tr><th>Location</th><th>SKU / Batch</th><th>Expected</th><th>Counted</th><th>Variance</th><th>Reason / evidence</th><th>Exceptions</th></tr></thead>
                     <tbody>{session.counts.map((count) => (
                       <tr key={count.id}>
                         <td>{count.location_name}</td>
@@ -1964,7 +1993,8 @@ function StocktakeRegister({
                         <td>{count.expected_quantity}</td>
                         <td>{count.counted_quantity ?? '—'}</td>
                         <td><strong>{count.variance ?? '—'}</strong></td>
-                        <td><small>{count.reason || '—'}</small></td>
+                        <td><small>{count.voided ? `Voided: ${count.void_reason}` : count.reason || '—'}{count.recount ? ` · first ${count.first_count}, recount ${count.recount}` : ''}</small></td>
+                        <td>{session.status === 'OPEN' && !count.voided && count.updated_at ? <><button className="secondary-button" type="button" onClick={() => { setException({ session, action: 'recount', countId: count.id }); setRecountQuantity(''); setExceptionReason(''); }}>Recount</button><button className="secondary-button" type="button" onClick={() => { setException({ session, action: 'void-count', countId: count.id }); setExceptionReason(''); }}>Void count</button></> : null}</td>
                       </tr>
                     ))}</tbody>
                   </table>
@@ -1972,8 +2002,13 @@ function StocktakeRegister({
               ) : <p className="stocktake-empty-counts">No physical counts recorded yet.</p>}
               {session.status === 'OPEN' ? (
                 <footer>
+                  {session.completeness && <p className="panel-note">{session.completeness.counted_lines} / {session.completeness.required_lines} scoped stock lines counted. {session.completeness.missing_lines.length} missing. {session.completeness.unconfirmed_empty_location_ids.length} apparently empty locations still need physical confirmation.</p>}
+                  {session.scope === 'FULL' && session.completeness?.snapshot_available === false && <p className="inline-alert" role="status">This older session has no reliable opening scope snapshot. Cancel and reopen a full stocktake; historical coverage must not be guessed.</p>}
+                  {session.completeness?.missing_lines.length ? <details><summary>Outstanding physical count lines</summary><ul>{session.completeness.missing_lines.map((line) => <li key={`${line.location_id}-${line.sku_id}-${line.batch_id}`}>{line.location_name} · {line.sku_code} {line.sku_name} · {line.batch_number || 'No tracked batch'}</li>)}</ul></details> : null}
+                  {session.completeness?.unconfirmed_empty_location_ids.map((id) => <button className="secondary-button" type="button" key={id} onClick={() => { setException({ session, action: 'confirm-empty-location', locationId: id }); setExceptionReason(''); }}>Confirm physically empty: {locations.find((location) => location.id === id)?.name ?? id}</button>)}
                   <button className="secondary-button" onClick={() => { setError(''); setDialog({ kind: 'count', session }); }} type="button">Record physical count</button>
-                  <button className="primary-button" disabled={!session.counts.length || Boolean(busySession)} onClick={() => void postVariances(session)} type="button">
+                  <button className="secondary-button" type="button" onClick={() => { setException({ session, action: 'cancel' }); setExceptionReason(''); }}>Cancel session</button>
+                  <button className="primary-button" disabled={!session.counts.length || Boolean(busySession) || session.scope === 'FULL' && !session.completeness?.complete} onClick={() => void postVariances(session)} type="button">
                     {busySession === session.id ? 'Posting…' : 'Post variances'}
                   </button>
                 </footer>
@@ -1982,6 +2017,11 @@ function StocktakeRegister({
           ))}
         </div>
       )}
+      {exception && <div className="business-dialog-backdrop" role="presentation"><section className="business-dialog" role="dialog" aria-modal="true" aria-labelledby="stocktake-exception-title"><h2 id="stocktake-exception-title">{titleCase(exception.action.replace('-', ' '))}</h2><p className="panel-note">Original counts remain auditable. Recounts require a fresh physical observation; voiding does not complete a full count.</p><form onSubmit={(event) => void saveException(event)}><fieldset disabled={Boolean(busySession)} style={{ border: 0 }}>
+        {exception.action === 'recount' && <label className="business-field">New physical count<input required type="number" min="0" step="0.0001" value={recountQuantity} onChange={(event) => setRecountQuantity(event.target.value)} /></label>}
+        <label className="business-field">Required reason / evidence<textarea required maxLength={1000} value={exceptionReason} onChange={(event) => setExceptionReason(event.target.value)} /></label>
+        {error && <p className="business-dialog-error" role="alert">{error}</p>}<footer><button className="secondary-button" type="button" onClick={() => setException(null)}>Close</button><button className="primary-button" type="submit">Record audited exception</button></footer>
+      </fieldset></form></section></div>}
       {dialog?.kind === 'open' ? (
         <OpenStocktakeDialog
           csrfToken={csrfToken}
@@ -2109,7 +2149,7 @@ function RecordStocktakeCountDialog({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const skuBatches = batches.filter((batch) => batch.sku === skuId);
-  const alreadyCounted = session.counts.some((count) => count.location === locationId && count.sku === skuId && (count.batch ?? '') === batchId);
+  const alreadyCounted = session.counts.some((count) => !count.voided && count.location === locationId && count.sku === skuId && (count.batch ?? '') === batchId);
 
   useEffect(() => setBatchId(''), [skuId]);
 
@@ -7343,7 +7383,7 @@ function CatalogueView({
 
       <GovernmentCatalogue csrfToken={csrfToken} overview={overview} />
 
-      <LegacyItemSetup key={overview.tenant_id} csrfToken={csrfToken} />
+      <LegacyItemSetup key={overview.tenant_id} csrfToken={csrfToken} tenantId={overview.tenant_id} />
 
       <BusinessWorkbench csrfToken={csrfToken} data={data} domain="catalogue" onChanged={onWorkspaceChanged} />
 
@@ -8119,6 +8159,9 @@ function CommerceView({
   const [deliveries, setDeliveries] = useState<readonly HQDeliveryRecordItem[] | null>(null);
   const [returns, setReturns] = useState<readonly HQSalesReturnItem[] | null>(null);
   const [holds, setHolds] = useState<readonly HQSalesOrderHoldItem[] | null>(null);
+  const [collectionError, setCollectionError] = useState('');
+  const [collectionsLoading, setCollectionsLoading] = useState(false);
+  const [collectionRefresh, setCollectionRefresh] = useState(0);
 
   useEffect(() => {
     const applyFocus = () => {
@@ -8135,16 +8178,16 @@ function CommerceView({
 
   useEffect(() => {
     const controller = new AbortController();
+    setQuotations(null); setPickingWaves(null); setPickingTasks(null); setPackingSessions(null);
+    setPackages(null); setDeliveries(null); setReturns(null); setHolds(null);
+    setCollectionError(''); setCollectionsLoading(true);
     Promise.all([
-      loadQuotations(controller.signal).catch(() => null),
-      loadPickingWaves(controller.signal).catch(() => null),
-      loadPickingTasks(controller.signal).catch(() => null),
-      loadPackingSessions(controller.signal).catch(() => null),
-      loadPackages(controller.signal).catch(() => null),
-      loadDeliveryRecords(controller.signal).catch(() => null),
-      loadSalesReturns(controller.signal).catch(() => null),
-      loadSalesOrderHolds(controller.signal).catch(() => null),
+      loadQuotations(controller.signal), loadPickingWaves(controller.signal),
+      loadPickingTasks(controller.signal), loadPackingSessions(controller.signal),
+      loadPackages(controller.signal), loadDeliveryRecords(controller.signal),
+      loadSalesReturns(controller.signal), loadSalesOrderHolds(controller.signal),
     ]).then(([q, pw, pt, ps, pkg, del, ret, h]) => {
+      if (controller.signal.aborted) return;
       setQuotations(q);
       setPickingWaves(pw);
       setPickingTasks(pt);
@@ -8153,9 +8196,11 @@ function CommerceView({
       setDeliveries(del);
       setReturns(ret);
       setHolds(h);
-    });
+    }).catch((reason: unknown) => {
+      if (!controller.signal.aborted) setCollectionError(reason instanceof Error ? reason.message : 'Fulfilment collections could not be loaded.');
+    }).finally(() => { if (!controller.signal.aborted) setCollectionsLoading(false); });
     return () => controller.abort();
-  }, []);
+  }, [data?.generated_at, collectionRefresh]);
 
   if (failed) return <WorkspaceSectionError domain="sales and fulfilment" />;
   if (!data) return <WorkspaceSectionLoading domain="sales and fulfilment" />;
@@ -8171,9 +8216,13 @@ function CommerceView({
       </section>
 
       <BusinessWorkbench csrfToken={csrfToken} data={data} domain="commerce" onChanged={onWorkspaceChanged} />
+      <CommerceOperations csrfToken={csrfToken} revision={data.generated_at} onChanged={onWorkspaceChanged} />
 
       <article className="panel" style={{ marginTop: '24px' }}>
         <PanelHeader eyebrow="Fulfilment Execution Desk" title="Order-to-Delivery Operations Workbench" />
+        {collectionError ? <p className="inline-alert" role="alert">{collectionError} Unavailable collections are not zero activity.</p> : null}
+        {collectionsLoading ? <p role="status">Refreshing fulfilment records…</p> : null}
+        <button className="secondary-button" disabled={collectionsLoading} onClick={() => setCollectionRefresh((current) => current + 1)} type="button">Refresh fulfilment</button>
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', marginBottom: '20px' }}>
           <div className="segmented" role="tablist">
@@ -9114,6 +9163,7 @@ function ClinicalView({
       />
 
       <div id="clinical-workflow">
+        {data ? <PrescriptionOrigination csrfToken={csrfToken} tenantId={overview.tenant_id} onChanged={onWorkspaceChanged} /> : null}
         {failed
           ? <WorkspaceSectionError domain="clinical workflow" />
           : data
@@ -9917,6 +9967,10 @@ function BusinessWorkbench({
   const [activeModuleKey, setActiveModuleKey] = useState('');
   const [query, setQuery] = useState('');
   const [pendingAction, setPendingAction] = useState<PendingBusinessAction | null>(null);
+  const [queuePage, setQueuePage] = useState(1);
+  const [serverModule, setServerModule] = useState<HQBusinessModule | null>(null);
+  const [queueError, setQueueError] = useState('');
+  const [queueLoading, setQueueLoading] = useState(false);
 
   useEffect(() => {
     if (!modules.some((module) => module.key === activeModuleKey)) {
@@ -9924,21 +9978,24 @@ function BusinessWorkbench({
     }
   }, [activeModuleKey, modules]);
 
-  const activeModule = modules.find((module) => module.key === activeModuleKey) ?? modules[0];
-  const records = useMemo(() => {
-    if (!activeModule) return [];
-    const normalizedQuery = query.trim().toLowerCase();
-    if (!normalizedQuery) return activeModule.records;
-    return activeModule.records.filter((record) => (
-      [
-        record.reference,
-        record.title,
-        record.status,
-        record.detail,
-        record.tenant_name,
-      ].some((value) => value.toLowerCase().includes(normalizedQuery))
-    ));
-  }, [activeModule, query]);
+  const initialModule = modules.find((module) => module.key === activeModuleKey) ?? modules[0];
+  useEffect(() => {
+    const controller = new AbortController();
+    setServerModule(null);
+    setQueueError('');
+    if (!activeModuleKey) return () => controller.abort();
+    setQueueLoading(true);
+    const timer = window.setTimeout(() => {
+      loadHQWorkspace(controller.signal, { module: activeModuleKey, q: query, page: queuePage })
+        .then((workspace) => { if (!controller.signal.aborted) setServerModule(workspace.business_modules.find((module) => module.key === activeModuleKey) ?? null); })
+        .catch((reason: unknown) => { if (!controller.signal.aborted) setQueueError(reason instanceof Error ? reason.message : 'Could not load this queue.'); })
+        .finally(() => { if (!controller.signal.aborted) setQueueLoading(false); });
+    }, 200);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [activeModuleKey, query, queuePage, data.generated_at]);
+  const activeModule = serverModule ?? initialModule;
+  // Do not represent previous-page or previous-tenant rows as a new search result.
+  const records = queueLoading || queueError ? [] : activeModule?.records ?? [];
   const actionableCount = activeModule?.records.filter((record) => record.actions.length > 0).length ?? 0;
 
   return (
@@ -9951,8 +10008,8 @@ function BusinessWorkbench({
         </div>
         {activeModule ? (
           <div className="business-workbench-summary">
-            <span><strong>{formatNumber(activeModule.records.length)}</strong> records</span>
-            <span><strong>{formatNumber(actionableCount)}</strong> actionable</span>
+            <span><strong>{formatNumber(activeModule.count ?? activeModule.records.length)}</strong> matching records</span>
+            <span><strong>{formatNumber(actionableCount)}</strong> actionable on this page</span>
           </div>
         ) : null}
       </header>
@@ -9968,12 +10025,13 @@ function BusinessWorkbench({
                 onClick={() => {
                   setActiveModuleKey(module.key);
                   setQuery('');
+                  setQueuePage(1);
                 }}
                 role="tab"
                 type="button"
               >
                 <span>{module.title}</span>
-                <b>{formatNumber(module.records.length)}</b>
+                <b>{formatNumber(module.count ?? module.records.length)}</b>
               </button>
             ))}
           </div>
@@ -9983,14 +10041,16 @@ function BusinessWorkbench({
               <Icon name="search" />
               <span className="sr-only">Search {activeModule?.title}</span>
               <input
-                onChange={(event) => setQuery(event.target.value)}
+                onChange={(event) => { setQuery(event.target.value); setQueuePage(1); }}
                 placeholder={`Search ${activeModule?.title.toLowerCase() ?? 'records'}`}
                 type="search"
                 value={query}
               />
             </label>
-            <small>Actions shown are valid for the record’s current state.</small>
+            <small>Server search · Actions remain subject to current permissions and state.</small>
           </div>
+          {queueError ? <p className="inline-alert" role="alert">{queueError}</p> : null}
+          {queueLoading ? <p role="status">Loading governed queue…</p> : null}
 
           {records.length ? (
             <div className="business-records">
@@ -10002,13 +10062,18 @@ function BusinessWorkbench({
                 />
               ))}
             </div>
-          ) : (
+          ) : !queueLoading && !queueError ? (
             <EmptyState
               detail={query ? 'Clear the search to restore the complete governed queue.' : 'Records will appear as this workflow receives business activity.'}
               icon={query ? 'search' : 'check'}
               title={query ? 'No matching records' : `No ${activeModule?.title.toLowerCase() ?? 'workflow'} records`}
             />
-          )}
+          ) : null}
+          <nav className="business-toolbar" aria-label="Workflow queue pages">
+            <button className="secondary-button" disabled={queueLoading || queuePage <= 1} onClick={() => setQueuePage((current) => Math.max(1, current - 1))} type="button">Previous</button>
+            <small>Page {activeModule?.page ?? queuePage} of {activeModule?.pages ?? 1} · {records.length} shown</small>
+            <button className="secondary-button" disabled={queueLoading || queuePage >= (activeModule?.pages ?? 1)} onClick={() => setQueuePage((current) => current + 1)} type="button">Next</button>
+          </nav>
         </>
       ) : (
         <EmptyState icon="shield" title="Oversight only" detail="This domain has no state-changing HQ workflow. Its authoritative records remain visible in the panels below." />
@@ -10317,7 +10382,7 @@ function CommandPalette({ onClose, onNavigate }: { readonly onClose: () => void;
   const actions = [
     ...navigation.map((item) => ({ ...item, href: `#${item.key}`, type: 'HQ view' })),
     { key: 'controls', label: 'System controls', caption: 'Identity, security and governance', icon: 'settings' as IconName, href: '#access', type: 'HQ view' },
-    { key: 'pos', label: 'Point of sale', caption: 'Open dispensing operations', icon: 'store' as IconName, href: '/pos/', type: 'Workspace' },
+    { key: 'pos', label: 'Install / open POS till', caption: 'Signed native till handoff', icon: 'store' as IconName, href: '/pos/', type: 'Workspace' },
     { key: 'api', label: 'API documentation', caption: 'Inspect integration contracts', icon: 'docs' as IconName, href: '/api/docs/', type: 'Workspace' },
   ];
   const visible = actions.filter((item) => `${item.label} ${item.caption} ${item.type}`.toLowerCase().includes(query.toLowerCase()));

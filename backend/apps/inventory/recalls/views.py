@@ -18,10 +18,11 @@ import logging
 
 from rest_framework import status
 from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import SAFE_METHODS, BasePermission, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 
+from apps.core.permissions import PlatformOwnerRequired
 from apps.inventory.recalls.models import (
     RegulatoryAlert,
     RegulatoryTenantImpact,
@@ -50,10 +51,22 @@ from apps.inventory.recalls.services import (
 logger = logging.getLogger(__name__)
 
 
+class RecallTenantPermission(BasePermission):
+    def has_permission(self, request, view):
+        tenant_id = getattr(request, "tenant_id", None)
+        capabilities = ("recalls.manage", "compliance.officer")
+        if request.method in SAFE_METHODS:
+            capabilities += ("recalls.read", "inventory.read", "inventory.manage")
+        return bool(tenant_id and any(request.user.has_capability(cap, tenant_id=tenant_id) for cap in capabilities))
+
+
 class PlatformRegulatoryAlertViewSet(ModelViewSet):
     """Platform Owner: manage regulatory alerts."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, PlatformOwnerRequired]
+    # Lifecycle changes belong to the governed actions. An inherited DELETE or
+    # generic update must never erase an alert and its cross-tenant evidence.
+    http_method_names = ["get", "post", "head", "options"]
     serializer_class = RegulatoryAlertDetailSerializer
     queryset = RegulatoryAlert.objects.all().order_by("-ingested_at")
 
@@ -119,7 +132,7 @@ class PlatformRegulatoryAlertViewSet(ModelViewSet):
 class TenantRegulatoryImpactViewSet(ReadOnlyModelViewSet):
     """Tenant: view own regulatory impacts."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RecallTenantPermission]
     serializer_class = RegulatoryTenantImpactSerializer
 
     def get_queryset(self):

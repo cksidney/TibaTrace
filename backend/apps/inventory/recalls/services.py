@@ -34,7 +34,7 @@ TRUTH_LABEL = "LOCAL_RECALL_WORKFLOW_NO_REGULATOR_FEED"
 
 
 def _require_compliance_capability(actor, tenant_id=None) -> None:
-    if not actor or not any(
+    if not actor or not actor.is_active or not any(
         actor.has_capability(cap, tenant_id=tenant_id)
         for cap in ("recalls.manage", "platform.owner", "compliance.officer")
     ):

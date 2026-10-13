@@ -77,10 +77,15 @@ class RoleViewSet(viewsets.ModelViewSet):
         payload.is_valid(raise_exception=True)
         tenant_id = getattr(request, "tenant_id", None) or request.user.tenant_id
         try:
-            role = UserAdministrationService.create_role(
-                tenant_id=tenant_id,
-                **payload.validated_data,
-            )
+            with transaction.atomic():
+                role = UserAdministrationService.create_role(
+                    tenant_id=tenant_id,
+                    **payload.validated_data,
+                )
+                AuditEvent.all_objects.create(tenant_id=tenant_id, actor=request.user,
+                    action="IDENTITY_ROLE_CREATED", model_name="Role", object_id=str(role.pk), outcome="SUCCESS",
+                    correlation_id=str(request.headers.get("X-Request-ID") or ""),
+                    metadata={"role_code": role.code, "capabilities": sorted(role.capabilities or []), "is_active": role.is_active})
         except DjangoValidationError as exc:
             return Response(
                 exc.message_dict if hasattr(exc, "message_dict") else {"detail": exc.messages},
@@ -96,7 +101,16 @@ class RoleViewSet(viewsets.ModelViewSet):
         payload = RoleUpdateSerializer(data=request.data, partial=True)
         payload.is_valid(raise_exception=True)
         try:
-            role = UserAdministrationService.update_role(role=role, **payload.validated_data)
+            with transaction.atomic():
+                role = Role.all_objects.select_for_update().get(tenant_id=role.tenant_id, pk=role.pk)
+                before = {"name": role.name, "capabilities": sorted(role.capabilities or []), "is_active": role.is_active}
+                role = UserAdministrationService.update_role(role=role, **payload.validated_data)
+                after = {"name": role.name, "capabilities": sorted(role.capabilities or []), "is_active": role.is_active}
+                if before != after:
+                    AuditEvent.all_objects.create(tenant_id=role.tenant_id, actor=request.user,
+                        action="IDENTITY_ROLE_UPDATED", model_name="Role", object_id=str(role.pk), outcome="SUCCESS",
+                        correlation_id=str(request.headers.get("X-Request-ID") or ""),
+                        metadata={"role_code": role.code, "previous": before, "current": after})
         except DjangoValidationError as exc:
             return Response(
                 exc.message_dict if hasattr(exc, "message_dict") else {"detail": exc.messages},

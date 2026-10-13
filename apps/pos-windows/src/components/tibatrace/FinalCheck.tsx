@@ -33,8 +33,8 @@ export function compareLine(line: DispensingLineDTO): readonly CheckRow[] {
   return [
     {
       field: 'Product',
-      prescribed: line.prescribed_sku,
-      prepared: line.supplied_sku,
+      prescribed: line.prescribed_medicine_name || 'Medicine name unavailable',
+      prepared: line.supplied_medicine_name || 'Medicine name unavailable',
       matches: line.prescribed_sku === line.supplied_sku,
     },
     {

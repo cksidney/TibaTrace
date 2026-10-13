@@ -4,6 +4,7 @@ export interface RetailStoreDTO {
   readonly name: string;
   readonly location_type: string;
   readonly status: string;
+  readonly quarantine_capability?: boolean;
 }
 
 export interface RetailInventoryContextDTO {
@@ -28,6 +29,8 @@ export interface RetailTransactionLineDTO {
   readonly price_snapshot: { readonly source?: string; readonly source_reference?: string };
   readonly scan_source: string;
   readonly inventory_context: RetailInventoryContextDTO;
+  readonly refundable_quantity?: string;
+  readonly issued_batches?: readonly { batch_id: string; batch_number: string; expiry_date: string; quantity: string }[];
 }
 
 export interface RetailTransactionDTO {
@@ -50,6 +53,36 @@ export interface RetailTransactionDTO {
   readonly hold_reason: string;
   readonly lines: readonly RetailTransactionLineDTO[];
   readonly receipt: RetailCashReceiptDTO | null;
+  readonly refunded_total?: string;
+  readonly refund_requests?: readonly RetailRefundRequestDTO[];
+}
+
+export interface RetailRefundRequestDTO {
+  id: string;
+  status: 'REQUESTED' | 'APPROVED' | 'REJECTED' | 'COMPLETED';
+  reason: string;
+  amount: string;
+  currency: string;
+  receipt?: RetailCashRefundDTO | null;
+  lines: readonly { original_line: string; description: string; quantity: string; amount: string; return_to_stock: boolean; inventory_batch: string | null }[];
+}
+
+export interface RetailCashRefundDTO {
+  id: string;
+  refund_number: string;
+  original_receipt_number: string;
+  amount: string;
+  currency: string;
+  completed_at: string;
+  print_job: { id: string; status: string; transport: string } | null;
+}
+
+export interface RetailRefundInput {
+  device_id: string;
+  reason: string;
+  idempotency_key: string;
+  return_location_id?: string;
+  lines: readonly { line_id: string; quantity: string; return_to_stock: boolean; inventory_batch_id?: string }[];
 }
 
 export interface RetailCashReceiptDTO {

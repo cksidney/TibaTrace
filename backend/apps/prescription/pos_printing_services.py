@@ -21,6 +21,30 @@ def _hash_snapshot(snapshot):
 
 
 class PosPrintDocumentService:
+    @classmethod
+    @transaction.atomic
+    def issue_label(cls, *, label, actor, device_id):
+        from apps.pos_shift.models import PosRegister
+        _require_capability(actor, label.tenant_id, "pos.label.print")
+        if not PosRegister.all_objects.filter(tenant_id=label.tenant_id, location_id=label.episode.branch_id,
+                                             device_id=device_id).exists():
+            raise ValidationError("Label destination must be a registered device in the dispensing branch.")
+        number = f"{label.document_number}-{label.dispensing_line_id.hex[:8]}"
+        existing = PosPrintDocument.all_objects.filter(tenant_id=label.tenant_id, label=label).first()
+        if existing:
+            job = PosPrintJob.all_objects.filter(tenant_id=label.tenant_id, document=existing, copy_classification="ORIGINAL").first()
+            if job and job.device_id != device_id:
+                raise ValidationError("The original label belongs to another till; use a governed reprint.")
+            return existing, job
+        snapshot = {"document_type": "MEDICINE_LABEL", "document_number": number, "label": label.content,
+                    "issued_at": label.generated_at.isoformat(), "barcode_payload": label.barcode_payload}
+        document = PosPrintDocument.all_objects.create(tenant_id=label.tenant_id, document_type="MEDICINE_LABEL",
+            document_number=number, snapshot=snapshot, document_hash=_hash_snapshot(snapshot),
+            episode=label.episode, label=label, created_by=actor)
+        job = PosPrintJob.all_objects.create(tenant_id=label.tenant_id, document=document, branch=label.episode.branch,
+            device_id=device_id, requested_by=actor, transport="WINDOWS_SPOOLER", idempotency_key=f"label-original:{label.pk}")
+        return document, job
+
     @staticmethod
     def _receipt_snapshot(*, episode, settlement):
         tender = settlement.payment_tender
@@ -157,6 +181,30 @@ class PosPrintDocumentService:
 
     @classmethod
     @transaction.atomic
+    def issue_retail_refund(cls, *, receipt, actor, printer="", transport=PosPrintJob.Transport.SIMULATOR):
+        """A refund receipt is printable evidence, never an instruction to refund twice."""
+        if receipt.refund_request.status != "COMPLETED":
+            raise ValidationError("A retail refund receipt requires completed cash execution.")
+        existing = PosPrintDocument.all_objects.filter(tenant_id=receipt.tenant_id, document_number=receipt.refund_number).first()
+        if existing:
+            job = PosPrintJob.all_objects.filter(tenant_id=receipt.tenant_id, document=existing, copy_classification="ORIGINAL").first()
+            return existing, job, True
+        snapshot = {"document_type": "RETAIL_REFUND", "document_number": receipt.refund_number,
+            "original_receipt_number": receipt.original_receipt.receipt_number, "issued_at": receipt.completed_at.isoformat(),
+            "tenant_id": str(receipt.tenant_id), "branch_id": str(receipt.register.location_id),
+            "transaction_id": str(receipt.original_receipt.transaction_id), "register_session_id": str(receipt.register_session_id),
+            "lines": receipt.lines_snapshot, "payment": {"tender_type": "CASH", "refund_amount": str(receipt.amount), "currency": receipt.currency},
+            "disclaimer": "Internal cash refund receipt — not a fiscal/eTIMS credit note. Returned goods remain held pending quality disposition."}
+        document = PosPrintDocument.all_objects.create(tenant_id=receipt.tenant_id, document_type="RETAIL_REFUND",
+            document_number=receipt.refund_number, snapshot=snapshot, document_hash=_hash_snapshot(snapshot),
+            register_session=receipt.register_session, created_by=actor)
+        job = PosPrintJob.all_objects.create(tenant_id=receipt.tenant_id, document=document, branch=receipt.register.location,
+            device_id=receipt.device_id, printer=printer, transport=transport, copy_classification="ORIGINAL", copy_number=1,
+            requested_by=actor, idempotency_key=f"refund-original:{receipt.pk}")
+        return document, job, False
+
+    @classmethod
+    @transaction.atomic
     def issue_receipt_for_settlement(cls, *, episode, settlement, actor, printer="", transport=PosPrintJob.Transport.SIMULATOR):
         episode = episode.__class__.all_objects.select_for_update().select_related(
             "tenant", "patient", "prescription", "branch"
@@ -244,9 +292,31 @@ class PosPrintDocumentService:
 
 
 class PosPrintJobService:
+    @classmethod
+    @transaction.atomic
+    def configure_transport(cls, *, job, actor, transport, printer, device_id):
+        cls._require_print_capability(actor, job, "pos.document.print")
+        job = PosPrintJob.all_objects.select_for_update().get(pk=job.pk, tenant_id=job.tenant_id)
+        if not device_id or job.device_id != device_id:
+            raise ValidationError("Print job belongs to a different till installation.")
+        if job.status not in {PosPrintJob.Status.QUEUED, PosPrintJob.Status.RENDERED}:
+            raise ValidationError("Only an unsent print job can change printer transport.")
+        if transport != PosPrintJob.Transport.WINDOWS_SPOOLER or not str(printer or "").strip():
+            raise ValidationError("Select an installed Windows printer; other physical transports are not configured.")
+        job.transport = transport
+        job.printer = str(printer).strip()[:128]
+        job.save(update_fields=["transport", "printer", "updated_at"])
+        emit_event(tenant_id=str(job.tenant_id), aggregate_type="PosPrintJob", aggregate_id=str(job.pk),
+            event_type="POS_PRINT_TRANSPORT_SELECTED", payload={"transport": transport, "printer": job.printer, "device_id": device_id})
+        return job
+
     @staticmethod
     def _require_print_capability(actor, job, capability):
         _require_capability(actor, job.tenant_id, capability)
+        if job.document.label_id and capability != "pos.document.cancel":
+            from apps.prescription.label_printing import NON_PRINTABLE_EPISODE_STATES
+            if job.document.label.episode.status in NON_PRINTABLE_EPISODE_STATES:
+                raise ValidationError("This dispensing label is no longer valid for printing.")
 
     @classmethod
     @transaction.atomic
@@ -293,6 +363,10 @@ class PosPrintJobService:
         if job.status != PosPrintJob.Status.SENDING:
             raise ValidationError("A print result may be recorded only for a sending job.")
         if succeeded:
+            if job.document.label_id and job.transport != PosPrintJob.Transport.SIMULATOR:
+                from apps.prescription.label_printing import LabelPrintService
+                LabelPrintService.record_print(label=job.document.label, actor=actor,
+                    printer=job.printer, reason=job.reprint_reason, succeeded=True)
             job.status = PosPrintJob.Status.PRINTED
             job.printed_at = timezone.now()
             job.printed_by = actor

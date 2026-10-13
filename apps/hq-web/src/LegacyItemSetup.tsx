@@ -4,10 +4,11 @@ import { loadGovernmentCatalogue, loadLegacySetup, saveLegacySetupReview } from 
 import type { GovernmentCatalogueMedicine } from './api.js';
 import type { LegacySetupItem, LegacySetupPage, LegacySetupReview } from './api.js';
 import './legacyItemSetup.css';
+import { LegacySetupCompletion } from './LegacySetupCompletion.js';
 
 const labels: Record<string, string> = { AWAITING_MANAGER: 'Awaiting manager', IN_PROGRESS: 'In progress', DETAILS_COMPLETE: 'Details complete', EXCLUDED: 'Excluded' };
 
-export function LegacyItemSetup({ csrfToken }: { readonly csrfToken: string }) {
+export function LegacyItemSetup({ csrfToken, tenantId = '' }: { readonly csrfToken: string; readonly tenantId?: string }) {
   const [data, setData] = useState<LegacySetupPage | null>(null);
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
@@ -17,6 +18,7 @@ export function LegacyItemSetup({ csrfToken }: { readonly csrfToken: string }) {
   const [selected, setSelected] = useState<LegacySetupItem | null>(null);
   const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(false);
+  const [completionItem, setCompletionItem] = useState<LegacySetupItem | null>(null);
 
   useEffect(() => {
     if (selected) {
@@ -58,14 +60,18 @@ export function LegacyItemSetup({ csrfToken }: { readonly csrfToken: string }) {
     {data && <><div className="table-scroll" aria-busy={loading}><table><thead><tr><th>Item / source code</th><th>Source unit</th><th>Source quantity</th><th>Cost / selling price (KES)</th><th>Setup status</th><th>Action</th></tr></thead><tbody>
       {data.results.map((item) => <tr key={item.id}><td><strong>{item.source_name}</strong><small className="legacy-code">Legacy: {item.legacy_code || 'missing'} · Proposed: {item.proposed_sku_code}</small></td>
         <td>{item.source_uom || 'Not supplied'}</td><td>{item.source_quantity}</td><td>{item.source_cost} / {item.source_price}</td>
-        <td><span className="status-badge status-warning">{labels[item.status] || item.status}</span><small className="legacy-code">{item.source_issues.length ? `${item.source_issues.length} source issue(s)` : 'Awaiting confirmation'}</small></td>
-        <td><button type="button" className="secondary-button" disabled={!data.can_edit || loading} onClick={() => { setSelected(item); setNotice(''); }}>Complete details</button></td></tr>)}
+        <td><span className="status-badge status-warning">{item.completion?.phase || labels[item.status] || item.status}</span><small className="legacy-code">{item.completion?.sku_code || (item.source_issues.length ? `${item.source_issues.length} source issue(s)` : 'Awaiting confirmation')}</small></td>
+        <td>{!item.completion?.phase && <button type="button" className="secondary-button" disabled={!data.can_edit || loading} onClick={() => { setSelected(item); setNotice(''); }}>Complete details</button>}
+          {(item.status === 'DETAILS_COMPLETE' && !item.completion?.phase || item.completion?.phase === 'QUARANTINED') && <button type="button" className="secondary-button" disabled={!data.can_edit || loading} onClick={() => { setSelected(null); setCompletionItem(item); }}>{item.completion?.phase === 'QUARANTINED' ? 'Independent release' : 'Stage opening setup'}</button>}
+          {item.completion?.price_version_id && <small className="legacy-code">Linked price version: {item.completion.price_version_id}. Review and publish in Pricing.</small>}
+        </td></tr>)}
       {data.results.length === 0 && <tr><td colSpan={6}>No items match this search.</td></tr>}
     </tbody></table></div><div className="legacy-pagination"><span>{data.count} matching items · Page {data.page} of {data.pages}{loading ? ' · Loading…' : ''}</span>
       <div><button type="button" className="secondary-button" disabled={loading || data.page <= 1} onClick={() => setPage(data.page - 1)}>Previous</button> <button type="button" className="secondary-button" disabled={loading || data.page >= data.pages} onClick={() => setPage(data.page + 1)}>Next</button></div></div></>}
     {selected && <ItemDetails key={selected.id} item={selected} csrfToken={csrfToken} onCancel={() => setSelected(null)} onSaved={(item) => {
       setSelected(null); setNotice(`${item.source_name}: details saved. ${item.missing_details.length ? `Still needed: ${item.missing_details.join('; ')}.` : 'Ready for governed catalogue review, not yet saleable.'}`); setRefresh((r) => r + 1);
     }} />}
+    {completionItem && <LegacySetupCompletion key={completionItem.id} item={completionItem} csrfToken={csrfToken} tenantId={tenantId} onClose={() => setCompletionItem(null)} onSaved={() => { setCompletionItem(null); setRefresh((current) => current + 1); setNotice('Governed setup step recorded. Price approval/publication and independent quality release remain separate decisions.'); }} />}
   </article>;
 }
 

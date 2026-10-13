@@ -11,6 +11,7 @@ import { PaymentPanel } from './components/tibatrace/PaymentPanel.js';
 import { PrintCentre } from './components/tibatrace/PrintCentre.js';
 import { RegisterCentre } from './components/tibatrace/RegisterCentre.js';
 import { PrescriptionWorkspace } from './components/tibatrace/PrescriptionWorkspace.js';
+import { ClinicalPreparation } from './components/tibatrace/ClinicalPreparation.js';
 import { EpisodeTimeline } from './components/tibatrace/EpisodeTimeline.js';
 import { TaskQueue } from './components/tibatrace/TaskQueue.js';
 import { RetailWorkspace } from './components/tibatrace/RetailWorkspace.js';
@@ -377,6 +378,7 @@ function OperationsConsole({
                 onRefresh={() => void refresh()}
               />
               <div style={{ marginTop: spacing.xl }}>
+                <ClinicalPreparation key={state.selected.id} episode={state.selected} apiFetch={apiFetch} onChanged={() => void refresh()} />
                 <PrescriptionWorkspace
                   lines={state.selected.lines}
                   apiFetch={apiFetch}

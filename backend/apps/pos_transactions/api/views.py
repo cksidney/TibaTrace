@@ -11,12 +11,15 @@ from apps.customers.models import Customer
 from apps.patients.models import Patient
 from apps.pos_shift.models import PosRegister
 from apps.pos_transactions.models import PosTransaction
+from apps.pos_transactions.refunds import RetailRefundService
 from apps.pos_transactions.services import PosRetailService
+from apps.prescription.pos_permissions import scope_to_actor_branches
 from apps.tenancy.models import Tenant
 
 from .serializers import (
     AddLineRequestSerializer,
     CancelRequestSerializer,
+    CashRefundRequestSerializer,
     CashSettlementRequestSerializer,
     CatalogueSearchRequestSerializer,
     CreateDraftRequestSerializer,
@@ -24,8 +27,12 @@ from .serializers import (
     HoldRequestSerializer,
     PosTransactionLineSerializer,
     PosTransactionSerializer,
+    RefundRequestSerializer,
+    RefundReviewSerializer,
     RemoveLineRequestSerializer,
+    RetailCashRefundSerializer,
     RetailCatalogueItemSerializer,
+    RetailRefundRequestSerializer,
     ScanRequestSerializer,
     SetQuantityRequestSerializer,
 )
@@ -62,8 +69,21 @@ def _branch_for_device(*, tenant, device_id):
     return registers[0].location
 
 
+class RetailReadPermission(permissions.BasePermission):
+    """Cashiers read their own sales; explicit oversight capabilities read all."""
+
+    oversight = ("pos.transaction.read", "pos.transaction.manage", "pos.shift.manage", "sales.read", "payment.read", "payment.manage", "pos.refund.approve")
+    operator = ("pos.transaction.create", "pos.payment.cash.accept", "pos.refund.request", "pos.refund.cash.execute")
+
+    def has_permission(self, request, view):
+        if request.method not in permissions.SAFE_METHODS:
+            return True  # Domain services enforce action-specific capabilities.
+        tenant_id = getattr(request, "tenant_id", None) or getattr(request.user, "tenant_id", None)
+        return bool(tenant_id and any(request.user.has_capability(cap, tenant_id=tenant_id) for cap in self.oversight + self.operator))
+
+
 class PosTransactionViewSet(viewsets.ReadOnlyModelViewSet):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, RetailReadPermission]
     serializer_class = PosTransactionSerializer
 
     def get_queryset(self):
@@ -74,12 +94,30 @@ class PosTransactionViewSet(viewsets.ReadOnlyModelViewSet):
         )
         if tenant_id is None:
             return PosTransaction.all_objects.none()
-        return (
+        queryset = (
             PosTransaction.all_objects.filter(tenant_id=tenant_id)
             .select_related("branch", "store", "register", "register_session", "operator_shift", "business_day", "operator")
             .prefetch_related("lines__sku__package_definition", "lines__inventory_context", "cash_receipt")
             .order_by("-created_at")
         )
+        queryset = scope_to_actor_branches(queryset, self.request)
+        if not any(self.request.user.has_capability(cap, tenant_id=tenant_id) for cap in RetailReadPermission.oversight):
+            queryset = queryset.filter(operator_id=self.request.user.pk)
+            device_id = self.request.headers.get("X-POS-Device-ID") or self.request.query_params.get("device_id")
+            if device_id:
+                queryset = queryset.filter(device_id=device_id)
+        return queryset
+
+    @action(detail=False, methods=["get"], url_path="lookup-receipt")
+    def lookup_receipt(self, request):
+        number = str(request.query_params.get("receipt_number") or "").strip()
+        if not number:
+            raise DRFValidationError("Enter the original internal receipt number.")
+        record = self.get_queryset().filter(cash_receipt__receipt_number=number).first()
+        if not record:
+            from rest_framework.exceptions import NotFound
+            raise NotFound("Receipt not found within your permitted transactions.")
+        return Response(self.get_serializer(record).data)
 
     @action(detail=False, methods=["post"], url_path="draft")
     def draft(self, request):
@@ -224,6 +262,39 @@ class PosTransactionViewSet(viewsets.ReadOnlyModelViewSet):
         )
         return Response(PosTransactionSerializer(transaction_record).data)
 
+    @action(detail=True, methods=["post"], url_path="request-refund")
+    def request_refund(self, request, pk=None):
+        payload = RefundRequestSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        record = _run(lambda: RetailRefundService.request(tenant=_tenant(request), transaction_id=pk,
+            actor=request.user, **payload.validated_data))
+        return Response(RetailRefundRequestSerializer(record).data, status=status.HTTP_201_CREATED)
+
+    def _review_refund(self, request, pk, approve):
+        payload = RefundReviewSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        data = payload.validated_data
+        record = _run(lambda: RetailRefundService.review(tenant=_tenant(request), transaction_id=pk,
+            request_id=data["refund_request_id"], actor=request.user, approve=approve, reason=data["reason"]))
+        return Response(RetailRefundRequestSerializer(record).data)
+
+    @action(detail=True, methods=["post"], url_path="approve-refund")
+    def approve_refund(self, request, pk=None):
+        return self._review_refund(request, pk, True)
+
+    @action(detail=True, methods=["post"], url_path="reject-refund")
+    def reject_refund(self, request, pk=None):
+        return self._review_refund(request, pk, False)
+
+    @action(detail=True, methods=["post"], url_path="cash-refund")
+    def cash_refund(self, request, pk=None):
+        payload = CashRefundRequestSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        data = payload.validated_data
+        receipt = _run(lambda: RetailRefundService.execute_cash(tenant=_tenant(request), transaction_id=pk,
+            request_id=data["refund_request_id"], actor=request.user, device_id=data["device_id"], idempotency_key=data["idempotency_key"]))
+        return Response(RetailCashRefundSerializer(receipt).data)
+
     @staticmethod
     def _customer(tenant, customer_id):
         if customer_id is None:
@@ -244,7 +315,18 @@ class PosTransactionViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class RetailCatalogueViewSet(viewsets.ViewSet):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, RetailReadPermission]
+
+    @action(detail=False, methods=["get"])
+    def stores(self, request):
+        from apps.inventory.models import InventoryLocation
+        tenant = _tenant(request)
+        device_id = request.headers.get("X-POS-Device-ID") or request.query_params.get("device_id", "")
+        branch = _branch_for_device(tenant=tenant, device_id=device_id)
+        rows = scope_to_actor_branches(InventoryLocation.all_objects.filter(
+            tenant=tenant, branch=branch, status="ACTIVE",
+        ), request).values("id", "branch", "name", "location_type", "status", "quarantine_capability")
+        return Response(list(rows))
 
     @action(detail=False, methods=["post"], url_path="search")
     def search(self, request):

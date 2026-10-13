@@ -23,6 +23,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { resolveShortcut } from '../../state/keyboard.js';
 import { useViewport } from '../../state/useViewport.js';
+import { RetailReturns } from './RetailReturns.js';
 
 interface RetailWorkspaceProps {
   readonly apiFetch: typeof fetch;
@@ -58,7 +59,7 @@ export function RetailWorkspace({ apiFetch, deviceId }: RetailWorkspaceProps) {
 
   useEffect(() => {
     void client
-      .stores()
+      .stores(deviceId)
       .then((loaded) => {
         const sellableStores = loaded.filter(
           (store) =>
@@ -69,7 +70,7 @@ export function RetailWorkspace({ apiFetch, deviceId }: RetailWorkspaceProps) {
         setStoreId((current) => current || sellableStores[0]?.id || '');
       })
       .catch((cause: unknown) => setNotice(message(cause)));
-  }, [client]);
+  }, [client, deviceId]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -421,6 +422,7 @@ export function RetailWorkspace({ apiFetch, deviceId }: RetailWorkspaceProps) {
             <p style={helperText}>{receipt.disclaimer}</p>
           </section>
         ) : null}
+        <RetailReturns client={client} deviceId={deviceId} />
         <div style={actions}>
           {transaction?.state === 'DRAFT' ? (
             <button type="button" disabled={busy} onClick={hold} style={secondaryButton}>

@@ -23,6 +23,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.core.money import format_money
+from apps.prescription.pos_permissions import PosReadCapabilityPermission
 from apps.pricing.catalogue import PriceCatalogue
 from apps.pricing.models import (
     AppliedPriceSnapshot,
@@ -54,7 +55,11 @@ class TenantScopedReadOnly(viewsets.ReadOnlyModelViewSet):
     cannot leak by forgetting a filter.
     """
 
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, PosReadCapabilityPermission]
+    pos_read_capabilities = (
+        "pricing.read", "pricing.price_book.manage", "pricing.price_book.approve",
+        "pricing.price_book.publish",
+    )
     model = None
 
     def tenant_id(self):

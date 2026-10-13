@@ -10,10 +10,8 @@ from apps.sales.services import CommercialPricingService, QuotationService
 @pytest.mark.django_db
 class TestCommercialPricingService:
     def test_resolve_price_base_price(self, tenant_a, active_customer, sku):
-        result = CommercialPricingService.resolve_price(tenant=tenant_a, customer=active_customer, sku=sku, quantity=1)
-        assert result["agreed_unit_price"] == Decimal("0.00")
-        assert result["base_unit_price"] == Decimal("0.00")
-        assert result["discount_amount"] == Decimal("0.00")
+        with pytest.raises(ValidationError, match="missing price is not a free item"):
+            CommercialPricingService.resolve_price(tenant=tenant_a, customer=active_customer, sku=sku, quantity=1)
 
     def test_resolve_price_price_list(self, tenant_a, active_customer, sku):
         pl = PriceList.objects.create(

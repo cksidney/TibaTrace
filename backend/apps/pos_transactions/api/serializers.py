@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from apps.core.money import format_decimal, format_money
@@ -10,6 +11,9 @@ from apps.pos_transactions.models import (
     PosTransactionInventoryContext,
     PosTransactionLine,
     RetailCashReceipt,
+    RetailCashRefund,
+    RetailRefundLine,
+    RetailRefundRequest,
 )
 
 
@@ -38,14 +42,73 @@ class PosTransactionLineSerializer(serializers.ModelSerializer):
     line_total = MoneyField()
     sku_code = serializers.CharField(source="sku.sku_code", read_only=True)
     inventory_context = PosTransactionInventoryContextSerializer(read_only=True)
+    refundable_quantity = serializers.SerializerMethodField()
+    issued_batches = serializers.SerializerMethodField()
 
     class Meta:
         model = PosTransactionLine
         fields = [
             "id", "sku", "sku_code", "description_snapshot", "unit", "quantity",
             "unit_price", "discount_amount", "tax_amount", "line_total", "currency",
-            "price_snapshot", "scan_source", "inventory_context",
+            "price_snapshot", "scan_source", "inventory_context", "refundable_quantity", "issued_batches",
         ]
+
+    def get_refundable_quantity(self, line):
+        from django.db.models import Sum
+        reserved = RetailRefundLine.all_objects.filter(tenant_id=line.tenant_id, original_line=line,
+            refund_request__status__in=["REQUESTED", "APPROVED", "COMPLETED"]).aggregate(q=Sum("quantity"))["q"] or 0
+        return str(max(line.quantity - reserved, Decimal("0")))
+
+    @staticmethod
+    def get_issued_batches(line):
+        from apps.inventory.models import InventoryLedgerEntry
+        rows = InventoryLedgerEntry.all_objects.filter(tenant_id=line.tenant_id, source_document_type="POS_RETAIL_TRANSACTION",
+            source_document_id=str(line.transaction_id), source_line_id=str(line.pk), entry_type="ISSUE").select_related("inventory_batch")
+        return [{"batch_id": str(row.inventory_batch_id), "batch_number": row.inventory_batch.manufacturer_batch_number,
+                 "expiry_date": str(row.inventory_batch.expiry_date), "quantity": str(-row.base_quantity_delta)} for row in rows if row.inventory_batch_id]
+
+
+class RetailCashRefundSerializer(serializers.ModelSerializer):
+    amount = MoneyField()
+    original_receipt_number = serializers.CharField(source="original_receipt.receipt_number", read_only=True)
+    print_job = serializers.SerializerMethodField()
+
+    class Meta:
+        model = RetailCashRefund
+        fields = ["id", "refund_number", "original_receipt_number", "refund_request", "amount", "currency",
+                  "completed_at", "register_session", "created_by", "approved_by", "lines_snapshot", "print_job"]
+
+    @staticmethod
+    def get_print_job(receipt):
+        from apps.prescription.pos_printing_models import PosPrintJob
+        row = PosPrintJob.all_objects.filter(tenant_id=receipt.tenant_id, document__document_number=receipt.refund_number,
+            copy_classification="ORIGINAL").values("id", "status", "transport").first()
+        return {"id": str(row["id"]), "status": row["status"], "transport": row["transport"]} if row else None
+
+
+class RetailRefundLineSerializer(serializers.ModelSerializer):
+    amount = MoneyField()
+    description = serializers.CharField(source="original_line.description_snapshot", read_only=True)
+
+    class Meta:
+        model = RetailRefundLine
+        fields = ["id", "original_line", "description", "quantity", "amount", "return_to_stock", "inventory_batch"]
+
+
+class RetailRefundRequestSerializer(serializers.ModelSerializer):
+    amount = MoneyField()
+    lines = serializers.SerializerMethodField()
+    receipt = RetailCashRefundSerializer(read_only=True)
+
+    class Meta:
+        model = RetailRefundRequest
+        fields = ["id", "status", "reason", "amount", "currency", "return_location", "requested_by", "approved_by",
+                  "reviewed_at", "review_reason", "created_at", "lines", "receipt"]
+
+    @staticmethod
+    def get_lines(request):
+        rows = RetailRefundLine.all_objects.filter(tenant_id=request.tenant_id, refund_request=request).select_related("original_line")
+        return RetailRefundLineSerializer(rows, many=True).data
 
 
 class RetailCashReceiptSerializer(serializers.ModelSerializer):
@@ -96,8 +159,10 @@ class PosTransactionSerializer(serializers.ModelSerializer):
     branch_code = serializers.CharField(source="branch.code", read_only=True)
     register_code = serializers.CharField(source="register.code", read_only=True)
     operator_username = serializers.CharField(source="operator.username", read_only=True)
-    lines = PosTransactionLineSerializer(many=True, read_only=True)
+    lines = serializers.SerializerMethodField()
     receipt = RetailCashReceiptSerializer(source="cash_receipt", read_only=True)
+    refund_requests = serializers.SerializerMethodField()
+    refunded_total = serializers.SerializerMethodField()
 
     class Meta:
         model = PosTransaction
@@ -106,8 +171,28 @@ class PosTransactionSerializer(serializers.ModelSerializer):
             "store", "register", "register_code", "register_session", "operator_shift",
             "business_day", "operator", "operator_username", "device_id", "customer", "patient",
             "currency", "subtotal", "discount_total", "tax_total", "total", "hold_reason",
-            "held_at", "cancelled_at", "cancellation_reason", "created_at", "updated_at", "lines", "receipt",
+            "held_at", "cancelled_at", "cancellation_reason", "created_at", "updated_at", "lines", "receipt", "refund_requests", "refunded_total",
         ]
+
+    @staticmethod
+    @extend_schema_field(PosTransactionLineSerializer(many=True))
+    def get_lines(sale):
+        # POST responses are sometimes serialized after tenant context has been
+        # cleared (and direct service callers have none). Never rely on an
+        # implicit tenant-strict reverse manager for an authoritative receipt.
+        rows = PosTransactionLine.all_objects.filter(tenant_id=sale.tenant_id, transaction=sale).select_related("sku", "inventory_context").order_by("created_at", "pk")
+        return PosTransactionLineSerializer(rows, many=True).data
+
+    @staticmethod
+    def get_refund_requests(sale):
+        rows = RetailRefundRequest.all_objects.filter(tenant_id=sale.tenant_id, transaction=sale).order_by("created_at")
+        return RetailRefundRequestSerializer(rows, many=True).data
+
+    @staticmethod
+    def get_refunded_total(sale):
+        from django.db.models import Sum
+        amount = RetailCashRefund.all_objects.filter(tenant_id=sale.tenant_id, original_receipt__transaction=sale).aggregate(a=Sum("amount"))["a"] or 0
+        return format_money(amount)
 
 
 class CreateDraftRequestSerializer(serializers.Serializer):
@@ -166,6 +251,30 @@ class HoldRequestSerializer(DeviceActionRequestSerializer):
 
 class CancelRequestSerializer(DeviceActionRequestSerializer):
     reason = serializers.CharField()
+
+
+class RefundLineRequestSerializer(serializers.Serializer):
+    line_id = serializers.UUIDField()
+    quantity = serializers.DecimalField(max_digits=15, decimal_places=4, min_value=Decimal("0.0001"))
+    return_to_stock = serializers.BooleanField(default=False)
+    inventory_batch_id = serializers.UUIDField(required=False, allow_null=True)
+
+
+class RefundRequestSerializer(DeviceActionRequestSerializer):
+    reason = serializers.CharField(allow_blank=False)
+    idempotency_key = serializers.CharField(max_length=255, allow_blank=False)
+    return_location_id = serializers.UUIDField(required=False, allow_null=True)
+    lines = RefundLineRequestSerializer(many=True, allow_empty=False)
+
+
+class RefundReviewSerializer(serializers.Serializer):
+    refund_request_id = serializers.UUIDField()
+    reason = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class CashRefundRequestSerializer(DeviceActionRequestSerializer):
+    refund_request_id = serializers.UUIDField()
+    idempotency_key = serializers.CharField(max_length=255, allow_blank=False)
 
 
 class RetailCatalogueItemSerializer(serializers.Serializer):

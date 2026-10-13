@@ -28,12 +28,26 @@ from .serializers import (
     InventoryLocationSerializer,
     InventoryReservationSerializer,
     StocktakeCountInputSerializer,
+    StocktakeEmptyLocationInputSerializer,
     StocktakeOpenSerializer,
+    StocktakeReasonInputSerializer,
+    StocktakeRevisionInputSerializer,
     StocktakeSessionSerializer,
     StockTransferCreateSerializer,
     StockTransferReceiveSerializer,
     StockTransferSerializer,
 )
+
+
+class InventoryCapabilityPermission(permissions.BasePermission):
+    def has_permission(self, request, view):
+        tenant_id = getattr(request, "tenant_id", None) or getattr(request.user, "tenant_id", None)
+        capabilities = ("inventory.manage",) if request.method not in permissions.SAFE_METHODS else ("inventory.read", "inventory.manage")
+        if request.method not in permissions.SAFE_METHODS and isinstance(view, StockTransferViewSet):
+            operation = {"create": "request", "approve": "approve", "dispatch_transfer": "dispatch", "receive": "receive"}.get(view.action)
+            if operation:
+                capabilities += (f"inventory.transfer.{operation}",)
+        return bool(tenant_id and any(request.user.has_capability(capability, tenant_id=tenant_id) for capability in capabilities))
 
 
 class TenantScopedQuerysetMixin:
@@ -81,7 +95,7 @@ class InventoryLocationViewSet(TenantScopedQuerysetMixin, viewsets.ReadOnlyModel
     model = InventoryLocation
     select_related = ['branch']
     serializer_class = InventoryLocationSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, InventoryCapabilityPermission]
 
     @action(detail=False, methods=["get"], url_path="branches")
     def branches(self, request):
@@ -150,7 +164,7 @@ class InventoryBatchViewSet(TenantScopedQuerysetMixin, viewsets.ReadOnlyModelVie
     model = InventoryBatch
     select_related = ['sku', 'manufactured_product']
     serializer_class = InventoryBatchSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, InventoryCapabilityPermission]
 
 class InventoryLedgerEntryViewSet(TenantScopedQuerysetMixin, viewsets.ReadOnlyModelViewSet):
     """
@@ -159,7 +173,7 @@ class InventoryLedgerEntryViewSet(TenantScopedQuerysetMixin, viewsets.ReadOnlyMo
     model = InventoryLedgerEntry
     select_related = ['sku', 'location', 'inventory_batch']
     serializer_class = InventoryLedgerEntrySerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, InventoryCapabilityPermission]
 
 class InventoryBalanceViewSet(TenantScopedQuerysetMixin, viewsets.ReadOnlyModelViewSet):
     """
@@ -168,7 +182,7 @@ class InventoryBalanceViewSet(TenantScopedQuerysetMixin, viewsets.ReadOnlyModelV
     model = InventoryBalance
     select_related = ['sku', 'location']
     serializer_class = InventoryBalanceSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, InventoryCapabilityPermission]
 
 class InventoryReservationViewSet(TenantScopedQuerysetMixin, viewsets.ReadOnlyModelViewSet):
     """
@@ -177,7 +191,7 @@ class InventoryReservationViewSet(TenantScopedQuerysetMixin, viewsets.ReadOnlyMo
     model = InventoryReservation
     select_related = ['sku', 'source_location', 'batch']
     serializer_class = InventoryReservationSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, InventoryCapabilityPermission]
 
 
 class StockTransferViewSet(TenantScopedQuerysetMixin, viewsets.ReadOnlyModelViewSet):
@@ -193,7 +207,7 @@ class StockTransferViewSet(TenantScopedQuerysetMixin, viewsets.ReadOnlyModelView
         "received_by",
     ]
     serializer_class = StockTransferSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, InventoryCapabilityPermission]
 
     def get_queryset(self):
         return (
@@ -326,7 +340,14 @@ class StockTransferViewSet(TenantScopedQuerysetMixin, viewsets.ReadOnlyModelView
 class StocktakeViewSet(mixins.CreateModelMixin, TenantScopedQuerysetMixin, viewsets.ReadOnlyModelViewSet):
     model = StocktakeSession
     serializer_class = StocktakeSessionSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, InventoryCapabilityPermission]
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        if request.method in {"GET", "HEAD", "OPTIONS"}:
+            tenant_id = self.tenant_id()
+            if not tenant_id or not any(request.user.has_capability(cap, tenant_id=tenant_id) for cap in ("inventory.read", "inventory.manage")):
+                raise PermissionDenied("Stocktake reads require inventory.read authority.")
 
     def get_queryset(self):
         return (
@@ -389,7 +410,7 @@ class StocktakeViewSet(mixins.CreateModelMixin, TenantScopedQuerysetMixin, views
             tenant_id=tenant_id, pk=values["location_id"], branch_id=session.branch_id
         ).first()
         sku = CommercialSKU.all_objects.filter(
-            tenant_id=tenant_id, pk=values["sku_id"], status=CommercialSKU.STATUS_ACTIVE
+            tenant_id=tenant_id, pk=values["sku_id"]
         ).select_related("package_definition").first()
         batch = None
         if values.get("batch_id"):
@@ -401,7 +422,7 @@ class StocktakeViewSet(mixins.CreateModelMixin, TenantScopedQuerysetMixin, views
         if location is None:
             raise ValidationError({"location_id": "Select a location in this stocktake's branch."})
         if sku is None:
-            raise ValidationError({"sku_id": "Select an active SKU in this tenant."})
+            raise ValidationError({"sku_id": "Select a SKU in this tenant, including held/inactive stock that must be physically counted."})
         try:
             StocktakeService.record_count(
                 session=session,
@@ -422,6 +443,54 @@ class StocktakeViewSet(mixins.CreateModelMixin, TenantScopedQuerysetMixin, views
         session = self.get_object()
         try:
             updated = StocktakeService.post_variances(session=session, approver=request.user)
+        except DjangoValidationError as exc:
+            raise ValidationError({"detail": list(getattr(exc, "messages", [str(exc)]))}) from exc
+        return Response(self.get_serializer(self._refresh_session(updated)).data)
+
+    def _revise_count(self, request, *, void=False):
+        self._require_stocktake_authority(request)
+        payload = StocktakeRevisionInputSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        values = payload.validated_data
+        if not void and "counted_quantity" not in values:
+            raise ValidationError({"counted_quantity": "Enter the new physical count."})
+        if void and "counted_quantity" in values:
+            raise ValidationError({"counted_quantity": "Voiding does not enter a replacement quantity."})
+        session = self.get_object()
+        try:
+            StocktakeService.revise_count(session=session, actor=request.user, void=void, **values)
+        except DjangoValidationError as exc:
+            raise ValidationError({"detail": list(getattr(exc, "messages", [str(exc)]))}) from exc
+        return Response(self.get_serializer(self._refresh_session(session)).data)
+
+    @action(detail=True, methods=["post"], url_path="recount")
+    def recount(self, request, pk=None):
+        return self._revise_count(request)
+
+    @action(detail=True, methods=["post"], url_path="void-count")
+    def void_count(self, request, pk=None):
+        return self._revise_count(request, void=True)
+
+    @action(detail=True, methods=["post"], url_path="confirm-empty-location")
+    def confirm_empty_location(self, request, pk=None):
+        self._require_stocktake_authority(request)
+        payload = StocktakeEmptyLocationInputSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        session = self.get_object()
+        try:
+            updated = StocktakeService.confirm_empty_location(session=session, actor=request.user, **payload.validated_data)
+        except DjangoValidationError as exc:
+            raise ValidationError({"detail": list(getattr(exc, "messages", [str(exc)]))}) from exc
+        return Response(self.get_serializer(self._refresh_session(updated)).data)
+
+    @action(detail=True, methods=["post"], url_path="cancel")
+    def cancel(self, request, pk=None):
+        self._require_stocktake_authority(request)
+        payload = StocktakeReasonInputSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        session = self.get_object()
+        try:
+            updated = StocktakeService.cancel(session=session, actor=request.user, **payload.validated_data)
         except DjangoValidationError as exc:
             raise ValidationError({"detail": list(getattr(exc, "messages", [str(exc)]))}) from exc
         return Response(self.get_serializer(self._refresh_session(updated)).data)

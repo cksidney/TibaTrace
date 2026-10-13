@@ -20,6 +20,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { readableColumn } from '../components/tibatrace/layout';
+import { RetailReturns } from '../components/tibatrace/RetailReturns';
 
 interface RetailScreenProps {
   readonly apiBaseUrl: string;
@@ -49,7 +50,7 @@ export function RetailScreen({ apiBaseUrl, apiFetch, deviceId }: RetailScreenPro
 
   useEffect(() => {
     void client
-      .stores()
+      .stores(deviceId)
       .then((loaded) => {
         const active = loaded.filter(
           (store) =>
@@ -60,7 +61,7 @@ export function RetailScreen({ apiBaseUrl, apiFetch, deviceId }: RetailScreenPro
         setStoreId((current) => current || active[0]?.id || '');
       })
       .catch((cause: unknown) => setNotice(message(cause)));
-  }, [client]);
+  }, [client, deviceId]);
 
   const run = async (operation: () => Promise<void>) => {
     setBusy(true);
@@ -375,6 +376,7 @@ export function RetailScreen({ apiBaseUrl, apiFetch, deviceId }: RetailScreenPro
             <Text style={styles.receiptDisclaimer}>{receipt.disclaimer}</Text>
           </Section>
         ) : null}
+        <RetailReturns client={client} deviceId={deviceId} />
       </ScrollView>
 
       <View style={styles.footer}>

@@ -43,6 +43,11 @@ from apps.prescription.pos_dispensing_services import (
     PosPaymentOrchestrationService,
     PosShiftService,
 )
+from apps.prescription.pos_permissions import (
+    DISPENSING_READ_CAPABILITIES,
+    PosReadCapabilityPermission,
+    scope_to_actor_branches,
+)
 from apps.prescription.pos_printing_models import PosPrintJob
 from apps.prescription.pos_printing_services import PosPrintJobService
 
@@ -55,15 +60,53 @@ class PosDispensingViewSet(RequireAlignedPosClientMixin, viewsets.ReadOnlyModelV
     clinical gates enforced by the service layer.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, PosReadCapabilityPermission]
+    pos_read_capabilities = DISPENSING_READ_CAPABILITIES
     serializer_class = PosDispensingEpisodeSerializer
 
     def get_queryset(self):
         tenant = getattr(self.request, "tenant", None)
         if not tenant:
             tenant_id = get_current_tenant_id()
-            return DispensingEpisode.all_objects.filter(tenant_id=tenant_id)
-        return DispensingEpisode.all_objects.filter(tenant=tenant)
+            return scope_to_actor_branches(DispensingEpisode.all_objects.filter(tenant_id=tenant_id), self.request)
+        return scope_to_actor_branches(DispensingEpisode.all_objects.filter(tenant=tenant), self.request)
+
+    @action(detail=True, methods=["post"])
+    def reserve(self, request, pk=None):
+        # Reuse the canonical command, but retain POS version/activation gates
+        # and return the till's minimum-necessary episode representation.
+        from apps.prescription.api.views import DispensingEpisodeViewSet
+        return DispensingEpisodeViewSet.reserve(self, request, pk)
+
+    @action(detail=True, methods=["post"])
+    def allocate(self, request, pk=None):
+        from apps.prescription.api.views import DispensingEpisodeViewSet
+        return DispensingEpisodeViewSet.allocate(self, request, pk)
+
+    @action(detail=True, methods=["post"])
+    def prepare(self, request, pk=None):
+        from apps.prescription.api.views import DispensingEpisodeViewSet
+        return DispensingEpisodeViewSet.prepare(self, request, pk)
+
+    @action(detail=True, methods=["post"])
+    def check(self, request, pk=None):
+        from apps.prescription.api.views import DispensingEpisodeViewSet
+        return DispensingEpisodeViewSet.check(self, request, pk)
+
+    @action(detail=True, methods=["post"])
+    def label(self, request, pk=None):
+        from apps.prescription.api.views import DispensingEpisodeViewSet
+        from apps.prescription.models import DispensingLabel
+        from apps.prescription.pos_printing_services import PosPrintDocumentService
+        response = DispensingEpisodeViewSet.label(self, request, pk)
+        label = DispensingLabel.all_objects.get(tenant_id=request.tenant_id, pk=response.data["id"])
+        device_id = request.headers.get("X-POS-Device-ID") or request.data.get("device_id", "")
+        try:
+            document, job = PosPrintDocumentService.issue_label(label=label, actor=request.user, device_id=device_id)
+        except ValidationError as error:
+            return Response({"error": str(error)}, status=400)
+        return Response({"label_id": str(label.pk), "document_number": document.document_number,
+                         "print_job_id": str(job.pk) if job else None})
 
     @action(detail=False, methods=["get"])
     def queue(self, request):
@@ -86,6 +129,7 @@ class PosDispensingViewSet(RequireAlignedPosClientMixin, viewsets.ReadOnlyModelV
         qs = PosDispensingQueueService.get_queue(
             tenant=tenant_id, branch=branch_id, status=status_filter
         )
+        qs = scope_to_actor_branches(qs, request)
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)
 
@@ -113,13 +157,19 @@ class PosDispensingViewSet(RequireAlignedPosClientMixin, viewsets.ReadOnlyModelV
         serializer = BatchVerificationRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
-
+        location = None
+        if data.get("episode_id"):
+            episode = self.get_queryset().filter(pk=data["episode_id"]).first()
+            if not episode:
+                return Response({"detail": "Episode not found within your workspace/branch."}, status=404)
+            location = episode.pharmacy_location
         res = PosBatchVerificationService.verify_batch(
             tenant=tenant,
             sku_id=data["sku_id"],
             batch_number=data["batch_number"],
             expiry_date=data.get("expiry_date"),
             quantity_scanned=data.get("quantity_scanned", 1),
+            location=location,
         )
         return Response(res)
 
@@ -231,10 +281,11 @@ class PosDispensingViewSet(RequireAlignedPosClientMixin, viewsets.ReadOnlyModelV
                 actor=request.user,
                 idempotency_key=data["idempotency_key"],
             )
+            episode.refresh_from_db()
             return Response({
-                "status": "SUPPLIED",
+                "status": episode.status,
                 "supply_id": str(supply.id),
-                "collected_at": episode.collected_at.isoformat(),
+                "collected_at": episode.collected_at.isoformat() if episode.collected_at else None,
             })
         except ValidationError as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -257,7 +308,8 @@ class PosDispensingViewSet(RequireAlignedPosClientMixin, viewsets.ReadOnlyModelV
 
 
 class PosShiftViewSet(viewsets.ReadOnlyModelViewSet):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, PosReadCapabilityPermission]
+    pos_read_capabilities = ("pos.shift.manage", "pos.session.view", "pos.report.read", "dispensing.complete")
     serializer_class = PosShiftRecordSerializer
 
     def get_queryset(self):
@@ -307,7 +359,8 @@ class PosShiftViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class PosDeviceHealthViewSet(viewsets.ReadOnlyModelViewSet):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, PosReadCapabilityPermission]
+    pos_read_capabilities = ("pos.shift.manage", "pos.device.manage", "pos.device.read")
     serializer_class = PosDeviceHealthRecordSerializer
 
     def get_queryset(self):
@@ -319,6 +372,11 @@ class PosDeviceHealthViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=False, methods=["post"], url_path="telemetry")
     def record_telemetry(self, request):
+        from rest_framework.exceptions import PermissionDenied
+
+        from apps.prescription.pos_permissions import has_any_capability
+        if not has_any_capability(request.user, request.tenant_id, self.pos_read_capabilities):
+            raise PermissionDenied("POS device authority is required to record telemetry.")
         tenant = getattr(self.request, "tenant", None)
         serializer = DeviceTelemetrySerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -344,12 +402,17 @@ class PosDeviceHealthViewSet(viewsets.ReadOnlyModelViewSet):
 class PosPrintJobViewSet(viewsets.ReadOnlyModelViewSet):
     """Durable print-job queue; no direct document or job mutation is exposed."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, PosReadCapabilityPermission]
+    pos_read_capabilities = (
+        "pos.document.print", "pos.document.reprint", "pos.document.read",
+        "dispensing.prepare", "dispensing.complete",
+    )
     serializer_class = PosPrintJobSerializer
 
     def get_queryset(self):
         tenant_id = get_current_tenant_id() or getattr(self.request, "tenant_id", None)
         queryset = PosPrintJob.all_objects.filter(tenant_id=tenant_id).select_related("document")
+        queryset = scope_to_actor_branches(queryset, self.request)
         status_filter = self.request.query_params.get("status")
         if status_filter:
             queryset = queryset.filter(status=status_filter)
@@ -360,6 +423,32 @@ class PosPrintJobViewSet(viewsets.ReadOnlyModelViewSet):
         if device_id:
             queryset = queryset.filter(device_id=device_id)
         return queryset.order_by("-created_at")
+
+    @action(detail=True, methods=["post"], url_path="select-transport")
+    def select_transport(self, request, pk=None):
+        try:
+            job = PosPrintJobService.configure_transport(
+                job=self.get_object(), actor=request.user,
+                transport=request.data.get("transport", ""), printer=request.data.get("printer", ""),
+                device_id=request.headers.get("X-POS-Device-ID") or request.data.get("device_id", ""),
+            )
+        except ValidationError as error:
+            return Response({"error": str(error)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(job).data)
+
+    @action(detail=True, methods=["post"])
+    def snapshot(self, request, pk=None):
+        from apps.audit.models import AuditEvent
+        from apps.prescription.services.clinical_dispensing import _require_capability
+        job = self.get_object()
+        _require_capability(request.user, job.tenant_id, "pos.document.print")
+        device_id = request.headers.get("X-POS-Device-ID") or request.data.get("device_id", "")
+        if not device_id or job.device_id != device_id:
+            return Response({"detail": "Document belongs to a different till installation."}, status=403)
+        AuditEvent.all_objects.create(tenant_id=job.tenant_id, actor=request.user, action="POS_DOCUMENT_RENDER_VIEWED",
+            model_name="PosPrintDocument", object_id=str(job.document_id), metadata={"job_id": str(job.pk), "device_id": device_id})
+        return Response({"snapshot": job.document.snapshot, "document_hash": job.document.document_hash,
+            "document_number": job.document.document_number, "copy_number": job.copy_number, "copy_classification": job.copy_classification})
 
     @action(detail=True, methods=["post"])
     def render(self, request, pk=None):

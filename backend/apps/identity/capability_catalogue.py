@@ -103,6 +103,13 @@ CAPABILITY_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
         "Point of sale",
         (
             "pos.payment.collect",
+            "pos.transaction.create",
+            "pos.transaction.read",
+            "pos.transaction.manage",
+            "pos.payment.cash.accept",
+            "pos.refund.request",
+            "pos.refund.approve",
+            "pos.refund.cash.execute",
             "pos.shift.manage",
         ),
     ),

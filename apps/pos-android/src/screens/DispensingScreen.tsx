@@ -24,6 +24,7 @@ import { readableColumn } from '../components/tibatrace/layout';
 import { ClinicalSummaryCard, PatientBanner } from '../components/tibatrace/ClinicalSummaryCard';
 import type { AndroidClinicalSummary } from '../components/tibatrace/ClinicalSummaryCard';
 import { TibaTraceBrand } from '../components/tibatrace/TibaTraceBrand';
+import { ClinicalPreparation } from '../components/tibatrace/ClinicalPreparation';
 
 /**
  * Android dispensing episode.
@@ -106,6 +107,7 @@ export function DispensingScreen({
         </View>
 
         {/* Medicine lines */}
+        {apiFetch ? <ClinicalPreparation key={episode.id} episode={episode} apiFetch={apiFetch} onChanged={() => onTransition?.()} /> : null}
         {episode.lines.length > 0 ? (
           <View>
             <Text style={styles.sectionTitle}>Prescription lines</Text>
@@ -158,7 +160,6 @@ function LineCard({
   line,
   episodeId,
   apiFetch,
-  onTransition,
 }: {
   readonly line: DispensingLineDTO;
   readonly episodeId: string;
@@ -168,7 +169,6 @@ function LineCard({
   const [verifyResult, setVerifyResult] = useState<BatchVerificationResponse | null>(null);
   const [batchNumber, setBatchNumber] = useState('');
   const [verifying, setBusy] = useState(false);
-  const [completing, setCompleting] = useState(false);
   const [actionError, setActionError] = useState('');
 
   const statusMeta = lineStatusMeta(line.status);
@@ -189,6 +189,8 @@ function LineCard({
         body: JSON.stringify({
           sku_id: line.supplied_sku || line.prescribed_sku,
           batch_number: batchNumber.trim(),
+          episode_id: episodeId,
+          quantity_scanned: line.quantity_prepared || line.quantity_authorized,
         }),
       });
       if (!response.ok) { setActionError(`Verify failed (${response.status}).`); return; }
@@ -200,31 +202,12 @@ function LineCard({
     }
   };
 
-  const completeCheck = async () => {
-    if (!apiFetch) return;
-    setCompleting(true);
-    setActionError('');
-    try {
-      const resp = await apiFetch(`/api/pos/dispensing/episodes/${episodeId}/transition-state/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({ new_status: 'CHECKING' }),
-      });
-      if (!resp.ok) { setActionError(`Transition failed (${resp.status}).`); return; }
-      onTransition?.();
-    } catch (cause) {
-      setActionError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      setCompleting(false);
-    }
-  };
-
   return (
     <View style={[styles.lineCard, { borderLeftColor: palette.accent }]}>
       {/* Header: medicine name + status */}
       <View style={styles.lineHeader}>
         <View style={styles.lineHeaderText}>
-          <Text style={styles.medicineName}>{line.supplied_sku || line.prescribed_sku}</Text>
+          <Text style={styles.medicineName}>{line.supplied_medicine_name || line.prescribed_medicine_name || 'Medicine name unavailable — refresh this episode'}</Text>
           {line.dosage_label_instructions ? (
             <Text style={styles.dosageInstructions}>{line.dosage_label_instructions}</Text>
           ) : null}
@@ -310,6 +293,7 @@ function LineCard({
       ) : null}
 
       {/* Final check — PREPARED lines */}
+      {Number(line.quantity_prepared) > 0 ? <Text style={styles.checkCompletedNote}>Use the supported Windows USB till for medicine labels. Android printer transport is not configured.</Text> : null}
       {(line.status === 'PREPARED' || line.status === 'CHECKING') && apiFetch ? (
         <View style={styles.actionSection}>
           <Text style={styles.actionSectionTitle}>Final check</Text>
@@ -317,8 +301,8 @@ function LineCard({
           <View style={styles.checkTable}>
             <CheckRow
               field="Product"
-              prescribed={line.prescribed_sku}
-              prepared={line.supplied_sku}
+              prescribed={line.prescribed_medicine_name || 'Medicine name unavailable'}
+              prepared={line.supplied_medicine_name || 'Medicine name unavailable'}
               matches={line.prescribed_sku === line.supplied_sku}
             />
             <CheckRow
@@ -344,20 +328,7 @@ function LineCard({
               matches={true}
             />
           </View>
-          {line.status === 'PREPARED' ? (
-            <Pressable
-              accessibilityRole="button"
-              disabled={completing || isExpired}
-              onPress={() => void completeCheck()}
-              style={[styles.primary, (completing || isExpired) && styles.primaryDisabled, { marginTop: spacing.md }]}
-            >
-              <Text style={[styles.primaryLabel, (completing || isExpired) && styles.primaryLabelDisabled]}>
-                {completing ? 'Recording…' : 'Complete final check'}
-              </Text>
-            </Pressable>
-          ) : (
-            <Text style={styles.checkCompletedNote}>Final check recorded.</Text>
-          )}
+          <Text style={styles.checkCompletedNote}>Use the independent final-check checklist for all prepared lines.</Text>
         </View>
       ) : null}
     </View>

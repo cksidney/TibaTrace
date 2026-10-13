@@ -11,6 +11,7 @@ from rest_framework.views import APIView
 
 from apps.core.tenant_context import get_current_tenant_id
 from apps.medicines.onboarding import StaleSetupReview, assert_setup_access, missing_details, save_review, setup_status
+from apps.medicines.onboarding_completion import release_opening_setup, stage_opening_setup
 from apps.medicines.onboarding_models import LegacyCatalogueItem
 
 
@@ -54,7 +55,7 @@ def serialise(item):
             "source_quantity":str(item.source_quantity), "source_product":item.source_product,
             "source_stock":item.source_stock, "source_issues":item.source_issues,
             "review":item.review, "status":setup_status(item), "missing_details":missing_details(item),
-            "updated_at":item.updated_at.isoformat(), "saleable":False}
+            "updated_at":item.updated_at.isoformat(), "completion":item.completion, "saleable":False}
 
 
 class SetupScope(APIView):
@@ -115,6 +116,58 @@ class LegacyItemReview(SetupScope):
                                expected_updated_at=request.data.get("expected_updated_at"))
         except StaleSetupReview as exc:
             return Response({"detail":str(exc)}, status=409)
+        except ValidationError as exc:
+            return Response({"detail":" ".join(exc.messages)}, status=400)
+        return Response(serialise(item))
+
+
+class StageSetupInput(serializers.Serializer):
+    expected_updated_at = serializers.CharField()
+    sku_id = serializers.UUIDField()
+    branch_id = serializers.UUIDField()
+    quarantine_location_id = serializers.UUIDField()
+    product_match_confirmed = serializers.BooleanField()
+    unit_match_confirmed = serializers.BooleanField()
+    tax_inclusive = serializers.BooleanField()
+    storage_requirement = serializers.ChoiceField(choices=["AMBIENT", "COLD_CHAIN"])
+    reason = serializers.CharField(max_length=2000, allow_blank=False)
+
+
+class LegacyItemStage(SetupScope):
+    def post(self, request, pk):
+        item = get_object_or_404(self.scoped(request), pk=pk)
+        payload = StageSetupInput(data=request.data)
+        payload.is_valid(raise_exception=True)
+        values = dict(payload.validated_data)
+        expected = values.pop("expected_updated_at")
+        try:
+            item = stage_opening_setup(item=item, actor=request.user, expected_updated_at=expected, values=values)
+        except StaleSetupReview as exc:
+            return Response({"detail":str(exc)}, status=409)
+        except PermissionDenied as exc:
+            return Response({"detail":str(exc)}, status=403)
+        except ValidationError as exc:
+            return Response({"detail":" ".join(exc.messages)}, status=400)
+        return Response(serialise(item))
+
+
+class ReleaseSetupInput(serializers.Serializer):
+    expected_updated_at = serializers.CharField()
+    destination_location_id = serializers.UUIDField()
+    reason = serializers.CharField(max_length=2000, allow_blank=False)
+
+
+class LegacyItemRelease(SetupScope):
+    def post(self, request, pk):
+        item = get_object_or_404(self.scoped(request), pk=pk)
+        payload = ReleaseSetupInput(data=request.data)
+        payload.is_valid(raise_exception=True)
+        try:
+            item = release_opening_setup(item=item, actor=request.user, **payload.validated_data)
+        except StaleSetupReview as exc:
+            return Response({"detail":str(exc)}, status=409)
+        except PermissionDenied as exc:
+            return Response({"detail":str(exc)}, status=403)
         except ValidationError as exc:
             return Response({"detail":" ".join(exc.messages)}, status=400)
         return Response(serialise(item))

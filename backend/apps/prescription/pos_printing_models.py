@@ -16,6 +16,7 @@ from apps.core.models import StrictTenantManager, TenantConsistencyMixin, Timest
 class PosPrintDocument(TenantConsistencyMixin, TimestampedModel):
     class DocumentType(models.TextChoices):
         RETAIL_RECEIPT = "RETAIL_RECEIPT", "Retail receipt"
+        RETAIL_REFUND = "RETAIL_REFUND", "Retail refund receipt"
         PRESCRIPTION_RECEIPT = "PRESCRIPTION_RECEIPT", "Prescription receipt"
         MEDICINE_LABEL = "MEDICINE_LABEL", "Medicine label"
         CASH_MOVEMENT_RECEIPT = "CASH_MOVEMENT_RECEIPT", "Cash movement receipt"

@@ -94,6 +94,7 @@ export class DispensingWorkflow {
     const canTakePayment = episode.status === 'READY_FOR_PAYMENT';
     const paymentSettled = paymentPermitsSupply(episode.payment_state);
     const supplyStatus =
+      episode.status === 'PAID' ||
       episode.status === 'READY_FOR_SUPPLY' ||
       episode.status === 'READY_FOR_COLLECTION' ||
       episode.status === 'PARTIALLY_SUPPLIED';

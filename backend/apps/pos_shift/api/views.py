@@ -38,6 +38,7 @@ from apps.pos_shift.operations import (
     RegisterReportService,
 )
 from apps.prescription.pos_dispensing_api.serializers import PosDeviceHealthRecordSerializer
+from apps.prescription.pos_permissions import PosReadCapabilityPermission
 
 from .serializers import (
     BusinessDaySerializer,
@@ -81,7 +82,11 @@ def _run(operation):
 class TenantScopedViewSet(RequireAlignedPosClientMixin, viewsets.ReadOnlyModelViewSet):
     """Tenant-scoped collections with explicit controlled commands."""
 
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, PosReadCapabilityPermission]
+    pos_read_capabilities = (
+        "pos.shift.manage", "pos.session.view", "pos.report.read", "pos.cash.read",
+        "dispensing.complete", "prescriptions.record_payment", "pos.retail.checkout",
+    )
     model = None
 
     def _tenant_id(self):

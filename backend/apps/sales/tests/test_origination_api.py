@@ -15,7 +15,7 @@ import pytest
 from rest_framework.test import APIClient
 
 from apps.customers.models import Customer
-from apps.identity.models import User
+from apps.identity.models import Role, User, UserRole
 from apps.medicines.models import (
     ClinicalMedicinalProduct,
     CommercialSKU,
@@ -24,7 +24,7 @@ from apps.medicines.models import (
     PackageDefinition,
 )
 from apps.organizations.models import Location, Organization
-from apps.sales.models import Quotation, SalesOrder
+from apps.sales.models import PriceList, PriceListEntry, Quotation, SalesOrder
 from apps.tenancy.models import Tenant
 
 PASSWORD = "sales-origination-password"
@@ -47,6 +47,8 @@ def world(db):
     user = User.objects.create_user(
         username="sales-user", password=PASSWORD, tenant=tenant
     )
+    role = Role.all_objects.create(tenant=tenant, code="SALES_MANAGER", name="Sales manager", capabilities=["sales.read", "sales.manage"])
+    UserRole.all_objects.create(tenant=tenant, user=user, role=role)
     org = Organization.all_objects.create(tenant=tenant, code="ORG-SO", name="Org")
     branch = Location.all_objects.create(
         tenant=tenant, organization=org, code="BR-SO", name="Branch"
@@ -79,6 +81,8 @@ def world(db):
         # -- an order for something withdrawn is an order nobody can fill.
         status=CommercialSKU.STATUS_ACTIVE, is_saleable=True,
     )
+    price_list = PriceList.all_objects.create(tenant=tenant, code="SALES-PRICE", name="Synthetic commercial price", is_default=True, status="ACTIVE", effective_from="2020-01-01")
+    PriceListEntry.all_objects.create(tenant=tenant, price_list=price_list, sku=sku, unit_price="125.00", effective_from="2020-01-01")
 
     client = APIClient()
     assert client.post(

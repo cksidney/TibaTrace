@@ -623,6 +623,9 @@ def test_controlled_verification_requires_distinct_witness(domain):
 def test_counselling_recording(domain):
     data = domain
     episode = data["episode"]
+    make_clinically_ready(data)
+    episode.status = "READY_FOR_SUPPLY"
+    episode.save()
 
     counselling = PosCounsellingService.record_counselling(
         episode=episode,

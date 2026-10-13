@@ -338,6 +338,16 @@ class DispensingEpisodeSerializer(serializers.ModelSerializer):
     allocations = DispensingAllocationSerializer(many=True, read_only=True)
     supplies = MedicineSupplySerializer(many=True, read_only=True)
 
+    def to_representation(self, episode):
+        from apps.prescription.pos_permissions import can_read_clinical_details
+        payload = super().to_representation(episode)
+        request = self.context.get("request")
+        if request and not can_read_clinical_details(request, episode.tenant_id):
+            payload["notes"] = ""
+            for line in payload["lines"]:
+                line["dosage_label_instructions"] = ""
+        return payload
+
     class Meta:
         model = DispensingEpisode
         fields = (

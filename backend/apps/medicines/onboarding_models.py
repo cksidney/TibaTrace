@@ -34,6 +34,8 @@ class LegacyCatalogueItem(TimestampedModel):
     source_issues = models.JSONField(default=list, blank=True)
     # Only these manager inputs are editable. Source columns stay unchanged.
     review = models.JSONField(default=dict, blank=True)
+    # Governed downstream lineage is separate from editable Manager evidence.
+    completion = models.JSONField(default=dict, blank=True)
     reviewed_by = models.ForeignKey("identity.User", on_delete=models.PROTECT, null=True, blank=True)
     objects = StrictTenantManager()
     all_objects = models.Manager()

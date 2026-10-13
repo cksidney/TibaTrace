@@ -74,6 +74,7 @@ def world(db):
         manufactured_product=manufactured, package_definition=package,
     )
     user = User.objects.create_user(username="pricing-clerk", password="pw", tenant=tenant)
+    grant(user, "pricing.read")
     api = APIClient()
     api.force_authenticate(user=user)
     return {"tenant": tenant, "branch": branch, "sku": sku, "user": user, "client": api}
@@ -438,7 +439,7 @@ class TestIsolation:
         )
         api = APIClient()
         api.force_authenticate(user=user)
-        assert rows(api.get("/api/pricing/books/")) == []
+        assert api.get("/api/pricing/books/").status_code == 403
 
 
 # ─── cost stays out ──────────────────────────────────────────────────────────

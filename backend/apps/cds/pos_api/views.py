@@ -16,6 +16,7 @@ from apps.cds.pos_screening_services import (
 )
 from apps.core.tenant_context import get_current_tenant_id
 from apps.platform.client_alignment import RequireAlignedPosClientMixin
+from apps.prescription.pos_permissions import DISPENSING_READ_CAPABILITIES, PosReadCapabilityPermission
 
 from .serializers import (
     PosClinicalAcknowledgementSerializer,
@@ -56,7 +57,8 @@ def _resolve_acting_pharmacist(*, request, username="", password=""):
     return pharmacist
 
 class PosClinicalScreeningViewSet(RequireAlignedPosClientMixin, viewsets.GenericViewSet):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, PosReadCapabilityPermission]
+    pos_read_capabilities = DISPENSING_READ_CAPABILITIES + ("pos.clinical_screening.view", "cds.read")
     lookup_field = 'screening_id'
     # Required for schema generation: without it drf-spectacular cannot infer a
     # component and silently drops these routes from the OpenAPI contract.
@@ -109,14 +111,14 @@ class PosClinicalScreeningViewSet(RequireAlignedPosClientMixin, viewsets.Generic
                 cashier=request.user,
                 offline_state=data.get('offline_state', False)
             )
-            result_serializer = PosClinicalScreeningResultSerializer(screening)
+            result_serializer = PosClinicalScreeningResultSerializer(screening, context={"request": request})
             return Response(result_serializer.data, status=status.HTTP_201_CREATED)
         except Exception as e:
             raise ValidationError(str(e))
 
     def retrieve(self, request, screening_id=None):
         screening = self.get_object()
-        serializer = PosClinicalScreeningResultSerializer(screening)
+        serializer = PosClinicalScreeningResultSerializer(screening, context={"request": request})
         return Response(serializer.data)
 
     @action(detail=True, methods=['post'], url_path='acknowledge')
@@ -134,7 +136,7 @@ class PosClinicalScreeningViewSet(RequireAlignedPosClientMixin, viewsets.Generic
                 expected_context_hash=data.get('expected_context_hash'),
             )
             screening.refresh_from_db()
-            return Response(PosClinicalScreeningResultSerializer(screening).data)
+            return Response(PosClinicalScreeningResultSerializer(screening, context={"request": request}).data)
         except PermissionDenied:
             # Must surface as 403, not be flattened into a 400.
             raise
@@ -186,7 +188,7 @@ class PosClinicalScreeningViewSet(RequireAlignedPosClientMixin, viewsets.Generic
                 expected_context_hash=data.get('expected_context_hash'),
             )
             screening.refresh_from_db()
-            return Response(PosClinicalScreeningResultSerializer(screening).data)
+            return Response(PosClinicalScreeningResultSerializer(screening, context={"request": request}).data)
         except PermissionDenied:
             raise
         except DjangoValidationError as e:
@@ -196,7 +198,7 @@ class PosClinicalScreeningViewSet(RequireAlignedPosClientMixin, viewsets.Generic
     def resolve(self, request, screening_id=None):
         # Additional action requested. Simple implementation.
         screening = self.get_object()
-        return Response(PosClinicalScreeningResultSerializer(screening).data)
+        return Response(PosClinicalScreeningResultSerializer(screening, context={"request": request}).data)
 
     @action(detail=False, methods=['get'], url_path='ruleset-version')
     def ruleset_version(self, request):
@@ -218,7 +220,8 @@ class PosClinicalScreeningViewSet(RequireAlignedPosClientMixin, viewsets.Generic
 
 
 class PosClinicalOverrideViewSet(RequireAlignedPosClientMixin, viewsets.GenericViewSet):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, PosReadCapabilityPermission]
+    pos_read_capabilities = PosClinicalScreeningViewSet.pos_read_capabilities
     lookup_field = 'pk'
 
     def get_queryset(self):

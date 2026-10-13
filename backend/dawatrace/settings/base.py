@@ -242,7 +242,12 @@ CELERY_BROKER_URL = env("DAWATRACE_CELERY_BROKER_URL", "redis://localhost:6380/1
 CELERY_RESULT_BACKEND = env("DAWATRACE_CELERY_RESULT_BACKEND", "redis://localhost:6380/2")
 CELERY_TASK_ALWAYS_EAGER = env_bool("DAWATRACE_CELERY_TASK_ALWAYS_EAGER", False)
 CELERY_TASK_EAGER_PROPAGATES = True
-CELERY_BEAT_SCHEDULE = {}
+CELERY_BEAT_SCHEDULE = {
+    "inventory-expiry-maintenance-hourly": {
+        "task": "apps.inventory.tasks.dispatch_expiry_maintenance",
+        "schedule": 3600.0,
+    },
+}
 CELERY_TASK_ROUTES = {"apps.*": {"queue": "dawatrace-clinical"}}
 
 #: The product version, in one place. The POS shell renders this rather than a

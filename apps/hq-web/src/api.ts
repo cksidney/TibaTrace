@@ -22,6 +22,37 @@ function tenantHeaders(tenantId = ''): Record<string, string> {
   return resolvedTenant ? { 'X-Tenant-ID': resolvedTenant } : {};
 }
 
+export interface PrescriptionIntakeOptions {
+  patients: readonly { id: string; name: string; number: string }[];
+  practitioners: readonly { id: string; name: string; number: string }[];
+  organizations: readonly { id: string; name: string }[];
+  branches: readonly { id: string; name: string; organization: string }[];
+  skus: readonly { id: string; name: string; unit: string }[];
+  stores: readonly { id: string; name: string; branch: string }[];
+  verified_prescriptions: readonly { id: string; prescription_number: string; location: string }[];
+  priced_orders: readonly { id: string; order_number: string; branch: string; total: string }[];
+  search_limited: boolean;
+}
+
+export async function loadPrescriptionIntakeOptions(query = '', signal?: AbortSignal): Promise<PrescriptionIntakeOptions> {
+  const response = await fetch(`/api/prescriptions/intake-options/?q=${encodeURIComponent(query)}`, {
+    credentials: 'include', headers: { Accept: 'application/json', ...tenantHeaders() }, ...(signal ? { signal } : {}),
+  });
+  if (!response.ok) throw new Error(apiErrorMessage(await response.json().catch(() => null)) ?? 'Prescription intake options could not be loaded.');
+  return response.json() as Promise<PrescriptionIntakeOptions>;
+}
+
+export async function createClinicalWorkflowRecord(path: '/api/prescriptions/' | '/api/dispensing/episodes/', payload: Record<string, unknown>, csrfToken: string): Promise<{ id: string; prescription_number?: string; dispensing_number?: string }> {
+  let response: Response;
+  try { response = await fetch(path, { method: 'POST', credentials: 'include', headers: {
+    Accept: 'application/json', 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken, ...tenantHeaders(),
+  }, body: JSON.stringify(payload) }); } catch {
+    throw new Error('Outcome unknown. Refresh the prescription/episode queue before retrying with the same original reference or episode key.');
+  }
+  if (!response.ok) throw new Error(apiErrorMessage(await response.json().catch(() => null)) ?? 'The governed clinical command was refused.');
+  return response.json() as Promise<{ id: string; prescription_number?: string; dispensing_number?: string }>;
+}
+
 export interface AttentionItem {
   readonly label: string;
   readonly value: number;
@@ -162,6 +193,9 @@ export interface HQCustomer {
 }
 
 export interface HQSku {
+  readonly sales_unit?: string;
+  readonly package_description?: string;
+  readonly tax_category?: string;
   readonly brand_name: string;
   readonly canonical_medicine_name: string;
   readonly default_barcode: string;
@@ -622,6 +656,9 @@ function expandActionValues(
 export type Money = string;
 
 export interface Paginated<T> {
+  readonly count?: number;
+  readonly next?: string | null;
+  readonly previous?: string | null;
   readonly results?: readonly T[];
 }
 
@@ -638,14 +675,31 @@ async function getCollection<T>(path: string, signal?: AbortSignal): Promise<rea
   };
   if (signal) request.signal = signal;
 
-  const response = await fetch(path, request);
-  if (!response.ok) {
-    // Thrown, not swallowed into an empty list. A section that renders "0
-    // claims" because the request failed is worse than one that says it could
-    // not load: the first is believed.
-    throw new HQApiError(response.status, `${path} failed with ${response.status}.`);
+  return getCompleteCollection<T>(path, request);
+}
+
+/** Preserve the collection contract: never silently drop later DRF pages.
+ * Bounded and origin-checked because tenant headers must not follow an
+ * arbitrary pagination URL. Large collections must use a paged workspace.
+ */
+async function getCompleteCollection<T>(path: string, request: RequestInit): Promise<readonly T[]> {
+  const rows: T[] = [];
+  const seen = new Set<string>();
+  let next: string | null = path;
+  while (next) {
+    if (seen.has(next) || seen.size >= 100) throw new HQApiError(409, 'Collection paging exceeded its safe limit. Narrow the search or use a paged workspace.');
+    seen.add(next);
+    const response = await fetch(next, request);
+    if (!response.ok) throw new HQApiError(response.status, `${path} failed with ${response.status}.`);
+    const body = await response.json() as readonly T[] | Paginated<T>;
+    rows.push(...collectionRows(body));
+    const following = Array.isArray(body) ? null : (body as Paginated<T>).next;
+    if (!following) { next = null; continue; }
+    const url = new URL(following, window.location.origin);
+    if (url.origin !== window.location.origin || !url.pathname.startsWith('/api/')) throw new HQApiError(409, 'Invalid collection pagination URL.');
+    next = `${url.pathname}${url.search}`;
   }
-  return collectionRows<T>(await response.json());
+  return rows;
 }
 
 async function getTenantCollection<T>(
@@ -661,11 +715,7 @@ async function getTenantCollection<T>(
     },
   };
   if (signal) request.signal = signal;
-  const response = await fetch(path, request);
-  if (!response.ok) {
-    throw new HQApiError(response.status, `${path} failed with ${response.status}.`);
-  }
-  return collectionRows<T>(await response.json());
+  return getCompleteCollection<T>(path, request);
 }
 
 async function getTenantJson<T>(path: string, tenantId: string, signal?: AbortSignal): Promise<T> {
@@ -724,6 +774,15 @@ export interface LegacySetupReview {
 }
 
 export interface LegacySetupItem {
+  readonly completion?: {
+    readonly phase: string;
+    readonly sku_id: string;
+    readonly sku_code: string;
+    readonly branch_id: string;
+    readonly price_version_id: string;
+    readonly staged_by: string;
+    readonly destination_location_id?: string;
+  };
   readonly id: string;
   readonly source_key: string;
   readonly source_row: number;
@@ -766,6 +825,12 @@ export async function loadLegacySetup(q: string, stock: string, page: number, si
 export const saveLegacySetupReview = (item: LegacySetupItem, review: LegacySetupReview, csrfToken: string) =>
   mutateJson<LegacySetupItem>(`/api/medicines/initial-setup/${encodeURIComponent(item.id)}/review/`, 'POST',
     { review, expected_updated_at: item.updated_at }, csrfToken);
+
+export const stageLegacySetup = (item: LegacySetupItem, values: { readonly sku_id: string; readonly branch_id: string; readonly quarantine_location_id: string; readonly product_match_confirmed: boolean; readonly unit_match_confirmed: boolean; readonly storage_requirement: string; readonly tax_inclusive: boolean; readonly reason: string }, csrfToken: string) =>
+  mutateJson<LegacySetupItem>(`/api/medicines/initial-setup/${encodeURIComponent(item.id)}/stage/`, 'POST', { ...values, expected_updated_at: item.updated_at }, csrfToken);
+
+export const releaseLegacySetup = (item: LegacySetupItem, destination_location_id: string, reason: string, csrfToken: string) =>
+  mutateJson<LegacySetupItem>(`/api/medicines/initial-setup/${encodeURIComponent(item.id)}/release/`, 'POST', { destination_location_id, reason, expected_updated_at: item.updated_at }, csrfToken);
 
 /* ── tenant management ────────────────────────────────────────────────────── */
 
@@ -3241,6 +3306,12 @@ export interface HQStockTransferReceipt {
 }
 
 export interface HQStocktakeCount {
+  readonly updated_at?: string;
+  readonly voided?: boolean;
+  readonly void_reason?: string;
+  readonly first_count?: string | null;
+  readonly recount?: string | null;
+  readonly final_approved_count?: string | null;
   readonly id: string;
   readonly location: string;
   readonly location_name: string;
@@ -3258,6 +3329,7 @@ export interface HQStocktakeCount {
 }
 
 export interface HQStocktakeSession {
+  readonly completeness?: { readonly snapshot_available: boolean; readonly required_lines: number; readonly counted_lines: number; readonly missing_lines: readonly { readonly location_id: string; readonly sku_id: string; readonly batch_id: string | null; readonly location_name: string; readonly sku_name: string; readonly sku_code: string; readonly batch_number: string | null }[]; readonly unconfirmed_empty_location_ids: readonly string[]; readonly complete: boolean };
   readonly id: string;
   readonly branch: string;
   readonly branch_name: string;
@@ -3309,6 +3381,9 @@ export const loadStockTransfers = (tenantId: string, signal?: AbortSignal) =>
 
 export const loadStocktakes = (tenantId: string, signal?: AbortSignal) =>
   getTenantCollection<HQStocktakeSession>('/api/inventory/stocktakes/', tenantId, signal);
+
+export const reviseStocktake = (sessionId: string, action: 'recount' | 'void-count' | 'cancel' | 'confirm-empty-location', payload: unknown, tenantId: string, csrfToken: string) =>
+  mutateJson<HQStocktakeSession>(`/api/inventory/stocktakes/${encodeURIComponent(sessionId)}/${action}/`, 'POST', payload, csrfToken, tenantId);
 
 export const openStocktake = (
   payload: { readonly branch_id: string; readonly location_ids: readonly string[]; readonly scope: string; readonly document_number: string },
@@ -3468,6 +3543,30 @@ export const loadSalesReturns = (signal?: AbortSignal) =>
 
 export const loadSalesOrderHolds = (signal?: AbortSignal) =>
   getCollection<HQSalesOrderHoldItem>('/api/sales/order-holds/', signal);
+
+export interface CommerceDraftLine { readonly id: string; readonly sku: string; readonly requested_quantity: string; readonly unit: string; readonly description_snapshot: string }
+export interface CommerceDraft { readonly id: string; readonly order_number?: string; readonly quotation_number?: string; readonly customer: string; readonly customer_name: string; readonly branch: string; readonly status: string; readonly lines: readonly CommerceDraftLine[] }
+export interface CommerceTask extends HQPickingTaskItem { readonly sales_order: string; readonly batch: string; readonly sales_order_line: string; readonly short_quantity: string }
+export interface CommerceSession extends HQPackingSessionItem { readonly sales_order: string; readonly session_number: string }
+export interface CommercePackage extends HQPackageItem { readonly sales_order: string; readonly packing_session: string; readonly lines: readonly { readonly id: string; readonly sku: string; readonly quantity: string }[] }
+export interface CommerceDispatch { readonly id: string; readonly dispatch_number: string; readonly sales_order: string; readonly status: string; readonly lines: readonly { readonly id: string; readonly sku: string; readonly quantity: string; readonly unit: string }[] }
+export interface CommerceDesk {
+  readonly options: { readonly branches: readonly { readonly id: string; readonly code: string; readonly name: string }[]; readonly customers: readonly { readonly id: string; readonly legal_name: string; readonly customer_number: string }[]; readonly addresses: readonly { readonly id: string; readonly customer_id: string; readonly address_code: string; readonly address_line1: string; readonly city: string }[] };
+  readonly skus: readonly HQSku[]; readonly orders: readonly CommerceDraft[]; readonly quotations: readonly CommerceDraft[];
+  readonly tasks: readonly CommerceTask[]; readonly sessions: readonly CommerceSession[]; readonly packages: readonly CommercePackage[]; readonly dispatches: readonly CommerceDispatch[];
+}
+export async function loadCommerceDesk(signal?: AbortSignal): Promise<CommerceDesk> {
+  const [options, skus, orders, quotations, tasks, sessions, packages, dispatches] = await Promise.all([
+    getTenantJson<CommerceDesk['options']>('/api/sales/orders/workspace-options/', '', signal),
+    getCollection<HQSku>('/api/medicines/skus/', signal), getCollection<CommerceDraft>('/api/sales/orders/', signal),
+    getCollection<CommerceDraft>('/api/sales/quotations/', signal), getCollection<CommerceTask>('/api/sales/picking-tasks/', signal),
+    getCollection<CommerceSession>('/api/sales/packing-sessions/', signal), getCollection<CommercePackage>('/api/sales/packages/', signal),
+    getCollection<CommerceDispatch>('/api/sales/dispatches/', signal),
+  ]);
+  return { options, skus, orders, quotations, tasks, sessions, packages, dispatches };
+}
+export const runCommerceCommand = (resource: 'orders' | 'quotations' | 'picking-tasks' | 'packing-sessions' | 'packages' | 'dispatches', id: string, action: string, payload: unknown, csrfToken: string) =>
+  mutateJson<CommerceDraft>(`/api/sales/${resource}/${id ? `${encodeURIComponent(id)}/` : ''}${action ? `${encodeURIComponent(action)}/` : ''}`, 'POST', payload, csrfToken);
 
 /* ── regulatory alerts and recalls ────────────────────────────────────────── */
 

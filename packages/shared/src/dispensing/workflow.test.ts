@@ -45,6 +45,11 @@ function workflowWith(ep: DispensingEpisodeDTO) {
 }
 
 describe('supply gate', () => {
+  it('allows authoritative paid status to proceed to collection without a fake status button', async () => {
+    const { workflow } = workflowWith(episode({ status: 'PAID', payment_state: 'PAID' }));
+    await workflow.load('ep-1');
+    expect(workflow.gate().canConfirmCollection).toBe(true);
+  });
   it('permits collection when payment is settled and status allows supply', async () => {
     const { workflow } = workflowWith(episode());
     await workflow.load('ep-1');

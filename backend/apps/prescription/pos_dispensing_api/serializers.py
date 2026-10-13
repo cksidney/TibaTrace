@@ -7,6 +7,7 @@ from apps.prescription.models import (
     PosDeviceHealthRecord,
     PosShiftRecord,
 )
+from apps.prescription.pos_permissions import can_read_clinical_details
 from apps.prescription.pos_printing_models import PosPrintJob
 
 #: Tender types the POS accepts. Kept in step with PaymentTenderType in
@@ -18,6 +19,10 @@ TENDER_TYPES = ["CASH", "CARD", "MPESA"]
 
 
 class PosDispensingLineSerializer(serializers.ModelSerializer):
+    prescribed_medicine_name = serializers.CharField(source="prescribed_sku.display_name", read_only=True)
+    supplied_medicine_name = serializers.CharField(source="supplied_sku.display_name", read_only=True)
+    package_description = serializers.CharField(source="package_definition.description", read_only=True)
+    prepared_by = serializers.UUIDField(source="prepared_by_id", read_only=True, allow_null=True)
     quantity_authorized = serializers.SerializerMethodField()
     quantity_prepared = serializers.SerializerMethodField()
     quantity_supplied = serializers.SerializerMethodField()
@@ -29,6 +34,10 @@ class PosDispensingLineSerializer(serializers.ModelSerializer):
             "prescription_item",
             "prescribed_sku",
             "supplied_sku",
+            "prescribed_medicine_name",
+            "supplied_medicine_name",
+            "package_description",
+            "prepared_by",
             "inventory_batch",
             "quantity_authorized",
             "quantity_prepared",
@@ -52,6 +61,55 @@ class PosDispensingLineSerializer(serializers.ModelSerializer):
 
 class PosDispensingEpisodeSerializer(serializers.ModelSerializer):
     lines = PosDispensingLineSerializer(many=True, read_only=True)
+    clinical_details_visible = serializers.SerializerMethodField()
+    authorized_items = serializers.SerializerMethodField()
+
+    def get_authorized_items(self, episode):
+        return [
+            {
+                "id": str(item.pk),
+                "medicine_name": getattr(item.prescribed_sku, "display_name", None) or item.medication_name,
+                "sku_id": str(item.prescribed_sku_id) if item.prescribed_sku_id else None,
+                "quantity_remaining": format_decimal(
+                    max(0, item.total_authorized_quantity - item.quantity_supplied_total), places=4
+                ),
+                "unit": item.unit,
+                "reserved_quantity": format_decimal(sum(
+                    row.quantity for row in episode.reservations.all()
+                    if row.prescription_item_id == item.pk and row.status != "CANCELLED"
+                ), places=4),
+            }
+            for item in episode.prescription.items.select_related("prescribed_sku").all()
+        ]
+
+    def get_clinical_details_visible(self, episode):
+        return can_read_clinical_details(self.context.get("request"), episode.tenant_id)
+
+    def to_representation(self, episode):
+        payload = super().to_representation(episode)
+        if not self.get_clinical_details_visible(episode):
+            for name in (
+                "patient_sex", "patient_date_of_birth", "prescriber_name", "notes",
+                "collector_id_number", "collector_phone", "membership_number",
+            ):
+                payload[name] = None
+            payload["allergies"] = []
+            for line in payload["lines"]:
+                line["dosage_label_instructions"] = ""
+        else:
+            # Access is an immutable security fact, without copying clinical
+            # contents into the audit payload.
+            from apps.audit.models import AuditEvent
+            request = self.context["request"]
+            AuditEvent.all_objects.create(
+                tenant_id=episode.tenant_id,
+                actor=request.user,
+                action="POS_CLINICAL_PROFILE_VIEWED",
+                model_name="DispensingEpisode",
+                object_id=str(episode.pk),
+                metadata={"surface": "pos", "patient_id": str(episode.patient_id)},
+            )
+        return payload
 
     # Money owed and money taken come from the latest PaymentIntent, which is
     # the authoritative ledger. It must remain visible after settlement too:
@@ -199,7 +257,7 @@ class PosDispensingEpisodeSerializer(serializers.ModelSerializer):
         """
         from apps.patients.models import PatientAllergy
 
-        if not episode.patient_id:
+        if not episode.patient_id or not self.get_clinical_details_visible(episode):
             return []
         # REFUTED is a `status` value; `verification_status` carries
         # UNVERIFIED / PATIENT_REPORTED / CLINICIAN_VERIFIED. Excluding the
@@ -251,6 +309,7 @@ class PosDispensingEpisodeSerializer(serializers.ModelSerializer):
             "scheme_name",
             "membership_number",
             "allergies",
+            "clinical_details_visible",
             "collector_name",
             "collector_id_number",
             "collector_phone",
@@ -263,6 +322,7 @@ class PosDispensingEpisodeSerializer(serializers.ModelSerializer):
             "notes",
             "idempotency_key",
             "lines",
+            "authorized_items",
         ]
         # Every field that carries clinical, financial or custody meaning is
         # read-only over this surface. These transition only through the gated
@@ -306,6 +366,7 @@ class TransitionStateRequestSerializer(serializers.Serializer):
 
 
 class BatchVerificationRequestSerializer(serializers.Serializer):
+    episode_id = serializers.UUIDField(required=False)
     sku_id = serializers.UUIDField()
     batch_number = serializers.CharField(max_length=128)
     expiry_date = serializers.DateField(required=False, allow_null=True)
@@ -336,12 +397,12 @@ class ControlledVerifyRequestSerializer(serializers.Serializer):
 
 
 class CounsellingRecordSerializer(serializers.Serializer):
-    medicine_explained = serializers.BooleanField(default=True)
-    dosage_explained = serializers.BooleanField(default=True)
-    storage_explained = serializers.BooleanField(default=True)
-    side_effects_discussed = serializers.BooleanField(default=True)
-    interaction_advice_given = serializers.BooleanField(default=True)
-    patient_acknowledged = serializers.BooleanField(default=True)
+    medicine_explained = serializers.BooleanField(required=True)
+    dosage_explained = serializers.BooleanField(required=True)
+    storage_explained = serializers.BooleanField(required=True)
+    side_effects_discussed = serializers.BooleanField(required=True)
+    interaction_advice_given = serializers.BooleanField(required=True)
+    patient_acknowledged = serializers.BooleanField(required=True)
     notes = serializers.CharField(required=False, allow_blank=True, default="")
 
 
@@ -350,9 +411,18 @@ class CollectionConfirmRequestSerializer(serializers.Serializer):
     collector_id_number = serializers.CharField(max_length=128, required=False, allow_blank=True, default="")
     collector_phone = serializers.CharField(max_length=64, required=False, allow_blank=True, default="")
     collector_relationship = serializers.CharField(max_length=128, required=False, allow_blank=True, default="SELF")
-    collection_proof_type = serializers.CharField(max_length=64, required=False, allow_blank=True, default="SIGNATURE")
+    collection_proof_type = serializers.ChoiceField(
+        choices=["OPERATOR_WITNESSED", "SIGNATURE", "ID_CHECK"], default="OPERATOR_WITNESSED",
+    )
     signature_ref = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
     idempotency_key = serializers.CharField(max_length=255)
+
+    def validate(self, attrs):
+        if attrs["collection_proof_type"] == "SIGNATURE" and not attrs.get("signature_ref"):
+            raise serializers.ValidationError("A recorded signature reference is required for signature proof.")
+        if attrs["collection_proof_type"] == "ID_CHECK" and not attrs.get("collector_id_number"):
+            raise serializers.ValidationError("A verified collector ID reference is required for ID-check proof.")
+        return attrs
 
 
 class ActionReconciliationRequestSerializer(serializers.Serializer):

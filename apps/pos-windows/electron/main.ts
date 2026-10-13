@@ -10,6 +10,7 @@ import { EncryptedSessionStore } from './sessionStore.js';
 import type { StoredPosSession } from './sessionStore.js';
 import { EncryptedOfflineStore } from './offlineStore.js';
 import { EncryptedActivationStore, type DeviceActivation } from './activationStore.js';
+import { renderPrintDocument } from './printDocument.js';
 
 const currentDirectory = dirname(fileURLToPath(import.meta.url));
 const DEV_SERVER = process.env['VITE_DEV_SERVER_URL'];
@@ -124,6 +125,38 @@ app.on('window-all-closed', () => {
 });
 
 function registerIpc(): void {
+  ipcMain.handle('print:printers', async (event) => {
+    await requireSession();
+    return (await event.sender.getPrintersAsync()).map(({ name, displayName }) => ({ name, displayName }));
+  });
+  ipcMain.handle('print:document', async (event, payload: { jobId?: unknown; printer?: unknown }) => {
+    await requireSession();
+    if (process.platform !== 'win32') throw new Error('Physical printing requires the Windows till.');
+    if (typeof payload?.jobId !== 'string' || !/^[a-f0-9-]{36}$/i.test(payload.jobId) || typeof payload.printer !== 'string') throw new Error('Select a valid document and printer.');
+    if (!(await event.sender.getPrintersAsync()).some(printer => printer.name === payload.printer)) throw new Error('The selected printer is not installed.');
+    const base = `/api/pos/dispensing/print-jobs/${payload.jobId}/`;
+    const command = async (path: string, body: unknown = {}) => {
+      const response = await authorizedRequest({ path: `${base}${path}/`, method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (response.status < 200 || response.status >= 300) throw new Error(apiError(JSON.parse(response.body), 'Print command refused.'));
+      return JSON.parse(response.body) as unknown;
+    };
+    const snapshot = await command('snapshot', { device_id: deviceId });
+    const page = new BrowserWindow({ show: false, webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, javascript: false } });
+    page.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    page.webContents.session.setPermissionRequestHandler((_web, _permission, callback) => callback(false));
+    try {
+      await page.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(renderPrintDocument(snapshot))}`);
+      await command('select-transport', { transport: 'WINDOWS_SPOOLER', printer: payload.printer, device_id: deviceId });
+      await command('render');
+      await command('start');
+      const result = await new Promise<{ accepted: boolean; message: string }>(resolve => {
+        page.webContents.print({ silent: true, deviceName: payload.printer as string, printBackground: false, usePrinterDefaultPageSize: true },
+          (success, failureReason) => resolve({ accepted: success, message: success ? 'Windows spooler accepted the job. Confirm the physical copy before marking it printed.' : failureReason }));
+      });
+      if (!result.accepted) await command('result', { succeeded: false, failure_code: 'WINDOWS_SPOOLER_FAILURE', failure_message: result.message });
+      return result;
+    } finally { page.close(); }
+  });
   ipcMain.handle('auth:restore', async () => sessionInfo(await sessionStore.load()));
   ipcMain.handle('auth:login', async (_event, payload: LoginPayload) => login(payload));
   ipcMain.handle('auth:verify', async (_event, payload: LoginPayload) => verifyOperator(payload));

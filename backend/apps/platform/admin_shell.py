@@ -1,4 +1,5 @@
 from django.contrib.auth.decorators import login_required
+from django.core.paginator import Paginator
 from django.db.models import Count, Q
 from django.shortcuts import render
 from django.utils import timezone
@@ -291,7 +292,7 @@ def build_hq_dashboard_context(user, tenant_id):
     }
 
 
-def build_hq_workspace_context(tenant_id, actor=None):
+def build_hq_workspace_context(tenant_id, actor=None, business_query=None):
     patients = _scope(Patient.all_objects, tenant_id)
     practitioners = _scope(Practitioner.all_objects, tenant_id)
     customers = _scope(Customer.all_objects, tenant_id)
@@ -364,7 +365,7 @@ def build_hq_workspace_context(tenant_id, actor=None):
 
     return {
         "generated_at": timezone.now().isoformat(),
-        "business_modules": _build_business_modules(tenant_id),
+        "business_modules": _build_business_modules(tenant_id, actor=actor, query=business_query),
         "people": {
             "counts": {
                 "patients": patients.count(),
@@ -748,7 +749,42 @@ def _scope(queryset, tenant_id):
     return queryset
 
 
-def _build_business_modules(tenant_id):
+def _build_business_modules(tenant_id, actor=None, query=None):
+    """Server-side searchable, bounded queues with truthful page metadata.
+
+    Every source is filtered before pagination. Never search only the first
+    fifty records in the browser, and never render patient queues to a user
+    who cannot read the corresponding authoritative resource.
+    """
+    query = query or {}
+    selected = query.get("module", "")
+    needle = str(query.get("q", "")).strip()[:200]
+    metadata = {}
+    capabilities = {
+        "patients": ("patients.read",), "practitioners": ("practitioners.read",),
+        "customers": ("customers.read", "sales.read"), "clinical-products": ("catalogue.read", "catalogue.manage"),
+        "requisitions": ("procurement.read", "procurement.manage"), "purchase-orders": ("procurement.read", "procurement.manage"),
+        "goods-receipts": ("procurement.read", "procurement.manage"), "received-batches": ("procurement.read", "procurement.manage"),
+        "quotations": ("sales.read", "sales.manage"), "sales-orders": ("sales.read", "sales.manage"),
+        "dispatches": ("sales.read", "sales.manage"), "sales-returns": ("sales.read", "sales.manage"),
+        "prescriptions": ("prescriptions.read", "dispensing.read"), "users": ("identity.manage",),
+    }
+
+    def queue(source, key, order, *fields):
+        if actor is not None and not (actor.is_superuser or actor.is_platform_admin) and not any(
+            actor.has_capability(cap, tenant_id=tenant_id) for cap in capabilities.get(key, ())
+        ):
+            source = source.none()
+        if key == selected and needle:
+            predicate = Q()
+            for field in fields:
+                predicate |= Q(**{f"{field}__icontains": needle})
+            source = source.filter(predicate)
+        paginator = Paginator(source.order_by(order, "pk"), 25)
+        page = paginator.get_page(query.get("page", 1) if key == selected else 1)
+        metadata[key] = {"count": paginator.count, "page": page.number, "pages": paginator.num_pages, "page_size": 25}
+        return page.object_list
+
     customers = _scope(Customer.all_objects, tenant_id).select_related("tenant")
     practitioners = _scope(Practitioner.all_objects, tenant_id).select_related(
         "tenant"
@@ -790,7 +826,7 @@ def _build_business_modules(tenant_id):
     )
     users = _scope(User.objects, tenant_id).select_related("tenant")
 
-    return [
+    modules = [
         {
             "key": "patients",
             "domain": "people",
@@ -809,7 +845,7 @@ def _build_business_modules(tenant_id):
                         {"label": "Updated", "value": patient.updated_at.isoformat()},
                     ],
                 )
-                for patient in patients.order_by("-updated_at")[:50]
+                for patient in queue(patients, "patients", "-updated_at", "first_name", "last_name", "patient_number", "internal_reference_id", "verification_status")
             ],
         },
         {
@@ -875,7 +911,7 @@ def _build_business_modules(tenant_id):
                         else []
                     ),
                 )
-                for practitioner in practitioners.order_by("-updated_at")[:50]
+                for practitioner in queue(practitioners, "practitioners", "-updated_at", "first_name", "last_name", "registration_number", "verification_state")
             ],
         },
         {
@@ -896,7 +932,7 @@ def _build_business_modules(tenant_id):
                     ],
                     actions=_customer_actions(customer),
                 )
-                for customer in customers.order_by("-updated_at")[:50]
+                for customer in queue(customers, "customers", "-updated_at", "legal_name", "customer_number", "status")
             ],
         },
         {
@@ -937,7 +973,7 @@ def _build_business_modules(tenant_id):
                         else []
                     ),
                 )
-                for product in products.order_by("canonical_name")[:50]
+                for product in queue(products, "clinical-products", "canonical_name", "canonical_name", "code", "status")
             ],
         },
         {
@@ -961,7 +997,7 @@ def _build_business_modules(tenant_id):
                     ],
                     actions=_requisition_actions(requisition),
                 )
-                for requisition in requisitions.order_by("-created_at")[:50]
+                for requisition in queue(requisitions, "requisitions", "-created_at", "requisition_number", "justification", "status")
             ],
         },
         {
@@ -988,7 +1024,7 @@ def _build_business_modules(tenant_id):
                     ],
                     actions=_purchase_order_actions(order),
                 )
-                for order in purchase_orders.order_by("-created_at")[:50]
+                for order in queue(purchase_orders, "purchase-orders", "-created_at", "po_number", "supplier__legal_name", "status")
             ],
         },
         {
@@ -1030,7 +1066,7 @@ def _build_business_modules(tenant_id):
                         else []
                     ),
                 )
-                for receipt in receipts.order_by("-created_at")[:50]
+                for receipt in queue(receipts, "goods-receipts", "-created_at", "grn_number", "supplier__legal_name", "status")
             ],
         },
         {
@@ -1076,7 +1112,7 @@ def _build_business_modules(tenant_id):
                         else []
                     ),
                 )
-                for batch in received_batches.order_by("-created_at")[:50]
+                for batch in queue(received_batches, "received-batches", "-created_at", "manufacturer_batch_number", "sku__display_name", "quality_status")
             ],
         },
         {
@@ -1104,7 +1140,7 @@ def _build_business_modules(tenant_id):
                     ],
                     actions=_quotation_actions(quotation),
                 )
-                for quotation in quotations.order_by("-created_at")[:50]
+                for quotation in queue(quotations, "quotations", "-created_at", "quotation_number", "customer__legal_name", "status")
             ],
         },
         {
@@ -1132,7 +1168,7 @@ def _build_business_modules(tenant_id):
                     ],
                     actions=_sales_order_actions(order),
                 )
-                for order in sales_orders.order_by("-created_at")[:50]
+                for order in queue(sales_orders, "sales-orders", "-created_at", "order_number", "customer__legal_name", "status")
             ],
         },
         {
@@ -1167,7 +1203,7 @@ def _build_business_modules(tenant_id):
                     ],
                     actions=_dispatch_actions(dispatch),
                 )
-                for dispatch in dispatches.order_by("-created_at")[:50]
+                for dispatch in queue(dispatches, "dispatches", "-created_at", "dispatch_number", "customer__legal_name", "carrier", "status")
             ],
         },
         {
@@ -1185,7 +1221,7 @@ def _build_business_modules(tenant_id):
                     metrics=[],
                     actions=_sales_return_actions(sales_return),
                 )
-                for sales_return in sales_returns.order_by("-created_at")[:50]
+                for sales_return in queue(sales_returns, "sales-returns", "-created_at", "return_number", "customer__legal_name", "reason", "status")
             ],
         },
         {
@@ -1216,7 +1252,7 @@ def _build_business_modules(tenant_id):
                     ],
                     actions=_prescription_actions(prescription),
                 )
-                for prescription in prescriptions.order_by("-created_at")[:50]
+                for prescription in queue(prescriptions, "prescriptions", "-created_at", "prescription_number", "patient__first_name", "patient__last_name", "status")
             ],
         },
         {
@@ -1250,10 +1286,13 @@ def _build_business_modules(tenant_id):
                         },
                     ],
                 )
-                for user in users.order_by("username")[:100]
+                for user in queue(users, "users", "username", "username", "email", "first_name", "last_name")
             ],
         },
     ]
+    for module in modules:
+        module.update(metadata[module["key"]])
+    return modules
 
 
 def _work_item(

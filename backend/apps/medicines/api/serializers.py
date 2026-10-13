@@ -169,6 +169,8 @@ class PackageDefinitionSerializer(serializers.ModelSerializer):
 
 
 class CommercialSKUSerializer(serializers.ModelSerializer):
+    sales_unit = serializers.ReadOnlyField(source="package_definition.unit_of_measure")
+    package_description = serializers.ReadOnlyField(source="package_definition.description")
     brand_name = serializers.ReadOnlyField(source="manufactured_product.brand_name")
     canonical_medicine_name = serializers.ReadOnlyField(
         source="manufactured_product.clinical_product.canonical_name"
@@ -185,6 +187,8 @@ class CommercialSKUSerializer(serializers.ModelSerializer):
             "brand_name",
             "canonical_medicine_name",
             "package_definition",
+            "sales_unit",
+            "package_description",
             "default_barcode",
             "tax_category",
             "stock_tracking_required",

@@ -1,6 +1,6 @@
 import { autoColumns, fontFamily, fontSize, spacing, statusPalette, surface, text } from '@dawatrace/shared/design-system/index.js';
 import type { ClinicalStatus } from '@dawatrace/shared/design-system/index.js';
-import type { BatchVerificationResponse, DispensingLineDTO } from '@dawatrace/shared/dispensing/index.js';
+import { clinicalCommand, type BatchVerificationResponse, type DispensingLineDTO } from '@dawatrace/shared/dispensing/index.js';
 import { useState } from 'react';
 
 import { StatusBadge } from './StatusBadge.js';
@@ -94,36 +94,26 @@ function LineSection({
   readonly onSelect?: ((lineId: string) => void) | undefined;
   readonly onTransition?: (() => void) | undefined;
 }) {
-  const [busy, setBusy] = useState(false);
+  const busy = false;
+  const [labelNotice, setLabelNotice] = useState('');
+  const queueLabel = async () => {
+    if (!apiFetch || !episodeId) return;
+    try {
+      await clinicalCommand(apiFetch, episodeId, 'label', { dispensing_line_id: line.id });
+      setLabelNotice('Authoritative label queued. Open Print Centre, select the label printer and its configured paper size.');
+      onTransition?.();
+    } catch (cause) { setLabelNotice(cause instanceof Error ? cause.message : String(cause)); }
+  };
 
   const doVerify = apiFetch
     ? async (skuId: string, batchNumber: string): Promise<BatchVerificationResponse | null> => {
         const response = await apiFetch('/api/pos/dispensing/episodes/verify-batch/', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-          body: JSON.stringify({ sku_id: skuId, batch_number: batchNumber }),
+          body: JSON.stringify({ sku_id: skuId, batch_number: batchNumber, episode_id: episodeId, quantity_scanned: line.quantity_prepared || line.quantity_authorized }),
         });
         if (!response.ok) return null;
         return response.json() as Promise<BatchVerificationResponse>;
-      }
-    : undefined;
-
-  const doComplete = apiFetch && episodeId
-    ? async () => {
-        setBusy(true);
-        try {
-          const resp = await apiFetch(
-            `/api/pos/dispensing/episodes/${episodeId}/transition-state/`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-              body: JSON.stringify({ new_status: 'CHECKING' }),
-            },
-          );
-          if (resp.ok) onTransition?.();
-        } finally {
-          setBusy(false);
-        }
       }
     : undefined;
 
@@ -134,6 +124,8 @@ function LineSection({
         selected={selected}
         onSelect={onSelect}
       />
+      {apiFetch && Number(line.quantity_prepared) > 0 ? <button onClick={() => void queueLabel()}>Queue medicine label</button> : null}
+      {labelNotice ? <p role="status">{labelNotice}</p> : null}
       {line.status === 'AUTHORIZED' && doVerify ? (
         <BatchVerification
           expectedSkuId={line.supplied_sku || line.prescribed_sku}
@@ -144,10 +136,9 @@ function LineSection({
       {(line.status === 'PREPARED' || line.status === 'CHECKING') ? (
         <FinalCheckComparison
           lines={[line]}
-          canComplete={!!doComplete && line.status === 'PREPARED'}
-          blockedReason=''
+          canComplete={false}
+          blockedReason='Use the independent final-check checklist for all prepared lines.'
           busy={busy}
-          {...(doComplete ? { onComplete: doComplete } : {})}
         />
       ) : null}
     </div>
@@ -192,7 +183,7 @@ function MedicineLine({
               lineHeight: 1.2,
             }}
           >
-            {line.supplied_sku}
+            {line.supplied_medicine_name || line.prescribed_medicine_name || 'Medicine name unavailable — refresh this episode'}
           </h3>
 
           {/* Prominent: how the patient takes it. Never demoted below price. */}

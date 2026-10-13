@@ -68,6 +68,8 @@ def save_review(*, item, actor, review, expected_updated_at):
     expected = parse_datetime(expected_updated_at or "")
     if expected is None or expected != locked.updated_at:
         raise StaleSetupReview("This item changed since you opened it. Reload before saving.")
+    if locked.completion:
+        raise ValidationError("Opening setup has already been staged. Its Manager evidence is immutable; use audited stock corrections for later changes.")
     code = review.get("master_catalogue_code", "")
     if code and not Medicine.all_objects.filter(is_global=True, tenant__isnull=True, code=code).exists():
         raise ValidationError("The national reference code does not exist. Leave it blank until reviewed.")

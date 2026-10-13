@@ -1687,6 +1687,14 @@
             "format": "uuid",
             "type": "string"
           },
+          "package_description": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "sales_unit": {
+            "readOnly": true,
+            "type": "string"
+          },
           "sku_code": {
             "maxLength": 100,
             "type": "string"
@@ -1719,6 +1727,8 @@
           "id",
           "manufactured_product",
           "package_definition",
+          "package_description",
+          "sales_unit",
           "sku_code",
           "tenant",
           "updated_at"
@@ -1775,7 +1785,20 @@
             "readOnly": true,
             "type": "string"
           },
+          "insurer_code": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "insurer_name": {
+            "readOnly": true,
+            "type": "string"
+          },
           "membership_number": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "patient_id": {
+            "format": "uuid",
             "readOnly": true,
             "type": "string"
           },
@@ -1785,6 +1808,10 @@
           "remaining_limit": {
             "format": "decimal",
             "pattern": "^-?\\d{0,13}(?:\\.\\d{0,2})?$",
+            "type": "string"
+          },
+          "scheme_name": {
+            "readOnly": true,
             "type": "string"
           },
           "status": {
@@ -1801,7 +1828,11 @@
         },
         "required": [
           "id",
+          "insurer_code",
+          "insurer_name",
           "membership_number",
+          "patient_id",
+          "scheme_name",
           "valid_from",
           "valid_to"
         ],
@@ -6147,6 +6178,7 @@
       "PatchedPractitioner": {
         "properties": {
           "controlled_medicine_authority": {
+            "readOnly": true,
             "type": "boolean"
           },
           "created_at": {
@@ -6187,7 +6219,7 @@
             "type": "string"
           },
           "licence_status": {
-            "maxLength": 30,
+            "readOnly": true,
             "type": "string"
           },
           "licences": {
@@ -6201,7 +6233,9 @@
             "maxLength": 160,
             "type": "string"
           },
-          "metadata": {},
+          "metadata": {
+            "readOnly": true
+          },
           "organization": {
             "format": "uuid",
             "nullable": true,
@@ -6231,7 +6265,7 @@
             "type": "array"
           },
           "status": {
-            "maxLength": 20,
+            "readOnly": true,
             "type": "string"
           },
           "updated_at": {
@@ -6558,6 +6592,10 @@
       },
       "PatchedProviderActivationRequest": {
         "properties": {
+          "decisions": {
+            "readOnly": true,
+            "type": "string"
+          },
           "id": {
             "format": "uuid",
             "readOnly": true,
@@ -6581,6 +6619,10 @@
           "requested_by": {
             "readOnly": true,
             "type": "integer"
+          },
+          "requested_by_name": {
+            "readOnly": true,
+            "type": "string"
           },
           "sandbox_evidence": {},
           "security_review_notes": {
@@ -6619,8 +6661,16 @@
             "readOnly": true,
             "type": "string"
           },
+          "credential_references": {
+            "readOnly": true,
+            "type": "string"
+          },
           "display_name": {
             "maxLength": 200,
+            "type": "string"
+          },
+          "endpoints": {
+            "readOnly": true,
             "type": "string"
           },
           "environment": {
@@ -6640,6 +6690,10 @@
             "readOnly": true,
             "type": "boolean"
           },
+          "latest_health": {
+            "readOnly": true,
+            "type": "string"
+          },
           "notes": {
             "type": "string"
           },
@@ -6648,114 +6702,6 @@
           },
           "truth_label": {
             "description": "Empirical truth label for this integration. Must reflect actual operational state, not aspirational state.",
-            "readOnly": true,
-            "type": "string"
-          },
-          "updated_at": {
-            "format": "date-time",
-            "readOnly": true,
-            "type": "string"
-          }
-        },
-        "type": "object"
-      },
-      "PatchedRegulatoryAlertDetail": {
-        "properties": {
-          "activated_at": {
-            "format": "date-time",
-            "nullable": true,
-            "readOnly": true,
-            "type": "string"
-          },
-          "activated_by": {
-            "nullable": true,
-            "readOnly": true,
-            "type": "integer"
-          },
-          "affected_batches": {
-            "description": "List of batch number strings.",
-            "readOnly": true
-          },
-          "alert_reference": {
-            "description": "PPB or regulator-assigned reference number.",
-            "readOnly": true,
-            "type": "string"
-          },
-          "created_at": {
-            "format": "date-time",
-            "readOnly": true,
-            "type": "string"
-          },
-          "description": {
-            "readOnly": true,
-            "type": "string"
-          },
-          "gtin": {
-            "readOnly": true,
-            "type": "string"
-          },
-          "id": {
-            "format": "uuid",
-            "readOnly": true,
-            "type": "string"
-          },
-          "ingested_at": {
-            "format": "date-time",
-            "readOnly": true,
-            "type": "string"
-          },
-          "ingested_by": {
-            "nullable": true,
-            "readOnly": true,
-            "type": "integer"
-          },
-          "issuing_regulator": {
-            "readOnly": true,
-            "type": "string"
-          },
-          "manufacturer_name": {
-            "readOnly": true,
-            "type": "string"
-          },
-          "ppb_registration_number": {
-            "readOnly": true,
-            "type": "string"
-          },
-          "product_name": {
-            "readOnly": true,
-            "type": "string"
-          },
-          "recommended_action": {
-            "readOnly": true,
-            "type": "string"
-          },
-          "regulator_issue_date": {
-            "format": "date",
-            "nullable": true,
-            "readOnly": true,
-            "type": "string"
-          },
-          "severity": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/Severity49bEnum"
-              }
-            ],
-            "readOnly": true
-          },
-          "status": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/Status3eeEnum"
-              }
-            ],
-            "readOnly": true
-          },
-          "title": {
-            "readOnly": true,
-            "type": "string"
-          },
-          "truth_label": {
             "readOnly": true,
             "type": "string"
           },
@@ -7017,6 +6963,7 @@
             "type": "string"
           },
           "is_active": {
+            "readOnly": true,
             "type": "boolean"
           },
           "medicinal_product": {
@@ -7044,6 +6991,7 @@
           },
           "reviewed_by": {
             "nullable": true,
+            "readOnly": true,
             "type": "integer"
           },
           "severity": {
@@ -7054,7 +7002,12 @@
             "type": "string"
           },
           "status": {
-            "$ref": "#/components/schemas/PatientAllergyStatusEnum"
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PatientAllergyStatusEnum"
+              }
+            ],
+            "readOnly": true
           },
           "updated_at": {
             "format": "date-time",
@@ -7062,15 +7015,24 @@
             "type": "string"
           },
           "verification_status": {
-            "$ref": "#/components/schemas/ClinicalRecordVerificationStatusEnum"
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ClinicalRecordVerificationStatusEnum"
+              }
+            ],
+            "readOnly": true
           }
         },
         "required": [
           "allergen_name",
           "created_at",
           "id",
+          "is_active",
           "recorded_by",
-          "updated_at"
+          "reviewed_by",
+          "status",
+          "updated_at",
+          "verification_status"
         ],
         "type": "object"
       },
@@ -8366,8 +8328,16 @@
             "readOnly": true,
             "type": "string"
           },
+          "authorized_items": {
+            "readOnly": true,
+            "type": "string"
+          },
           "branch": {
             "format": "uuid",
+            "readOnly": true,
+            "type": "string"
+          },
+          "clinical_details_visible": {
             "readOnly": true,
             "type": "string"
           },
@@ -8555,7 +8525,9 @@
           "amount_due",
           "amount_remaining",
           "amount_settled",
+          "authorized_items",
           "branch",
+          "clinical_details_visible",
           "collected_at",
           "collection_proof_type",
           "collector_id_number",
@@ -8618,6 +8590,20 @@
             "format": "uuid",
             "type": "string"
           },
+          "package_description": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "prepared_by": {
+            "format": "uuid",
+            "nullable": true,
+            "readOnly": true,
+            "type": "string"
+          },
+          "prescribed_medicine_name": {
+            "readOnly": true,
+            "type": "string"
+          },
           "prescribed_sku": {
             "format": "uuid",
             "type": "string"
@@ -8641,6 +8627,10 @@
           "status": {
             "$ref": "#/components/schemas/StatusE6eEnum"
           },
+          "supplied_medicine_name": {
+            "readOnly": true,
+            "type": "string"
+          },
           "supplied_sku": {
             "format": "uuid",
             "type": "string"
@@ -8656,11 +8646,15 @@
           "expiry_date_snapshot",
           "id",
           "inventory_batch",
+          "package_description",
+          "prepared_by",
+          "prescribed_medicine_name",
           "prescribed_sku",
           "prescription_item",
           "quantity_authorized",
           "quantity_prepared",
           "quantity_supplied",
+          "supplied_medicine_name",
           "supplied_sku",
           "unit"
         ],
@@ -9153,6 +9147,14 @@
             ],
             "readOnly": true
           },
+          "refund_requests": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "refunded_total": {
+            "readOnly": true,
+            "type": "string"
+          },
           "register": {
             "format": "uuid",
             "type": "string"
@@ -9204,6 +9206,8 @@
           "operator_shift",
           "operator_username",
           "receipt",
+          "refund_requests",
+          "refunded_total",
           "register",
           "register_code",
           "register_session",
@@ -9263,6 +9267,10 @@
             ],
             "readOnly": true
           },
+          "issued_batches": {
+            "readOnly": true,
+            "type": "string"
+          },
           "line_total": {
             "type": "string"
           },
@@ -9270,6 +9278,10 @@
           "quantity": {
             "format": "decimal",
             "pattern": "^-?\\d{0,11}(?:\\.\\d{0,4})?$",
+            "type": "string"
+          },
+          "refundable_quantity": {
+            "readOnly": true,
             "type": "string"
           },
           "scan_source": {
@@ -9300,8 +9312,10 @@
           "discount_amount",
           "id",
           "inventory_context",
+          "issued_batches",
           "line_total",
           "quantity",
+          "refundable_quantity",
           "sku",
           "sku_code",
           "tax_amount",
@@ -9327,6 +9341,7 @@
       "Practitioner": {
         "properties": {
           "controlled_medicine_authority": {
+            "readOnly": true,
             "type": "boolean"
           },
           "created_at": {
@@ -9367,7 +9382,7 @@
             "type": "string"
           },
           "licence_status": {
-            "maxLength": 30,
+            "readOnly": true,
             "type": "string"
           },
           "licences": {
@@ -9381,7 +9396,9 @@
             "maxLength": 160,
             "type": "string"
           },
-          "metadata": {},
+          "metadata": {
+            "readOnly": true
+          },
           "organization": {
             "format": "uuid",
             "nullable": true,
@@ -9411,7 +9428,7 @@
             "type": "array"
           },
           "status": {
-            "maxLength": 20,
+            "readOnly": true,
             "type": "string"
           },
           "updated_at": {
@@ -9440,13 +9457,17 @@
           }
         },
         "required": [
+          "controlled_medicine_authority",
           "created_at",
           "first_name",
           "full_name",
           "id",
           "last_name",
+          "licence_status",
           "licences",
+          "metadata",
           "roles",
+          "status",
           "updated_at",
           "verification_state",
           "verified_at",
@@ -10800,6 +10821,10 @@
       },
       "ProviderActivationRequest": {
         "properties": {
+          "decisions": {
+            "readOnly": true,
+            "type": "string"
+          },
           "id": {
             "format": "uuid",
             "readOnly": true,
@@ -10824,6 +10849,10 @@
             "readOnly": true,
             "type": "integer"
           },
+          "requested_by_name": {
+            "readOnly": true,
+            "type": "string"
+          },
           "sandbox_evidence": {},
           "security_review_notes": {
             "type": "string"
@@ -10838,29 +10867,34 @@
           }
         },
         "required": [
+          "decisions",
           "id",
           "justification",
           "provider",
           "requested_at",
           "requested_by",
+          "requested_by_name",
           "state"
         ],
         "type": "object"
       },
       "ProviderActivationRequestStateEnum": {
-        "description": "* `REQUESTED` - Requested\n* `UNDER_REVIEW` - Under review\n* `SANDBOX_CONFIGURED` - Sandbox configured\n* `SANDBOX_TESTING` - Sandbox testing\n* `SANDBOX_PASSED` - Sandbox passed\n* `SECURITY_APPROVED` - Security approved\n* `PRODUCTION_APPROVED` - Production approved\n* `ACTIVE` - Active\n* `REJECTED` - Rejected\n* `SUSPENDED` - Suspended\n* `DECOMMISSIONED` - Decommissioned",
+        "description": "* `REQUESTED` - Requested\n* `UNDER_REVIEW` - Under review\n* `SECURITY_REVIEW` - Security review\n* `SANDBOX_CONFIGURED` - Sandbox configured\n* `SANDBOX_TESTING` - Sandbox testing\n* `SANDBOX_PASSED` - Sandbox passed\n* `CERTIFICATION_REVIEW` - Certification review\n* `SECURITY_APPROVED` - Security approved\n* `PRODUCTION_APPROVED` - Production approved\n* `ACTIVE` - Active\n* `SUSPENDED` - Suspended\n* `REVOKED` - Revoked\n* `DECOMMISSIONED` - Decommissioned\n* `REJECTED` - Rejected",
         "enum": [
           "REQUESTED",
           "UNDER_REVIEW",
+          "SECURITY_REVIEW",
           "SANDBOX_CONFIGURED",
           "SANDBOX_TESTING",
           "SANDBOX_PASSED",
+          "CERTIFICATION_REVIEW",
           "SECURITY_APPROVED",
           "PRODUCTION_APPROVED",
           "ACTIVE",
-          "REJECTED",
           "SUSPENDED",
-          "DECOMMISSIONED"
+          "REVOKED",
+          "DECOMMISSIONED",
+          "REJECTED"
         ],
         "type": "string"
       },
@@ -10886,8 +10920,16 @@
             "readOnly": true,
             "type": "string"
           },
+          "credential_references": {
+            "readOnly": true,
+            "type": "string"
+          },
           "display_name": {
             "maxLength": 200,
+            "type": "string"
+          },
+          "endpoints": {
+            "readOnly": true,
             "type": "string"
           },
           "environment": {
@@ -10906,6 +10948,10 @@
           "is_operational": {
             "readOnly": true,
             "type": "boolean"
+          },
+          "latest_health": {
+            "readOnly": true,
+            "type": "string"
           },
           "notes": {
             "type": "string"
@@ -10928,9 +10974,12 @@
           "activated_at",
           "activation_state",
           "created_at",
+          "credential_references",
           "display_name",
+          "endpoints",
           "id",
           "is_operational",
+          "latest_health",
           "provider_type",
           "truth_label",
           "updated_at"
@@ -12295,11 +12344,27 @@
       },
       "RegulatoryTenantImpact": {
         "properties": {
+          "actions": {
+            "readOnly": true,
+            "type": "string"
+          },
           "affected_batches": {
             "readOnly": true
           },
           "alert": {
             "format": "uuid",
+            "readOnly": true,
+            "type": "string"
+          },
+          "alert_reference": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "alert_severity": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "alert_title": {
             "readOnly": true,
             "type": "string"
           },
@@ -12347,11 +12412,19 @@
             "format": "uuid",
             "readOnly": true,
             "type": "string"
+          },
+          "tenant_name": {
+            "readOnly": true,
+            "type": "string"
           }
         },
         "required": [
+          "actions",
           "affected_batches",
           "alert",
+          "alert_reference",
+          "alert_severity",
+          "alert_title",
           "created_at",
           "id",
           "notes",
@@ -12360,7 +12433,8 @@
           "quarantined_at",
           "quarantined_stock_count",
           "state",
-          "tenant"
+          "tenant",
+          "tenant_name"
         ],
         "type": "object"
       },
@@ -13969,6 +14043,232 @@
         ],
         "type": "string"
       },
+      "StocktakeCount": {
+        "properties": {
+          "batch": {
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
+          "batch_number": {
+            "nullable": true,
+            "readOnly": true,
+            "type": "string"
+          },
+          "counted_quantity": {
+            "format": "decimal",
+            "nullable": true,
+            "pattern": "^-?\\d{0,11}(?:\\.\\d{0,4})?$",
+            "type": "string"
+          },
+          "counter": {
+            "nullable": true,
+            "type": "integer"
+          },
+          "expected_quantity": {
+            "format": "decimal",
+            "pattern": "^-?\\d{0,11}(?:\\.\\d{0,4})?$",
+            "type": "string"
+          },
+          "final_approved_count": {
+            "format": "decimal",
+            "nullable": true,
+            "pattern": "^-?\\d{0,11}(?:\\.\\d{0,4})?$",
+            "type": "string"
+          },
+          "first_count": {
+            "format": "decimal",
+            "nullable": true,
+            "pattern": "^-?\\d{0,11}(?:\\.\\d{0,4})?$",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "readOnly": true,
+            "type": "string"
+          },
+          "location": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "location_name": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "recount": {
+            "format": "decimal",
+            "nullable": true,
+            "pattern": "^-?\\d{0,11}(?:\\.\\d{0,4})?$",
+            "type": "string"
+          },
+          "sku": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "sku_code": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "sku_name": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "readOnly": true,
+            "type": "string"
+          },
+          "variance": {
+            "format": "decimal",
+            "nullable": true,
+            "pattern": "^-?\\d{0,11}(?:\\.\\d{0,4})?$",
+            "type": "string"
+          },
+          "void_reason": {
+            "type": "string"
+          },
+          "voided": {
+            "type": "boolean"
+          },
+          "voided_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "batch_number",
+          "id",
+          "location",
+          "location_name",
+          "sku",
+          "sku_code",
+          "sku_name",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "StocktakeSession": {
+        "properties": {
+          "approved_by_username": {
+            "nullable": true,
+            "readOnly": true,
+            "type": "string"
+          },
+          "branch": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "branch_name": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "cancellation_reason": {
+            "type": "string"
+          },
+          "completeness": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "counts": {
+            "items": {
+              "$ref": "#/components/schemas/StocktakeCount"
+            },
+            "readOnly": true,
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "readOnly": true,
+            "type": "string"
+          },
+          "created_by_username": {
+            "nullable": true,
+            "readOnly": true,
+            "type": "string"
+          },
+          "document_number": {
+            "maxLength": 100,
+            "type": "string"
+          },
+          "empty_location_confirmations": {},
+          "end_time": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "readOnly": true,
+            "type": "string"
+          },
+          "locations": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "readOnly": true,
+            "type": "array"
+          },
+          "scope": {
+            "maxLength": 100,
+            "type": "string"
+          },
+          "scope_snapshot": {
+            "nullable": true
+          },
+          "start_time": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/StocktakeSessionStatusEnum"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "readOnly": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "approved_by_username",
+          "branch",
+          "branch_name",
+          "completeness",
+          "counts",
+          "created_at",
+          "created_by_username",
+          "id",
+          "locations",
+          "scope",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "StocktakeSessionStatusEnum": {
+        "description": "* `DRAFT` - Draft\n* `SCHEDULED` - Scheduled\n* `OPEN` - Open\n* `COUNTING` - Counting\n* `REVIEW` - Review\n* `APPROVED` - Approved\n* `POSTED` - Posted\n* `CLOSED` - Closed\n* `CANCELLED` - Cancelled",
+        "enum": [
+          "DRAFT",
+          "SCHEDULED",
+          "OPEN",
+          "COUNTING",
+          "REVIEW",
+          "APPROVED",
+          "POSTED",
+          "CLOSED",
+          "CANCELLED"
+        ],
+        "type": "string"
+      },
       "StoredClinicalDocument": {
         "properties": {
           "content_type": {
@@ -15030,7 +15330,7 @@
   "info": {
     "description": "Independent pharmacy and healthcare clinical-core API",
     "title": "DawaTrace API",
-    "version": "1.0.0-rc31"
+    "version": "1.0.0-rc34"
   },
   "openapi": "3.0.3",
   "paths": {
@@ -15276,6 +15576,52 @@
         "tags": [
           "clinical"
         ]
+      },
+      "post": {
+        "operationId": "clinical_conditions_create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClinicalCondition"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/ClinicalCondition"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/ClinicalCondition"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClinicalCondition"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "clinical"
+        ]
       }
     },
     "/api/clinical/conditions/{id}/": {
@@ -15330,6 +15676,52 @@
                     "$ref": "#/components/schemas/ClinicalDiagnosticReport"
                   },
                   "type": "array"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "clinical"
+        ]
+      },
+      "post": {
+        "operationId": "clinical_diagnostic_reports_create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClinicalDiagnosticReport"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/ClinicalDiagnosticReport"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/ClinicalDiagnosticReport"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClinicalDiagnosticReport"
                 }
               }
             },
@@ -15418,6 +15810,52 @@
         "tags": [
           "clinical"
         ]
+      },
+      "post": {
+        "operationId": "clinical_documents_create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClinicalDocument"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/ClinicalDocument"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/ClinicalDocument"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClinicalDocument"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "clinical"
+        ]
       }
     },
     "/api/clinical/documents/{id}/": {
@@ -15472,6 +15910,52 @@
                     "$ref": "#/components/schemas/ClinicalEncounter"
                   },
                   "type": "array"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "clinical"
+        ]
+      },
+      "post": {
+        "operationId": "clinical_encounters_create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClinicalEncounter"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/ClinicalEncounter"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/ClinicalEncounter"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClinicalEncounter"
                 }
               }
             },
@@ -15560,6 +16044,52 @@
         "tags": [
           "clinical"
         ]
+      },
+      "post": {
+        "operationId": "clinical_medication_administrations_create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MedicationAdministrationRecord"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/MedicationAdministrationRecord"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/MedicationAdministrationRecord"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MedicationAdministrationRecord"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "clinical"
+        ]
       }
     },
     "/api/clinical/medication-administrations/{id}/": {
@@ -15614,6 +16144,52 @@
                     "$ref": "#/components/schemas/ClinicalObservation"
                   },
                   "type": "array"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "clinical"
+        ]
+      },
+      "post": {
+        "operationId": "clinical_observations_create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClinicalObservation"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/ClinicalObservation"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/ClinicalObservation"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClinicalObservation"
                 }
               }
             },
@@ -18955,6 +19531,84 @@
         ]
       }
     },
+    "/api/insurance/claims/from-supply/": {
+      "post": {
+        "description": "Build a DRAFT claim from a real supply and current member coverage.",
+        "operationId": "insurance_claims_from_supply_create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Claim"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Claim"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Claim"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Claim"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "insurance"
+        ]
+      }
+    },
+    "/api/insurance/claims/intake-supplies/": {
+      "get": {
+        "description": "Unclaimed supply events eligible for a governed claim draft.\n\nThis deliberately starts from recorded supply, not the prescription or\nPOS basket. Both pricing and product code mapping are explicit intake\ninputs, and the downstream constructor checks the supply again.",
+        "operationId": "insurance_claims_intake_supplies_retrieve",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Claim"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "insurance"
+        ]
+      }
+    },
     "/api/insurance/claims/needs-attention/": {
       "get": {
         "description": "Everything blocked on somebody here rather than on the insurer.",
@@ -19152,6 +19806,82 @@
         },
         "responses": {
           "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Insurer"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "insurance"
+        ]
+      }
+    },
+    "/api/insurance/insurers/setup-coverage/": {
+      "post": {
+        "operationId": "insurance_insurers_setup_coverage_create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Insurer"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Insurer"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Insurer"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Insurer"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "insurance"
+        ]
+      }
+    },
+    "/api/insurance/insurers/setup-options/": {
+      "get": {
+        "operationId": "insurance_insurers_setup_options_retrieve",
+        "responses": {
+          "200": {
             "content": {
               "application/json": {
                 "schema": {
@@ -19685,6 +20415,84 @@
         ]
       }
     },
+    "/api/inventory/locations/branches/": {
+      "get": {
+        "description": "API endpoint for viewing inventory locations.",
+        "operationId": "inventory_locations_branches_retrieve",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventoryLocation"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/locations/provision/": {
+      "post": {
+        "description": "API endpoint for viewing inventory locations.",
+        "operationId": "inventory_locations_provision_create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InventoryLocation"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/InventoryLocation"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/InventoryLocation"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventoryLocation"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
     "/api/inventory/locations/{id}/": {
       "get": {
         "description": "API endpoint for viewing inventory locations.",
@@ -19780,6 +20588,483 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/InventoryReservation"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/stocktakes/": {
+      "get": {
+        "operationId": "inventory_stocktakes_list",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/StocktakeSession"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      },
+      "post": {
+        "operationId": "inventory_stocktakes_create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StocktakeSession"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/StocktakeSession"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/StocktakeSession"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StocktakeSession"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/stocktakes/{id}/": {
+      "get": {
+        "operationId": "inventory_stocktakes_retrieve",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this stocktake session.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StocktakeSession"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/stocktakes/{id}/cancel/": {
+      "post": {
+        "operationId": "inventory_stocktakes_cancel_create",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this stocktake session.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StocktakeSession"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/StocktakeSession"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/StocktakeSession"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StocktakeSession"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/stocktakes/{id}/confirm-empty-location/": {
+      "post": {
+        "operationId": "inventory_stocktakes_confirm_empty_location_create",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this stocktake session.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StocktakeSession"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/StocktakeSession"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/StocktakeSession"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StocktakeSession"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/stocktakes/{id}/counts/": {
+      "post": {
+        "operationId": "inventory_stocktakes_counts_create",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this stocktake session.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StocktakeSession"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/StocktakeSession"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/StocktakeSession"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StocktakeSession"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/stocktakes/{id}/post-variances/": {
+      "post": {
+        "operationId": "inventory_stocktakes_post_variances_create",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this stocktake session.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StocktakeSession"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/StocktakeSession"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/StocktakeSession"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StocktakeSession"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/stocktakes/{id}/recount/": {
+      "post": {
+        "operationId": "inventory_stocktakes_recount_create",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this stocktake session.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StocktakeSession"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/StocktakeSession"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/StocktakeSession"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StocktakeSession"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/stocktakes/{id}/void-count/": {
+      "post": {
+        "operationId": "inventory_stocktakes_void_count_create",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this stocktake session.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StocktakeSession"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/StocktakeSession"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/StocktakeSession"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StocktakeSession"
                 }
               }
             },
@@ -20111,6 +21396,55 @@
                     "$ref": "#/components/schemas/BranchAssortment"
                   },
                   "type": "array"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "medicines"
+        ]
+      }
+    },
+    "/api/medicines/branch-assortments/provision/": {
+      "post": {
+        "description": "Build the queryset per request, from the model, with an explicit filter.\n\nThese viewsets declared `queryset = Model.objects.all()` as a class\nattribute. That is evaluated once at import, when there is definitively no\ntenant context, so the tenant-strict manager returned `.none()`. DRF clones\nthat queryset per request rather than re-consulting the manager, so it\nstayed empty for the life of the process -- every medicines endpoint\nreturned nothing, for every caller, whatever they authenticated as.\n\nBuilding it per request fixes that. It also moves the isolation onto a line\nyou can read: an explicit `filter(tenant_id=...)` rather than a thread-local\nthe manager consults, set by middleware that happens to run earlier. The\nstrict manager does fail closed, so the implicit version was not a leak --\nbut its failure mode is a silently empty result, which reads as missing data\nrather than as a bug, and has cost this repository five debugging sessions.\n\nSubclasses set `model`. Global reference data -- dose forms, routes, package\ndefinitions, product identifiers -- has no tenant column and does not use\nthis; `objects` on those is an ordinary manager.",
+        "operationId": "medicines_branch_assortments_provision_create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BranchAssortment"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/BranchAssortment"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/BranchAssortment"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BranchAssortment"
                 }
               }
             },
@@ -20843,9 +22177,73 @@
         ]
       }
     },
+    "/api/medicines/initial-setup/{id}/release/": {
+      "post": {
+        "operationId": "medicines_initial_setup_release_create",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "medicines"
+        ]
+      }
+    },
     "/api/medicines/initial-setup/{id}/review/": {
       "post": {
         "operationId": "medicines_initial_setup_review_create",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "medicines"
+        ]
+      }
+    },
+    "/api/medicines/initial-setup/{id}/stage/": {
+      "post": {
+        "operationId": "medicines_initial_setup_stage_create",
         "parameters": [
           {
             "in": "path",
@@ -21231,6 +22629,55 @@
                     "$ref": "#/components/schemas/CommercialSKU"
                   },
                   "type": "array"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "medicines"
+        ]
+      }
+    },
+    "/api/medicines/skus/intake/": {
+      "post": {
+        "description": "Create a complete tenant product chain in DRAFT for review.",
+        "operationId": "medicines_skus_intake_create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommercialSKU"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/CommercialSKU"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/CommercialSKU"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommercialSKU"
                 }
               }
             },
@@ -21696,6 +23143,66 @@
       "post": {
         "description": "Tenant: view own regulatory impacts.",
         "operationId": "nif_notifications_impacts_close_create",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this regulatory tenant impact.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegulatoryTenantImpact"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/RegulatoryTenantImpact"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/RegulatoryTenantImpact"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegulatoryTenantImpact"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "nif"
+        ]
+      }
+    },
+    "/api/nif/notifications/impacts/{id}/quarantine/": {
+      "post": {
+        "description": "Tenant: view own regulatory impacts.",
+        "operationId": "nif_notifications_impacts_quarantine_create",
         "parameters": [
           {
             "description": "A UUID string identifying this regulatory tenant impact.",
@@ -23071,6 +24578,106 @@
         ]
       }
     },
+    "/api/nif/platform/providers/{id}/credential-references/": {
+      "get": {
+        "description": "Record non-secret credential references; raw credential values are rejected.",
+        "operationId": "nif_platform_providers_credential_references_retrieve",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this provider configuration.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderConfiguration"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "nif"
+        ]
+      },
+      "post": {
+        "description": "Record non-secret credential references; raw credential values are rejected.",
+        "operationId": "nif_platform_providers_credential_references_create",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this provider configuration.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProviderConfiguration"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/ProviderConfiguration"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/ProviderConfiguration"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderConfiguration"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "nif"
+        ]
+      }
+    },
     "/api/nif/platform/providers/{id}/dead-letters/": {
       "get": {
         "description": "Platform Owner: manage provider configurations.",
@@ -23116,6 +24723,106 @@
       "post": {
         "description": "Immediately suspend all operations for this provider (Security Emergency Kill Switch).",
         "operationId": "nif_platform_providers_enable_kill_switch_create",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this provider configuration.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProviderConfiguration"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/ProviderConfiguration"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/ProviderConfiguration"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderConfiguration"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "nif"
+        ]
+      }
+    },
+    "/api/nif/platform/providers/{id}/endpoints/": {
+      "get": {
+        "description": "List or configure an HTTPS endpoint with an explicit TLS host allow-list.",
+        "operationId": "nif_platform_providers_endpoints_retrieve",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this provider configuration.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderConfiguration"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "nif"
+        ]
+      },
+      "post": {
+        "description": "List or configure an HTTPS endpoint with an explicit TLS host allow-list.",
+        "operationId": "nif_platform_providers_endpoints_create",
         "parameters": [
           {
             "description": "A UUID string identifying this provider configuration.",
@@ -23257,7 +24964,7 @@
     },
     "/api/nif/platform/providers/{id}/test-connectivity/": {
       "post": {
-        "description": "Test sandbox endpoint connectivity for this provider.",
+        "description": "Check endpoint TLS allow-list policy without sending a network request.",
         "operationId": "nif_platform_providers_test_connectivity_create",
         "parameters": [
           {
@@ -23395,38 +25102,6 @@
       }
     },
     "/api/nif/platform/recalls/{id}/": {
-      "delete": {
-        "description": "Platform Owner: manage regulatory alerts.",
-        "operationId": "nif_platform_recalls_destroy",
-        "parameters": [
-          {
-            "description": "A UUID string identifying this regulatory alert.",
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "No response body"
-          }
-        },
-        "security": [
-          {
-            "jwtAuth": []
-          },
-          {
-            "cookieAuth": []
-          }
-        ],
-        "tags": [
-          "nif"
-        ]
-      },
       "get": {
         "description": "Platform Owner: manage regulatory alerts.",
         "operationId": "nif_platform_recalls_retrieve",
@@ -23442,122 +25117,6 @@
             }
           }
         ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RegulatoryAlertDetail"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "jwtAuth": []
-          },
-          {
-            "cookieAuth": []
-          }
-        ],
-        "tags": [
-          "nif"
-        ]
-      },
-      "patch": {
-        "description": "Platform Owner: manage regulatory alerts.",
-        "operationId": "nif_platform_recalls_partial_update",
-        "parameters": [
-          {
-            "description": "A UUID string identifying this regulatory alert.",
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PatchedRegulatoryAlertDetail"
-              }
-            },
-            "application/x-www-form-urlencoded": {
-              "schema": {
-                "$ref": "#/components/schemas/PatchedRegulatoryAlertDetail"
-              }
-            },
-            "multipart/form-data": {
-              "schema": {
-                "$ref": "#/components/schemas/PatchedRegulatoryAlertDetail"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RegulatoryAlertDetail"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "jwtAuth": []
-          },
-          {
-            "cookieAuth": []
-          }
-        ],
-        "tags": [
-          "nif"
-        ]
-      },
-      "put": {
-        "description": "Platform Owner: manage regulatory alerts.",
-        "operationId": "nif_platform_recalls_update",
-        "parameters": [
-          {
-            "description": "A UUID string identifying this regulatory alert.",
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RegulatoryAlertDetail"
-              }
-            },
-            "application/x-www-form-urlencoded": {
-              "schema": {
-                "$ref": "#/components/schemas/RegulatoryAlertDetail"
-              }
-            },
-            "multipart/form-data": {
-              "schema": {
-                "$ref": "#/components/schemas/RegulatoryAlertDetail"
-              }
-            }
-          }
-        },
         "responses": {
           "200": {
             "content": {
@@ -24575,6 +26134,66 @@
       "post": {
         "description": "Tenant: view own regulatory impacts.",
         "operationId": "nif_recalls_impacts_close_create",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this regulatory tenant impact.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegulatoryTenantImpact"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/RegulatoryTenantImpact"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/RegulatoryTenantImpact"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegulatoryTenantImpact"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "nif"
+        ]
+      }
+    },
+    "/api/nif/recalls/impacts/{id}/quarantine/": {
+      "post": {
+        "description": "Tenant: view own regulatory impacts.",
+        "operationId": "nif_recalls_impacts_quarantine_create",
         "parameters": [
           {
             "description": "A UUID string identifying this regulatory tenant impact.",
@@ -25860,6 +27479,74 @@
             "required": true,
             "schema": {
               "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Patient"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Patient"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Patient"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Patient"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "patients"
+        ]
+      }
+    },
+    "/api/patients/{id}/identifiers/{identifier_id}/verify/": {
+      "post": {
+        "operationId": "patients_identifiers_verify_create",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this patient.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "identifier_id",
+            "required": true,
+            "schema": {
               "type": "string"
             }
           }
@@ -27340,6 +29027,126 @@
         ]
       }
     },
+    "/api/pos/dispensing/episodes/{id}/allocate/": {
+      "post": {
+        "description": "Read-only over episodes; all mutation goes through the gated actions.\n\nDeliberately not a ModelViewSet: a writable PATCH/PUT/DELETE here would let\nany authenticated caller set status/payment_status directly and bypass the\nclinical gates enforced by the service layer.",
+        "operationId": "pos_dispensing_episodes_allocate_create",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this dispensing episode.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PosDispensingEpisode"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PosDispensingEpisode"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/PosDispensingEpisode"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PosDispensingEpisode"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "pos"
+        ]
+      }
+    },
+    "/api/pos/dispensing/episodes/{id}/check/": {
+      "post": {
+        "description": "Read-only over episodes; all mutation goes through the gated actions.\n\nDeliberately not a ModelViewSet: a writable PATCH/PUT/DELETE here would let\nany authenticated caller set status/payment_status directly and bypass the\nclinical gates enforced by the service layer.",
+        "operationId": "pos_dispensing_episodes_check_create",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this dispensing episode.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PosDispensingEpisode"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PosDispensingEpisode"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/PosDispensingEpisode"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PosDispensingEpisode"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "pos"
+        ]
+      }
+    },
     "/api/pos/dispensing/episodes/{id}/confirm-collection/": {
       "post": {
         "description": "Read-only over episodes; all mutation goes through the gated actions.\n\nDeliberately not a ModelViewSet: a writable PATCH/PUT/DELETE here would let\nany authenticated caller set status/payment_status directly and bypass the\nclinical gates enforced by the service layer.",
@@ -27404,6 +29211,126 @@
       "post": {
         "description": "Read-only over episodes; all mutation goes through the gated actions.\n\nDeliberately not a ModelViewSet: a writable PATCH/PUT/DELETE here would let\nany authenticated caller set status/payment_status directly and bypass the\nclinical gates enforced by the service layer.",
         "operationId": "pos_dispensing_episodes_dispense_partial_create",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this dispensing episode.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PosDispensingEpisode"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PosDispensingEpisode"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/PosDispensingEpisode"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PosDispensingEpisode"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "pos"
+        ]
+      }
+    },
+    "/api/pos/dispensing/episodes/{id}/label/": {
+      "post": {
+        "description": "Read-only over episodes; all mutation goes through the gated actions.\n\nDeliberately not a ModelViewSet: a writable PATCH/PUT/DELETE here would let\nany authenticated caller set status/payment_status directly and bypass the\nclinical gates enforced by the service layer.",
+        "operationId": "pos_dispensing_episodes_label_create",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this dispensing episode.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PosDispensingEpisode"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PosDispensingEpisode"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/PosDispensingEpisode"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PosDispensingEpisode"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "pos"
+        ]
+      }
+    },
+    "/api/pos/dispensing/episodes/{id}/prepare/": {
+      "post": {
+        "description": "Read-only over episodes; all mutation goes through the gated actions.\n\nDeliberately not a ModelViewSet: a writable PATCH/PUT/DELETE here would let\nany authenticated caller set status/payment_status directly and bypass the\nclinical gates enforced by the service layer.",
+        "operationId": "pos_dispensing_episodes_prepare_create",
         "parameters": [
           {
             "description": "A UUID string identifying this dispensing episode.",
@@ -27584,6 +29511,66 @@
       "post": {
         "description": "Read-only over episodes; all mutation goes through the gated actions.\n\nDeliberately not a ModelViewSet: a writable PATCH/PUT/DELETE here would let\nany authenticated caller set status/payment_status directly and bypass the\nclinical gates enforced by the service layer.",
         "operationId": "pos_dispensing_episodes_record_counselling_create",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this dispensing episode.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PosDispensingEpisode"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PosDispensingEpisode"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/PosDispensingEpisode"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PosDispensingEpisode"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "pos"
+        ]
+      }
+    },
+    "/api/pos/dispensing/episodes/{id}/reserve/": {
+      "post": {
+        "description": "Read-only over episodes; all mutation goes through the gated actions.\n\nDeliberately not a ModelViewSet: a writable PATCH/PUT/DELETE here would let\nany authenticated caller set status/payment_status directly and bypass the\nclinical gates enforced by the service layer.",
+        "operationId": "pos_dispensing_episodes_reserve_create",
         "parameters": [
           {
             "description": "A UUID string identifying this dispensing episode.",
@@ -28077,6 +30064,126 @@
       "post": {
         "description": "Durable print-job queue; no direct document or job mutation is exposed.",
         "operationId": "pos_dispensing_print_jobs_retry_create",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this pos print job.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PosPrintJob"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PosPrintJob"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/PosPrintJob"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PosPrintJob"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "pos"
+        ]
+      }
+    },
+    "/api/pos/dispensing/print-jobs/{id}/select-transport/": {
+      "post": {
+        "description": "Durable print-job queue; no direct document or job mutation is exposed.",
+        "operationId": "pos_dispensing_print_jobs_select_transport_create",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this pos print job.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PosPrintJob"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PosPrintJob"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/PosPrintJob"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PosPrintJob"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "pos"
+        ]
+      }
+    },
+    "/api/pos/dispensing/print-jobs/{id}/snapshot/": {
+      "post": {
+        "description": "Durable print-job queue; no direct document or job mutation is exposed.",
+        "operationId": "pos_dispensing_print_jobs_snapshot_create",
         "parameters": [
           {
             "description": "A UUID string identifying this pos print job.",
@@ -29106,6 +31213,27 @@
         ]
       }
     },
+    "/api/pos/retail/catalogue/stores/": {
+      "get": {
+        "operationId": "pos_retail_catalogue_stores_retrieve",
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "pos"
+        ]
+      }
+    },
     "/api/pos/retail/transactions/": {
       "get": {
         "operationId": "pos_retail_transactions_list",
@@ -29160,6 +31288,34 @@
           },
           "required": true
         },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PosTransaction"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "pos"
+        ]
+      }
+    },
+    "/api/pos/retail/transactions/lookup-receipt/": {
+      "get": {
+        "operationId": "pos_retail_transactions_lookup_receipt_retrieve",
         "responses": {
           "200": {
             "content": {
@@ -29285,9 +31441,129 @@
         ]
       }
     },
+    "/api/pos/retail/transactions/{id}/approve-refund/": {
+      "post": {
+        "operationId": "pos_retail_transactions_approve_refund_create",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this pos transaction.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PosTransaction"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PosTransaction"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/PosTransaction"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PosTransaction"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "pos"
+        ]
+      }
+    },
     "/api/pos/retail/transactions/{id}/cancel/": {
       "post": {
         "operationId": "pos_retail_transactions_cancel_create",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this pos transaction.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PosTransaction"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PosTransaction"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/PosTransaction"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PosTransaction"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "pos"
+        ]
+      }
+    },
+    "/api/pos/retail/transactions/{id}/cash-refund/": {
+      "post": {
+        "operationId": "pos_retail_transactions_cash_refund_create",
         "parameters": [
           {
             "description": "A UUID string identifying this pos transaction.",
@@ -29525,9 +31801,129 @@
         ]
       }
     },
+    "/api/pos/retail/transactions/{id}/reject-refund/": {
+      "post": {
+        "operationId": "pos_retail_transactions_reject_refund_create",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this pos transaction.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PosTransaction"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PosTransaction"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/PosTransaction"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PosTransaction"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "pos"
+        ]
+      }
+    },
     "/api/pos/retail/transactions/{id}/remove-line/": {
       "post": {
         "operationId": "pos_retail_transactions_remove_line_create",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this pos transaction.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PosTransaction"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PosTransaction"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/PosTransaction"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PosTransaction"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "pos"
+        ]
+      }
+    },
+    "/api/pos/retail/transactions/{id}/request-refund/": {
+      "post": {
+        "operationId": "pos_retail_transactions_request_refund_create",
         "parameters": [
           {
             "description": "A UUID string identifying this pos transaction.",
@@ -31381,6 +33777,66 @@
         ]
       }
     },
+    "/api/practitioners/{id}/controlled-authority/": {
+      "post": {
+        "operationId": "practitioners_controlled_authority_create",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this practitioner.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Practitioner"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Practitioner"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Practitioner"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Practitioner"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "practitioners"
+        ]
+      }
+    },
     "/api/practitioners/{id}/verify/": {
       "post": {
         "operationId": "practitioners_verify_create",
@@ -31647,6 +34103,66 @@
       },
       "put": {
         "operationId": "prescribers_update",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this practitioner.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Practitioner"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Practitioner"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Practitioner"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Practitioner"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "prescribers"
+        ]
+      }
+    },
+    "/api/prescribers/{id}/controlled-authority/": {
+      "post": {
+        "operationId": "prescribers_controlled_authority_create",
         "parameters": [
           {
             "description": "A UUID string identifying this practitioner.",
@@ -36626,6 +39142,67 @@
         ]
       }
     },
+    "/api/sales/dispatches/{id}/delivery/": {
+      "post": {
+        "description": "Read-only, with state changes routed through the service actions.\n\nThese were ModelViewSets: a generic PATCH could set a sales order's status,\nrelease a hold or mark a delivery without the service that enforces\nallocation, credit and proof-of-delivery rules. The HQ client only calls the\nactions, so the generic path was an unused second route to every control.\n\nPricing is deliberately excluded -- see WritablePricingViewSet below.",
+        "operationId": "sales_dispatches_delivery_create",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this dispatch order.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DispatchOrder"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/DispatchOrder"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/DispatchOrder"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DispatchOrder"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "sales"
+        ]
+      }
+    },
     "/api/sales/dispatches/{id}/dispatch/": {
       "post": {
         "description": "Read-only, with state changes routed through the service actions.\n\nThese were ModelViewSets: a generic PATCH could set a sales order's status,\nrelease a hold or mark a delivery without the service that enforces\nallocation, credit and proof-of-delivery rules. The HQ client only calls the\nactions, so the generic path was an unused second route to every control.\n\nPricing is deliberately excluded -- see WritablePricingViewSet below.",
@@ -36900,6 +39477,35 @@
         ]
       }
     },
+    "/api/sales/orders/workspace-options/": {
+      "get": {
+        "description": "Read-only, with state changes routed through the service actions.\n\nThese were ModelViewSets: a generic PATCH could set a sales order's status,\nrelease a hold or mark a delivery without the service that enforces\nallocation, credit and proof-of-delivery rules. The HQ client only calls the\nactions, so the generic path was an unused second route to every control.\n\nPricing is deliberately excluded -- see WritablePricingViewSet below.",
+        "operationId": "sales_orders_workspace_options_retrieve",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SalesOrder"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "sales"
+        ]
+      }
+    },
     "/api/sales/orders/{id}/": {
       "get": {
         "description": "Read-only, with state changes routed through the service actions.\n\nThese were ModelViewSets: a generic PATCH could set a sales order's status,\nrelease a hold or mark a delivery without the service that enforces\nallocation, credit and proof-of-delivery rules. The HQ client only calls the\nactions, so the generic path was an unused second route to every control.\n\nPricing is deliberately excluded -- see WritablePricingViewSet below.",
@@ -37124,6 +39730,67 @@
         ]
       }
     },
+    "/api/sales/orders/{id}/create-dispatch/": {
+      "post": {
+        "description": "Read-only, with state changes routed through the service actions.\n\nThese were ModelViewSets: a generic PATCH could set a sales order's status,\nrelease a hold or mark a delivery without the service that enforces\nallocation, credit and proof-of-delivery rules. The HQ client only calls the\nactions, so the generic path was an unused second route to every control.\n\nPricing is deliberately excluded -- see WritablePricingViewSet below.",
+        "operationId": "sales_orders_create_dispatch_create",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this sales order.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SalesOrder"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/SalesOrder"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/SalesOrder"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SalesOrder"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "sales"
+        ]
+      }
+    },
     "/api/sales/orders/{id}/hold/": {
       "post": {
         "description": "Read-only, with state changes routed through the service actions.\n\nThese were ModelViewSets: a generic PATCH could set a sales order's status,\nrelease a hold or mark a delivery without the service that enforces\nallocation, credit and proof-of-delivery rules. The HQ client only calls the\nactions, so the generic path was an unused second route to every control.\n\nPricing is deliberately excluded -- see WritablePricingViewSet below.",
@@ -37189,6 +39856,128 @@
       "post": {
         "description": "Read-only, with state changes routed through the service actions.\n\nThese were ModelViewSets: a generic PATCH could set a sales order's status,\nrelease a hold or mark a delivery without the service that enforces\nallocation, credit and proof-of-delivery rules. The HQ client only calls the\nactions, so the generic path was an unused second route to every control.\n\nPricing is deliberately excluded -- see WritablePricingViewSet below.",
         "operationId": "sales_orders_lines_create",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this sales order.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SalesOrder"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/SalesOrder"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/SalesOrder"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SalesOrder"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "sales"
+        ]
+      }
+    },
+    "/api/sales/orders/{id}/packing-session/": {
+      "post": {
+        "description": "Read-only, with state changes routed through the service actions.\n\nThese were ModelViewSets: a generic PATCH could set a sales order's status,\nrelease a hold or mark a delivery without the service that enforces\nallocation, credit and proof-of-delivery rules. The HQ client only calls the\nactions, so the generic path was an unused second route to every control.\n\nPricing is deliberately excluded -- see WritablePricingViewSet below.",
+        "operationId": "sales_orders_packing_session_create",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this sales order.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SalesOrder"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/SalesOrder"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/SalesOrder"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SalesOrder"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "sales"
+        ]
+      }
+    },
+    "/api/sales/orders/{id}/picking-wave/": {
+      "post": {
+        "description": "Read-only, with state changes routed through the service actions.\n\nThese were ModelViewSets: a generic PATCH could set a sales order's status,\nrelease a hold or mark a delivery without the service that enforces\nallocation, credit and proof-of-delivery rules. The HQ client only calls the\nactions, so the generic path was an unused second route to every control.\n\nPricing is deliberately excluded -- see WritablePricingViewSet below.",
+        "operationId": "sales_orders_picking_wave_create",
         "parameters": [
           {
             "description": "A UUID string identifying this sales order.",
@@ -37563,6 +40352,67 @@
         ]
       }
     },
+    "/api/sales/packages/{id}/pack-line/": {
+      "post": {
+        "description": "Read-only, with state changes routed through the service actions.\n\nThese were ModelViewSets: a generic PATCH could set a sales order's status,\nrelease a hold or mark a delivery without the service that enforces\nallocation, credit and proof-of-delivery rules. The HQ client only calls the\nactions, so the generic path was an unused second route to every control.\n\nPricing is deliberately excluded -- see WritablePricingViewSet below.",
+        "operationId": "sales_packages_pack_line_create",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this package.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Package"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Package"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Package"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Package"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "sales"
+        ]
+      }
+    },
     "/api/sales/packages/{id}/seal/": {
       "post": {
         "description": "Read-only, with state changes routed through the service actions.\n\nThese were ModelViewSets: a generic PATCH could set a sales order's status,\nrelease a hold or mark a delivery without the service that enforces\nallocation, credit and proof-of-delivery rules. The HQ client only calls the\nactions, so the generic path was an unused second route to every control.\n\nPricing is deliberately excluded -- see WritablePricingViewSet below.",
@@ -37672,6 +40522,67 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackingSession"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "sales"
+        ]
+      }
+    },
+    "/api/sales/packing-sessions/{id}/create-package/": {
+      "post": {
+        "description": "Read-only, with state changes routed through the service actions.\n\nThese were ModelViewSets: a generic PATCH could set a sales order's status,\nrelease a hold or mark a delivery without the service that enforces\nallocation, credit and proof-of-delivery rules. The HQ client only calls the\nactions, so the generic path was an unused second route to every control.\n\nPricing is deliberately excluded -- see WritablePricingViewSet below.",
+        "operationId": "sales_packing_sessions_create_package_create",
+        "parameters": [
+          {
+            "description": "A UUID string identifying this packing session.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PackingSession"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PackingSession"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/PackingSession"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {

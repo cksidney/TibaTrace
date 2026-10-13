@@ -2,7 +2,7 @@ import { action, autoColumns, fontSize, spacing, statusPalette, surface, text } 
 import { useCallback, useEffect, useState } from 'react';
 
 type PrintStatus = 'QUEUED' | 'RENDERED' | 'SENDING' | 'PRINTED' | 'FAILED' | 'RETRY_REQUIRED' | 'CANCELLED';
-type PrintActionKind = 'simulate' | 'retry' | 'reprint' | 'cancel';
+type PrintActionKind = 'print' | 'confirm' | 'simulate' | 'retry' | 'reprint' | 'cancel';
 
 export interface PosPrintJob {
   readonly id: string;
@@ -41,6 +41,13 @@ export function PrintCentre({ apiFetch, deviceId, initialJobs = [], autoRefresh 
   const [activeAction, setActiveAction] = useState<PrintAction | null>(null);
   const [simulatedOutcome, setSimulatedOutcome] = useState<'success' | 'retryable-failure'>('success');
   const [reason, setReason] = useState('');
+  const [printers, setPrinters] = useState<readonly { name: string; displayName: string }[]>([]);
+  const [printer, setPrinter] = useState('');
+  const [physicalConfirmed, setPhysicalConfirmed] = useState(false);
+  const physicalAvailable = !!window.tibatrace?.print;
+  useEffect(() => {
+    if (physicalAvailable) void window.tibatrace!.print.printers().then(setPrinters).catch(cause => setError(describe(cause)));
+  }, [physicalAvailable]);
 
   const request = useCallback(async (path: string, init?: RequestInit) => {
     const response = await apiFetch(path, {
@@ -77,7 +84,21 @@ export function PrintCentre({ apiFetch, deviceId, initialJobs = [], autoRefresh 
     setBusy(true);
     setError('');
     try {
-      if (kind === 'simulate') {
+      if (kind === 'print') {
+        if (!printer || !window.tibatrace?.print) throw new Error('Select an installed Windows printer.');
+        const result = await window.tibatrace.print.document(job.id, printer);
+        setNotice(result.message);
+      } else if (kind === 'confirm') {
+        if (!physicalConfirmed) throw new Error('Inspect the physical paper and explicitly confirm the outcome.');
+        await request(`/api/pos/dispensing/print-jobs/${job.id}/result/`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(simulatedOutcome === 'success' ? { succeeded: true } : {
+            succeeded: false, failure_code: 'PHYSICAL_OUTPUT_NOT_CONFIRMED',
+            failure_message: 'Operator could not confirm a correct physical copy. Inspect paper/printer before retrying.',
+          }),
+        });
+        setNotice('Physical output outcome recorded. Payment and stock facts are unchanged.');
+      } else if (kind === 'simulate') {
         await request(`/api/pos/dispensing/print-jobs/${job.id}/render/`, { method: 'POST' });
         await request(`/api/pos/dispensing/print-jobs/${job.id}/start/`, { method: 'POST' });
         await request(`/api/pos/dispensing/print-jobs/${job.id}/result/`, {
@@ -104,9 +125,9 @@ export function PrintCentre({ apiFetch, deviceId, initialJobs = [], autoRefresh 
         await request(`/api/pos/dispensing/print-jobs/${job.id}/reprint/`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ reason: reason.trim(), transport: 'SIMULATOR' }),
+          body: JSON.stringify({ reason: reason.trim(), transport: physicalAvailable ? 'WINDOWS_SPOOLER' : 'SIMULATOR', printer }),
         });
-        setNotice('A separately numbered reprint job is queued for the simulator.');
+        setNotice('A separately numbered reprint job is queued. The original document is unchanged.');
       } else {
         await request(`/api/pos/dispensing/print-jobs/${job.id}/cancel/`, {
           method: 'POST',
@@ -139,9 +160,16 @@ export function PrintCentre({ apiFetch, deviceId, initialJobs = [], autoRefresh 
       </header>
 
       <section style={simulatorNotice} aria-label="Simulator scope">
-        <strong>Simulator-only mode</strong>
-        <span>No Windows spooler, ESC/POS, Bluetooth, network printer, cash drawer or scanner is claimed as operational here.</span>
+        <strong>{physicalAvailable ? 'Windows printer driver' : 'Simulator-only mode'}</strong>
+        <span>{physicalAvailable ? 'Install the USB printer driver and select its correct paper size. Configure drawer opening in that driver, then have the Manager test it. Spooler acceptance is not proof that paper printed.' : 'No physical printer receives simulator documents. Use the installed Windows till for USB printing.'}</span>
       </section>
+      {physicalAvailable ? <label style={fieldLabel}>Installed USB / Windows printer
+        <select value={printer} onChange={event => setPrinter(event.target.value)} disabled={busy}>
+          <option value="">Choose an installed printer</option>
+          {printers.map(item => <option key={item.name} value={item.name}>{item.displayName || item.name}</option>)}
+        </select>
+        {printers.length === 0 ? <span>No installed printer found. Install its Windows driver before printing.</span> : null}
+      </label> : null}
 
       {error ? <p role="alert" style={errorText}>{error}</p> : null}
       {notice ? <p role="status" style={noticeText}>{notice}</p> : null}
@@ -153,10 +181,11 @@ export function PrintCentre({ apiFetch, deviceId, initialJobs = [], autoRefresh 
         </section>
       ) : (
         <section style={jobList} aria-live="polite">
-          {jobs.map((job) => <PrintJobCard key={job.id} job={job} busy={busy} onAction={(kind) => {
+          {jobs.map((job) => <PrintJobCard key={job.id} job={job} busy={busy} physicalReady={physicalAvailable && !!printer} onAction={(kind) => {
             setNotice('');
             setReason('');
             setSimulatedOutcome('success');
+            setPhysicalConfirmed(false);
             setActiveAction({ kind, job });
           }} />)}
         </section>
@@ -168,6 +197,8 @@ export function PrintCentre({ apiFetch, deviceId, initialJobs = [], autoRefresh 
         simulatedOutcome={simulatedOutcome}
         reason={reason}
         onOutcomeChange={setSimulatedOutcome}
+        physicalConfirmed={physicalConfirmed}
+        onPhysicalConfirmed={setPhysicalConfirmed}
         onReasonChange={setReason}
         onClose={() => !busy && setActiveAction(null)}
         onConfirm={() => void runAction()}
@@ -176,7 +207,7 @@ export function PrintCentre({ apiFetch, deviceId, initialJobs = [], autoRefresh 
   );
 }
 
-function PrintJobCard({ job, busy, onAction }: { readonly job: PosPrintJob; readonly busy: boolean; readonly onAction: (kind: PrintActionKind) => void }) {
+function PrintJobCard({ job, busy, physicalReady, onAction }: { readonly job: PosPrintJob; readonly busy: boolean; readonly physicalReady: boolean; readonly onAction: (kind: PrintActionKind) => void }) {
   const palette = statusPalette[statusPaletteKey(job.status)];
   const canSimulate = job.status === 'QUEUED' || job.status === 'RENDERED';
   const canCancel = job.status === 'QUEUED' || job.status === 'RENDERED';
@@ -200,7 +231,9 @@ function PrintJobCard({ job, busy, onAction }: { readonly job: PosPrintJob; read
       {job.reprint_reason ? <p style={detailText}>Reprint reason: {job.reprint_reason}</p> : null}
       {job.cancellation_reason ? <p style={detailText}>Cancellation reason: {job.cancellation_reason}</p> : null}
       <div style={actions}>
-        {canSimulate ? <ActionButton label="Run simulator" disabled={busy} onClick={() => onAction('simulate')} /> : null}
+        {canSimulate ? <ActionButton label="Print via Windows driver" disabled={busy || !physicalReady} onClick={() => onAction('print')} /> : null}
+        {job.status === 'SENDING' && job.transport === 'WINDOWS_SPOOLER' ? <ActionButton label="Confirm physical output" disabled={busy} onClick={() => onAction('confirm')} /> : null}
+        {canSimulate && job.transport === 'SIMULATOR' ? <ActionButton label="Run simulator" disabled={busy} onClick={() => onAction('simulate')} /> : null}
         {job.status === 'RETRY_REQUIRED' ? <ActionButton label="Retry existing job" disabled={busy} onClick={() => onAction('retry')} /> : null}
         {job.status === 'PRINTED' ? <ActionButton label="Request reprint" disabled={busy} onClick={() => onAction('reprint')} /> : null}
         {canCancel ? <ActionButton label="Cancel job" disabled={busy} onClick={() => onAction('cancel')} /> : null}
@@ -209,32 +242,34 @@ function PrintJobCard({ job, busy, onAction }: { readonly job: PosPrintJob; read
   );
 }
 
-function ActionModal({ action, busy, simulatedOutcome, reason, onOutcomeChange, onReasonChange, onClose, onConfirm }: {
+function ActionModal({ action, busy, simulatedOutcome, reason, physicalConfirmed, onPhysicalConfirmed, onOutcomeChange, onReasonChange, onClose, onConfirm }: {
   readonly action: PrintAction;
   readonly busy: boolean;
   readonly simulatedOutcome: 'success' | 'retryable-failure';
   readonly reason: string;
+  readonly physicalConfirmed: boolean;
+  readonly onPhysicalConfirmed: (value: boolean) => void;
   readonly onOutcomeChange: (value: 'success' | 'retryable-failure') => void;
   readonly onReasonChange: (value: string) => void;
   readonly onClose: () => void;
   readonly onConfirm: () => void;
 }) {
   const requiresReason = action.kind === 'reprint' || action.kind === 'cancel';
-  const title = action.kind === 'simulate'
+  const title = action.kind === 'print' ? 'Send this copy to the selected Windows printer' : action.kind === 'confirm' ? 'Confirm physical paper output' : action.kind === 'simulate'
     ? 'Run deterministic simulator'
     : action.kind === 'retry'
       ? 'Retry existing print job'
       : action.kind === 'reprint'
         ? 'Request reprint'
         : 'Cancel queued print job';
-  const confirmLabel = action.kind === 'simulate'
+  const confirmLabel = action.kind === 'print' ? 'Send to printer' : action.kind === 'confirm' ? 'Record physical outcome' : action.kind === 'simulate'
     ? 'Run simulator'
     : action.kind === 'retry'
       ? 'Return job to queue'
       : action.kind === 'reprint'
         ? 'Queue reprint'
         : 'Cancel job';
-  const ready = !busy && (!requiresReason || reason.trim().length > 0);
+  const ready = !busy && (!requiresReason || reason.trim().length > 0) && (action.kind !== 'confirm' || physicalConfirmed);
   return (
     <div role="presentation" onClick={(e) => { if (e.target === e.currentTarget && !busy) onClose(); }} style={modalBackdrop}>
       <section role="dialog" aria-modal="true" aria-labelledby="print-action-title" style={modalCard}>
@@ -246,6 +281,13 @@ function ActionModal({ action, busy, simulatedOutcome, reason, onOutcomeChange, 
           <label style={radioLabel}><input type="radio" checked={simulatedOutcome === 'success'} onChange={() => onOutcomeChange('success')} /> Confirm document printed in simulator</label>
           <label style={radioLabel}><input type="radio" checked={simulatedOutcome === 'retryable-failure'} onChange={() => onOutcomeChange('retryable-failure')} /> Record retryable simulator failure</label>
           <p style={detailText}>No physical printer receives this document.</p>
+        </fieldset> : null}
+        {action.kind === 'print' ? <p style={detailText}>Send one copy only. If the outcome is unknown, inspect the printer and refresh the queue before retrying. Printer-driver drawer settings may open the connected cash drawer.</p> : null}
+        {action.kind === 'confirm' ? <fieldset style={choiceGroup}>
+          <legend>Inspect the actual paper copy</legend>
+          <label><input type="radio" checked={simulatedOutcome === 'success'} onChange={() => onOutcomeChange('success')} /> I confirm this document and copy printed correctly</label>
+          <label><input type="radio" checked={simulatedOutcome === 'retryable-failure'} onChange={() => onOutcomeChange('retryable-failure')} /> No correct physical copy; inspect printer before retrying</label>
+          <label><input type="checkbox" checked={physicalConfirmed} onChange={event => onPhysicalConfirmed(event.target.checked)} /> I inspected the printer and confirm the selected outcome</label>
         </fieldset> : null}
         {action.kind === 'retry' ? <p style={detailText}>Retry retains the same job and document identity; it does not create another receipt.</p> : null}
         {requiresReason ? <label style={fieldLabel}>{action.kind === 'reprint' ? 'Reprint reason (required)' : 'Cancellation reason (required)'}

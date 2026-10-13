@@ -211,6 +211,7 @@ class PrescriptionViewSet(ActionCapabilityMixin, TenantModelViewSet):
         "dispense": "dispensing.complete",
     }
     read_action_capabilities = {
+        "intake_options": "prescriptions.intake",
         "findings": "cds.read",
         "interventions": "cds.read",
         "substitutions": "prescriptions.clinical_review",
@@ -246,6 +247,36 @@ class PrescriptionViewSet(ActionCapabilityMixin, TenantModelViewSet):
         )
         output = self.get_serializer(prescription)
         return Response(output.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=["get"], url_path="intake-options")
+    def intake_options(self, request):
+        from django.db.models import Q
+
+        from apps.organizations.models import Organization
+        from apps.patients.models import Patient
+        from apps.practitioners.models import Practitioner
+        term = str(request.query_params.get("q", "")).strip()[:100]
+        patients = Patient.all_objects.filter(tenant_id=request.tenant_id, is_active=True)
+        practitioners = Practitioner.all_objects.filter(tenant_id=request.tenant_id, status="ACTIVE")
+        skus = CommercialSKU.all_objects.filter(tenant_id=request.tenant_id, status="ACTIVE", is_saleable=True)
+        if term:
+            patients = patients.filter(Q(first_name__icontains=term) | Q(last_name__icontains=term) | Q(patient_number__icontains=term))
+            practitioners = practitioners.filter(Q(first_name__icontains=term) | Q(last_name__icontains=term) | Q(registration_number__icontains=term))
+            skus = skus.filter(Q(display_name__icontains=term) | Q(sku_code__icontains=term))
+        verified = Prescription.all_objects.filter(tenant_id=request.tenant_id, pharmacist_verification_state="VERIFIED").exclude(status__in=["CANCELLED", "REJECTED", "SUPPLIED", "CLOSED"])
+        orders = SalesOrder.all_objects.filter(tenant_id=request.tenant_id, status="APPROVED", total__gt=0)
+        return Response({
+            "patients": [{"id": str(row.pk), "name": row.full_name, "number": row.patient_number} for row in patients.order_by("patient_number")[:100]],
+            "practitioners": [{"id": str(row.pk), "name": row.professional_name or f"{row.first_name} {row.last_name}", "number": row.registration_number} for row in practitioners.order_by("registration_number")[:100]],
+            "organizations": list(Organization.all_objects.filter(tenant_id=request.tenant_id, status="ACTIVE").values("id", "name")[:100]),
+            "branches": list(Location.all_objects.filter(tenant_id=request.tenant_id, status="ACTIVE").values("id", "name", "organization")[:100]),
+            "skus": [{"id": str(row.pk), "name": row.display_name, "unit": row.package_definition.unit_of_measure} for row in skus.select_related("package_definition").order_by("sku_code")[:100]],
+            "stores": list(InventoryLocation.all_objects.filter(tenant_id=request.tenant_id, status="ACTIVE", quarantine_capability=False,
+                damaged_goods_capability=False, expiry_hold_capability=False, returns_capability=False).values("id", "name", "branch")[:100]),
+            "verified_prescriptions": list(verified.order_by("-created_at").values("id", "prescription_number", "location")[:100]),
+            "priced_orders": list(orders.order_by("-created_at").values("id", "order_number", "branch", "total")[:100]),
+            "search_limited": patients.count() > 100 or practitioners.count() > 100 or skus.count() > 100,
+        })
 
     @action(detail=True, methods=["post"], url_path="validate")
     def validation(self, request, pk=None):
@@ -557,7 +588,8 @@ class DispensingEpisodeViewSet(ActionCapabilityMixin, TenantModelViewSet):
     def get_queryset(self):
         if getattr(self, "swagger_fake_view", False):
             return DispensingEpisode.all_objects.none()
-        return self.queryset.filter(tenant_id=self.request.tenant_id)
+        from apps.prescription.pos_permissions import scope_to_actor_branches
+        return scope_to_actor_branches(self.queryset.filter(tenant_id=self.request.tenant_id), self.request)
 
     def create(self, request, *args, **kwargs):
         serializer = DispensingEpisodeCreateSerializer(data=request.data)
@@ -588,6 +620,14 @@ class DispensingEpisodeViewSet(ActionCapabilityMixin, TenantModelViewSet):
             raise ValidationError(
                 "Tenant-owned prescription, branch, and pharmacy location are required."
             )
+        # Public origination must not interpret missing pricing as free care.
+        # Explicit exemptions are separately authorised and reasoned.
+        values.setdefault("payment_state", "PENDING")
+        if values["payment_state"] in {"NOT_REQUIRED", "WAIVED"}:
+            from apps.prescription.services.clinical_dispensing import _require_capability
+            _require_capability(request.user, request.tenant_id, "prescriptions.payment_exempt")
+            if not str(values.get("notes") or "").strip():
+                raise ValidationError("An authorised payment-exemption reason is required.")
         episode = _translate_domain_error(
             lambda: DispensingEpisodeService.create(
                 prescription=prescription,

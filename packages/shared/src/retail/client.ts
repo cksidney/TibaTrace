@@ -5,6 +5,7 @@ import type {
   RetailStoreDTO,
   RetailTransactionDTO,
   RetailTransactionLineDTO,
+  RetailRefundInput, RetailRefundRequestDTO, RetailCashRefundDTO,
 } from './types.js';
 
 export class PosRetailClient {
@@ -17,8 +18,28 @@ export class PosRetailClient {
     this.fetcher = resolveFetcher(options.fetcher);
   }
 
-  async stores(): Promise<readonly RetailStoreDTO[]> {
-    return this.requestCollection<RetailStoreDTO>('/api/inventory/locations/');
+  async stores(deviceId = ''): Promise<readonly RetailStoreDTO[]> {
+    return this.request(`/catalogue/stores/?device_id=${encodeURIComponent(deviceId)}`, 'GET');
+  }
+
+  lookupReceipt(receiptNumber: string): Promise<RetailTransactionDTO> {
+    return this.request(`/transactions/lookup-receipt/?receipt_number=${encodeURIComponent(receiptNumber)}`, 'GET');
+  }
+
+  requestRefund(transactionId: string, input: RetailRefundInput): Promise<RetailRefundRequestDTO> {
+    return this.request(`/transactions/${transactionId}/request-refund/`, 'POST', input);
+  }
+
+  reviewRefund(transactionId: string, refundId: string, approve: boolean, reason = ''): Promise<RetailRefundRequestDTO> {
+    return this.request(`/transactions/${transactionId}/${approve ? 'approve' : 'reject'}-refund/`, 'POST', {
+      refund_request_id: refundId, reason,
+    });
+  }
+
+  cashRefund(transactionId: string, refundId: string, deviceId: string, key: string): Promise<RetailCashRefundDTO> {
+    return this.request(`/transactions/${transactionId}/cash-refund/`, 'POST', {
+      refund_request_id: refundId, device_id: deviceId, idempotency_key: key,
+    });
   }
 
   createDraft(input: { device_id: string; store_id: string }): Promise<RetailTransactionDTO> {
@@ -76,27 +97,20 @@ export class PosRetailClient {
   }
 
   private async request<T>(path: string, method: string, body?: unknown): Promise<T> {
-    const response = await this.fetcher(`${this.baseUrl}${path}`, {
+    let response: Response;
+    try { response = await this.fetcher(`${this.baseUrl}${path}`, {
       method,
       credentials: 'include',
       headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    });
+    }); } catch {
+      throw new Error('Outcome unknown. Refresh the transaction before retrying and keep the original payment/refund key.');
+    }
     if (response.status === 204) return undefined as T;
     if (!response.ok) throw new Error(await describeFailure(response));
     return (await response.json()) as T;
   }
 
-  private async requestCollection<T>(path: string): Promise<readonly T[]> {
-    const response = await this.fetcher(path, { credentials: 'include', headers: { Accept: 'application/json' } });
-    if (!response.ok) throw new Error(await describeFailure(response));
-    const payload: unknown = await response.json();
-    if (Array.isArray(payload)) return payload as readonly T[];
-    if (payload && typeof payload === 'object' && Array.isArray((payload as { results?: unknown }).results)) {
-      return (payload as { results: readonly T[] }).results;
-    }
-    throw new Error('The POS API returned an invalid collection.');
-  }
 }
 
 async function describeFailure(response: Response): Promise<string> {

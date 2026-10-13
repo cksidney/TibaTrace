@@ -30,6 +30,7 @@ class StocktakeCountSerializer(serializers.ModelSerializer):
             "id", "location", "location_name", "sku", "sku_code", "sku_name",
             "batch", "batch_number", "expected_quantity", "counted_quantity",
             "variance", "reason", "counter", "timestamp",
+            "first_count", "recount", "final_approved_count", "voided", "void_reason", "voided_at", "updated_at",
         ]
 
 
@@ -39,6 +40,12 @@ class StocktakeSessionSerializer(serializers.ModelSerializer):
     created_by_username = serializers.CharField(source="created_by.username", read_only=True, allow_null=True)
     approved_by_username = serializers.CharField(source="approved_by.username", read_only=True, allow_null=True)
     counts = StocktakeCountSerializer(many=True, read_only=True)
+    completeness = serializers.SerializerMethodField()
+
+    def get_completeness(self, obj):
+        from apps.inventory.services import StocktakeService
+
+        return StocktakeService.completeness(obj)
 
     class Meta:
         model = StocktakeSession
@@ -46,6 +53,7 @@ class StocktakeSessionSerializer(serializers.ModelSerializer):
             "id", "branch", "branch_name", "locations", "scope", "status",
             "document_number", "start_time", "end_time", "created_by_username",
             "approved_by_username", "counts", "created_at", "updated_at",
+            "scope_snapshot", "empty_location_confirmations", "cancellation_reason", "completeness",
         ]
 
 
@@ -67,6 +75,22 @@ class StocktakeCountInputSerializer(serializers.Serializer):
     batch_id = serializers.UUIDField(required=False, allow_null=True)
     counted_quantity = serializers.DecimalField(max_digits=15, decimal_places=4, min_value=0)
     reason = serializers.CharField(max_length=1000, required=False, allow_blank=True)
+
+
+class StocktakeRevisionInputSerializer(serializers.Serializer):
+    count_id = serializers.UUIDField()
+    counted_quantity = serializers.DecimalField(max_digits=15, decimal_places=4, min_value=0, required=False)
+    reason = serializers.CharField(max_length=1000, allow_blank=False)
+    expected_updated_at = serializers.DateTimeField()
+    idempotency_key = serializers.CharField(max_length=128, allow_blank=False)
+
+
+class StocktakeReasonInputSerializer(serializers.Serializer):
+    reason = serializers.CharField(max_length=1000, allow_blank=False)
+
+
+class StocktakeEmptyLocationInputSerializer(StocktakeReasonInputSerializer):
+    location_id = serializers.UUIDField()
 
 
 class InventoryLocationSerializer(serializers.ModelSerializer):

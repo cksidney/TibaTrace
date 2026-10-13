@@ -13,3 +13,4 @@ export * from './telemetry.js';
 export * from './posActivation.js';
 export * from './barcodeScanner.js';
 export * from './national_integration.js';
+export * from './clinicalCommands.js';

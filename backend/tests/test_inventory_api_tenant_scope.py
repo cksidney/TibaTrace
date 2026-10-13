@@ -15,7 +15,7 @@ from datetime import date, timedelta
 import pytest
 from rest_framework.test import APIClient
 
-from apps.identity.models import User
+from apps.identity.models import Role, User, UserRole
 from apps.inventory.models import InventoryBatch, InventoryLocation, InventoryReservation
 from apps.medicines.models import (
     ClinicalMedicinalProduct,
@@ -48,6 +48,8 @@ def build(slug, batch_number):
     user = User.objects.create_user(
         username=f"{slug}-user", password=PASSWORD, tenant=tenant
     )
+    role = Role.all_objects.create(tenant=tenant, code="INVENTORY_READ", name="Inventory reader", capabilities=["inventory.read"])
+    UserRole.all_objects.create(tenant=tenant, user=user, role=role)
     location = InventoryLocation.all_objects.create(
         tenant=tenant, branch=branch, location_code=f"LOC-{slug[:3]}",
         name="Main store", location_type=InventoryLocation.LocationType.STORE,

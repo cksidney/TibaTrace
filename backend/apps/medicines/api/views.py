@@ -50,6 +50,7 @@ from apps.medicines.models import (
     TherapeuticClassification,
 )
 from apps.medicines.services import (
+    BranchAssortmentService,
     BulkTenantCatalogueSelectionService,
     MedicineCatalogueService,
     TenantCatalogueService,
@@ -350,6 +351,24 @@ class BranchAssortmentViewSet(TenantScopedQuerysetMixin, viewsets.ReadOnlyModelV
     model = BranchAssortment
     select_related = ["sku", "location"]
     serializer_class = BranchAssortmentSerializer
+
+    @action(detail=False, methods=["post"], url_path="provision")
+    def provision(self, request):
+        from apps.organizations.models import Location
+
+        tenant_id = self.tenant_id()
+        if not tenant_id or not request.user.has_capability("catalogue.manage", tenant_id=tenant_id):
+            raise PermissionDenied("Branch assortment authoring requires catalogue.manage.")
+        try:
+            from uuid import UUID
+            branch_id = UUID(str(request.data.get("branch_id", "")))
+            sku_id = UUID(str(request.data.get("sku_id", "")))
+        except ValueError:
+            raise serializers.ValidationError("Select a valid branch and SKU.")
+        branch = get_object_or_404(Location.all_objects.filter(tenant_id=tenant_id, status="ACTIVE", organization__status="ACTIVE"), pk=branch_id)
+        sku = get_object_or_404(CommercialSKU.all_objects.filter(tenant_id=tenant_id, status="ACTIVE", manufactured_product__clinical_product__status="ACTIVE"), pk=sku_id)
+        assortment = BranchAssortmentService.enable_sku_for_branch(tenant=branch.tenant, location=branch, sku=sku, actor=request.user)
+        return Response(self.get_serializer(assortment).data)
 
 
 # Legacy Compatibility ViewSet

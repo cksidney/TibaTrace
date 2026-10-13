@@ -40,5 +40,9 @@ interface Window {
       read(): Promise<unknown[]>;
       write(actions: readonly unknown[]): Promise<void>;
     };
+    readonly print: {
+      printers(): Promise<readonly { name: string; displayName: string }[]>;
+      document(jobId: string, printer: string): Promise<{ accepted: boolean; message: string }>;
+    };
   };
 }

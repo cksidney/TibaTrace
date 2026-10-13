@@ -136,6 +136,29 @@ export class PosDispensingClient {
     });
   }
 
+  async reserve(episodeId: string, req: {
+    prescription_item_id: string; quantity: string; idempotency_key: string;
+    minimum_shelf_life_days?: number; substitute_sku_id?: string;
+  }): Promise<unknown> {
+    return this.request(`/episodes/${episodeId}/reserve/`, { method: 'POST', body: JSON.stringify(req) });
+  }
+
+  async allocate(episodeId: string): Promise<unknown> {
+    return this.request(`/episodes/${episodeId}/allocate/`, { method: 'POST', body: '{}' });
+  }
+
+  async prepare(episodeId: string, quantities?: Record<string, string>): Promise<unknown> {
+    return this.request(`/episodes/${episodeId}/prepare/`, {
+      method: 'POST', body: JSON.stringify({ quantities }),
+    });
+  }
+
+  async finalCheck(episodeId: string, checklist: Record<string, boolean>, notes = ''): Promise<unknown> {
+    return this.request(`/episodes/${episodeId}/check/`, {
+      method: 'POST', body: JSON.stringify({ checklist, notes }),
+    });
+  }
+
   async processPayment(episodeId: string, req: PaymentProcessRequest): Promise<PaymentProcessResponse> {
     return this.request<PaymentProcessResponse>(`/episodes/${episodeId}/process-payment/`, {
       method: 'POST',

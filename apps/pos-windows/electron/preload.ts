@@ -18,4 +18,8 @@ contextBridge.exposeInMainWorld('tibatrace', {
     read: () => ipcRenderer.invoke('offline:read'),
     write: (actions: unknown) => ipcRenderer.invoke('offline:write', actions),
   },
+  print: {
+    printers: () => ipcRenderer.invoke('print:printers'),
+    document: (jobId: string, printer: string) => ipcRenderer.invoke('print:document', { jobId, printer }),
+  },
 });

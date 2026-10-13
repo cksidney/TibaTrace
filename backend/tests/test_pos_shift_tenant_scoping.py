@@ -19,7 +19,7 @@ at all, which is the condition that exposed it.
 import pytest
 
 from apps.core.tenant_context import reset_current_tenant_id, set_current_tenant_id
-from apps.identity.models import User
+from apps.identity.models import Role, User, UserRole
 from apps.organizations.models import Location, Organization
 from apps.pos_shift.authority import RegisterAuthorityService
 from apps.pos_shift.models import (
@@ -42,6 +42,8 @@ def world(db):
     operator = User.objects.create_user(
         username="scoping-op", password="pw-scoping-long", tenant=tenant
     )
+    role = Role.all_objects.create(tenant=tenant, code="SHIFT_READ", name="Shift read", capabilities=["pos.session.view"])
+    UserRole.all_objects.create(tenant=tenant, user=operator, role=role)
     register = PosRegister.all_objects.create(
         tenant=tenant, location=branch, code="TILL-SC", name="Front",
         state="OPEN", device_id="POS-SC-01",

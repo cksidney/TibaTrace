@@ -1,7 +1,7 @@
 import pytest
 from django.utils import timezone
 
-from apps.identity.models import User
+from apps.identity.models import Role, User, UserRole
 from apps.inventory.models import InventoryBalance, InventoryLedgerEntry
 from apps.inventory.services import ExpiryControlService, InventoryLedgerService, StocktakeService
 
@@ -20,6 +20,8 @@ class TestStocktakeAndExpiry:
         StocktakeService.record_count(session=session, location=inventory_location, sku=sku, batch=inventory_batch, counted_quantity=95, counter=admin_user)
         
         approver = User.objects.create_user(username="stocktake-approver", tenant=tenant_a)
+        role = Role.all_objects.create(tenant=tenant_a, code="stocktake-approver", name="Stocktake approver", capabilities=["inventory.manage"])
+        UserRole.all_objects.create(tenant=tenant_a, user=approver, role=role)
         StocktakeService.post_variances(session=session, approver=approver)
         
         balance = InventoryBalance.all_objects.get(tenant=tenant_a, sku=sku)

@@ -137,9 +137,10 @@ class CommercialPricingService:
                     base_unit_price = entry.unit_price
                     agreed_unit_price = base_unit_price
                     price_list_ref = str(price_list.pk)
+                else:
+                    raise ValidationError("No effective commercial price entry covers this SKU and quantity. Maintain the approved commercial price list before adding a line.")
             else:
-                base_unit_price = getattr(sku, "base_price", Decimal("0.00"))
-                agreed_unit_price = base_unit_price
+                raise ValidationError("No authoritative commercial price is configured for this customer and SKU. A missing price is not a free item.")
 
         discount_percentage = agreement.discount_percentage if agreement else ZERO
         promotion = (

@@ -174,7 +174,7 @@ export function deriveStages(
             ? 'IN_PROGRESS'
             : !supplyPermitted
               ? 'BLOCKED'
-              : reached(['READY_FOR_SUPPLY', 'READY_FOR_COLLECTION'])
+              : reached(['PAID', 'READY_FOR_SUPPLY', 'READY_FOR_COLLECTION'])
                 ? 'ACTION_REQUIRED'
                 : 'NOT_STARTED',
       reason: supplyPermitted ? '' : 'Supply is not permitted until payment is settled.',

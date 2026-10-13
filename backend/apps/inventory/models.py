@@ -390,6 +390,12 @@ class StocktakeSession(TenantConsistencyMixin, TimestampedModel):
     
     variance_threshold = models.DecimalField(max_digits=15, decimal_places=4, default=0)
     document_number = models.CharField(max_length=100, blank=True)
+    # None marks a pre-snapshot session. Such FULL sessions must be reopened;
+    # reconstructing their historical scope from today's stock would be unsafe.
+    scope_snapshot = models.JSONField(null=True, blank=True, default=None)
+    empty_location_confirmations = models.JSONField(default=dict, blank=True)
+    cancellation_reason = models.TextField(blank=True)
+    cancelled_by = models.ForeignKey("identity.User", on_delete=models.PROTECT, related_name="+", null=True, blank=True)
     
     objects = StrictTenantManager()
     all_objects = models.Manager()
@@ -414,9 +420,62 @@ class StocktakeCount(TenantConsistencyMixin, TimestampedModel):
     reason = models.TextField(blank=True)
     counter = models.ForeignKey("identity.User", on_delete=models.PROTECT, related_name="+", null=True, blank=True)
     timestamp = models.DateTimeField(null=True, blank=True)
+    voided = models.BooleanField(default=False)
+    void_reason = models.TextField(blank=True)
+    voided_by = models.ForeignKey("identity.User", on_delete=models.PROTECT, related_name="+", null=True, blank=True)
+    voided_at = models.DateTimeField(null=True, blank=True)
     
     objects = StrictTenantManager()
     all_objects = models.Manager()
+
+
+class StocktakeRevisionQuerySet(StrictTenantQuerySet):
+    def update(self, **kwargs):
+        raise ValidationError("Stocktake revisions are immutable.")
+
+    def delete(self):
+        raise ValidationError("Stocktake revisions are immutable.")
+
+    def bulk_update(self, objs, fields, batch_size=None):
+        raise ValidationError("Stocktake revisions are immutable.")
+
+
+class StocktakeRevisionManager(StrictTenantManager):
+    def _base_queryset(self):
+        return StocktakeRevisionQuerySet(self.model, using=self._db)
+
+
+class StocktakeCountRevision(TenantConsistencyMixin, TimestampedModel):
+    """Append-only evidence for recounts/voids; the first count is retained."""
+
+    tenant_relation_fields = ("count",)
+    tenant = models.ForeignKey("tenancy.Tenant", on_delete=models.CASCADE, related_name="+")
+    count = models.ForeignKey(StocktakeCount, on_delete=models.PROTECT, related_name="revisions")
+    actor = models.ForeignKey("identity.User", on_delete=models.PROTECT, related_name="+")
+    operation = models.CharField(max_length=16, choices=[("RECOUNT", "Recount"), ("VOID", "Void")])
+    idempotency_key = models.CharField(max_length=128)
+    previous_quantity = models.DecimalField(max_digits=15, decimal_places=4)
+    previous_expected_quantity = models.DecimalField(max_digits=15, decimal_places=4)
+    counted_quantity = models.DecimalField(max_digits=15, decimal_places=4, null=True, blank=True)
+    expected_quantity = models.DecimalField(max_digits=15, decimal_places=4)
+    reason = models.TextField()
+    requested_updated_at = models.DateTimeField()
+
+    objects = StocktakeRevisionManager()
+    all_objects = models.Manager.from_queryset(StocktakeRevisionQuerySet)()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["tenant", "idempotency_key"], name="uq_stocktake_revision_key"),
+        ]
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            raise ValidationError("Stocktake revisions are immutable.")
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("Stocktake revisions are immutable.")
 
 
 # ==============================================================================

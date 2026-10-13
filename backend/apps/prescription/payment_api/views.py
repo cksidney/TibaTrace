@@ -34,6 +34,7 @@ from apps.prescription.payment_services import (
     PaymentSettlementService,
     PaymentTenderService,
 )
+from apps.prescription.pos_permissions import PosReadCapabilityPermission, scope_to_actor_branches
 
 
 def _tenant(request):
@@ -56,14 +57,20 @@ def _handle(fn):
 
 
 class PaymentIntentViewSet(viewsets.ReadOnlyModelViewSet):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, PosReadCapabilityPermission]
+    pos_read_capabilities = (
+        "prescriptions.record_payment", "dispensing.read", "pos.payment.status.view",
+        "pos.payment.read", "pos.payment.reverse", "dispensing.reverse",
+    )
     serializer_class = PaymentIntentSerializer
 
     def get_queryset(self):
         tenant = _tenant(self.request)
         if not tenant:
-            return PaymentIntent.all_objects.filter(tenant_id=get_current_tenant_id())
-        return PaymentIntent.all_objects.filter(tenant=tenant)
+            queryset = PaymentIntent.all_objects.filter(tenant_id=get_current_tenant_id())
+        else:
+            queryset = PaymentIntent.all_objects.filter(tenant=tenant)
+        return scope_to_actor_branches(queryset, self.request, "dispensing_episode__branch_id")
 
     @action(detail=False, methods=["post"])
     def create_intent(self, request):
@@ -132,14 +139,17 @@ class PaymentIntentViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class PaymentTenderViewSet(viewsets.ReadOnlyModelViewSet):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, PosReadCapabilityPermission]
+    pos_read_capabilities = PaymentIntentViewSet.pos_read_capabilities
     serializer_class = PaymentTenderSerializer
 
     def get_queryset(self):
         tenant = _tenant(self.request)
         if not tenant:
-            return PaymentTender.all_objects.filter(tenant_id=get_current_tenant_id())
-        return PaymentTender.all_objects.filter(tenant=tenant)
+            queryset = PaymentTender.all_objects.filter(tenant_id=get_current_tenant_id())
+        else:
+            queryset = PaymentTender.all_objects.filter(tenant=tenant)
+        return scope_to_actor_branches(queryset, self.request, "payment_intent__dispensing_episode__branch_id")
 
     @action(detail=True, methods=["post"], url_path="cash-settle")
     def cash_settle(self, request, pk=None):
@@ -222,14 +232,17 @@ class PaymentTenderViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class PaymentSettlementViewSet(viewsets.ReadOnlyModelViewSet):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, PosReadCapabilityPermission]
+    pos_read_capabilities = PaymentIntentViewSet.pos_read_capabilities
     serializer_class = PaymentSettlementSerializer
 
     def get_queryset(self):
         tenant = _tenant(self.request)
         if not tenant:
-            return PaymentSettlement.all_objects.filter(tenant_id=get_current_tenant_id())
-        return PaymentSettlement.all_objects.filter(tenant=tenant)
+            queryset = PaymentSettlement.all_objects.filter(tenant_id=get_current_tenant_id())
+        else:
+            queryset = PaymentSettlement.all_objects.filter(tenant=tenant)
+        return scope_to_actor_branches(queryset, self.request, "payment_tender__payment_intent__dispensing_episode__branch_id")
 
     @action(detail=True, methods=["post"])
     def reverse(self, request, pk=None):

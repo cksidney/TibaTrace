@@ -5,7 +5,7 @@ import pytest
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from apps.identity.models import User
+from apps.identity.models import Role, User, UserRole
 from apps.inventory.models import (
     InventoryBalance,
     InventoryBatch,
@@ -129,6 +129,9 @@ def transfer_world(db):
         password=PASSWORD,
         tenant=tenant,
     )
+    role = Role.all_objects.create(tenant=tenant, code="TRANSFER_OPERATORS", name="Transfer operators", capabilities=["inventory.read", "inventory.manage"])
+    for operator in (requester, approver, receiver):
+        UserRole.all_objects.create(tenant=tenant, user=operator, role=role)
     InventoryLedgerService.post_entry(
         tenant=tenant,
         branch=source_branch,

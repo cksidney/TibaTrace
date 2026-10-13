@@ -253,6 +253,128 @@ class RetailCashReceipt(TenantConsistencyMixin, TimestampedModel):
         raise ValidationError("Retail cash receipts are immutable and cannot be deleted.")
 
 
+class RetailRefundRequest(TenantConsistencyMixin, TimestampedModel):
+    """A refund proposal; approval does not yet hand money or stock back."""
+
+    class Status(models.TextChoices):
+        REQUESTED = "REQUESTED", "Requested"
+        APPROVED = "APPROVED", "Approved"
+        REJECTED = "REJECTED", "Rejected"
+        COMPLETED = "COMPLETED", "Completed"
+
+    tenant_relation_fields = ("transaction", "original_receipt", "return_location", "requested_by", "approved_by")
+    tenant = models.ForeignKey("tenancy.Tenant", on_delete=models.CASCADE, related_name="+")
+    transaction = models.ForeignKey(PosTransaction, on_delete=models.PROTECT, related_name="refund_requests")
+    original_receipt = models.ForeignKey(RetailCashReceipt, on_delete=models.PROTECT, related_name="refund_requests")
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.REQUESTED)
+    reason = models.TextField()
+    amount = models.DecimalField(**MONEY)
+    currency = models.CharField(max_length=3)
+    return_location = models.ForeignKey("inventory.InventoryLocation", on_delete=models.PROTECT, null=True, blank=True, related_name="+")
+    requested_by = models.ForeignKey("identity.User", on_delete=models.PROTECT, related_name="+")
+    approved_by = models.ForeignKey("identity.User", on_delete=models.PROTECT, null=True, blank=True, related_name="+")
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    review_reason = models.TextField(blank=True)
+    idempotency_key = models.CharField(max_length=255)
+    request_fingerprint = models.CharField(max_length=64)
+
+    objects = StrictTenantManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["tenant", "idempotency_key"], name="uq_retail_refund_request_key"),
+            models.CheckConstraint(condition=models.Q(amount__gt=0), name="chk_retail_refund_request_positive"),
+            models.CheckConstraint(condition=~models.Q(approved_by=models.F("requested_by")), name="chk_retail_refund_independent"),
+        ]
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            fields = ("transaction_id", "original_receipt_id", "reason", "amount", "currency", "return_location_id",
+                      "requested_by_id", "idempotency_key", "request_fingerprint")
+            existing = RetailRefundRequest.all_objects.filter(tenant_id=self.tenant_id, pk=self.pk).values(*fields, "status").first()
+            if existing and any(getattr(self, field) != existing[field] for field in fields):
+                raise ValidationError("Refund request evidence cannot be edited; reject and create a corrected request.")
+            if existing and existing["status"] in {self.Status.REJECTED, self.Status.COMPLETED}:
+                raise ValidationError("A completed or rejected refund request cannot be changed.")
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("Retail refund request evidence cannot be deleted.")
+
+
+class RetailRefundLine(TenantConsistencyMixin, TimestampedModel):
+    tenant_relation_fields = ("refund_request", "original_line", "inventory_batch")
+    tenant = models.ForeignKey("tenancy.Tenant", on_delete=models.CASCADE, related_name="+")
+    refund_request = models.ForeignKey(RetailRefundRequest, on_delete=models.PROTECT, related_name="lines")
+    original_line = models.ForeignKey(PosTransactionLine, on_delete=models.PROTECT, related_name="refund_lines")
+    quantity = models.DecimalField(**QUANTITY)
+    amount = models.DecimalField(**MONEY)
+    return_to_stock = models.BooleanField(default=False)
+    inventory_batch = models.ForeignKey("inventory.InventoryBatch", on_delete=models.PROTECT, null=True, blank=True, related_name="+")
+
+    objects = RetailCashReceiptManager()
+    all_objects = models.Manager.from_queryset(RetailCashReceiptQuerySet)()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["refund_request", "original_line"], name="uq_retail_refund_original_line"),
+            models.CheckConstraint(condition=models.Q(quantity__gt=0), name="chk_retail_refund_line_qty"),
+            models.CheckConstraint(condition=models.Q(amount__gte=0), name="chk_retail_refund_line_amount"),
+        ]
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            raise ValidationError("Retail refund line evidence is immutable; reject and create a corrected request.")
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("Retail refund lines cannot be deleted.")
+
+
+def retail_refund_number() -> str:
+    return f"RFD-{uuid.uuid4().hex[:18].upper()}"
+
+
+class RetailCashRefund(TenantConsistencyMixin, TimestampedModel):
+    """Immutable cash outflow, linked to a receipt and the refund execution till."""
+
+    tenant_relation_fields = ("refund_request", "original_receipt", "register", "register_session", "operator_shift", "created_by", "approved_by")
+    tenant = models.ForeignKey("tenancy.Tenant", on_delete=models.CASCADE, related_name="+")
+    refund_request = models.OneToOneField(RetailRefundRequest, on_delete=models.PROTECT, related_name="receipt")
+    original_receipt = models.ForeignKey(RetailCashReceipt, on_delete=models.PROTECT, related_name="cash_refunds")
+    refund_number = models.CharField(max_length=32, default=retail_refund_number)
+    register = models.ForeignKey("pos_shift.PosRegister", on_delete=models.PROTECT, related_name="+")
+    register_session = models.ForeignKey("pos_shift.RegisterSession", on_delete=models.PROTECT, related_name="+")
+    operator_shift = models.ForeignKey("pos_shift.OperatorShift", on_delete=models.PROTECT, related_name="+")
+    device_id = models.CharField(max_length=128)
+    amount = models.DecimalField(**MONEY)
+    currency = models.CharField(max_length=3)
+    lines_snapshot = models.JSONField(default=list)
+    completed_at = models.DateTimeField(default=timezone.now)
+    created_by = models.ForeignKey("identity.User", on_delete=models.PROTECT, related_name="+")
+    approved_by = models.ForeignKey("identity.User", on_delete=models.PROTECT, related_name="+")
+    idempotency_key = models.CharField(max_length=255)
+
+    objects = RetailCashReceiptManager()
+    all_objects = models.Manager.from_queryset(RetailCashReceiptQuerySet)()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["tenant", "refund_number"], name="uq_retail_cash_refund_number"),
+            models.UniqueConstraint(fields=["tenant", "idempotency_key"], name="uq_retail_cash_refund_key"),
+            models.CheckConstraint(condition=models.Q(amount__gt=0), name="chk_retail_cash_refund_positive"),
+        ]
+
+    def save(self, *args, **kwargs):
+        if self.pk and RetailCashRefund.all_objects.filter(tenant_id=self.tenant_id, pk=self.pk).exists():
+            raise ValidationError("Retail cash refunds are immutable.")
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("Retail cash refunds are immutable and cannot be deleted.")
+
+
 class PosTransactionInventoryContext(TenantConsistencyMixin, TimestampedModel):
     class StockState(models.TextChoices):
         IN_STOCK = "IN_STOCK", "In stock"

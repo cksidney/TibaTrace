@@ -16,19 +16,11 @@ from apps.platform.admin_shell import (
 
 
 def pos_terminal_view(request):
-    """Serve the POS terminal shell.
-
-    `demo_tools_enabled` gates the seed-demo buttons. Seeding puts fictional
-    patients, with dispensing numbers, into the working queue -- which is not
-    something a production till should be able to do from its own header.
-    """
+    """Installer handoff only; the retired browser till cannot transact."""
     return render(
         request,
-        "pos/pos.html",
-        {
-            "demo_tools_enabled": bool(settings.DEBUG),
-            "product_version": settings.DAWATRACE_VERSION,
-        },
+        "pos/installers.html",
+        {"product_version": settings.DAWATRACE_VERSION},
     )
 
 
@@ -131,4 +123,8 @@ class HQWorkspaceView(APIView):
                 {"detail": "A tenant workspace is required."},
                 status=403,
             )
-        return Response(build_hq_workspace_context(tenant_id, actor=request.user))
+        return Response(build_hq_workspace_context(tenant_id, actor=request.user, business_query={
+            "module": request.query_params.get("business_module", ""),
+            "q": request.query_params.get("business_q", ""),
+            "page": request.query_params.get("business_page", "1"),
+        }))

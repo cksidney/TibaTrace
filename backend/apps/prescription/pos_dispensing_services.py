@@ -97,6 +97,28 @@ class PosDispensingQueueService:
             pk=episode.pk, tenant_id=episode.tenant_id
         )
         current = episode.status
+        # Financial, stock and custody facts cannot be asserted by changing a
+        # status. They belong exclusively to settlement/supply/reversal/closure
+        # services, with their own capabilities and immutable evidence.
+        fact_owned_states = {
+            "PAID", "READY_FOR_COLLECTION", "PARTIALLY_SUPPLIED", "SUPPLIED",
+            "CLOSED", "REVERSED", "RETURNED",
+        }
+        if new_status in fact_owned_states:
+            raise ValidationError(
+                "Invalid state transition. Use the authoritative payment, supply or reversal workflow; "
+                "this status cannot be set by a generic transition."
+            )
+        if current in {"SUPPLIED", "CLOSED", "CANCELLED", "REJECTED", "REVERSED", "RETURNED"}:
+            raise ValidationError("Completed or terminal episodes cannot be reopened by a status transition.")
+        if new_status == "CANCELLED" and (
+            episode.payment_state in {"PAID", "PARTIALLY_PAID", "AUTHORIZED"}
+            or episode.reservations.exists() or episode.lines.exists()
+        ):
+            raise ValidationError(
+                "An episode with reserved stock, prepared medicine or payment requires "
+                "the governed cancellation/return workflow."
+            )
         if new_status not in allowed_transitions.get(current, []):
             raise ValidationError(f"Invalid state transition from {current} to {new_status}")
 
@@ -291,6 +313,11 @@ class PosPaymentOrchestrationService:
         # shift has since closed. Re-validating current authority here would
         # turn a safe retry into an ambiguous outcome after a network failure.
         if existing_settlement:
+            tender = existing_settlement.payment_tender
+            if (tender.payment_intent.dispensing_episode_id != episode.pk
+                    or tender.tender_type != tender_type
+                    or (device_id and episode.payment_device_id != device_id)):
+                raise ValidationError("This payment retry key belongs to another command.")
             receipt = PosPaymentOrchestrationService._issue_receipt_safely(
                 episode=episode,
                 settlement=existing_settlement,
@@ -724,6 +751,23 @@ class PosCounsellingService:
         notes="",
     ):
         _require_capability(pharmacist, episode.tenant_id, "dispensing.counsel")
+        topics = {
+            "medicine_explained": medicine_explained, "dosage_explained": dosage_explained,
+            "storage_explained": storage_explained, "side_effects_discussed": side_effects_discussed,
+            "interaction_advice_given": interaction_advice_given,
+            "patient_acknowledged": patient_acknowledged,
+        }
+        if not all(value is True for value in topics.values()):
+            raise ValidationError(
+                "All counselling topics and patient acknowledgement must be explicitly completed. "
+                "Use the governed counselling refusal workflow when the patient declines."
+            )
+        if episode.status not in {
+            "READY_FOR_PAYMENT", "READY_FOR_SUPPLY", "READY_FOR_COLLECTION", "PAID", "PARTIALLY_SUPPLIED",
+        } or not DispensingCheck.all_objects.filter(
+            tenant_id=episode.tenant_id, episode=episode, outcome="PASSED",
+        ).exists():
+            raise ValidationError("Independent final check is required before completed counselling.")
 
         counselling, _ = PatientCounselling.all_objects.get_or_create(
             tenant=episode.tenant,
@@ -734,6 +778,7 @@ class PosCounsellingService:
             },
         )
         counselling.counselling_completed = True
+        counselling.topics = topics
         counselling.warnings_explained = notes
         counselling.counselled_by = pharmacist
         counselling.save()
@@ -762,7 +807,7 @@ class PosCollectionService:
         collector_id_number="",
         collector_phone="",
         collector_relationship="SELF",
-        collection_proof_type="SIGNATURE",
+        collection_proof_type="OPERATOR_WITNESSED",
         signature_ref="",
         actor=None,
         idempotency_key=None,
@@ -779,6 +824,10 @@ class PosCollectionService:
 
         if not collector_name:
             raise ValidationError("Collector name is required to confirm collection.")
+        if collection_proof_type == "SIGNATURE" and not signature_ref:
+            raise ValidationError("Signature proof requires its recorded signature reference.")
+        if collection_proof_type == "ID_CHECK" and not collector_id_number:
+            raise ValidationError("ID-check proof requires a verified collector ID reference.")
 
         episode = DispensingEpisode.all_objects.select_for_update().get(
             pk=episode.pk, tenant_id=episode.tenant_id
@@ -812,6 +861,11 @@ class PosCollectionService:
                     "collected_at",
                 ]
             )
+            from apps.audit.models import AuditEvent
+            AuditEvent.all_objects.create(tenant_id=episode.tenant_id, actor=actor,
+                action="POS_COLLECTION_PROOF_RECORDED", model_name="DispensingEpisode", object_id=str(episode.pk),
+                metadata={"proof_type": collection_proof_type, "signature_reference": signature_ref if collection_proof_type == "SIGNATURE" else "",
+                    "supply_id": str(supply.pk)})
 
             emit_event(
                 tenant_id=str(episode.tenant_id),

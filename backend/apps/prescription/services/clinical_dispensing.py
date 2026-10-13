@@ -860,6 +860,16 @@ class PrescriptionLifecycleService:
         )
         if prescription.status in {"SUPPLIED", "CLOSED"}:
             raise ValidationError("Supplied prescriptions cannot be cancelled.")
+        episodes = list(DispensingEpisode.all_objects.select_for_update().filter(
+            tenant_id=prescription.tenant_id, prescription=prescription,
+        ))
+        from apps.prescription.payment_models import PaymentSettlement
+        if any(ep.payment_state in {"PAID", "PARTIALLY_PAID", "AUTHORIZED", "REVERSAL_PENDING"}
+               or ep.supplies.exists() for ep in episodes) or PaymentSettlement.all_objects.filter(
+                   tenant_id=prescription.tenant_id,
+                   payment_tender__payment_intent__dispensing_episode__in=episodes,
+               ).exists():
+            raise ValidationError("Paid or supplied prescriptions require the governed reversal/return workflow.")
         active_verifications = PharmacistVerification.all_objects.filter(
             tenant_id=prescription.tenant_id,
             prescription=prescription,
@@ -891,6 +901,9 @@ class PrescriptionLifecycleService:
             "cancelled_at": timezone.now().isoformat(),
         }
         prescription.save()
+        DispensingEpisode.all_objects.filter(
+            tenant_id=prescription.tenant_id, prescription=prescription,
+        ).exclude(status__in=["CANCELLED", "REJECTED"]).update(status="CANCELLED")
         ClinicalWorkItem.all_objects.filter(
             tenant_id=prescription.tenant_id,
             prescription=prescription,
@@ -1656,6 +1669,8 @@ class DispensingEpisodeService:
         notes="",
     ):
         _require_capability(actor, prescription.tenant_id, "dispensing.reserve")
+        if payment_state is not None and payment_state not in DispensingEpisode.PAYMENT_STATES_AT_CREATION:
+            raise ValidationError("An episode cannot be created with a settled payment state.")
         idempotency_key = str(idempotency_key or "").strip()
         if not idempotency_key:
             raise ValidationError({"idempotency_key": "Idempotency key is required."})
@@ -1664,6 +1679,10 @@ class DispensingEpisodeService:
             idempotency_key=idempotency_key,
         ).first()
         if existing:
+            if (existing.prescription_id != prescription.pk or existing.branch_id != branch.pk
+                    or existing.pharmacy_location_id != pharmacy_location.pk
+                    or existing.sales_order_id != getattr(sales_order, "pk", None)):
+                raise ValidationError("This episode retry key belongs to a different command.")
             return existing
         _active_verification(prescription)
         if branch.tenant_id != prescription.tenant_id:
@@ -1681,6 +1700,8 @@ class DispensingEpisodeService:
             )
         if sales_order and sales_order.tenant_id != prescription.tenant_id:
             raise ValidationError("Sales order is outside the prescription tenant.")
+        if sales_order and sales_order.branch_id != branch.pk:
+            raise ValidationError("The priced sales order belongs to a different branch.")
         episode = DispensingEpisode.all_objects.create(
             tenant_id=prescription.tenant_id,
             dispensing_number=f"DSP-{timezone.localdate():%Y%m%d}-{uuid.uuid4().hex[:10].upper()}",
@@ -1732,11 +1753,18 @@ class DispensingReservationService:
     ):
         _require_capability(actor, episode.tenant_id, "dispensing.reserve")
         idempotency_key = str(idempotency_key or "").strip()
+        if not idempotency_key:
+            raise ValidationError({"idempotency_key": "A reservation retry key is required."})
         existing = DispensingReservation.all_objects.filter(
             tenant_id=episode.tenant_id,
             idempotency_key=idempotency_key,
         ).first()
         if existing:
+            if (existing.episode_id != episode.pk
+                    or existing.prescription_item_id != prescription_item.pk
+                    or existing.quantity != Decimal(str(quantity))
+                    or (substitute_sku and existing.inventory_reservation.sku_id != substitute_sku.pk)):
+                raise ValidationError("This reservation key was already used for another command.")
             return existing
         episode = DispensingEpisode.all_objects.select_for_update().get(
             id=episode.id,
@@ -2042,6 +2070,10 @@ class DispensingCheckService:
             episode=episode,
         ).first()
         if existing:
+            if existing.outcome != "PASSED":
+                raise ValidationError("The existing final check did not pass.")
+            # A retry must not certify a prescription changed since the check.
+            _active_verification(episode.prescription, lock=True)
             return existing
         _active_verification(episode.prescription, lock=True)
         lines = list(
@@ -2052,6 +2084,8 @@ class DispensingCheckService:
         )
         if not lines:
             raise ValidationError("Prepared dispensing lines are required.")
+        if episode.status != "CHECKING" or any(line.status != "PREPARED" for line in lines):
+            raise ValidationError("Every line must be prepared before the independent final check.")
         if any(line.prepared_by_id == actor.id for line in lines):
             raise ValidationError("The preparer cannot perform the independent final check.")
         missing_checks = sorted(
@@ -2072,6 +2106,9 @@ class DispensingCheckService:
             if not episode.pharmacy_location.controlled_drug_capability:
                 raise ValidationError("Controlled stock is outside a secure location.")
         for line in lines:
+            if (line.inventory_batch.quality_status != InventoryBatch.QualityStatus.RELEASED
+                    or line.inventory_batch.recall_status != InventoryBatch.RecallStatus.NONE):
+                raise ValidationError("Unreleased or recalled batches cannot pass final check.")
             if line.inventory_batch.expiry_date < timezone.localdate():
                 raise ValidationError("Expired batches cannot pass final check.")
             if line.quantity_prepared <= 0:
@@ -2088,7 +2125,10 @@ class DispensingCheckService:
             tenant_id=episode.tenant_id,
             episode=episode,
         ).update(checker=actor, status="CHECKED")
-        episode.status = "READY_FOR_SUPPLY"
+        episode.status = (
+            "READY_FOR_SUPPLY" if episode.payment_state in MedicineSupplyService.ALLOWED_PAYMENT_STATES
+            else "READY_FOR_PAYMENT"
+        )
         episode.save()
         _close_work_items(
             prescription=episode.prescription,
@@ -2150,6 +2190,13 @@ class DispensingLabelService:
             id=dispensing_line.id,
             tenant_id=dispensing_line.tenant_id,
         )
+        _active_verification(line.episode.prescription)
+        if line.episode.status in {"CANCELLED", "REJECTED", "REVERSED", "RETURNED"} or line.quantity_prepared <= 0:
+            raise ValidationError("Only prepared, current medicine can receive a dispensing label.")
+        if (line.inventory_batch.expiry_date < timezone.localdate()
+                or line.inventory_batch.quality_status != InventoryBatch.QualityStatus.RELEASED
+                or line.inventory_batch.recall_status != InventoryBatch.RecallStatus.NONE):
+            raise ValidationError("Expired, held or recalled medicine cannot receive a dispensing label.")
         warnings = list(
             ClinicalFinding.all_objects.filter(
                 tenant_id=line.tenant_id,
@@ -2555,13 +2602,15 @@ class MedicineSupplyService:
             idempotency_key=idempotency_key,
         ).first()
         if existing:
+            if existing.episode_id != episode.pk:
+                raise ValidationError("This supply retry key belongs to a different episode.")
             return existing
         episode = DispensingEpisode.all_objects.select_for_update().select_related(
             "prescription__patient",
             "pharmacy_location",
             "branch",
         ).get(id=episode.id, tenant_id=episode.tenant_id)
-        if episode.status not in {"READY_FOR_SUPPLY", "PARTIALLY_SUPPLIED"}:
+        if episode.status not in {"PAID", "READY_FOR_COLLECTION", "READY_FOR_SUPPLY", "PARTIALLY_SUPPLIED"}:
             raise ValidationError("Episode is not ready for final supply.")
         prescription = episode.prescription
         _active_verification(prescription, lock=True)

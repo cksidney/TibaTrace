@@ -332,12 +332,12 @@ ROLES = (
      ["pos.transaction.create", "pos.payment.cash.accept", "pos.payment.intent.create",
       "pos.register.open"]),
     ("NC-PROCUREMENT", "Procurement Officer", ["inventory.read"]),
-    ("NC-RECEIVING", "Receiving Clerk", ["inventory.read"]),
+    ("NC-RECEIVING", "Receiving Clerk", ["inventory.read", "inventory.transfer.receive"]),
     ("NC-INVENTORY-CTRL", "Inventory Controller", ["inventory.read", "inventory.manage"]),
     # premises.verify lets Quality submit premises evidence; the reviewer must
     # be someone else, which the verification service enforces.
     ("NC-QUALITY", "Quality and Compliance Officer",
-     ["quality.release", "inventory.read", "premises.verify"]),
+     ["quality.release", "inventory.read", "inventory.transfer.approve", "premises.verify"]),
     ("NC-CLAIMS", "Insurance and Claims Officer", ["insurance.read", "insurance.manage", "dispensing.read"]),
     ("NC-AUDITOR", "Auditor", ["inventory.read", "dispensing.read", "documents.read"]),
 )

@@ -12,7 +12,7 @@ from decimal import Decimal
 import pytest
 from rest_framework.test import APIClient
 
-from apps.identity.models import User
+from apps.identity.models import Role, User, UserRole
 from apps.organizations.models import Location, Organization
 from apps.pos_shift.models import (
     BusinessDay,
@@ -46,6 +46,9 @@ def world(db):
     branch = Location.all_objects.create(tenant=tenant, organization=org, code="ELD-SA", name="Eldoret")
     operator = User.objects.create_user(username="till-op", password="pw", tenant=tenant)
     supervisor = User.objects.create_user(username="till-sup", password="pw", tenant=tenant)
+    read_role = Role.all_objects.create(tenant=tenant, code="SHIFT_READ", name="Shift read", capabilities=["pos.session.view"])
+    for actor in (operator, supervisor):
+        UserRole.all_objects.create(tenant=tenant, user=actor, role=read_role)
     register = PosRegister.all_objects.create(
         tenant=tenant, location=branch, code="TILL-SA", name="Front", state="AVAILABLE"
     )

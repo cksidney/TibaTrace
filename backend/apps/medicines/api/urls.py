@@ -1,7 +1,7 @@
 from django.urls import path
 from rest_framework.routers import DefaultRouter
 
-from apps.medicines.api.onboarding import LegacyItemList, LegacyItemReview
+from apps.medicines.api.onboarding import LegacyItemList, LegacyItemRelease, LegacyItemReview, LegacyItemStage
 from apps.medicines.api.views import (
     ActiveSubstanceViewSet,
     AdministrationRouteViewSet,
@@ -43,6 +43,8 @@ router.register("catalog", MedicineViewSet, basename="catalog")
 urlpatterns = [
     path("initial-setup/", LegacyItemList.as_view(), name="legacy-item-setup"),
     path("initial-setup/<uuid:pk>/review/", LegacyItemReview.as_view(), name="legacy-item-review"),
+    path("initial-setup/<uuid:pk>/stage/", LegacyItemStage.as_view(), name="legacy-item-stage"),
+    path("initial-setup/<uuid:pk>/release/", LegacyItemRelease.as_view(), name="legacy-item-release"),
     path(
         "government-catalogue/",
         GovernmentCatalogueView.as_view(),
