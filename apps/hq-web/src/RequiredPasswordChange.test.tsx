@@ -121,6 +121,24 @@ describe('required password change', () => {
     expect(onChanged).not.toHaveBeenCalled();
   });
 
+  it.each([
+    [{ new_password: ['Ensure this field has at least 12 characters.'], request_id: 'request-test' },
+      'new password: Ensure this field has at least 12 characters.'],
+    [{ detail: ['This password is too common.', 'This password is entirely numeric.'] },
+      'This password is too common. This password is entirely numeric.'],
+  ])('shows the actual validation error so the password can be corrected', async (payload, message) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify(payload), { status: 400 })));
+    const { onChanged } = render();
+    fill('temporary-password', currentPassword);
+    fill('replacement-password', newPassword);
+    fill('replacement-confirm', newPassword);
+    await submit();
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain(message);
+    expect(container.querySelector('[role="alert"]')?.textContent).not.toContain('request-test');
+    expect(input('temporary-password').disabled).toBe(false);
+    expect(onChanged).not.toHaveBeenCalled();
+  });
+
   it('keeps sign out available without making a password-change request', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
