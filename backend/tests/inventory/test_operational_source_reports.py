@@ -1,3 +1,4 @@
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import pytest
@@ -119,3 +120,24 @@ def test_delivery_and_local_recall_sources_do_not_assert_external_certification(
         report = query_source_report(report_id, tenant_a.pk, source_reporter, None)
         assert report.rows[0][9] == "LOCAL_RECALL_WORKFLOW_NO_REGULATOR_FEED"
         assert "not regulator certification" in report.basis
+
+
+def test_report_calendar_days_use_nairobi_date_across_utc_midnight(tenant_a, branch, source_reporter):
+    # 21:30 UTC is already the following business date in Nairobi.
+    observed = datetime(2026, 10, 13, 21, 30, tzinfo=UTC)
+    supplier = Supplier.all_objects.create(tenant=tenant_a, supplier_code="MIDNIGHT-SUP", legal_name="Supplier")
+    order = PurchaseOrder.all_objects.create(tenant=tenant_a, po_number="MIDNIGHT-PO", supplier=supplier,
+        ordering_branch=branch, order_date=date(2026, 10, 9), expected_delivery_date=date(2026, 10, 13))
+    GoodsReceipt.all_objects.create(tenant=tenant_a, grn_number="MIDNIGHT-GRN", purchase_order=order,
+        supplier=supplier, receiving_branch=branch, received_by=source_reporter,
+        arrival_time=observed, status="RECEIVED")
+    customer = Customer.all_objects.create(tenant=tenant_a, customer_number="MIDNIGHT-CUSTOMER", legal_name="Customer", customer_type="PHARMACY")
+    dispatch = DispatchOrder.all_objects.create(tenant=tenant_a, dispatch_number="MIDNIGHT-DISPATCH",
+        branch=branch, customer=customer, expected_delivery_date=date(2026, 10, 13))
+    DeliveryRecord.all_objects.create(tenant=tenant_a, dispatch_order=dispatch, customer=customer,
+        status="DELIVERED", delivered_at=observed, proof_type="SIGNATURE")
+    with timezone.override("Africa/Nairobi"):
+        lead = query_source_report("proc-lead-time", tenant_a.pk, source_reporter, None)
+        assert lead.rows[0][7:] == ["5", "LATE"]
+        delivery = query_source_report("log-delivery", tenant_a.pk, source_reporter, None)
+        assert delivery.rows[0][7] == "LATE"

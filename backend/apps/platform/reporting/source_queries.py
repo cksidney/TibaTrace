@@ -122,7 +122,8 @@ def query_source_report(report_id, tenant_id, actor, window):
             return result("Recorded order-date-to-GRN-arrival calendar days for non-draft/non-cancelled receipts. Each partial arrival is separate; negative source-date differences remain visible rather than silently corrected.",
                           ["Supplier", "PO", "Order date", "Expected delivery", "GRN", "Arrival", "Receipt state", "Lead days", "Arrival relative to expected"],
                           [[r.supplier.supplier_code, r.purchase_order.po_number, r.purchase_order.order_date, r.purchase_order.expected_delivery_date, r.grn_number, r.arrival_time, r.status,
-                            (r.arrival_time.date() - r.purchase_order.order_date).days, "ON_OR_BEFORE" if r.arrival_time.date() <= r.purchase_order.expected_delivery_date else "LATE"] for r in _bounded(qs)])
+                            (timezone.localtime(r.arrival_time).date() - r.purchase_order.order_date).days,
+                            "ON_OR_BEFORE" if timezone.localtime(r.arrival_time).date() <= r.purchase_order.expected_delivery_date else "LATE"] for r in _bounded(qs)])
         if report_id == "proc-price-variance":
             qs = _period(ThreeWayMatch.all_objects.filter(tenant_id=tenant_id, purchase_order__tenant_id=tenant_id, goods_receipt__tenant_id=tenant_id), "created_at", window).select_related("purchase_order", "goods_receipt").order_by("created_at", "pk")
             return result("Recorded three-way-match exceptions by match creation time. Price variance is the stored reviewed source value; no synthetic invoice line prices or ledger posting are inferred.",
@@ -160,5 +161,5 @@ def query_source_report(report_id, tenant_id, actor, window):
     return result("Recorded delivery attempts created within the selected window, with current outcome, actual delivery timestamp and presence of stored POD evidence. No external carrier or recipient-signature authenticity is asserted.",
                   ["Delivery ID", "Created", "Dispatch", "Customer number", "State", "Expected delivery", "Delivered at", "Timing outcome", "POD reference present", "Signature reference present"],
                   [[r.pk, r.created_at, r.dispatch_order.dispatch_number, r.customer.customer_number, r.status, r.dispatch_order.expected_delivery_date, r.delivered_at,
-                    "UNKNOWN" if not r.delivered_at or not r.dispatch_order.expected_delivery_date else "ON_OR_BEFORE" if r.delivered_at.date() <= r.dispatch_order.expected_delivery_date else "LATE",
+                    "UNKNOWN" if not r.delivered_at or not r.dispatch_order.expected_delivery_date else "ON_OR_BEFORE" if timezone.localtime(r.delivered_at).date() <= r.dispatch_order.expected_delivery_date else "LATE",
                     bool(r.photo_ref or r.proof_type), bool(r.signature_ref)] for r in _bounded(qs)])
