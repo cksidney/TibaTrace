@@ -9,6 +9,7 @@ import json
 from decimal import Decimal, InvalidOperation
 
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
+from django.core.serializers.json import DjangoJSONEncoder
 from django.db import transaction
 from rest_framework.exceptions import ValidationError as APIValidationError
 from rest_framework.response import Response
@@ -47,7 +48,9 @@ def command(request, anchor, name, callback):
             raise APIValidationError("This retry key belongs to different command details.")
         return Response(previous.payload["response"])
     try:
-        response = callback(anchor)
+        # DRF serializer data can contain UUID/Decimal objects. Journal the same
+        # JSON-safe representation returned to the client, including on replay.
+        response = json.loads(json.dumps(callback(anchor), cls=DjangoJSONEncoder))
     except ValidationError as exc:
         raise APIValidationError(getattr(exc, "message_dict", None) or exc.messages) from exc
     except (ObjectDoesNotExist, InvalidOperation, ValueError, TypeError) as exc:

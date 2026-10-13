@@ -21,7 +21,7 @@ from datetime import date, timedelta
 import pytest
 from rest_framework.test import APIClient
 
-from apps.identity.models import User
+from apps.identity.models import Role, User, UserRole
 from apps.insurance.models import (
     InsuranceCoverage,
     InsuranceMember,
@@ -63,6 +63,9 @@ def world(db):
     user = User.objects.create_user(
         username="counter-user", password=PASSWORD, tenant=tenant
     )
+    role = Role.all_objects.create(tenant=tenant, code="COUNTER-CLINICAL-READ",
+                                  name="Clinical reader", capabilities=["dispensing.read", "clinical.read"])
+    UserRole.all_objects.create(tenant=tenant, user=user, role=role)
     patient = Patient.all_objects.create(
         tenant=tenant, internal_reference_id="INT-REAL-77",
         patient_number="PAT-REAL-77", first_name="Amina", last_name="Wanjiru",

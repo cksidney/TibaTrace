@@ -1,7 +1,7 @@
 import pytest
 from rest_framework.test import APIClient
 
-from apps.identity.models import User
+from apps.identity.models import Role, User, UserRole
 from apps.platform.client_version import evaluate_client_version
 from apps.platform.models import PosRelease
 from apps.tenancy.models import Tenant
@@ -93,6 +93,9 @@ def test_client_version_endpoint_requires_authentication_and_returns_payload(use
 def test_mutating_pos_action_is_blocked_when_client_build_is_below_floor(
     tenant, user
 ):
+    role = Role.all_objects.create(tenant=tenant, code="VERSION-CLINICAL",
+                                  name="Clinical reader", capabilities=["dispensing.read"])
+    UserRole.all_objects.create(tenant=tenant, user=user, role=role)
     publish_release(minimum_supported_build=95)
     client = APIClient()
     client.force_authenticate(user=user)

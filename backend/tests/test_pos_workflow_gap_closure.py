@@ -128,7 +128,7 @@ def test_browser_till_is_installation_only():
 
 def test_hq_intake_options_and_actual_prescription_creation_do_not_claim_verification(domain):
     user = domain["pharmacist"]
-    grant(user, domain["tenant"], ["prescriptions.intake", "prescriptions.read"], "INTAKE")
+    grant(user, domain["tenant"], ["prescriptions.intake", "prescriptions.read", "dispensing.reserve"], "INTAKE")
     api = client(user)
     options = api.get("/api/prescriptions/intake-options/")
     assert options.status_code == 200, options.data

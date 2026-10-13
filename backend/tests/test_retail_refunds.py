@@ -33,6 +33,41 @@ def paid(world):
     return response.json()
 
 
+def test_receipt_lookup_uses_the_same_authority_and_branch_scope_as_transactions(world):
+    sale = paid(world)
+    path = "/api/pos/retail/transactions/lookup-receipt/"
+    params = {"receipt_number": sale["receipt"]["receipt_number"]}
+    found = world["client"].get(path, params)
+    assert found.status_code == 200 and found.json()["id"] == sale["id"]
+    outsider = user(world["tenant"], "different-cashier", ["pos.payment.cash.accept"])
+    world["client"].force_authenticate(outsider)
+    assert world["client"].get(path, params).status_code == 404
+    supervisor = user(world["tenant"], "lookup-supervisor", ["pos.refund.approve"])
+    world["client"].force_authenticate(supervisor)
+    assert world["client"].get(path, params).status_code == 200
+    supervisor.metadata = {"branch_ids": []}
+    supervisor.save(update_fields=["metadata"])
+    assert world["client"].get(path, params).status_code == 404
+    world["client"].force_authenticate(user(world["tenant"], "lookup-no-role", []))
+    assert world["client"].get(path, params).status_code == 403
+
+
+def test_native_store_options_require_read_authority_and_device_branch(world):
+    path = "/api/pos/retail/catalogue/stores/"
+    response = world["client"].get(path, {"device_id": "POS-RETAIL-01"})
+    assert response.status_code == 200, response.data
+    assert str(world["store"].pk) in {row["id"] for row in response.json()}
+    assert all(row["branch"] == str(world["branch"].pk) for row in response.json())
+    assert world["client"].get(path, {"device_id": "UNKNOWN"}).status_code == 400
+    restricted = user(world["tenant"], "stores-restricted", ["pos.payment.cash.accept"])
+    restricted.metadata = {"branch_ids": []}
+    restricted.save(update_fields=["metadata"])
+    world["client"].force_authenticate(restricted)
+    assert world["client"].get(path, {"device_id": "POS-RETAIL-01"}).json() == []
+    world["client"].force_authenticate(user(world["tenant"], "stores-no-role", []))
+    assert world["client"].get(path, {"device_id": "POS-RETAIL-01"}).status_code == 403
+
+
 def refund_request(world, sale, physical=False, quantity="1", key="request-key", **extra):
     payload = {"device_id": "POS-RETAIL-01", "reason": "Customer return", "idempotency_key": key,
         "lines": [{"line_id": sale["lines"][0]["id"], "quantity": quantity, "return_to_stock": physical}]}

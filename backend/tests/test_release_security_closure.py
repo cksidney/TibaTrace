@@ -76,6 +76,9 @@ def test_password_gate_and_change_revokes_old_bearer(actors):
 
 def test_price_get_is_read_only_and_unauthorised_b2b_write_is_denied(actors):
     a, b, user = actors
+    role = Role.all_objects.create(tenant=a, code="PRICING-READ",
+                                  name="Pricing reader", capabilities=["pricing.read"])
+    UserRole.all_objects.create(tenant=a, user=user, role=role)
     client = client_for(user)
     before = (PriceBook.all_objects.count(), PriceAssignment.all_objects.count())
     assert client.get("/api/pricing/books/").status_code == 200

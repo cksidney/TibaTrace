@@ -16,6 +16,7 @@ from datetime import timedelta
 from decimal import Decimal
 
 import pytest
+from django.core.exceptions import ValidationError
 from django.utils import timezone
 
 from apps.customers.models import Customer
@@ -108,8 +109,9 @@ class TestBusinessToBusinessPricesFromThePriceList:
         entry = add_entry(world, unit_price="240.00")
         entry.effective_to = world["now"] - timedelta(days=1)
         entry.save(update_fields=["effective_to"])
-        # Falls back rather than billing a price that has lapsed.
-        assert Decimal(str(price_line(world)["base_unit_price"])) != Decimal("240.00")
+        # An expired price must not silently become a zero-priced sales line.
+        with pytest.raises(ValidationError, match="No effective commercial price entry"):
+            price_line(world)
 
 
 class TestTheTwoTablesAreSeparate:

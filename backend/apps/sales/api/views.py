@@ -309,7 +309,7 @@ class SalesOrderViewSet(BaseSalesViewSet):
             if PickingTask.all_objects.filter(tenant=order.tenant, sales_order=order).exists():
                 raise DRFValidationError("This order already has picking tasks. Continue its existing wave.")
             wave = PickingWaveService.create_wave(tenant=order.tenant, branch=order.branch, scope={"sales_order_id":str(order.pk)}, created_by=request.user)
-            PickingWaveService.release_wave(wave=wave)
+            wave = PickingWaveService.release_wave(wave=wave)
             for allocation in allocations:
                 PickingService.create_picking_task(tenant=order.tenant, sales_order=order, sales_order_line=allocation.sales_order_line,
                     allocation=allocation, source_location=allocation.location, sku=allocation.sales_order_line.sku,

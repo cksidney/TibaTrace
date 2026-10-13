@@ -34,7 +34,7 @@ from django.db import transaction
 from django.utils import timezone
 from django.utils.crypto import get_random_string
 
-from apps.identity.models import User
+from apps.identity.models import Role, User, UserRole
 from apps.medicines.models import (
     ClinicalMedicinalProduct,
     CommercialSKU,
@@ -130,6 +130,11 @@ class Command(BaseCommand):
     def people(self, tenant, password: str) -> tuple[dict, list[str]]:
         made = {}
         created_users = []
+        role, _ = Role.all_objects.get_or_create(
+            tenant=tenant, code="DEMO-READ-ONLY",
+            defaults={"name": "Demo pricing and till viewer",
+                      "capabilities": ["pricing.read", "pos.session.view", "pos.report.read"]},
+        )
         for key, username in (("operator", "demo-operator"), ("supervisor", "demo-supervisor")):
             user = User.objects.filter(username=username).first()
             if user is None:
@@ -137,6 +142,9 @@ class Command(BaseCommand):
                     username=username, password=password, tenant=tenant
                 )
                 created_users.append(username)
+            if user.tenant_id != tenant.pk:
+                raise ValueError(f"Demo username {username} belongs to another tenant.")
+            UserRole.all_objects.get_or_create(tenant=tenant, user=user, role=role)
             made[key] = user
         return made, created_users
 

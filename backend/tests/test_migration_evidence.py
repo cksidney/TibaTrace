@@ -60,6 +60,11 @@ RELEASE_MIGRATIONS = [
     "backend/apps/procurement/migrations/0007_batch_quality_decision.py",
     # Stage 2B.2B: partially released quality status choices.
     "backend/apps/procurement/migrations/0008_alter_receivedbatch_quality_status.py",
+    # Governed stocktakes, legacy completion, cash refunds and refund print documents.
+    "backend/apps/inventory/migrations/0006_stocktake_scope_and_revisions.py",
+    "backend/apps/medicines/migrations/0005_legacy_item_completion.py",
+    "backend/apps/pos_transactions/migrations/0003_retailrefundrequest_retailrefundline_and_more.py",
+    "backend/apps/prescription/migrations/0016_alter_posprintdocument_document_type.py",
 ]
 
 

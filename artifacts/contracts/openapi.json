@@ -15330,7 +15330,7 @@
   "info": {
     "description": "Independent pharmacy and healthcare clinical-core API",
     "title": "DawaTrace API",
-    "version": "1.0.0-rc34"
+    "version": "1.0.0-rc36"
   },
   "openapi": "3.0.3",
   "paths": {
@@ -34334,6 +34334,34 @@
         },
         "responses": {
           "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Prescription"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "prescriptions"
+        ]
+      }
+    },
+    "/api/prescriptions/intake-options/": {
+      "get": {
+        "operationId": "prescriptions_intake_options_retrieve",
+        "responses": {
+          "200": {
             "content": {
               "application/json": {
                 "schema": {
