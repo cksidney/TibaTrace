@@ -74,6 +74,8 @@ CAPABILITY_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
         (
             "pricing.read",
             "pricing.manage",
+            "pricing.commercial.approve",
+            "pricing.commercial.publish",
             "pricing.price_book.manage",
             "pricing.price_book.approve",
             "pricing.price_book.publish",

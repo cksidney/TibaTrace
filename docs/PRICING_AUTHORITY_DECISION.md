@@ -1,5 +1,42 @@
 # Which price table is authoritative?
 
+## Current implementation — 14 October 2026, rc38 candidate
+
+The July findings below are retained as historical evidence, not a description
+of current charging behaviour. Several of those gaps have since been closed.
+
+- Native retail uses the versioned `pricing.PriceBookEntry` resolver on the
+  server; client-supplied prices do not determine settlement. Cash-only checkout
+  remains the enabled first phase. Missing prices stay unavailable, not zero.
+- Clinical payment-intent creation independently compares the proposed amount
+  with `PosPaymentOrchestrationService.amount_due`; the episode's authoritative
+  sales-order amount and explicit exemption controls remain the clinical basis.
+  Do not assume a retail price book automatically changes an existing clinical
+  order or that this constitutes an approved tax/insurer tariff.
+- B2B quotations and orders use `sales.PriceListEntry`, customer agreements and
+  promotions. No `sku.base_price` fallback remains. Assigned lists must be active,
+  effective and tenant-matched; ambiguous defaults, overlapping quantity-break
+  prices, missing/non-positive prices and currency mismatches fail closed.
+- New B2B list changes require draft → submit → independent exact-content review
+  → publish. Editors/submitting actors cannot review their own list. Editing a
+  reviewed draft invalidates approval; publication rechecks the reviewer's active
+  capability. Active/archived lists cannot be edited/deleted through the API.
+  Clone a new draft; archive deliberately with a reason. Existing active lists
+  are preserved without inventing retrospective approvals.
+- Quantity breaks may share the same start date after sales migration 0005.
+  Command keys bind draft create/update and review retries to actor and exact
+  request details; new HQ writes supply a key. Legacy callers without keys retain
+  uniqueness validation, not an inferred retry guarantee.
+- `pricing.commercial.approve` and `pricing.commercial.publish` are explicit
+  role capabilities; they are not automatically granted to every price editor.
+
+Customer-specific agreement and promotion authoring/independent approval remain
+read-only API surfaces needing their own governed workflow. This list governance
+does not claim those workflows are completed or certify tax, profit, valuation,
+regulated exemptions, provider integration or real stock/hardware acceptance.
+
+## Historical July investigation (superseded where noted above)
+
 **Status: answered by evidence, 2026-07-27. Both tables are real, they serve
 different channels, and a third path — the till — consults neither.**
 

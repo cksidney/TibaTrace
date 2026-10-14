@@ -10,6 +10,7 @@ from apps.medicines.models import CommercialSKU
 from apps.organizations.models import Location
 from apps.sales.api.fulfilment import command
 from apps.sales.api.serializers import (
+    CommercialDraftCloneSerializer,
     CustomerPriceAgreementSerializer,
     DeliveryRecordSerializer,
     DispatchOrderSerializer,
@@ -32,6 +33,7 @@ from apps.sales.api.serializers import (
     SubstitutionProposalSerializer,
     SubstitutionProposeSerializer,
 )
+from apps.sales.commercial_governance import CommercialPriceGovernanceService
 from apps.sales.models import (
     CustomerPriceAgreement,
     DeliveryRecord,
@@ -136,14 +138,54 @@ class WritablePricingViewSet(mixins.CreateModelMixin, mixins.UpdateModelMixin,
     read-only would stop price maintenance, so it keeps its writes while the
     order and fulfilment surfaces do not.
 
-    That is a decision about reachability, not about governance. Price changes
-    here still have no approval step and no audit of who changed a price or why,
-    which docs/PRICING_AUTHORITY_DECISION.md records as the outstanding work.
+    Only drafts may be edited. Independent review and publication bind the
+    exact contents; active lists remain immutable and history cannot be deleted.
     """
 
     def get_permissions(self):
-        self.required_capabilities = ("pricing.read", "pricing.manage") if self.request.method in {"GET", "HEAD", "OPTIONS"} else ("pricing.manage",)
+        self.required_capabilities = ("pricing.read", "pricing.manage", "pricing.commercial.approve", "pricing.commercial.publish") if self.request.method in {"GET", "HEAD", "OPTIONS"} else ("pricing.manage",)
         return [permissions.IsAuthenticated(), CapabilityPermission()]
+
+    def _retry_safe_write(self, request, write):
+        import hashlib
+        import json
+        from collections.abc import Mapping
+
+        from django.db import transaction
+
+        from apps.workflows.models import DomainEvent
+        from apps.workflows.service import emit_event
+
+        if not isinstance(request.data, Mapping):
+            raise DRFValidationError("Send a JSON object containing commercial price details.")
+        key = str(request.data.get("idempotency_key") or "").strip()
+        if len(key) > 128:
+            raise DRFValidationError("Command key must not exceed 128 characters.")
+        details = [self.model._meta.label, request.method, self.kwargs.get("pk"), str(request.user.pk), request.data]
+        request_hash = hashlib.sha256(json.dumps(details, sort_keys=True, default=str).encode()).hexdigest()
+        with transaction.atomic():
+            # Validate uniqueness only after serialising writes, and return an
+            # already recorded result before serializer uniqueness checks.
+            Tenant.objects.select_for_update().get(pk=self._tenant_id())
+            if key:
+                prior = DomainEvent.all_objects.filter(tenant_id=self._tenant_id(), aggregate_type="B2B_PRICE_COMMAND", payload__idempotency_key=key).first()
+                if prior:
+                    if prior.payload["request_hash"] != request_hash:
+                        raise DRFValidationError("This command key belongs to different price details or another actor.")
+                    record = self.model.all_objects.get(tenant_id=self._tenant_id(), pk=prior.aggregate_id)
+                    return Response(self.get_serializer(record).data, status=prior.payload["response_status"])
+            response = write()
+            if key:
+                emit_event(tenant_id=self._tenant_id(), aggregate_type="B2B_PRICE_COMMAND", aggregate_id=str(response.data["id"]),
+                    event_type="B2B_PRICE_DRAFT_WRITTEN", payload={"actor_id": str(request.user.pk), "model": self.model._meta.label,
+                        "idempotency_key": key, "request_hash": request_hash, "response_status": response.status_code})
+            return response
+
+    def create(self, request, *args, **kwargs):
+        return self._retry_safe_write(request, lambda: super(WritablePricingViewSet, self).create(request, *args, **kwargs))
+
+    def update(self, request, *args, **kwargs):
+        return self._retry_safe_write(request, lambda: super(WritablePricingViewSet, self).update(request, *args, **kwargs))
 
     def _reason(self):
         reason = str(self.request.data.get("change_reason", "")).strip()
@@ -152,36 +194,102 @@ class WritablePricingViewSet(mixins.CreateModelMixin, mixins.UpdateModelMixin,
         return reason[:1000]
 
     def _audit(self, instance, reason):
+        import json
+
+        from django.core.serializers.json import DjangoJSONEncoder
+
         from apps.audit.service import log_audit
 
         log_audit(tenant_id=self._tenant_id(), actor_id=self.request.user.pk,
                   action="B2B_PRICE_CHANGED", model_name=instance._meta.label, object_id=str(instance.pk),
-                  metadata={"reason": reason, "method": self.request.method})
+                  metadata={"reason": reason, "method": self.request.method,
+                            "recorded_contents": json.loads(json.dumps(self.get_serializer(instance).data, cls=DjangoJSONEncoder))})
 
     def perform_create(self, serializer):
-        reason = self._reason()
-        instance = serializer.save(tenant_id=self._tenant_id())
-        self._audit(instance, reason)
+        from django.db import transaction
+
+        from apps.sales.commercial_governance import require
+        with transaction.atomic():
+            require(self.request.user, self._tenant_id(), "pricing.manage")
+            reason = self._reason()
+            if self.model == PriceListEntry:
+                price_list = PriceList.all_objects.select_for_update().get(tenant_id=self._tenant_id(), pk=serializer.validated_data["price_list"].pk)
+                self._draft_only(price_list)
+            instance = serializer.save(tenant_id=self._tenant_id())
+            self._audit(instance, reason)
 
     def perform_update(self, serializer):
-        reason = self._reason()
-        instance = serializer.save()
-        self._audit(instance, reason)
+        from django.db import transaction
+        with transaction.atomic():
+            record = serializer.instance
+            anchor = record if self.model == PriceList else record.price_list
+            anchor = PriceList.all_objects.select_for_update().get(tenant_id=self._tenant_id(), pk=anchor.pk)
+            self._draft_only(anchor)
+            # Re-read after locking so concurrent writes cannot replace fields
+            # from a stale serializer instance.
+            serializer.instance = self.model.all_objects.get(tenant_id=self._tenant_id(), pk=record.pk)
+            instance = serializer.save()
+            self._audit(instance, self._reason())
 
     def perform_destroy(self, instance):
-        reason = self._reason()
-        self._audit(instance, reason)
-        instance.delete()
+        raise DRFValidationError("Commercial price history cannot be deleted. Archive a list or deactivate a draft entry with a reason.")
+
+    @staticmethod
+    def _draft_only(price_list):
+        if price_list.status != "DRAFT":
+            raise DRFValidationError("Active or archived commercial prices are immutable. Create a new draft list.")
 
 
 class PriceListViewSet(WritablePricingViewSet):
     model = PriceList
     serializer_class = PriceListSerializer
 
+    @action(detail=False, methods=["get"], url_path="workspace-options")
+    def workspace_options(self, request):
+        from django.db.models import F, Q
+        tenant_id = self._tenant_id()
+        query = str(request.query_params.get("q") or "").strip()[:150]
+        skus = CommercialSKU.all_objects.filter(tenant_id=tenant_id)
+        if query:
+            skus = skus.filter(Q(sku_code__icontains=query) | Q(display_name__icontains=query))
+        rows = list(skus.annotate(sales_unit=F("package_definition__unit_of_measure")).order_by("sku_code").values("id", "sku_code", "display_name", "sales_unit", "status")[:1001])
+        return Response({"skus": rows[:1000], "more_skus": len(rows) > 1000,
+            "can_edit": request.user.has_capability("pricing.manage", tenant_id=tenant_id),
+            "can_approve": request.user.has_capability("pricing.commercial.approve", tenant_id=tenant_id),
+            "can_publish": request.user.has_capability("pricing.commercial.publish", tenant_id=tenant_id)})
+
+    @action(detail=True, methods=["post"], url_path="new-draft")
+    def new_draft(self, request, pk=None):
+        payload = CommercialDraftCloneSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        row = CommercialPriceGovernanceService.clone(price_list=self.get_object(), actor=request.user, **payload.validated_data)
+        return Response(self.get_serializer(row).data, status=201)
+
+    def get_permissions(self):
+        if self.action in {"govern", "archive"}:
+            self.required_capabilities = ("pricing.manage", "pricing.commercial.approve", "pricing.commercial.publish")
+            return [permissions.IsAuthenticated(), CapabilityPermission()]
+        return super().get_permissions()
+
+    @action(detail=True, methods=["post"])
+    def govern(self, request, pk=None):
+        row = CommercialPriceGovernanceService.run(price_list=self.get_object(), actor=request.user,
+            operation=request.data.get("operation"), idempotency_key=request.data.get("idempotency_key"),
+            expected_content_hash=request.data.get("expected_content_hash"), reason=request.data.get("reason"))
+        return Response(self.get_serializer(row).data)
+
+    @action(detail=True, methods=["post"])
+    def archive(self, request, pk=None):
+        row = CommercialPriceGovernanceService.archive(price_list=self.get_object(), actor=request.user, reason=request.data.get("reason"))
+        return Response(self.get_serializer(row).data)
+
 
 class PriceListEntryViewSet(WritablePricingViewSet):
     model = PriceListEntry
     serializer_class = PriceListEntrySerializer
+
+    def get_queryset(self):
+        return super().get_queryset().select_related("sku", "price_list")
 
 
 class PromotionRuleViewSet(BaseSalesViewSet):

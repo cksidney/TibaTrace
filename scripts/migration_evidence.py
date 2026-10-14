@@ -92,6 +92,25 @@ def _migration_key(path: str) -> tuple[str, str]:
     return app_label, Path(path).stem
 
 
+def _reviewed_commercial_quantity_breaks(app_label, name, operations):
+    """rc38 replaces uniqueness only; no rows or columns are removed.
+
+    Same-date breaks remain unique per minimum quantity. Reverse compatibility
+    must be checked after new breaks are created; see RC38 release scope. Any
+    other operation sequence or constraint shape still fails the release gate.
+    """
+    return (
+        (app_label, name) == ("sales", "0005_commercial_quantity_breaks")
+        and [type(op).__name__ for op in operations] == ["RemoveConstraint", "AddConstraint"]
+        and all(op.model_name == "pricelistentry" for op in operations)
+        and operations[0].name == "uq_pricelistentry_sku_date"
+        and operations[1].constraint.name == "uq_pricelistentry_break_date"
+        and tuple(operations[1].constraint.fields) == ("price_list", "sku", "minimum_quantity", "effective_from")
+        and operations[1].constraint.condition is None
+        and not operations[1].constraint.expressions
+    )
+
+
 def build_inventory(new_files: list[str]) -> list[dict]:
     import django
 
@@ -128,7 +147,7 @@ def build_inventory(new_files: list[str]) -> list[dict]:
                 "destructive_operations": destructive,
                 "reviewed_constraint_replacement": _reviewed_recall_constraint_replacement(
                     app_label, name, migration.operations
-                ),
+                ) or _reviewed_commercial_quantity_breaks(app_label, name, migration.operations),
                 "data_migration": bool(set(operation_types) & DATA_MIGRATION_OPERATIONS),
                 "sql_operation": bool(set(operation_types) & SQL_OPERATIONS),
                 "source_path": source_path,

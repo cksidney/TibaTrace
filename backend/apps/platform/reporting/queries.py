@@ -10,15 +10,16 @@ from apps.inventory.models import InventoryBalance, InventoryLedgerEntry
 from apps.pos_transactions.models import RetailCashReceipt, RetailCashRefund
 from apps.prescription.payment_models import PaymentReversal, PaymentSettlement
 
+from .module_source_queries import MODULE_REPORTS, MODULE_SNAPSHOTS, query_module_report
 from .operator_source_queries import OPERATOR_REPORTS, OPERATOR_SNAPSHOTS, query_operator_report
 from .source_queries import SOURCE_REPORTS, SOURCE_SNAPSHOTS, query_source_report
 
 MAX_ROWS = 5000
-SNAPSHOTS = {"exec-dashboard", "inv-balance", "inv-batch", "inv-expiry", "qa-quarantine", "qa-released"} | SOURCE_SNAPSHOTS | OPERATOR_SNAPSHOTS
+SNAPSHOTS = {"exec-dashboard", "inv-balance", "inv-batch", "inv-expiry", "qa-quarantine", "qa-released"} | SOURCE_SNAPSHOTS | OPERATOR_SNAPSHOTS | MODULE_SNAPSHOTS
 COLLECTIONS = {"sales-period", "sales-by-branch", "sales-refunds"}
 AUDITS = {"audit-user", "audit-financial", "audit-clinical", "audit-config", "sec-audit-trail", "sec-permission-changes"}
 MOVEMENTS = {"inv-movements", "audit-inventory"}
-AVAILABLE = SNAPSHOTS | COLLECTIONS | AUDITS | MOVEMENTS | SOURCE_REPORTS | OPERATOR_REPORTS
+AVAILABLE = SNAPSHOTS | COLLECTIONS | AUDITS | MOVEMENTS | SOURCE_REPORTS | OPERATOR_REPORTS | MODULE_REPORTS
 
 
 def _missing_prerequisites(report_id):
@@ -87,6 +88,8 @@ def query_report(report_id, tenant_id, actor, window):
         raise ValueError("This is a current-state snapshot; remove the reporting-window filters.")
     if report_id == "exec-dashboard":
         return None
+    if report_id in MODULE_REPORTS:
+        return query_module_report(report_id, tenant_id, actor, window)
     if report_id in SOURCE_REPORTS:
         return query_source_report(report_id, tenant_id, actor, window)
     if report_id in OPERATOR_REPORTS:

@@ -29,6 +29,22 @@ from apps.sales.models import (
 
 
 class PriceListSerializer(serializers.ModelSerializer):
+    governance = serializers.SerializerMethodField()
+
+    def validate(self, attrs):
+        start = attrs.get("effective_from", getattr(self.instance, "effective_from", None))
+        end = attrs.get("effective_to", getattr(self.instance, "effective_to", None))
+        if start and end and end < start:
+            raise serializers.ValidationError("List end date precedes its start date.")
+        currency = attrs.get("currency")
+        if currency and (len(currency) != 3 or not currency.isalpha() or currency != currency.upper()):
+            raise serializers.ValidationError({"currency": "Use a three-letter uppercase currency code. No exchange rate is inferred."})
+        return attrs
+
+    def get_governance(self, obj) -> dict:
+        from apps.sales.commercial_governance import review_state
+        return review_state(obj)
+
     class Meta:
         model = PriceList
         fields = [
@@ -43,11 +59,43 @@ class PriceListSerializer(serializers.ModelSerializer):
             "status",
             "created_at",
             "updated_at",
+            "governance",
         ]
         read_only_fields = ["id", "tenant", "status", "created_at", "updated_at"]
 
 
+class CommercialDraftCloneSerializer(serializers.Serializer):
+    code = serializers.CharField(max_length=64)
+    name = serializers.CharField(max_length=255)
+    effective_from = serializers.DateField()
+    effective_to = serializers.DateField(required=False, allow_null=True, default=None)
+    is_default = serializers.BooleanField(default=False)
+    reason = serializers.CharField(max_length=1000)
+    idempotency_key = serializers.CharField(max_length=128)
+
+
 class PriceListEntrySerializer(serializers.ModelSerializer):
+    sku_code = serializers.CharField(source="sku.sku_code", read_only=True)
+    sku_name = serializers.CharField(source="sku.display_name", read_only=True)
+    def validate(self, attrs):
+        request = self.context.get("request")
+        tenant_id = getattr(request, "tenant_id", None) or getattr(getattr(request, "user", None), "tenant_id", None)
+        price_list = attrs.get("price_list") or getattr(self.instance, "price_list", None)
+        sku = attrs.get("sku") or getattr(self.instance, "sku", None)
+        if not tenant_id or not price_list or str(price_list.tenant_id) != str(tenant_id) or not sku or str(sku.tenant_id) != str(tenant_id):
+            raise serializers.ValidationError("Select a price list and SKU from this tenant.")
+        if self.instance and price_list.pk != self.instance.price_list_id:
+            raise serializers.ValidationError("An entry cannot be moved between lists. Create a new draft entry.")
+        for field in ("unit_price", "minimum_quantity"):
+            value = attrs.get(field, getattr(self.instance, field, None))
+            if value is not None and value <= 0:
+                raise serializers.ValidationError({field: "Enter a positive value."})
+        start = attrs.get("effective_from", getattr(self.instance, "effective_from", None))
+        end = attrs.get("effective_to", getattr(self.instance, "effective_to", None))
+        if start and end and end < start:
+            raise serializers.ValidationError("Entry end date precedes its start date.")
+        return attrs
+
     class Meta:
         model = PriceListEntry
         fields = [
@@ -55,6 +103,8 @@ class PriceListEntrySerializer(serializers.ModelSerializer):
             "tenant",
             "price_list",
             "sku",
+            "sku_code",
+            "sku_name",
             "unit_price",
             "minimum_quantity",
             "effective_from",

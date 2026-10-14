@@ -7,7 +7,7 @@ from django.db import transaction
 from django.db.models import F, Min, Q, Sum
 from django.utils import timezone
 
-from apps.customers.models import Customer
+from apps.customers.models import Customer, CustomerCommercialProfile
 from apps.customers.services import CustomerCreditPolicyService
 from apps.inventory.models import (
     InventoryBalance,
@@ -77,19 +77,23 @@ def _event_payload(*, actor=None, reason="", **payload):
 
 class CommercialPricingService:
     @staticmethod
-    def resolve_price(*, tenant, customer, sku, quantity=1):
+    def resolve_price(*, tenant, customer, sku, quantity=1, currency=None):
         quantity = _decimal(quantity)
-        if quantity <= 0:
+        if not quantity.is_finite() or quantity <= 0:
             raise ValidationError("Pricing quantity must be positive.")
+        if customer.tenant_id != tenant.pk or sku.tenant_id != tenant.pk:
+            raise ValidationError("Commercial pricing requires this tenant's customer and SKU.")
         now = timezone.localdate()
 
-        agreement = (
+        agreements = list((
             CustomerPriceAgreement.all_objects.filter(
                 tenant=tenant, customer=customer, sku=sku, is_active=True, effective_from__lte=now
             )
             .filter(Q(effective_to__gte=now) | Q(effective_to__isnull=True))
-            .first()
-        )
+        )[:2])
+        if len(agreements) > 1:
+            raise ValidationError("Multiple effective customer price agreements are ambiguous. Resolve them before charging.")
+        agreement = agreements[0] if agreements else None
 
         price_list_ref = ""
         promotion_ref = ""
@@ -97,15 +101,22 @@ class CommercialPricingService:
         agreed_unit_price = ZERO
 
         if agreement:
+            if currency and customer.default_currency != currency:
+                raise ValidationError("Customer agreement currency differs from this document; no exchange rate is inferred.")
             agreed_unit_price = agreement.agreed_price
             base_unit_price = agreement.agreed_price
         else:
             price_list = None
-            profile = getattr(customer, "commercial_profile", None)
-            if profile and profile.price_list:
-                price_list = profile.price_list
+            profile = CustomerCommercialProfile.all_objects.filter(tenant=tenant, customer=customer).first()
+            if profile and profile.price_list_id:
+                # Related-object caches may predate approval/archive. Read the
+                # authoritative list state, not a cached draft projection.
+                price_list = PriceList.all_objects.filter(tenant=tenant, pk=profile.price_list_id).first()
+                if (not price_list or price_list.status != PriceList.Status.ACTIVE
+                    or price_list.effective_from > now or (price_list.effective_to and price_list.effective_to < now)):
+                    raise ValidationError("The customer's assigned price list is not active and effective for this tenant.")
             else:
-                price_list = (
+                lists = (
                     PriceList.all_objects.filter(
                         tenant=tenant,
                         is_default=True,
@@ -113,11 +124,16 @@ class CommercialPricingService:
                         effective_from__lte=now,
                     )
                     .filter(Q(effective_to__gte=now) | Q(effective_to__isnull=True))
-                    .first()
                 )
+                candidates = list(lists[:2])
+                if len(candidates) > 1:
+                    raise ValidationError("Multiple active default commercial price lists cover this date. Resolve the ambiguity before charging.")
+                price_list = candidates[0] if candidates else None
 
             if price_list:
-                entry = (
+                if currency and price_list.currency != currency:
+                    raise ValidationError("Commercial price currency differs from this document; no exchange rate is inferred.")
+                entries = list((
                     PriceListEntry.all_objects.filter(
                         tenant=tenant,
                         price_list=price_list,
@@ -131,8 +147,10 @@ class CommercialPricingService:
                         "-minimum_quantity",
                         "-effective_from",
                     )
-                    .first()
-                )
+                )[:2])
+                if len(entries) > 1 and entries[0].minimum_quantity == entries[1].minimum_quantity:
+                    raise ValidationError("Overlapping effective prices for the same quantity break are ambiguous. Resolve them before charging.")
+                entry = entries[0] if entries else None
                 if entry:
                     base_unit_price = entry.unit_price
                     agreed_unit_price = base_unit_price
@@ -161,8 +179,14 @@ class CommercialPricingService:
             discount_percentage = promotion.discount_percentage
             promotion_ref = str(promotion.pk)
 
+        if not base_unit_price.is_finite() or base_unit_price <= 0:
+            raise ValidationError("A commercial price must be positive. Missing or invalid prices cannot create free supply.")
+        if not discount_percentage.is_finite() or not ZERO <= discount_percentage < Decimal("100"):
+            raise ValidationError("Commercial discount must be between 0 and less than 100 percent. Free supply requires a governed exemption.")
         discount_amount = (base_unit_price * discount_percentage / Decimal("100")).quantize(MONEY)
         agreed_unit_price = (base_unit_price - discount_amount).quantize(MONEY)
+        if agreed_unit_price <= 0:
+            raise ValidationError("The rounded commercial charge must be positive; no free supply is inferred.")
 
         return {
             "base_unit_price": base_unit_price,
@@ -240,7 +264,7 @@ class QuotationService:
             raise ValidationError("Quotation SKU belongs to a different tenant.")
         if pricing_data is None:
             pricing_data = CommercialPricingService.resolve_price(
-                tenant=quotation.tenant, customer=quotation.customer, sku=sku, quantity=requested_quantity
+                tenant=quotation.tenant, customer=quotation.customer, sku=sku, quantity=requested_quantity, currency=quotation.currency
             )
 
         unit_price = _decimal(pricing_data["agreed_unit_price"])
@@ -568,7 +592,7 @@ class SalesOrderService:
             raise ValidationError("SKU is not active and saleable.")
         if pricing_data is None:
             pricing_data = CommercialPricingService.resolve_price(
-                tenant=sales_order.tenant, customer=sales_order.customer, sku=sku, quantity=requested_quantity
+                tenant=sales_order.tenant, customer=sales_order.customer, sku=sku, quantity=requested_quantity, currency=sales_order.currency
             )
 
         unit_price = _decimal(pricing_data["agreed_unit_price"])

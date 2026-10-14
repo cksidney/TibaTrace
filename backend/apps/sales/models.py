@@ -34,7 +34,7 @@ class PriceList(TenantConsistencyMixin, TimestampedModel):
 
 
 class PriceListEntry(TenantConsistencyMixin, TimestampedModel):
-    tenant_relation_fields = ("price_list",)
+    tenant_relation_fields = ("price_list", "sku")
 
     tenant = models.ForeignKey("tenancy.Tenant", on_delete=models.CASCADE, related_name="+")
     price_list = models.ForeignKey(PriceList, on_delete=models.PROTECT, related_name="entries")
@@ -50,7 +50,7 @@ class PriceListEntry(TenantConsistencyMixin, TimestampedModel):
 
     class Meta:
         constraints = [
-            models.UniqueConstraint(fields=["price_list", "sku", "effective_from"], name="uq_pricelistentry_sku_date")
+            models.UniqueConstraint(fields=["price_list", "sku", "minimum_quantity", "effective_from"], name="uq_pricelistentry_break_date")
         ]
 
     def __str__(self):

@@ -13,6 +13,7 @@ import { GS1Workspace } from './GS1Workspace.js';
 import { IntegrationWorkspace } from './IntegrationWorkspace.js';
 import { LegacyItemSetup } from './LegacyItemSetup.js';
 import { CommerceOperations } from './CommerceOperations.js';
+import { CommercialPricing } from './CommercialPricing.js';
 import { PrescriptionOrigination } from './PrescriptionOrigination.js';
 import { PlatformOwnerConsole } from './PlatformOwnerConsole.js';
 import { RegulatoryWorkspace } from './RegulatoryWorkspace.js';
@@ -2988,6 +2989,7 @@ function PricingView({
         </section>
       ) : null}
       <TenantPricingView csrfToken={csrfToken} tenantId={tenantId} />
+      <CommercialPricing csrfToken={csrfToken} tenantId={tenantId} />
     </>
   );
 }

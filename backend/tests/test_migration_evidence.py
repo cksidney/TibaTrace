@@ -20,6 +20,24 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = BACKEND_ROOT.parent
 SCRIPT = REPO_ROOT / "scripts" / "migration_evidence.py"
 
+
+def test_only_exact_reviewed_commercial_quantity_break_replacement_is_acknowledged(monkeypatch):
+    import sys
+
+    from django.db import migrations, models
+
+    monkeypatch.syspath_prepend(str(REPO_ROOT / "scripts"))
+    import migration_evidence as me
+
+    operations = [migrations.RemoveConstraint("pricelistentry", "uq_pricelistentry_sku_date"),
+                  migrations.AddConstraint("pricelistentry", models.UniqueConstraint(
+                      fields=("price_list", "sku", "minimum_quantity", "effective_from"), name="uq_pricelistentry_break_date"))]
+    assert me._reviewed_commercial_quantity_breaks("sales", "0005_commercial_quantity_breaks", operations)
+    assert not me._reviewed_commercial_quantity_breaks("sales", "0006_other", operations)
+    operations[1].constraint.fields = ("price_list", "sku")
+    assert not me._reviewed_commercial_quantity_breaks("sales", "0005_commercial_quantity_breaks", operations)
+    sys.modules.pop("migration_evidence", None)
+
 #: The scalar release migration reference for baseline testing.
 RELEASE_MIGRATION = "backend/apps/platform/migrations/0002_posrelease_client_alignment.py"
 
@@ -65,6 +83,7 @@ RELEASE_MIGRATIONS = [
     "backend/apps/medicines/migrations/0005_legacy_item_completion.py",
     "backend/apps/pos_transactions/migrations/0003_retailrefundrequest_retailrefundline_and_more.py",
     "backend/apps/prescription/migrations/0016_alter_posprintdocument_document_type.py",
+    "backend/apps/sales/migrations/0005_commercial_quantity_breaks.py",
 ]
 
 

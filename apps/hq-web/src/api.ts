@@ -1716,6 +1716,29 @@ export const approveCashMovement = (
 
 /* ── pricing ───────────────────────────────────────────────────────────────── */
 
+export interface CommercialPriceList {
+  readonly id: string; readonly code: string; readonly name: string; readonly currency: string;
+  readonly effective_from: string; readonly effective_to: string | null; readonly is_default: boolean; readonly status: string;
+  readonly governance: { readonly state: string; readonly content_hash: string; readonly submission_id: string | null; readonly approved_by: string | null };
+}
+export interface CommercialPriceEntry {
+  readonly id: string; readonly price_list: string; readonly sku: string; readonly sku_code: string; readonly sku_name: string;
+  readonly unit_price: string; readonly minimum_quantity: string; readonly effective_from: string; readonly effective_to: string | null; readonly is_active: boolean;
+}
+export interface CommercialPriceOptions {
+  readonly skus: readonly { readonly id: string; readonly sku_code: string; readonly display_name: string; readonly sales_unit: string; readonly status: string }[];
+  readonly more_skus: boolean; readonly can_edit: boolean; readonly can_approve: boolean; readonly can_publish: boolean;
+}
+export const loadCommercialLists = (tenantId: string, signal?: AbortSignal) => getTenantCollection<CommercialPriceList>('/api/sales/price-lists/', tenantId, signal);
+export const loadCommercialEntries = (tenantId: string, signal?: AbortSignal) => getTenantCollection<CommercialPriceEntry>('/api/sales/price-entries/', tenantId, signal);
+export const loadCommercialPriceOptions = (tenantId: string, query: string, signal?: AbortSignal) =>
+  getTenantJson<CommercialPriceOptions>(`/api/sales/price-lists/workspace-options/?q=${encodeURIComponent(query)}`, tenantId, signal);
+export const saveCommercialList = (payload: unknown, tenantId: string, csrfToken: string) => mutateJson<CommercialPriceList>('/api/sales/price-lists/', 'POST', payload, csrfToken, tenantId);
+export const saveCommercialEntry = (id: string, payload: unknown, tenantId: string, csrfToken: string) =>
+  mutateJson<CommercialPriceEntry>(`/api/sales/price-entries/${id ? `${encodeURIComponent(id)}/` : ''}`, id ? 'PATCH' : 'POST', payload, csrfToken, tenantId);
+export const commandCommercialList = (id: string, action: 'govern' | 'archive' | 'new-draft', payload: unknown, tenantId: string, csrfToken: string) =>
+  mutateJson<CommercialPriceList>(`/api/sales/price-lists/${encodeURIComponent(id)}/${action}/`, 'POST', payload, csrfToken, tenantId);
+
 export interface PriceBookSummary {
   readonly id: string;
   readonly code: string;
