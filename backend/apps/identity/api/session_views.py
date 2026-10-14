@@ -69,11 +69,15 @@ class SessionUserSerializer(serializers.Serializer):
     tenant_id = serializers.SerializerMethodField()
     tenant_name = serializers.SerializerMethodField()
     is_platform_admin = serializers.BooleanField(default=False)
+    is_platform_owner = serializers.SerializerMethodField()
     must_change_password = serializers.BooleanField(default=False)
 
     def get_display_name(self, user) -> str:
         full = f"{user.first_name} {user.last_name}".strip()
         return full or user.username
+
+    def get_is_platform_owner(self, user) -> bool:
+        return bool(user.is_active and (user.is_platform_admin or user.is_superuser))
 
     def get_tenant_id(self, user) -> str:
         return str(user.tenant_id) if user.tenant_id else ""
@@ -131,7 +135,7 @@ class SessionView(APIView):
                 status=status.HTTP_401_UNAUTHORIZED,
             )
 
-        if not user.tenant_id and not user.is_platform_admin:
+        if not user.tenant_id and not (user.is_platform_admin or user.is_superuser):
             # Signing this user in produces an empty workspace everywhere,
             # which reads as data loss rather than as a missing assignment.
             return Response(

@@ -22,6 +22,7 @@ from apps.medicines.models import (
 from apps.notifications.models import NotificationOutbox
 from apps.organizations.models import Location
 from apps.patients.models import Patient
+from apps.platform.navigation_access import hq_navigation_access, scoped_dashboard_links
 from apps.pos_shift.models import RegisterSession
 from apps.practitioners.models import Practitioner
 from apps.prescription.models import ClinicalSubstitution, DispensingLabel, Prescription
@@ -55,6 +56,7 @@ def admin_shell(request):
 
 
 def build_hq_dashboard_context(user, tenant_id):
+    access = hq_navigation_access(user, tenant_id)
     is_platform_overview = not tenant_id and (
         user.is_superuser or user.is_platform_admin
     )
@@ -278,11 +280,12 @@ def build_hq_dashboard_context(user, tenant_id):
     ]
 
     return {
-        "attention_items": attention_items,
-        "data_summary": data_summary,
+        **access,
+        "attention_items": scoped_dashboard_links(attention_items, access["allowed_views"]),
+        "data_summary": scoped_dashboard_links(data_summary, access["allowed_views"]),
         "generated_at": timezone.now().isoformat(),
         "is_platform_overview": is_platform_overview,
-        "metrics": metrics,
+        "metrics": scoped_dashboard_links(metrics, access["allowed_views"]),
         "network_items": network_items,
         "scope_description": scope_description,
         "scope_label": scope_label,

@@ -91,6 +91,10 @@ export interface TenantWorkspace extends NetworkItem {
 }
 
 export interface HQOverview {
+  /** Missing access metadata fails closed during rolling upgrades. */
+  readonly allowed_views?: readonly string[];
+  readonly is_platform_owner?: boolean;
+  readonly show_pos_handoff?: boolean;
   readonly attention_items: readonly AttentionItem[];
   readonly data_summary: readonly DataSummaryItem[];
   readonly generated_at: string;
@@ -2927,6 +2931,7 @@ export interface SessionUser {
   readonly tenant_id: string;
   readonly tenant_name: string;
   readonly is_platform_admin: boolean;
+  readonly is_platform_owner?: boolean;
   readonly must_change_password?: boolean;
 }
 

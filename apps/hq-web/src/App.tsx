@@ -7,6 +7,7 @@ import {
 } from '@dawatrace/shared/dispensing/index.js';
 
 import { AccessWorkspace } from './AccessWorkspace.js';
+import { accessibleHqViews, canOpenHqDestination } from './navigationAccess.js';
 import { ExecutiveDashboard } from './ExecutiveDashboard.js';
 import { FieldSearch } from './FieldSearch.js';
 import { GS1Workspace } from './GS1Workspace.js';
@@ -269,6 +270,16 @@ const navigation: readonly NavigationItem[] = [
   { key: 'access', label: 'Administration & Users', caption: 'Roles and security', icon: 'users' },
 ];
 
+function visibleNavigation(overview: HQOverview): readonly NavigationItem[] {
+  const grants = accessibleHqViews(overview);
+  return navigation.filter(item => grants.has(item.key)).map(item => {
+    if (overview.is_platform_owner === true) return item;
+    if (item.key === 'governance') return { ...item, label: 'Tenant governance', caption: 'Tenant audit & documents' };
+    if (item.key === 'access') return { ...item, label: 'Users & access', caption: 'Tenant users & permissions' };
+    return item;
+  });
+}
+
 const viewMeta: Record<WorkspaceView, { readonly eyebrow: string; readonly title: string; readonly description: string }> = {
   overview: {
     eyebrow: 'Operational command centre',
@@ -395,7 +406,7 @@ export function App() {
     const controller = new AbortController();
     void (async () => {
       const user = session.user;
-      if (user?.is_platform_admin) {
+      if (user?.is_platform_owner === true) {
         setHQTenantContext('');
         const platformOverview = await loadHQOverview(controller.signal);
         setTenantOptions(platformOverview.network_items);
@@ -495,7 +506,7 @@ export function App() {
   return (
     <Dashboard
       csrfToken={session.csrf_token}
-      isPlatformAdmin={Boolean(session.user?.is_platform_admin)}
+      isPlatformAdmin={overview.is_platform_owner === true}
       overview={overview}
       onSelectTenant={selectTenant}
       onSignOut={endSession}
@@ -508,7 +519,7 @@ export function App() {
   );
 }
 
-function Dashboard({
+export function Dashboard({
   csrfToken,
   isPlatformAdmin,
   overview,
@@ -531,7 +542,14 @@ function Dashboard({
   readonly selectedTenantId: string;
   readonly tenantOptions: HQOverview['network_items'];
 }) {
-  const [activeView, setActiveView] = useState<WorkspaceView>(() => viewFromHash());
+  const [requestedView, setRequestedView] = useState<WorkspaceView>(() => viewFromHash());
+  const allowedViews = useMemo(() => accessibleHqViews(overview), [overview]);
+  // Guard before rendering, not in an effect: bookmarked owner pages must
+  // never mount (or fetch) for a tenant, even for a single frame.
+  const activeView = allowedViews.has(requestedView) ? requestedView : 'overview';
+  const setActiveView = useCallback((view: WorkspaceView) => {
+    setRequestedView(allowedViews.has(view) ? view : 'overview');
+  }, [allowedViews]);
   const [workspaceData, setWorkspaceData] = useState<HQWorkspaceData | null>(null);
   const [workspaceTenantId, setWorkspaceTenantId] = useState(selectedTenantId);
   const [workspaceFailed, setWorkspaceFailed] = useState(false);
@@ -574,10 +592,16 @@ function Dashboard({
   };
 
   useEffect(() => {
-    const onHashChange = () => setActiveView(viewFromHash());
+    const onHashChange = () => setRequestedView(viewFromHash());
     window.addEventListener('hashchange', onHashChange);
     return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
+
+  useEffect(() => {
+    if (allowedViews.has(requestedView)) return;
+    window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#overview`);
+    setRequestedView('overview');
+  }, [allowedViews, requestedView]);
 
   useEffect(() => {
     const focus = focusFromHash();
@@ -632,7 +656,9 @@ function Dashboard({
   }, [userMenuOpen]);
 
   const attentionCount = overview.attention_items.filter((item) => item.value > 0 && item.tone !== 'teal').length;
-  const meta = viewMeta[activeView];
+  const meta = !isPlatformAdmin && activeView === 'governance'
+    ? { ...viewMeta.governance, eyebrow: 'Tenant assurance', title: 'Tenant governance' }
+    : viewMeta[activeView];
 
   const closeTransientUi = () => {
     setMobileNavOpen(false);
@@ -790,7 +816,7 @@ function Dashboard({
         </main>
       </div>
 
-      {commandOpen ? <CommandPalette onClose={() => setCommandOpen(false)} onNavigate={setActiveView} /> : null}
+      {commandOpen ? <CommandPalette overview={overview} onClose={() => setCommandOpen(false)} onNavigate={setActiveView} /> : null}
     </div>
   );
 }
@@ -871,7 +897,7 @@ function Sidebar({
       </div>
       <p className="sidebar-label">HQ workspace</p>
       <nav aria-label="Headquarters navigation">
-        {navigation.map((item) => (
+        {visibleNavigation(overview).map((item) => (
           <a
             aria-current={activeView === item.key ? 'page' : undefined}
             className={activeView === item.key ? 'nav-link nav-link-active' : 'nav-link'}
@@ -884,12 +910,12 @@ function Sidebar({
           </a>
         ))}
       </nav>
-      <div className="sidebar-support">
+      {overview.is_platform_owner === true ? <div className="sidebar-support">
         <div className="support-icon"><Icon name="docs" /></div>
         <strong>Operations support</strong>
         <p>Inspect API contracts and integration guidance for connected applications.</p>
         <a href="/api/docs/" target="_blank" rel="noreferrer">Open API workspace <Icon name="external" /></a>
-      </div>
+      </div> : null}
       <div className="secure-session"><Icon name="shield" /> Secure authenticated session</div>
     </aside>
   );
@@ -898,19 +924,21 @@ function Sidebar({
 function OverviewView({ overview, onNavigate }: { readonly overview: HQOverview; readonly onNavigate: (view: WorkspaceView) => void }) {
   const summary = useSummary(overview);
   const networkItems = overview.network_items ?? [];
+  const canOpen = (href: string) => canOpenHqDestination(overview, href);
+  const permittedHref = (href: string) => canOpen(href) ? { href } : {};
 
   return (
     <>
       <section className="metric-grid" aria-label="Network performance">
-          {overview.metrics.map((metric, index) => <MetricCard key={metric.label} metric={metric} index={index} onNavigate={onNavigate} />)}
+          {overview.metrics.map((metric, index) => <MetricCard key={metric.label} metric={metric.href && !canOpen(metric.href) ? { ...metric, href: '' } : metric} index={index} onNavigate={onNavigate} />)}
       </section>
 
       <section className="content-grid content-grid-primary">
         <article className="panel attention-panel">
-          <PanelHeader eyebrow="Operational focus" title="What needs attention" actionLabel="Open operations" onAction={() => navigateTo('operations', onNavigate)} />
+          <PanelHeader eyebrow="Operational focus" title="What needs attention" {...(canOpen('#operations') ? { actionLabel: 'Open operations', onAction: () => navigateTo('operations', onNavigate) } : {})} />
           <div className="attention-list">
             {overview.attention_items.map((item) => {
-              const destination = item.href?.trim() ?? '';
+              const destination = item.href && canOpen(item.href) ? item.href.trim() : '';
               const content = (
                 <>
                   <span className={`attention-icon attention-${item.tone}`}>
@@ -942,7 +970,7 @@ function OverviewView({ overview, onNavigate }: { readonly overview: HQOverview;
         </article>
 
         <article className="panel network-summary-panel">
-          <PanelHeader eyebrow="Network pulse" title="Connected care coverage" actionLabel="View network" onAction={() => navigateTo('network', onNavigate)} />
+          <PanelHeader eyebrow={overview.is_platform_owner ? 'Network pulse' : 'Workspace coverage'} title="Connected care coverage" {...(canOpen('#network') ? { actionLabel: 'View network', onAction: () => navigateTo('network', onNavigate) } : {})} />
           <div className="network-hero">
             <div className="network-ring" style={{ '--progress': `${networkProgress(overview)}deg` } as CSSProperties}>
               <div><strong>{networkItems.length || metricValue(overview, 'Active tenants')}</strong><small>workspaces listed</small></div>
@@ -954,9 +982,9 @@ function OverviewView({ overview, onNavigate }: { readonly overview: HQOverview;
             </div>
           </div>
           <div className="compact-stats">
-            <Stat href="#network" label="Active locations" value={summary.get('Active locations') ?? 0} onNavigate={onNavigate} />
-            <Stat href="#people/practitioners" label="Practitioners" value={summary.get('Practitioners') ?? 0} onNavigate={onNavigate} />
-            <Stat href="#access" label="Active users" value={summary.get('Active users') ?? 0} onNavigate={onNavigate} />
+            <Stat {...permittedHref('#network')} label="Active locations" value={summary.get('Active locations') ?? 0} onNavigate={onNavigate} />
+            <Stat {...permittedHref('#people/practitioners')} label="Practitioners" value={summary.get('Practitioners') ?? 0} onNavigate={onNavigate} />
+            <Stat {...permittedHref('#access')} label="Active users" value={summary.get('Active users') ?? 0} onNavigate={onNavigate} />
           </div>
         </article>
       </section>
@@ -967,7 +995,7 @@ function OverviewView({ overview, onNavigate }: { readonly overview: HQOverview;
           <div className="data-bars">
             {overview.data_summary.map((item) => (
               <DataBar
-                {...(item.href === undefined ? {} : { href: item.href })}
+                {...(item.href === undefined ? {} : permittedHref(item.href))}
                 icon={overviewDataIcon(item.label)}
                 key={item.label}
                 label={item.label}
@@ -982,20 +1010,20 @@ function OverviewView({ overview, onNavigate }: { readonly overview: HQOverview;
         <article className="panel command-panel">
           <PanelHeader eyebrow="Command centre" title="Move into a workspace" />
           <div className="command-links">
-            <CommandLink href="#people/customers" title="People & customers" detail="Patients, practitioners and counterparties" icon="users" onNavigate={onNavigate} />
-            <CommandLink href="#catalogue/skus" title="Medicine catalogue" detail="Commercial SKUs and product master" icon="inventory" onNavigate={onNavigate} />
-            <CommandLink href="#commerce/orders" title="Sales & fulfilment" detail="Quotations, orders, pick, pack and delivery" icon="store" onNavigate={onNavigate} />
-            <CommandLink href="#pricing/books" title="Branch price books" detail="Price books, assignments and overrides" icon="docs" onNavigate={onNavigate} />
-            <CommandLink href="#cash/tills" title="Shifts & cash control" detail="Tills, variances and forced closures" icon="activity" onNavigate={onNavigate} />
-            <CommandLink href="/pos/" title="Install / open POS till" detail="Signed Windows and Android till handoff" icon="store" />
-            <CommandLink href="#reports" title="Reports catalogue" detail="Enterprise, audit and security packs" icon="docs" onNavigate={onNavigate} />
-            <CommandLink href="#access" title="System controls" detail="Identity, security and governance" icon="settings" onNavigate={onNavigate} />
-            <CommandLink href="/api/docs/" title="API workspace" detail="Integration contracts and testing" icon="docs" />
+            {canOpen('#people') ? <CommandLink href="#people/customers" title="People & customers" detail="Patients, practitioners and counterparties" icon="users" onNavigate={onNavigate} /> : null}
+            {canOpen('#catalogue') ? <CommandLink href="#catalogue/skus" title="Medicine catalogue" detail="Commercial SKUs and product master" icon="inventory" onNavigate={onNavigate} /> : null}
+            {canOpen('#commerce') ? <CommandLink href="#commerce/orders" title="Sales & fulfilment" detail="Quotations, orders, pick, pack and delivery" icon="store" onNavigate={onNavigate} /> : null}
+            {canOpen('#pricing') ? <CommandLink href="#pricing/books" title="Branch price books" detail="Price books, assignments and overrides" icon="docs" onNavigate={onNavigate} /> : null}
+            {canOpen('#cash') ? <CommandLink href="#cash/tills" title="Shifts & cash control" detail="Tills, variances and forced closures" icon="activity" onNavigate={onNavigate} /> : null}
+            {canOpen('/pos/') ? <CommandLink href="/pos/" title="Install / open POS till" detail="Signed Windows and Android till handoff" icon="store" /> : null}
+            {canOpen('#reports') ? <CommandLink href="#reports" title="Reports catalogue" detail="Enterprise, audit and security packs" icon="docs" onNavigate={onNavigate} /> : null}
+            {canOpen('#access') ? <CommandLink href="#access" title={overview.is_platform_owner ? 'System controls' : 'Users & access'} detail="Identity, security and governance" icon="settings" onNavigate={onNavigate} /> : null}
+            {canOpen('/api/docs/') ? <CommandLink href="/api/docs/" title="API workspace" detail="Integration contracts and testing" icon="docs" /> : null}
           </div>
         </article>
       </section>
 
-      <HeartbeatsTelemetryPanel />
+      {overview.is_platform_owner === true ? <HeartbeatsTelemetryPanel /> : null}
     </>
   );
 }
@@ -10320,7 +10348,7 @@ function NotificationPopover({ overview }: { readonly overview: HQOverview }) {
       <header><div><strong>Operational signals</strong><small>Current HQ snapshot</small></div><span>{overview.attention_items.length}</span></header>
       <div className="notification-list">
         {overview.attention_items.map((item) => (
-          <a href={item.href?.trim() || '#operations'} key={item.label}>
+          <a href={item.href && canOpenHqDestination(overview, item.href) ? item.href.trim() : '#overview'} key={item.label}>
             <span className={`notification-icon attention-${item.tone}`}><Icon name={item.tone === 'teal' ? 'check' : 'alert'} /></span>
             <div><strong>{item.label}</strong><small>{item.detail}</small></div>
             <b>{formatNumber(item.value)}</b>
@@ -10357,19 +10385,19 @@ function UserMenu({ overview, onClose, onSignOut }: {
         </div>
       </div>
       <div className="user-menu-items">
-        <a href="#access" onClick={onClose}>
+        {canOpenHqDestination(overview, '#access') ? <a href="#access" onClick={onClose}>
           <span className="user-menu-icon"><Icon name="security" /></span>
           <span><strong>Access overview</strong><small>Roles and permissions</small></span>
-        </a>
-        <a href="#access" onClick={onClose}>
+        </a> : null}
+        {overview.is_platform_owner === true ? <a href="#access" onClick={onClose}>
           <span className="user-menu-icon"><Icon name="settings" /></span>
           <span><strong>System controls</strong><small>Identity and governance</small></span>
-        </a>
-        <a href="/api/docs/" target="_blank" rel="noreferrer" onClick={onClose}>
+        </a> : null}
+        {overview.is_platform_owner === true ? <a href="/api/docs/" target="_blank" rel="noreferrer" onClick={onClose}>
           <span className="user-menu-icon"><Icon name="docs" /></span>
           <span><strong>API workspace</strong><small>Opens in a new tab</small></span>
           <Icon className="user-menu-external" name="external" />
-        </a>
+        </a> : null}
       </div>
       <button className="signout-link" disabled={signingOut} type="button" onClick={() => void signOut()}>
         <span className="user-menu-icon"><Icon name="logout" /></span>
@@ -10379,15 +10407,15 @@ function UserMenu({ overview, onClose, onSignOut }: {
   );
 }
 
-function CommandPalette({ onClose, onNavigate }: { readonly onClose: () => void; readonly onNavigate: (view: WorkspaceView) => void }) {
+function CommandPalette({ overview, onClose, onNavigate }: { readonly overview: HQOverview; readonly onClose: () => void; readonly onNavigate: (view: WorkspaceView) => void }) {
   const [query, setQuery] = useState('');
   const actions = [
-    ...navigation.map((item) => ({ ...item, href: `#${item.key}`, type: 'HQ view' })),
-    { key: 'controls', label: 'System controls', caption: 'Identity, security and governance', icon: 'settings' as IconName, href: '#access', type: 'HQ view' },
+    ...visibleNavigation(overview).map((item) => ({ ...item, href: `#${item.key}`, type: 'HQ view' })),
+    ...(overview.is_platform_owner === true ? [{ key: 'controls', label: 'System controls', caption: 'Identity, security and governance', icon: 'settings' as IconName, href: '#access', type: 'HQ view' }] : []),
     { key: 'pos', label: 'Install / open POS till', caption: 'Signed native till handoff', icon: 'store' as IconName, href: '/pos/', type: 'Workspace' },
     { key: 'api', label: 'API documentation', caption: 'Inspect integration contracts', icon: 'docs' as IconName, href: '/api/docs/', type: 'Workspace' },
   ];
-  const visible = actions.filter((item) => `${item.label} ${item.caption} ${item.type}`.toLowerCase().includes(query.toLowerCase()));
+  const visible = actions.filter((item) => canOpenHqDestination(overview, item.href) && `${item.label} ${item.caption} ${item.type}`.toLowerCase().includes(query.toLowerCase()));
 
   return (
     <div className="command-backdrop" role="presentation" onMouseDown={(event) => {

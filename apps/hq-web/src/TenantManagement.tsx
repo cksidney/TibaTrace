@@ -64,7 +64,7 @@ export function TenantManagement({ csrfToken, onChanged, overview }: TenantManag
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('ALL');
   const [dialog, setDialog] = useState<Dialog>(null);
-  const canManage = overview.is_platform_overview;
+  const canManage = overview.is_platform_owner === true;
 
   const reload = async (signal?: AbortSignal) => {
     setFailed(false);

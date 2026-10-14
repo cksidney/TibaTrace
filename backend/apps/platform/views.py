@@ -79,6 +79,9 @@ class PlatformInfoView(APIView):
 
 
 class HQOverviewSerializer(serializers.Serializer):
+    allowed_views = serializers.ListField(child=serializers.CharField())
+    is_platform_owner = serializers.BooleanField()
+    show_pos_handoff = serializers.BooleanField()
     attention_items = serializers.ListField(child=serializers.DictField())
     data_summary = serializers.ListField(child=serializers.DictField())
     generated_at = serializers.DateTimeField()

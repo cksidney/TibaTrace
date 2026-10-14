@@ -20,15 +20,19 @@
         <a class="hq-nav-link hq-nav-link--active" href="/admin-shell/">
           <span aria-hidden="true">⌂</span> Overview
         </a>
-        <a class="hq-nav-link" href="/#access">
-          <span aria-hidden="true">▦</span> System controls
-        </a>
+        {% if "access" in allowed_views %}<a class="hq-nav-link" href="/#access">
+          <span aria-hidden="true">▦</span> {% if is_platform_owner %}System controls{% else %}Tenant users & access{% endif %}
+        </a>{% endif %}
+        {% if show_pos_handoff %}
         <a class="hq-nav-link" href="/pos/">
           <span aria-hidden="true">▣</span> Point of sale
         </a>
+        {% endif %}
+        {% if is_platform_owner %}
         <a class="hq-nav-link" href="/api/docs/">
           <span aria-hidden="true">⌘</span> API workspace
         </a>
+        {% endif %}
       </nav>
 
       <div class="hq-sidebar-footer">
@@ -46,7 +50,7 @@
         </div>
         <div class="hq-user">
           <span class="hq-user-avatar">{{ user_name|first|upper }}</span>
-          <span><strong>{{ user_name }}</strong><small>{% if is_platform_overview %}Platform administrator{% else %}Tenant operator{% endif %}</small></span>
+          <span><strong>{{ user_name }}</strong><small>{% if is_platform_owner %}Platform administrator{% else %}Tenant operator{% endif %}</small></span>
         </div>
       </header>
 
@@ -101,10 +105,12 @@
               </div>
             </div>
             <div class="hq-action-list">
-              <a href="/#access"><span><b>System controls</b><small>Review identity, security and governance.</small></span><i aria-hidden="true">→</i></a>
-              <a href="/pos/"><span><b>POS terminal</b><small>Open the dispensing and sales workspace.</small></span><i aria-hidden="true">→</i></a>
+              {% if "access" in allowed_views %}<a href="/#access"><span><b>{% if is_platform_owner %}System controls{% else %}Tenant users & access{% endif %}</b><small>Review identity, security and governance.</small></span><i aria-hidden="true">→</i></a>{% endif %}
+              {% if show_pos_handoff %}<a href="/pos/"><span><b>POS terminal</b><small>Install the supported native till.</small></span><i aria-hidden="true">→</i></a>{% endif %}
+              {% if is_platform_owner %}
               <a href="/api/fhir/r4/metadata"><span><b>FHIR metadata</b><small>Review the active interoperability profile.</small></span><i aria-hidden="true">→</i></a>
               <a href="/api/health/"><span><b>System health</b><small>Confirm the API and database connection.</small></span><i aria-hidden="true">→</i></a>
+              {% endif %}
             </div>
           </article>
 
@@ -114,7 +120,7 @@
                 <p class="hq-eyebrow">Data coverage</p>
                 <h2>Clinical and interoperability records</h2>
               </div>
-              <a href="/api/schema/">View schema <span aria-hidden="true">↗</span></a>
+              {% if is_platform_owner %}<a href="/api/schema/">View schema <span aria-hidden="true">↗</span></a>{% endif %}
             </div>
             <dl class="hq-data-list">
               {% for item in data_summary %}
