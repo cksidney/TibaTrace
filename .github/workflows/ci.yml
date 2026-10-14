@@ -89,6 +89,7 @@ jobs:
       - name: Minimal runtime compatibility smoke
         run: |
           docker run --rm -e DJANGO_SETTINGS_MODULE=dawatrace.settings.test \
+            -e DAWATRACE_DATABASE_URL=sqlite:////tmp/tibatrace-container-preflight.sqlite3 \
             -e DAWATRACE_SECRET_KEY=container-preflight-only dawatrace/backend:ci \
             sh -c 'python -c "import psycopg, cryptography, qrcode, apps.platform.reporting.pdf; print(\"runtime imports passed\")" && python manage.py check && python manage.py migrate --noinput && python manage.py migrate --check'
           docker run -d --name hq-preflight -p 18080:8080 dawatrace/hq:ci
