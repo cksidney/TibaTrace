@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { commandCommercialList, loadCommercialEntries, loadCommercialLists, loadCommercialPriceOptions, saveCommercialEntry, saveCommercialList } from './api.js';
 import type { CommercialPriceEntry, CommercialPriceList, CommercialPriceOptions } from './api.js';
+import './CommercialPricing.css';
 
 export function CommercialPricing({ tenantId, csrfToken }: { readonly tenantId: string; readonly csrfToken: string }) {
   const [lists, setLists] = useState<readonly CommercialPriceList[]>([]);
@@ -57,11 +58,11 @@ export function CommercialPricing({ tenantId, csrfToken }: { readonly tenantId: 
   const review = (operation: string) => { if (selected) void execute(() => commandCommercialList(selected.id, 'govern', {
     operation, reason, idempotency_key: key, expected_content_hash: selected.governance.content_hash,
   }, tenantId, csrfToken)); };
-  return <article className="panel" aria-labelledby="b2b-pricing-title"><h2 id="b2b-pricing-title">Commercial B2B price lists</h2>
+  return <article className="panel commercial-pricing" aria-labelledby="b2b-pricing-title"><h2 id="b2b-pricing-title">Commercial B2B price lists</h2>
     <p className="panel-note">Separate from retail price books. Maintain drafts, record independent exact-content approval, then publish. Active prices cannot be edited or deleted; clone a new draft. Clones retain actual entry dates and require review. No missing price becomes a free item.</p>
     {error && <p role="alert" className="inline-alert">{error}</p>}{notice && <p role="status" className="inline-success">{notice}</p>}
     {loading && <p role="status">Loading commercial price records…</p>}
-    {!options ? <p role="status">{error ? 'Commercial workspace unavailable.' : 'Loading commercial pricing…'}</p> : <fieldset disabled={busy || loading} style={{ border: 0, padding: 0 }}>
+    {!options ? <p role="status">{error ? 'Commercial workspace unavailable.' : 'Loading commercial pricing…'}</p> : <fieldset disabled={busy || loading}>
       <label className="business-field">Commercial list<select value={selectedId} onChange={(event) => { setSelectedId(event.target.value); setEditId(''); }}><option value="">Choose list or create</option>{lists.map((list) => <option key={list.id} value={list.id}>{list.code} · {list.name} · {list.governance.state}</option>)}</select></label>
       <label className="business-field">Specific change/review reason<input required value={reason} onChange={(event) => setReason(event.target.value)} maxLength={1000} /></label>
       {selected && <><p>{selected.currency} · {selected.effective_from} to {selected.effective_to ?? 'open-ended'} · {selected.is_default ? 'Default' : 'Customer-assigned'} · {selected.governance.state}</p>

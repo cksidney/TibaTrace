@@ -1,6 +1,9 @@
 # rc39 candidate — maintenance-admin workflow boundary
 
 Includes the rc38 commercial-pricing/report scope. rc38 was not activated.
+rc39 was held before activation when desktop/mobile visual review identified
+overflow in the new commercial price table. rc40 includes the same business and
+maintenance controls plus that scoped responsive correction.
 
 The default Django maintenance site is now an inspection-only site for active
 privileged staff. Every registered ModelAdmin is wrapped to deny add/change/delete
