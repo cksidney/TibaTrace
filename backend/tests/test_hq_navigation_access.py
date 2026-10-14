@@ -57,7 +57,7 @@ def test_wildcard_tenant_retains_tenant_workflows_but_not_owner_tools(actor):
 
 @pytest.mark.parametrize("path", [
     "/api/nif/platform/providers/", "/api/nif/platform/activations/",
-    "/api/nif/platform/evidence/", "/api/nif/platform/reports/",
+    "/api/nif/platform/evidence/", "/api/nif/platform/reports/", "/api/nif/platform/recalls/",
 ])
 def test_wildcard_tenant_cannot_call_owner_apis(actor, path):
     grant(actor, ["*"])
@@ -91,6 +91,22 @@ def test_gs1_needs_both_catalogue_and_inventory_read_access(actor):
     assert "gs1" not in actor[4].get("/api/hq/overview/").json()["allowed_views"]
     grant(actor, ["catalogue.read", "inventory.read"])
     assert "gs1" in actor[4].get("/api/hq/overview/").json()["allowed_views"]
+
+
+@pytest.mark.parametrize("capability", ["recalls.read", "recalls.manage", "compliance.officer", "inventory.read", "inventory.manage"])
+def test_recall_navigation_matches_actual_tenant_api_permission(actor, capability):
+    grant(actor, [capability])
+    assert "regulatory" in actor[4].get("/api/hq/overview/").json()["allowed_views"]
+    assert actor[4].get("/api/nif/recalls/impacts/").status_code == 200
+    assert actor[4].get("/api/nif/platform/recalls/").status_code == 403
+
+
+def test_practitioner_access_does_not_imply_recall_permission(actor):
+    grant(actor, ["practitioners.read"])
+    allowed = actor[4].get("/api/hq/overview/").json()["allowed_views"]
+    assert "people" in allowed
+    assert "regulatory" not in allowed
+    assert actor[4].get("/api/nif/recalls/impacts/").status_code == 403
 
 
 @pytest.mark.parametrize("flag", ["is_platform_admin", "is_superuser"])

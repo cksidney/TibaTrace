@@ -1,7 +1,10 @@
 # rc45 — tenant navigation isolation
 
-Status: candidate; not yet deployed. Final-source release gates and live
-verification must pass before this record can claim activation.
+Status: withdrawn before deployment. Its release run was cancelled to align
+recall-menu grants with the actual tenant API and hide the inner global-alert
+tab. No rc45 image was activated. The immutable tag is retained as history;
+[rc46](RC46_TENANT_NAVIGATION_ISOLATION.md) supersedes this candidate. rc44 stays
+live until the replacement passes its final-source gates and activation.
 
 HQ navigation previously rendered every module for every authenticated user.
 This release uses fresh server-side effective capabilities for tenant menus

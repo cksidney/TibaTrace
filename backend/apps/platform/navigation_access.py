@@ -17,7 +17,7 @@ TENANT_VIEWS = {
              "dispensing.complete", "prescriptions.record_payment", "pos.retail.checkout"),
     "insurance": ("insurance.read", "insurance.manage"),
     "clinical": ("clinical.read", "prescriptions.read", "dispensing.read", "cds.read", "terminology.read"),
-    "regulatory": ("practitioners.read", "prescribers.verify", "recalls.read", "recalls.manage"),
+    "regulatory": ("recalls.read", "recalls.manage", "compliance.officer", "inventory.read", "inventory.manage"),
     "reports": ("reports.view",),
     "governance": ("audit.read", "documents.read"),
     "access": ("identity.manage",),

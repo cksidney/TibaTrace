@@ -1,5 +1,7 @@
 # TibaTrace 1.0.0-rc45
 
+Withdrawn before deployment; superseded by rc46. No production activation.
+
 Targeted HQ tenant-navigation isolation; see
 [scope and verification](RC45_TENANT_NAVIGATION_ISOLATION.md).
 

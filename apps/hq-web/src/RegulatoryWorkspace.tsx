@@ -41,6 +41,7 @@ const ACTION_LABELS: Readonly<Record<RecallActionType, string>> = {
 };
 
 export function RegulatoryWorkspace({ csrfToken, overview }: RegulatoryWorkspaceProps) {
+  const isOwner = overview.is_platform_owner === true;
   const selectableTenants = useMemo(
     () => overview.network_items.filter((tenant) => tenant.status === 'ACTIVE'),
     [overview.network_items],
@@ -48,7 +49,7 @@ export function RegulatoryWorkspace({ csrfToken, overview }: RegulatoryWorkspace
   const [tenantId, setTenantId] = useState(
     overview.tenant_id || selectableTenants[0]?.id || '',
   );
-  const [activeTab, setActiveTab] = useState<RegulatoryTab>(overview.is_platform_overview ? 'alerts' : 'tenant');
+  const [activeTab, setActiveTab] = useState<RegulatoryTab>(isOwner ? 'alerts' : 'tenant');
   const [alerts, setAlerts] = useState<readonly RegulatoryAlert[] | null>(null);
   const [impacts, setImpacts] = useState<readonly RegulatoryImpact[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -57,13 +58,22 @@ export function RegulatoryWorkspace({ csrfToken, overview }: RegulatoryWorkspace
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [dialog, setDialog] = useState<DialogMode>(null);
+  const permittedDialog = dialog && (isOwner || ['tenant-quarantine', 'action', 'close'].includes(dialog.kind)) ? dialog : null;
+
+  useEffect(() => {
+    if (!isOwner) {
+      setActiveTab('tenant');
+      setAlerts(null);
+      setDialog(current => current && ['ingest', 'activate', 'platform-quarantine'].includes(current.kind) ? null : current);
+    }
+  }, [isOwner]);
 
   const reload = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
     setFailed(false);
     try {
       const [nextAlerts, nextImpacts] = await Promise.all([
-        overview.is_platform_overview ? loadRegulatoryAlerts(signal) : Promise.resolve(null),
+        isOwner ? loadRegulatoryAlerts(signal) : Promise.resolve(null),
         tenantId ? loadRegulatoryImpacts(tenantId, signal) : Promise.resolve([]),
       ]);
       if (!signal?.aborted) {
@@ -75,7 +85,7 @@ export function RegulatoryWorkspace({ csrfToken, overview }: RegulatoryWorkspace
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
-  }, [overview.is_platform_overview, tenantId]);
+  }, [isOwner, tenantId]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -175,7 +185,7 @@ export function RegulatoryWorkspace({ csrfToken, overview }: RegulatoryWorkspace
 
   const pendingCount = impacts?.filter((impact) => ['PENDING', 'QUARANTINED', 'UNDER_REVIEW'].includes(impact.state)).length ?? 0;
   const activeAlerts = alerts?.filter((alert) => alert.status === 'ACTIVE').length ?? 0;
-  const canChooseTenant = overview.is_platform_overview && selectableTenants.length > 1;
+  const canChooseTenant = isOwner && selectableTenants.length > 1;
 
   return (
     <div className="regulatory-workspace">
@@ -187,7 +197,7 @@ export function RegulatoryWorkspace({ csrfToken, overview }: RegulatoryWorkspace
         </div>
         <div className="regulatory-header-actions">
           <span className="truth-label">Manual intake · LOCAL_RECALL_WORKFLOW_NO_REGULATOR_FEED</span>
-          {overview.is_platform_overview ? <button className="primary-button" onClick={() => openDialog({ kind: 'ingest' })} type="button"><Icon name="plus" /> Ingest alert</button> : null}
+          {isOwner ? <button className="primary-button" onClick={() => openDialog({ kind: 'ingest' })} type="button"><Icon name="plus" /> Ingest alert</button> : null}
         </div>
       </section>
 
@@ -204,7 +214,7 @@ export function RegulatoryWorkspace({ csrfToken, overview }: RegulatoryWorkspace
       <section className="panel regulatory-board">
         <header className="regulatory-board-heading">
           <div className="regulatory-tabs" role="tablist" aria-label="Regulatory work queues">
-            <button aria-selected={activeTab === 'alerts'} className={activeTab === 'alerts' ? 'regulatory-tab is-active' : 'regulatory-tab'} onClick={() => setActiveTab('alerts')} role="tab" type="button">Regulator alerts <b>{alerts?.length ?? '—'}</b></button>
+            {isOwner ? <button aria-selected={activeTab === 'alerts'} className={activeTab === 'alerts' ? 'regulatory-tab is-active' : 'regulatory-tab'} onClick={() => setActiveTab('alerts')} role="tab" type="button">Regulator alerts <b>{alerts?.length ?? '—'}</b></button> : null}
             <button aria-selected={activeTab === 'tenant'} className={activeTab === 'tenant' ? 'regulatory-tab is-active' : 'regulatory-tab'} onClick={() => setActiveTab('tenant')} role="tab" type="button">Tenant response <b>{pendingCount}</b></button>
           </div>
           {canChooseTenant ? (
@@ -214,7 +224,7 @@ export function RegulatoryWorkspace({ csrfToken, overview }: RegulatoryWorkspace
 
         {loading ? <p className="panel-note">Loading regulatory workflow records…</p> : null}
         {!loading && activeTab === 'alerts' ? (
-          overview.is_platform_overview ? (
+          isOwner ? (
             <>
               <div className="regulatory-summary"><span><strong>{alerts?.length ?? 0}</strong> captured notices</span><span><strong>{activeAlerts}</strong> active alerts</span><span><strong>{pendingCount}</strong> open cases in selected tenant</span></div>
               {alerts?.length ? (
@@ -245,7 +255,7 @@ export function RegulatoryWorkspace({ csrfToken, overview }: RegulatoryWorkspace
         ) : null}
       </section>
 
-      {dialog ? <RegulatoryDialog busy={busy} dialog={dialog} error={error} onClose={() => { if (!busy) setDialog(null); }} onSubmit={run} selectedTenantId={tenantId} tenants={selectableTenants} /> : null}
+      {permittedDialog ? <RegulatoryDialog busy={busy} dialog={permittedDialog} error={error} onClose={() => { if (!busy) setDialog(null); }} onSubmit={run} selectedTenantId={tenantId} tenants={selectableTenants} /> : null}
     </div>
   );
 }
