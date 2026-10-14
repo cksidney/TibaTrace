@@ -51,6 +51,12 @@ RUN DAWATRACE_SECRET_KEY=build-only-staticfiles-not-a-secret \
     DAWATRACE_ALLOWED_HOSTS=build.invalid \
     python manage.py collectstatic --noinput
 
+# Installation is complete. Do not ship pip's separately vendored libraries or
+# build-only setuptools/wheel as runtime attack surface. Neither interpreter
+# needs a package installer to serve requests or run migrations.
+RUN /opt/venv/bin/python -m pip uninstall --yes pip setuptools wheel \
+    && /usr/local/bin/python -m pip uninstall --yes pip setuptools wheel
+
 USER dawatrace
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \

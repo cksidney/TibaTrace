@@ -47,3 +47,11 @@ before publication; a skipped advisory step cannot be presented as validation.
 
 Full new-source SQLite/production-major PostgreSQL regression, application gates,
 complete image scans, provenance, backup and live checks remain pending.
+
+The first non-publishing preflight built both images successfully, then correctly
+blocked the backend scan on four findings in pip's bundled msgpack/setuptools/
+urllib3. The installed application urllib3 was already patched; the bundled copy
+was distinct. Final runtime images now remove pip, setuptools and wheel after
+installation, including both interpreter environments, instead of hiding or
+rewriting their vulnerability metadata. Application urllib3 is explicitly pinned
+to 2.8.0. A fresh complete scan and runtime smoke are still required.
