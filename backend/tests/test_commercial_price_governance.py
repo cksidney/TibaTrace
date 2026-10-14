@@ -230,3 +230,24 @@ def test_malformed_pricing_commands_are_client_errors_not_server_errors(world, d
     for payload in ([], {"operation": ["publish"]}, {"operation": "publish", "reason": "x", "idempotency_key": "x", "expected_content_hash": "not-a-hash"}):
         assert maker.post(f"/api/sales/price-lists/{row.pk}/govern/", payload, format="json").status_code == 400
     assert maker.post(f"/api/sales/price-lists/{row.pk}/archive/", [], format="json").status_code == 400
+
+
+def test_approval_identity_cannot_be_rebound_to_another_tenant(world, draft):
+    reviewer = approve(world, draft).handler._force_user
+    other = Tenant.objects.create(name="Reviewer moved tenant", slug="reviewer-moved-tenant")
+    User.objects.filter(tenant_id=world["tenant"].pk, pk=reviewer.pk).update(tenant=other)
+    row, maker, _ = draft
+    assert command(maker, row, "publish").status_code == 403
+
+
+def test_explicit_platform_reviewer_scope_is_valid_and_rechecked(world, draft):
+    row, maker, _ = draft
+    assert command(maker, row, "submit").status_code == 200
+    reviewer = User.objects.create_user(username="platform-price-reviewer", is_platform_admin=True)
+    client = APIClient()
+    client.force_authenticate(reviewer)
+    client.defaults["HTTP_X_TENANT_ID"] = str(world["tenant"].pk)
+    response = command(client, row, "approve")
+    assert response.status_code == 200, response.data
+    assert response.data["governance"]["approved_actor_tenant_id"] is None
+    assert command(maker, row, "publish").status_code == 200

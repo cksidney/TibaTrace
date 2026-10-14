@@ -80,6 +80,7 @@ jobs:
         run: |
           python manage.py check
           python manage.py makemigrations --check --dry-run
+          python manage.py audit_clinical_lookup_safety
           python manage.py migrate --noinput
           python manage.py migrate --check
           python -m pytest -q --tb=short --junitxml=../postgres-evidence/backend-postgres.xml

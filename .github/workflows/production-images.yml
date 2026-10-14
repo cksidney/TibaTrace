@@ -60,6 +60,7 @@ jobs:
         run: |
           ruff check apps dawatrace tests
           python manage.py makemigrations --check --dry-run
+          python manage.py audit_clinical_lookup_safety
           python -m pytest -q --tb=short --junitxml=../release-tests.xml
       - name: Supported Node toolchain and all application gates
         run: |

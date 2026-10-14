@@ -19,3 +19,8 @@ provider onboarding and Managers' physical/real-stock acceptance remain open.
 
 Live activation and exact CI/image/backup evidence will be recorded only after
 successful deployment. Production remains rc37 until those gates pass.
+
+rc40 was not deployed: full SQLite regression passed 2,116 tests but the tenant
+lookup audit found an unscoped approver identity lookup. rc41 binds publication
+to the reviewer's recorded identity tenant and fresh target-tenant capabilities.
+The gate was not waived and no existing release tag was moved.

@@ -56,7 +56,8 @@ def review_state(price_list):
                  "B2B_PRICE_REJECTED": "REJECTED"}.get(latest.event_type, "DRAFT")
     return {"state": state, "content_hash": current,
             "submission_id": latest.payload.get("submission_id") if latest and state != "DRAFT" else None,
-            "approved_by": latest.payload.get("actor_id") if state == "APPROVED" else None}
+            "approved_by": latest.payload.get("actor_id") if state == "APPROVED" else None,
+            "approved_actor_tenant_id": latest.payload.get("actor_tenant_id") if state == "APPROVED" else None}
 
 
 def validate_draft(price_list):
@@ -134,7 +135,10 @@ class CommercialPriceGovernanceService:
         elif operation == "publish":
             if state["state"] != "APPROVED":
                 raise ValidationError("Publication requires independent approval of these exact contents.")
-            approver = User.objects.filter(pk=state["approved_by"], is_active=True).first()
+            # Bind the identity's recorded tenant as well as its UUID. A
+            # platform reviewer has explicit null identity scope; fresh target
+            # capability checks below still govern the publication tenant.
+            approver = User.objects.filter(tenant_id=state["approved_actor_tenant_id"], pk=state["approved_by"], is_active=True).first()
             require(approver, locked.tenant_id, "pricing.commercial.approve")
             if locked.is_default:
                 competing = PriceList.all_objects.filter(tenant_id=locked.tenant_id, status="ACTIVE", is_default=True).exclude(pk=locked.pk)
@@ -147,7 +151,8 @@ class CommercialPriceGovernanceService:
             locked.save(update_fields=["status", "updated_at"])
         event_type = {"submit": "B2B_PRICE_SUBMITTED", "approve": "B2B_PRICE_APPROVED", "reject": "B2B_PRICE_REJECTED", "publish": "B2B_PRICE_PUBLISHED"}[operation]
         emit_event(tenant_id=locked.tenant_id, aggregate_type=KIND, aggregate_id=str(locked.pk), event_type=event_type,
-            payload={"actor_id": str(actor.pk), "reason": reason, "content_hash": content_hash,
+            payload={"actor_id": str(actor.pk), "actor_tenant_id": str(actor.tenant_id) if actor.tenant_id else None,
+                     "reason": reason, "content_hash": content_hash,
                      "reviewed_contents": draft_content(locked),
                      "submission_id": submission_id, "idempotency_key": key, "request_hash": request_hash})
         log_audit(tenant_id=locked.tenant_id, actor_id=actor.pk, action=event_type, model_name="sales.PriceList",
