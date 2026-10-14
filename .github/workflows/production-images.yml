@@ -28,6 +28,11 @@ env:
   HQ_IMAGE: ghcr.io/${{ github.repository_owner }}/tibatrace-hq-web
 
 jobs:
+  postgres-business:
+    uses: ./.github/workflows/postgres-validation.yml
+    with:
+      source_ref: ${{ github.sha }}
+      expected_sha: ${{ github.sha }}
   quality:
     runs-on: ubuntu-latest
     steps:
@@ -69,7 +74,7 @@ jobs:
           name: release-business-test-evidence
           path: release-tests.xml
   images:
-    needs: quality
+    needs: [quality, postgres-business]
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.meta.outputs.version }}

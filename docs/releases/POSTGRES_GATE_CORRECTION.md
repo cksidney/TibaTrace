@@ -17,3 +17,8 @@ For rc40 the workflow configuration may be on a later evidence-only commit, but
 the tested application checkout must equal `80946fda4ffc4e8b565967d60e0f895ba9235c0e`.
 The exact tested runtime source is recorded separately from workflow dispatch SHA.
 Activation remains withheld until real PostgreSQL and the other release gates pass.
+
+Future CI runs invoke the separate PostgreSQL job alongside SQLite repository
+validation. Future production-image workflows require both PostgreSQL and quality
+jobs before image publication. rc40 uses its already immutable runtime/tag with
+an additional exact-source PostgreSQL run; no existing tag was moved.

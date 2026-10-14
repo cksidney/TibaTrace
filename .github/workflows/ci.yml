@@ -27,31 +27,20 @@ permissions:
 
 jobs:
   postgres-release:
-    if: ${{ inputs.postgres_source_ref != '' }}
     uses: ./.github/workflows/postgres-validation.yml
     with:
-      source_ref: ${{ inputs.postgres_source_ref }}
-      expected_sha: ${{ inputs.postgres_expected_sha }}
+      source_ref: ${{ inputs.postgres_source_ref || github.sha }}
+      expected_sha: ${{ inputs.postgres_expected_sha || github.sha }}
   backend:
     if: ${{ !inputs.postgres_source_ref }}
     runs-on: ubuntu-latest
     services:
-      postgres:
-        image: postgres:18-alpine
-        env:
-          POSTGRES_DB: dawatrace_ci
-          POSTGRES_USER: dawatrace
-          POSTGRES_PASSWORD: dawatrace_ci
-        ports: ["5432:5432"]
-        options: >-
-          --health-cmd "pg_isready -U dawatrace -d dawatrace_ci"
-          --health-interval 5s --health-timeout 5s --health-retries 12
       redis:
         image: redis:7-alpine
         ports: ["6379:6379"]
     env:
       DJANGO_SETTINGS_MODULE: dawatrace.settings.test
-      DAWATRACE_DATABASE_URL: postgresql://dawatrace:dawatrace_ci@127.0.0.1:5432/dawatrace_ci
+      DAWATRACE_DATABASE_URL: "sqlite:///:memory:"
       DAWATRACE_SECRET_KEY: ci-only-secret
       DAWATRACE_OBJECT_SIGNING_KEY: ci-object-signing-key
       DAWATRACE_REDIS_URL: redis://127.0.0.1:6379/0
