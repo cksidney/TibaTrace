@@ -22,7 +22,8 @@ Future CI runs invoke the separate PostgreSQL job alongside SQLite repository
 validation. Future production-image workflows require both PostgreSQL and quality
 jobs before image publication. rc40 uses its already immutable runtime/tag with
 an additional exact-source PostgreSQL run; no existing tag was moved.
-# Production-major parity confirmation, 14 October 2026
+
+## Production-major parity confirmation, 14 October 2026
 
 The live VPS reports PostgreSQL 16.15. The first new regression runs used 18.6;
 their exact vendor/version evidence is retained and must not be labelled as
@@ -30,4 +31,3 @@ production-major acceptance. The reusable gate now defaults to PostgreSQL 16.
 rc43 also requires a separately dispatched full PostgreSQL 16 run checking out
 its immutable runtime source `166e512cd00cc76f1244d7eec8e6caf166577152`.
 This validation change does not upgrade or mutate the live PostgreSQL service.
-

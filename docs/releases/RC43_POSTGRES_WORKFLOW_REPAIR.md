@@ -1,4 +1,10 @@
-# rc43 candidate — PostgreSQL workflow repair
+# rc43 candidate — PostgreSQL workflow repair (held for security repair)
+
+Canceled before publication/activation after current advisory checks found
+vulnerable runtime dependencies and dated container bases. See
+[the security evidence and repair](RELEASE_SECURITY_GATE_REPAIR.md). Focused
+workflow results below are valid for their declared source/environment, but are
+not whole-system acceptance. Production remains rc37.
 
 Includes the held commercial pricing, source-report, maintenance-admin and HQ
 workspace scope of rc41/42, plus the real PostgreSQL workflow repairs described

@@ -50,6 +50,11 @@ jobs:
           cache: npm
       - name: Install pinned backend dependencies
         run: pip install -r backend/requirements.lock -r backend/requirements-dev.lock
+      - name: Online backend dependency audit
+        run: |
+          mkdir -p release-security
+          pip-audit -r backend/requirements.lock --progress-spinner off --strict \
+            --format json --output release-security/backend-dependency-audit.json
       - name: Backend lint and full migrated business suite
         working-directory: backend
         env:
@@ -74,6 +79,11 @@ jobs:
         with:
           name: release-business-test-evidence
           path: release-tests.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: release-dependency-security-evidence
+          path: release-security
   images:
     needs: [quality, postgres-business]
     runs-on: ubuntu-latest
@@ -260,6 +270,18 @@ jobs:
             grep -rql "formatMoney\|KES" /usr/share/nginx/html/assets >/dev/null
           '
           echo "shared money code present in the emitted bundle"
+
+      - name: Real runtime vulnerability scan before publication
+        run: |
+          bash scripts/scan_release_image.sh '${{ steps.verify_refs.outputs.backend }}' \
+            evidence/scan-backend.json '${{ steps.meta.outputs.sha }}' backend
+          bash scripts/scan_release_image.sh '${{ steps.verify_refs.outputs.hq }}' \
+            evidence/scan-hq.json '${{ steps.meta.outputs.sha }}' hq
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: release-container-security-evidence
+          path: evidence/scan-*.json
 
       - name: HQ container smoke check
         run: |

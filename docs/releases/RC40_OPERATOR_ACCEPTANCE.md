@@ -62,6 +62,9 @@ and FHIR idempotency observations. Read each data-basis description before use.
 - Managers test the actual scanner, Windows USB receipt/label printers and drawer
   connected through the printer. Confirm exact printer/model protocol first;
   no guessed cash-drawer pulse is enabled as evidence of compatibility.
+- The user has now identified the label model as Xprinter XP-470B. Follow the
+  [model-specific acceptance checklist](XP470B_WINDOWS_LABEL_ACCEPTANCE.md).
+  Actual label dimensions and the receipt-printer model remain to be confirmed.
 - Android production signing remains pending its approved key. External
   DHA/HWR/PPB/SHA/insurer/M-PESA connections remain disabled templates until
   approved endpoints, secret-manager configuration and acceptance are supplied.

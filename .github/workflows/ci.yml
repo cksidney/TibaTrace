@@ -6,6 +6,11 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
+      container_preflight:
+        description: "Only container/security and application gates; never publishes or deploys"
+        required: false
+        default: false
+        type: boolean
       update_visual_baselines:
         description: "Capture reviewed Linux visual baselines as a CI artifact"
         required: false
@@ -27,12 +32,13 @@ permissions:
 
 jobs:
   postgres-release:
+    if: ${{ !inputs.container_preflight }}
     uses: ./.github/workflows/postgres-validation.yml
     with:
       source_ref: ${{ inputs.postgres_source_ref || github.sha }}
       expected_sha: ${{ inputs.postgres_expected_sha || github.sha }}
   backend:
-    if: ${{ !inputs.postgres_source_ref }}
+    if: ${{ !inputs.postgres_source_ref && !inputs.container_preflight }}
     runs-on: ubuntu-latest
     services:
       redis:
@@ -45,6 +51,7 @@ jobs:
       DAWATRACE_OBJECT_SIGNING_KEY: ci-object-signing-key
       DAWATRACE_REDIS_URL: redis://127.0.0.1:6379/0
       DAWATRACE_CELERY_TASK_ALWAYS_EAGER: "true"
+      DAWATRACE_RUN_ONLINE_AUDIT: "true"
     defaults:
       run:
         working-directory: backend
@@ -72,10 +79,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
-      - run: docker build --file docker/backend.Dockerfile --tag dawatrace/backend:ci .
+      - run: docker build --file docker/backend.Dockerfile --build-arg GIT_SHA=${{ github.sha }} --tag dawatrace/backend:ci .
+      - run: docker build --file apps/hq-web/Dockerfile --build-arg SOURCE_REVISION=${{ github.sha }} --tag dawatrace/hq:ci .
       - run: docker image inspect dawatrace/backend:ci
       - name: Container scan gate
-        run: echo "Run the approved registry/container scanner before release; Phase 2 does not waive this gate."
+        run: |
+          bash scripts/scan_release_image.sh dawatrace/backend:ci artifacts/container-security/backend.json '${{ github.sha }}' backend
+          bash scripts/scan_release_image.sh dawatrace/hq:ci artifacts/container-security/hq.json '${{ github.sha }}' hq
+      - name: Minimal runtime compatibility smoke
+        run: |
+          docker run --rm -e DJANGO_SETTINGS_MODULE=dawatrace.settings.test \
+            -e DAWATRACE_SECRET_KEY=container-preflight-only dawatrace/backend:ci \
+            sh -c 'python -c "import psycopg, cryptography, qrcode, apps.platform.reporting.pdf; print(\"runtime imports passed\")" && python manage.py check && python manage.py migrate --noinput && python manage.py migrate --check'
+          docker run -d --name hq-preflight -p 18080:8080 dawatrace/hq:ci
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:18080/healthz >/dev/null; then exit 0; fi
+            sleep 2
+          done
+          exit 1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: container-security-evidence
+          path: artifacts/container-security
 
   shared:
     if: ${{ !inputs.postgres_source_ref }}
@@ -97,7 +123,7 @@ jobs:
       - run: npm test --workspaces --if-present
 
   visual:
-    if: ${{ !inputs.postgres_source_ref }}
+    if: ${{ !inputs.postgres_source_ref && !inputs.container_preflight }}
     # Visual baselines are platform-specific: font rasterisation and subpixel
     # rendering differ enough between macOS, Windows and Linux that a baseline
     # captured on one fails on another for reasons unrelated to the code.

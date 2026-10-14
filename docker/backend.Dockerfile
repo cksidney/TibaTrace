@@ -1,4 +1,10 @@
-FROM python:3.11-slim-bookworm@sha256:b18992999dbe963a45a8a4da40ac2b1975be1a776d939d098c647482bcad5cba AS builder
+FROM python:3.11-alpine@sha256:d9368b3a5ac59afea7b5d4f2e2aea0941dbf9fdee9c369c5bec00b98244bc929 AS base
+
+# Keep the minimal runtime and its packaging tools on reviewed security fixes.
+RUN apk add --no-cache --upgrade zlib=1.3.2-r1 \
+    && python -m pip install --no-cache-dir --upgrade pip==26.2.1 setuptools==83.0.0 wheel==0.46.3
+
+FROM base AS builder
 
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_NO_CACHE_DIR=1 \
@@ -8,10 +14,10 @@ ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
 WORKDIR /build
 COPY backend/requirements.lock /build/requirements.lock
 RUN python -m venv /opt/venv \
-    && /opt/venv/bin/pip install --upgrade pip \
+    && /opt/venv/bin/pip install --upgrade pip==26.2.1 setuptools==83.0.0 wheel==0.46.3 \
     && /opt/venv/bin/pip install --requirement /build/requirements.lock
 
-FROM python:3.11-slim-bookworm@sha256:b18992999dbe963a45a8a4da40ac2b1975be1a776d939d098c647482bcad5cba AS runtime
+FROM base AS runtime
 
 ARG DAWATRACE_VERSION=0.1.0-alpha.1
 ARG GIT_SHA=unknown
@@ -29,8 +35,8 @@ ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     DJANGO_SETTINGS_MODULE=dawatrace.settings.production
 
-RUN groupadd --system --gid 10001 dawatrace \
-    && useradd --system --uid 10001 --gid dawatrace --home /app dawatrace
+RUN addgroup -S -g 10001 dawatrace \
+    && adduser -S -D -H -h /app -u 10001 -G dawatrace dawatrace
 
 COPY --from=builder /opt/venv /opt/venv
 WORKDIR /app

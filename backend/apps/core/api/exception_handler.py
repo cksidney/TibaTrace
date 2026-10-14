@@ -13,6 +13,7 @@ designed, and it teaches operators that the system is flaky rather than that
 their action was not permitted.
 """
 from django.core.exceptions import PermissionDenied as DjangoPermissionDenied
+from django.core.exceptions import RequestDataTooBig
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import status
 from rest_framework.response import Response
@@ -33,7 +34,14 @@ def _messages(exc: DjangoValidationError) -> dict:
 def dawatrace_exception_handler(exc, context):
     request = context.get("request")
 
-    if isinstance(exc, DjangoValidationError):
+    if isinstance(exc, RequestDataTooBig):
+        # The parser's size limit is a client refusal, not an internal fault.
+        # Never echo or log the rejected request body, which may contain PHI.
+        response = Response(
+            {"detail": "Request exceeds the permitted upload size.", "code": "request_too_large"},
+            status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+        )
+    elif isinstance(exc, DjangoValidationError):
         # 400, not 500. The caller asked for something the domain refuses, and
         # that is a fact about the request rather than a failure of the server.
         response = Response(_messages(exc), status=status.HTTP_400_BAD_REQUEST)
