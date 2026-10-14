@@ -12,7 +12,9 @@ installed-launch verification. Backend, HQ and shared source match the server ta
   passed, 2,082 backend tests, zero failures/errors/skips; all application gates,
   architecture/labels, four-migration inventory, image smoke and provenance.
 - [CI 38472222401](https://github.com/cksidney/TibaTrace/actions/runs/38472222401):
-  passed, PostgreSQL-backed full validation and four-width visual checks. Backend
+  passed, repository validation and four-width visual checks. **Correction:** the
+  job starts PostgreSQL, but `validate_repository.sh` overrides the database URL
+  to SQLite. This run therefore did not establish PostgreSQL suite execution. Backend
   evidence has 2,081 passes and one baseline-history test skipped by shallow
   checkout; the full-history production-image gate passed that test. Generic
   validation records deferred external checks; this is not regulatory certification.
