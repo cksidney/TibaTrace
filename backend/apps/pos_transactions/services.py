@@ -219,8 +219,10 @@ class PosRetailService:
     @classmethod
     @transaction.atomic
     def add_line(cls, *, tenant, transaction_id, actor, device_id: str, sku_id, quantity, scan_source="SEARCH"):
+        # Guest sales have no customer row. Preserve the mandatory transaction,
+        # branch and store locks without locking that nullable pricing join.
         transaction_record = (
-            PosTransaction.all_objects.select_for_update()
+            PosTransaction.all_objects.select_for_update(of=("self", "branch", "store"))
             .select_related("branch", "store", "customer")
             .filter(tenant=tenant, pk=transaction_id)
             .first()
@@ -295,7 +297,7 @@ class PosRetailService:
     @classmethod
     @transaction.atomic
     def set_quantity(cls, *, tenant, transaction_id, line_id, actor, device_id: str, quantity):
-        transaction_record = PosTransaction.all_objects.select_for_update().select_related(
+        transaction_record = PosTransaction.all_objects.select_for_update(of=("self", "branch", "store")).select_related(
             "branch", "store", "customer"
         ).filter(tenant=tenant, pk=transaction_id).first()
         line = PosTransactionLine.all_objects.select_for_update().filter(

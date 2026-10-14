@@ -96,6 +96,21 @@ def test_recount_replay_is_idempotent_and_rejects_conflicting_or_stale_request(c
 
 
 @pytest.mark.django_db
+def test_recount_supports_an_unbatched_zero_count_without_locking_a_null_join(count_world):
+    world = count_world
+    count = StocktakeService.record_count(
+        session=world["session"], location=world["location"], sku=world["sku"], batch=None,
+        counted_quantity=0, counter=world["opener"],
+    )
+    revised = StocktakeService.revise_count(
+        session=world["session"], count_id=count.pk, actor=world["recounter"], reason="Confirm no unbatched stock",
+        expected_updated_at=count.updated_at, idempotency_key="unbatched-recount", counted_quantity=0,
+    )
+    assert revised.batch_id is None and revised.counted_quantity == 0 and revised.expected_quantity == 0
+    assert StocktakeCountRevision.all_objects.get(count=revised).previous_quantity == 0
+
+
+@pytest.mark.django_db
 def test_every_count_contributor_is_excluded_from_approval(count_world):
     count = record(count_world)
     StocktakeService.revise_count(session=count_world["session"], count_id=count.pk, actor=count_world["recounter"], reason="Recount", expected_updated_at=count.updated_at, idempotency_key="recount-two", counted_quantity=95)

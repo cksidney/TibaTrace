@@ -4,7 +4,7 @@ from decimal import Decimal
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import F, Min, Q, Sum
+from django.db.models import F, Q, Sum
 from django.utils import timezone
 
 from apps.customers.models import Customer, CustomerCommercialProfile
@@ -837,20 +837,25 @@ class SalesReservationService:
             if constraints.get("exclude_batch_ids"):
                 eligible_balances = eligible_balances.exclude(inventory_batch_id__in=constraints["exclude_batch_ids"])
 
-            locations = (
-                eligible_balances.values("location_id")
-                .annotate(
-                    available_quantity=Sum("available"),
-                    earliest_expiry=Min("inventory_batch__expiry_date"),
-                    earliest_batch=Min("inventory_batch_id"),
-                )
-                .order_by(
-                    "earliest_expiry",
-                    "earliest_batch",
-                    "location_id",
-                )
-            )
-            for location_summary in locations:
+            # Materialise eligible balance facts under their existing row locks.
+            # PostgreSQL has neither MIN(uuid) nor FOR UPDATE on GROUP BY. Group
+            # the locked snapshot without weakening stock reservation locks or
+            # re-reading unprotected balances into the location totals.
+            locations = {}
+            for balance in eligible_balances.order_by("pk").values(
+                "location_id", "available", "inventory_batch__expiry_date", "inventory_batch_id",
+            ):
+                location_summary = locations.setdefault(balance["location_id"], {
+                    "location_id": balance["location_id"], "available_quantity": ZERO,
+                    "earliest_expiry": balance["inventory_batch__expiry_date"],
+                    "earliest_batch": str(balance["inventory_batch_id"]),
+                })
+                location_summary["available_quantity"] += balance["available"]
+                location_summary["earliest_expiry"] = min(location_summary["earliest_expiry"], balance["inventory_batch__expiry_date"])
+                location_summary["earliest_batch"] = min(location_summary["earliest_batch"], str(balance["inventory_batch_id"]))
+            for location_summary in sorted(locations.values(), key=lambda row: (
+                row["earliest_expiry"], row["earliest_batch"], str(row["location_id"]),
+            )):
                 if remaining <= 0:
                     break
                 reservable = min(

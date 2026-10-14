@@ -32,7 +32,9 @@ def _require(actor, tenant_id, *capabilities):
 
 
 def _lock(item, expected):
-    locked = LegacyCatalogueItem.all_objects.select_for_update().select_related("tenant", "reviewed_by").get(pk=item.pk, tenant_id=item.tenant_id)
+    # Reviewer is optional; PostgreSQL cannot lock its nullable outer join.
+    # The source row and tenant remain locked for the governed completion step.
+    locked = LegacyCatalogueItem.all_objects.select_for_update(of=("self", "tenant")).select_related("tenant", "reviewed_by").get(pk=item.pk, tenant_id=item.tenant_id)
     if parse_datetime(expected or "") != locked.updated_at:
         raise StaleSetupReview("Setup changed. Reload before continuing.")
     return locked

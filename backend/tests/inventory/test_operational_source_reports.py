@@ -71,10 +71,18 @@ def test_inventory_observation_reports_contain_actual_facts(tenant_a, branch, in
                                      entry_type="ISSUE", quantity_delta=-4, unit="tablet", base_quantity_delta=-4, effective_timestamp=timezone.now(),
                                      source_document_type="RETAIL_SALE", source_document_id="receipt-source", idempotency_key="source-issue")
     velocity = query_source_report("inv-velocity", tenant_a.pk, source_reporter, None)
-    assert velocity.rows[0][4] == "4"
+    # Aggregated Decimal scale differs between SQLite and PostgreSQL; the
+    # quantity contract is exact units, not backend-specific string padding.
+    assert Decimal(velocity.rows[0][4]) == Decimal("4")
+    InventoryLedgerService.post_entry(tenant=tenant_a, branch=branch, location=inventory_location, sku=sku, inventory_batch=inventory_batch,
+                                     entry_type="ISSUE", quantity_delta=Decimal("-0.125"), unit="tablet", base_quantity_delta=Decimal("-0.125"), effective_timestamp=timezone.now(),
+                                     source_document_type="RETAIL_SALE", source_document_id="fractional-source", idempotency_key="source-fractional-issue")
+    fractional = query_source_report("inv-velocity", tenant_a.pk, source_reporter, None)
+    assert Decimal(fractional.rows[0][4]) == Decimal("4.125")
+    assert fractional.rows[0][5] == "2"
     assert query_source_report("inv-dead-stock", tenant_a.pk, source_reporter, None).rows == []
     trace = query_source_report("reg-traceability", tenant_a.pk, source_reporter, None)
-    assert len(trace.rows) == 2
+    assert len(trace.rows) == 3
     assert "receipt-source" in str(trace.rows)
     assert trace.rows[0][6] == ""
     assert "Patient identifiers are not exported" in trace.basis

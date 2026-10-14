@@ -2,7 +2,10 @@ from decimal import Decimal
 
 import pytest
 from django.core.exceptions import ValidationError
+from django.utils import timezone
 
+from apps.inventory.models import InventoryBatch, InventoryLedgerEntry, InventoryLocation, InventoryReservation
+from apps.inventory.services import InventoryLedgerService
 from apps.sales.models import SalesOrder, SalesOrderAllocation, SalesOrderHold, SalesOrderLine
 from apps.sales.services import (
     DeliveryService,
@@ -154,6 +157,41 @@ class TestSalesOrdersAndFulfillment:
         )
         assert allocation.quantity == Decimal("10")
         assert allocation.inventory_reservation_id is not None
+
+    def test_reservation_groups_locked_batches_by_location_and_preserves_fefo(
+        self, sales_order, test_user, stocked_inventory, tenant_a, branch, sku,
+    ):
+        main_location, main_batch = stocked_inventory
+        earlier_location = InventoryLocation.all_objects.create(
+            tenant=tenant_a, branch=branch, location_code="EARLIER-STORE",
+            name="Earlier expiry store", location_type="STORE",
+        )
+        earlier_batches = []
+        for number, expiry, quantity in [("FEFO-FIRST", "2029-10-01", Decimal("2")), ("FEFO-SECOND", "2029-12-31", Decimal("3"))]:
+            batch = InventoryBatch.all_objects.create(
+                tenant=tenant_a, sku=sku, manufactured_product=sku.manufactured_product,
+                manufacturer_batch_number=number, expiry_date=expiry, quality_status="RELEASED",
+            )
+            InventoryLedgerService.post_entry(
+                tenant=tenant_a, branch=branch, location=earlier_location, sku=sku, inventory_batch=batch,
+                entry_type="RECEIPT", quantity_delta=quantity, base_quantity_delta=quantity, unit="EA",
+                effective_timestamp=timezone.now(), source_document_type="TEST_RECEIPT",
+                source_document_id=str(batch.pk), idempotency_key=f"FEFO_RECEIPT_{batch.pk}", actor=test_user,
+            )
+            earlier_batches.append((batch.pk, quantity))
+        SalesOrderService.submit_order(sales_order=sales_order)
+        SalesApprovalService.approve_order(sales_order=sales_order, approver=test_user)
+        reserved = SalesReservationService.reserve_order(sales_order=sales_order, actor=test_user)
+        assert reserved.status == "RESERVED"
+        assert reserved.lines.get().reserved_quantity == Decimal("10")
+        reservations = InventoryReservation.all_objects.filter(tenant=tenant_a, source_document=str(sales_order.pk))
+        assert {row.source_location_id: row.allocated_quantity for row in reservations} == {
+            earlier_location.pk: Decimal("5"), main_location.pk: Decimal("5"),
+        }
+        movements = InventoryLedgerEntry.all_objects.filter(
+            tenant=tenant_a, source_document_type="RESERVATION", source_document_id__in=[str(row.pk) for row in reservations],
+        ).order_by("created_at", "pk")
+        assert [(row.inventory_batch_id, row.base_quantity_delta) for row in movements] == earlier_batches + [(main_batch.pk, Decimal("5"))]
 
     def test_picking_service(self, verified_pick):
         sales_order, line, _, task = verified_pick

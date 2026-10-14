@@ -1356,7 +1356,9 @@ class StocktakeService:
             return revision.count
         if session.status != StocktakeSession.Status.OPEN:
             raise ValidationError("Only open stocktakes can be corrected.")
-        count = StocktakeCount.all_objects.select_for_update().filter(tenant_id=session.tenant_id, session=session, pk=count_id).select_related("sku", "location", "batch").first()
+        # Lock the count and its mandatory SKU/location, not the nullable batch
+        # side of the join. The session anchor above serialises count revisions.
+        count = StocktakeCount.all_objects.select_for_update(of=("self", "sku", "location")).filter(tenant_id=session.tenant_id, session=session, pk=count_id).select_related("sku", "location", "batch").first()
         if count is None:
             raise ValidationError("Choose a count from this stocktake.")
         if count.voided:

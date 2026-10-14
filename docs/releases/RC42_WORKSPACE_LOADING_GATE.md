@@ -1,4 +1,13 @@
-# rc42 candidate — asynchronous HQ workspace test synchronization
+# rc42 candidate — asynchronous HQ workspace test synchronization (held)
+
+Held before publication or activation. The retained rc40 real-PostgreSQL run
+completed with 35 failures and four setup errors out of 2,117 tests. Beyond the
+reviewer-scope audit already fixed in rc41, it exposed nullable joined-row lock
+targets in retail checkout/refunds, stocktake revisions and onboarding completion;
+an unsupported UUID aggregate/locked GROUP BY in B2B reservation; and a
+backend-specific decimal-string assertion in the inventory-velocity test.
+rc42 carries those unchanged business paths, so its workflows were canceled.
+Production remains rc37; green health endpoints do not prove those workflows.
 
 Carries the rc41 commercial pricing, six source-report and read-only maintenance
 admin scope. rc41 was not published or deployed: all 2,119 SQLite backend tests

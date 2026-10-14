@@ -164,7 +164,9 @@ class RetailRefundService:
         if not key:
             raise ValidationError("A stable cash refund idempotency key is required.")
         sale, original_receipt = cls._sale(tenant, transaction_id)
-        request = RetailRefundRequest.all_objects.select_for_update().select_related("return_location", "approved_by").filter(
+        # Tenant/sale anchors above and this request remain locked. Optional
+        # return custody/reviewer joins cannot be FOR UPDATE targets on PostgreSQL.
+        request = RetailRefundRequest.all_objects.select_for_update(of=("self",)).select_related("return_location", "approved_by").filter(
             tenant=tenant, transaction=sale, pk=request_id).first()
         if request is None:
             raise ValidationError("Refund request not found for this receipt.")
