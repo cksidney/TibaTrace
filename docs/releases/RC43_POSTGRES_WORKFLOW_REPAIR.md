@@ -13,7 +13,14 @@ Lookup auditing is unchanged and clean; no additional schema change is required
 beyond reviewed sales 0005. Native Windows/Android source is unchanged, so
 Windows remains signed managed-device 1.0.5 and Android remains unpublished.
 
-Full clean-checkout SQLite and PostgreSQL 18.6 suites, application/visual gates,
+The live VPS was inspected and runs PostgreSQL 16.15. The initial rc43 production
+and all-surface workflows already run PostgreSQL 18.6; neither is represented as
+production-major parity. A separate full PostgreSQL 16 validation is required
+against the exact rc43 tag/commit before activation. The reusable gate's default
+was aligned to major 16 for subsequent candidates, without changing rc43 runtime
+code, its immutable tag or the deployed database version.
+
+Full clean-checkout SQLite, PostgreSQL 18.6 and production-major PostgreSQL 16 suites, application/visual gates,
 image provenance, verified backup and live checks remain mandatory. Production
 is still rc37 until they pass and activation is confirmed. A healthy HTTP endpoint
 does not certify the business paths repaired by this candidate.

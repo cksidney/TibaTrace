@@ -28,7 +28,9 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:18-alpine
+        # Production VPS is PostgreSQL 16; validate its major version directly.
+        # Exact server/version evidence is still captured below.
+        image: postgres:16-alpine
         env:
           POSTGRES_DB: tibatrace_release_validation
           POSTGRES_USER: tibatrace_validation
