@@ -5,6 +5,12 @@ The earlier connection choice is Windows USB. The receipt printer model and
 actual label width/height are still unconfirmed. This is not a completed physical
 installation or compatibility certification.
 
+The user also supplied direct thermal, 203 DPI (8 dots/mm), up to 152 mm/s
+and 108 mm maximum print-width specifications. These describe the device, not
+the installed media: **108 mm is not a confirmed label width**, and no label
+height or receipt-printer model has yet been supplied. Do not derive a paper
+size or cash-drawer command from these specifications.
+
 The [manufacturer specification](https://www.xprintertech.com/auto-calibration-mode-direct-thermal-barcode-printer-xp-470b)
 lists 203 dpi direct thermal printing, USB, TSPL/ZPL/EPL/DPL emulation and a
 108 mm maximum print width. Its

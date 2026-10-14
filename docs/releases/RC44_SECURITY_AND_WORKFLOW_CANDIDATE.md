@@ -1,10 +1,14 @@
 # rc44 — security and PostgreSQL workflow candidate
 
-Not yet deployed. Includes the held commercial price-list maker/checker, six
+Final status: deployed and verified on 14 October 2026. See the
+[actual deployment record](RC44_RELEASE_VERIFICATION_2026-10-14.md).
+The following describes the held candidate before final-source gate completion.
+
+Includes the held commercial price-list maker/checker, six
 source-report, read-only maintenance-admin and responsive HQ scope; PostgreSQL
 checkout/refund/stocktake/onboarding/B2B reservation repairs; and the publisher-
 supported dependency/runtime repairs in [the security record](RELEASE_SECURITY_GATE_REPAIR.md).
-Production remains rc37 until exact-source release gates and activation pass.
+Production remained rc37 until exact-source release gates and activation passed.
 
 ## Evidence already obtained
 
