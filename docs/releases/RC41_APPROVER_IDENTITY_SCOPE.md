@@ -1,4 +1,11 @@
-# rc41 candidate — exact approver identity scope
+# rc41 candidate — exact approver identity scope (held; superseded by rc42)
+
+The exact rc41 SQLite backend suite passed all 2,119 tests. Production image
+publication was nevertheless blocked by one HQ test-helper timing failure: it
+attempted to select a list before the timer-backed options form was mounted.
+No rc41 image was published or activated. rc42 fixes that test synchronization
+and adds delayed-initial-options coverage without changing backend business
+code or native POS source. PostgreSQL validation remains mandatory.
 
 Includes the commercial pricing, six source-report, maintenance-admin and
 responsive UI scope of RC38/39/40. None of those candidates was activated.

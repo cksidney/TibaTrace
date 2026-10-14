@@ -23,16 +23,34 @@ beforeEach(() => {
 });
 afterEach(() => { act(() => root.unmount()); container.remove(); });
 async function render(tenant = 'tenant-a') {
-  await act(async () => { root.render(<CommercialPricing tenantId={tenant} csrfToken="csrf-test" />); await new Promise((resolve) => setTimeout(resolve, 20)); });
+  act(() => { root.render(<CommercialPricing tenantId={tenant} csrfToken="csrf-test" />); });
+  // Options are deliberately loaded by a timer. Wait for the actual enabled
+  // workspace rather than assuming a fixed delay means the form is mounted.
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
+    if (container.querySelector('fieldset:not([disabled]) select')) return;
+  }
+  throw new Error('Commercial pricing workspace did not finish loading.');
 }
 async function change(element: HTMLInputElement | HTMLSelectElement, value: string) {
+  if (!element) throw new Error('The requested commercial pricing control is not mounted.');
   await act(async () => {
-    const setter = Object.getOwnPropertyDescriptor(element instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype, 'value')!.set!;
-    setter.call(element, value); element.dispatchEvent(new Event(element instanceof HTMLSelectElement ? 'change' : 'input', { bubbles: true }));
+    const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(element), 'value')!.set!;
+    setter.call(element, value); element.dispatchEvent(new Event(element.tagName === 'SELECT' ? 'change' : 'input', { bubbles: true }));
   });
 }
 const button = (text: string) => [...container.querySelectorAll('button')].find((item) => item.textContent === text)!;
 async function select() { await change(container.querySelector('select')!, 'list-1'); }
+
+it('waits for the options-backed workspace when the initial request is delayed', async () => {
+  vi.mocked(api.loadCommercialPriceOptions).mockImplementation(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    return opts;
+  });
+  await render(); await select();
+  expect(container.querySelector('select')?.value).toBe('list-1');
+  expect(button('Independent approval')).toBeDefined();
+});
 
 it('binds review to actual contents and tenant, retaining the retry key on uncertainty', async () => {
   await render(); await select();
