@@ -1,7 +1,8 @@
 # rc46 — tenant navigation isolation
 
-Status: candidate; not deployed until final-source gates and live verification
-pass. Supersedes the undeployed rc45 candidate; rc44 is the rollback target.
+Status: deployed and verified on 14 October 2026. See the
+[final deployment record](RC46_RELEASE_VERIFICATION_2026-10-14.md).
+Supersedes the undeployed rc45 candidate; rc44 is the rollback target.
 
 Includes the sidebar, mobile navigation, search, shortcuts, notification/account
 links, legacy shell and pre-mount hash guards described in
@@ -36,7 +37,8 @@ register/revocation tests; shared/Windows/Android remain 211/106/41 passed (440
 total client/shared tests). All application types/builds passed, and HQ was
 rechecked after the recall changes. Ruff and diff whitespace checks passed.
 
-Final-source Production Images validation must still run the full migrated
-SQLite and PostgreSQL 16 business suites, clean-checkout Node gates, strict
-dependency audit, high/critical image scans and immutable image evidence before
-activation. No CI gate is bypassed.
+Final-source Production Images validation passed the full migrated SQLite and
+PostgreSQL 16 business suites (2,172 tests each), clean-checkout Node gates,
+strict dependency audit, runtime image scans and immutable image evidence before
+activation. No CI gate was bypassed. The final deployment record distinguishes
+synthetic browser checks from actual live account/API verification.
