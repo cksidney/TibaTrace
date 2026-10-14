@@ -1,6 +1,9 @@
 # rc38 candidate — commercial pricing and source reports
 
 This is a candidate record, not confirmation of live deployment.
+rc38 was held and superseded by rc39 before activation: maintenance-admin direct
+writes were discovered and closed separately. The pricing/report scope remains
+included in rc39; no rc38 live-deployment claim is made.
 
 ## Implemented scope
 

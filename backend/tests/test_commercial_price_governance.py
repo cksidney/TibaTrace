@@ -223,3 +223,10 @@ def test_assigned_state_is_fresh_and_foreign_assignment_never_falls_back(world):
     CustomerCommercialProfile.all_objects.filter(pk=profile.pk).update(price_list=foreign)
     with pytest.raises(ValidationError, match="assigned price list"):
         CommercialPricingService.resolve_price(tenant=world["tenant"], customer=world["customer"], sku=world["sku"])
+
+
+def test_malformed_pricing_commands_are_client_errors_not_server_errors(world, draft):
+    row, maker, _ = draft
+    for payload in ([], {"operation": ["publish"]}, {"operation": "publish", "reason": "x", "idempotency_key": "x", "expected_content_hash": "not-a-hash"}):
+        assert maker.post(f"/api/sales/price-lists/{row.pk}/govern/", payload, format="json").status_code == 400
+    assert maker.post(f"/api/sales/price-lists/{row.pk}/archive/", [], format="json").status_code == 400

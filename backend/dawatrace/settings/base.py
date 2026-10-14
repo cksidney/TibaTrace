@@ -62,7 +62,7 @@ DAWATRACE_ENV = env("DAWATRACE_ENV", "development")
 ALLOWED_HOSTS = env_list("DAWATRACE_ALLOWED_HOSTS", "localhost,127.0.0.1")
 
 INSTALLED_APPS = [
-    "django.contrib.admin",
+    "apps.core.admin_site.GovernedAdminConfig",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",

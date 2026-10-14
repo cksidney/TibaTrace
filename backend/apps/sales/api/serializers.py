@@ -74,6 +74,17 @@ class CommercialDraftCloneSerializer(serializers.Serializer):
     idempotency_key = serializers.CharField(max_length=128)
 
 
+class CommercialPriceCommandSerializer(serializers.Serializer):
+    operation = serializers.ChoiceField(choices=("submit", "approve", "reject", "publish"))
+    reason = serializers.CharField(max_length=1000)
+    expected_content_hash = serializers.RegexField(r"^[0-9a-f]{64}$")
+    idempotency_key = serializers.CharField(max_length=128)
+
+
+class CommercialArchiveSerializer(serializers.Serializer):
+    reason = serializers.CharField(max_length=1000)
+
+
 class PriceListEntrySerializer(serializers.ModelSerializer):
     sku_code = serializers.CharField(source="sku.sku_code", read_only=True)
     sku_name = serializers.CharField(source="sku.display_name", read_only=True)

@@ -10,7 +10,9 @@ from apps.medicines.models import CommercialSKU
 from apps.organizations.models import Location
 from apps.sales.api.fulfilment import command
 from apps.sales.api.serializers import (
+    CommercialArchiveSerializer,
     CommercialDraftCloneSerializer,
+    CommercialPriceCommandSerializer,
     CustomerPriceAgreementSerializer,
     DeliveryRecordSerializer,
     DispatchOrderSerializer,
@@ -273,14 +275,16 @@ class PriceListViewSet(WritablePricingViewSet):
 
     @action(detail=True, methods=["post"])
     def govern(self, request, pk=None):
-        row = CommercialPriceGovernanceService.run(price_list=self.get_object(), actor=request.user,
-            operation=request.data.get("operation"), idempotency_key=request.data.get("idempotency_key"),
-            expected_content_hash=request.data.get("expected_content_hash"), reason=request.data.get("reason"))
+        payload = CommercialPriceCommandSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        row = CommercialPriceGovernanceService.run(price_list=self.get_object(), actor=request.user, **payload.validated_data)
         return Response(self.get_serializer(row).data)
 
     @action(detail=True, methods=["post"])
     def archive(self, request, pk=None):
-        row = CommercialPriceGovernanceService.archive(price_list=self.get_object(), actor=request.user, reason=request.data.get("reason"))
+        payload = CommercialArchiveSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        row = CommercialPriceGovernanceService.archive(price_list=self.get_object(), actor=request.user, **payload.validated_data)
         return Response(self.get_serializer(row).data)
 
 
