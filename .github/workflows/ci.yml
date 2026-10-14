@@ -11,12 +11,29 @@ on:
         required: false
         default: false
         type: boolean
+      postgres_source_ref:
+        description: "Run only the real PostgreSQL gate against this immutable release ref"
+        required: false
+        default: ""
+        type: string
+      postgres_expected_sha:
+        description: "Expected full source SHA for PostgreSQL-only validation"
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
 
 jobs:
+  postgres-release:
+    if: ${{ inputs.postgres_source_ref != '' }}
+    uses: ./.github/workflows/postgres-validation.yml
+    with:
+      source_ref: ${{ inputs.postgres_source_ref }}
+      expected_sha: ${{ inputs.postgres_expected_sha }}
   backend:
+    if: ${{ !inputs.postgres_source_ref }}
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -61,6 +78,7 @@ jobs:
           path: artifacts/generated
 
   docker:
+    if: ${{ !inputs.postgres_source_ref }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -71,6 +89,7 @@ jobs:
         run: echo "Run the approved registry/container scanner before release; Phase 2 does not waive this gate."
 
   shared:
+    if: ${{ !inputs.postgres_source_ref }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -89,6 +108,7 @@ jobs:
       - run: npm test --workspaces --if-present
 
   visual:
+    if: ${{ !inputs.postgres_source_ref }}
     # Visual baselines are platform-specific: font rasterisation and subpixel
     # rendering differ enough between macOS, Windows and Linux that a baseline
     # captured on one fails on another for reasons unrelated to the code.
@@ -133,6 +153,7 @@ jobs:
           retention-days: 14
 
   pos-windows:
+    if: ${{ !inputs.postgres_source_ref }}
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -152,6 +173,7 @@ jobs:
           path: apps/pos-windows/release
 
   pos-android:
+    if: ${{ !inputs.postgres_source_ref }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
