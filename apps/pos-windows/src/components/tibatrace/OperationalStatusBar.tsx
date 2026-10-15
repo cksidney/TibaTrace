@@ -2,7 +2,7 @@ import {
   PosOperationsClient,
 } from '@dawatrace/shared/operational/index.js';
 import type { PosOperationalRuntimeDTO } from '@dawatrace/shared/operational/index.js';
-import { autoColumns, spacing, statusPalette, surface, text } from '@dawatrace/shared/design-system/index.js';
+import { spacing, statusPalette, surface, text } from '@dawatrace/shared/design-system/index.js';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 interface OperationalStatusBarProps {
@@ -69,41 +69,55 @@ export function OperationalStatusBar({
     <section
       aria-label="Operational status"
       style={{
-        display: 'grid',
-        // Every field is equally load-bearing, so none of them is dropped on a
-        // narrow screen; the row reflows into as many columns as fit and the
-        // readiness summary keeps the full width it needs to be read.
-        gridTemplateColumns: autoColumns(150),
-        gap: spacing.md,
+        display: 'flex',
+        flexWrap: 'wrap',
         alignItems: 'center',
-        padding: `${spacing.sm}px clamp(${spacing.md}px, 3vw, ${spacing.xl}px)`,
+        justifyContent: 'space-between',
+        gap: spacing.sm,
+        padding: `5px clamp(${spacing.md}px, 2vw, ${spacing.xl}px)`,
         borderBottom: `1px solid ${palette.border}`,
         background: palette.surface,
         color: palette.foreground,
       }}
     >
-      <div aria-live="polite">
-        <strong>{readiness}</strong>
-        <div style={{ marginTop: 2, fontSize: 12, color: text.secondary }}>{details}</div>
+      <div aria-live="polite" style={{ display: 'flex', alignItems: 'center', gap: spacing.sm, minWidth: 0 }}>
+        <span
+          style={{
+            display: 'inline-block',
+            width: 8,
+            height: 8,
+            borderRadius: '50%',
+            background: context?.readiness === 'READY' ? '#10B981' : context?.readiness === 'UNASSIGNED' || error ? '#EF4444' : '#F59E0B',
+            flexShrink: 0,
+          }}
+        />
+        <strong style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{readiness}</strong>
+        {details ? (
+          <span style={{ fontSize: 11, color: text.secondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 300 }} title={details}>
+            · {details}
+          </span>
+        ) : null}
       </div>
-      <StatusItem label="Branch" value={context?.register?.branch_code ?? 'Unassigned'} />
-      <StatusItem label="Register" value={context?.register?.code ?? 'Unassigned'} />
-      <StatusItem label="Business date" value={context?.business_day?.business_date ?? 'Unavailable'} />
-      <StatusItem label="Shift" value={shift} />
-      <StatusItem label="Printer" value={printer} />
-      <div style={{ display: 'flex', alignItems: 'center', gap: spacing.sm }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: spacing.md, flexWrap: 'wrap' }}>
+        <StatusItem label="Branch" value={context?.register?.branch_code ?? 'Unassigned'} />
+        <StatusItem label="Register" value={context?.register?.code ?? 'Unassigned'} />
+        <StatusItem label="Date" value={context?.business_day?.business_date ?? 'Unavailable'} />
+        <StatusItem label="Shift" value={shift} />
+        <StatusItem label="Printer" value={printer} />
         <StatusItem label="Sync" value={sync} />
         <button
           type="button"
           onClick={() => void refresh()}
           disabled={refreshing}
           style={{
-            minHeight: 36,
-            padding: '6px 10px',
+            minHeight: 26,
+            padding: '2px 8px',
             border: `1px solid ${palette.border}`,
-            borderRadius: 8,
+            borderRadius: 6,
             background: surface.raised,
             color: palette.foreground,
+            fontSize: 11,
+            fontWeight: 600,
             cursor: refreshing ? 'wait' : 'pointer',
           }}
         >
@@ -116,13 +130,9 @@ export function OperationalStatusBar({
 
 function StatusItem({ label, value }: { readonly label: string; readonly value: string }) {
   return (
-    <div style={{ minWidth: 0 }}>
-      <div style={{ fontSize: 11, color: text.secondary, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-        {label}
-      </div>
-      <div style={{ marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 13 }} title={value}>
-        {value}
-      </div>
+    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, minWidth: 0, fontSize: 12 }} title={`${label}: ${value}`}>
+      <span style={{ fontSize: 11, color: text.secondary, textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}:</span>
+      <span style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 150 }}>{value}</span>
     </div>
   );
 }

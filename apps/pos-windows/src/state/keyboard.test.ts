@@ -33,6 +33,7 @@ describe('keyboard shortcuts', () => {
 
   it('resolves function keys to their stage', () => {
     expect(resolveShortcut({ key: 'F8' })).toBe('PAYMENT');
+    expect(resolveShortcut({ key: 'F10' })).toBe('COLLECTION');
     expect(resolveShortcut({ key: 'F5' })).toBe('CLINICAL_FINDINGS');
     expect(resolveShortcut({ key: 'F12' })).toBe('SCAN_FOCUS');
   });

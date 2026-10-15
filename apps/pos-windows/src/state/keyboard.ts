@@ -22,6 +22,7 @@ export type PosCommand =
   | 'PHARMACIST_REVIEW'
   | 'PREPARATION'
   | 'PAYMENT'
+  | 'COLLECTION'
   | 'HOLD'
   | 'SCAN_FOCUS'
   | 'CLOSE'
@@ -46,6 +47,7 @@ export const SHORTCUTS: readonly ShortcutBinding[] = [
   { key: 'F7', command: 'PREPARATION', label: 'Preparation', navigationOnly: true },
   { key: 'F8', command: 'PAYMENT', label: 'Payment stage', navigationOnly: true },
   { key: 'F9', command: 'HOLD', label: 'Hold transaction', navigationOnly: true },
+  { key: 'F10', command: 'COLLECTION', label: 'Handover and counselling', navigationOnly: true },
   { key: 'F12', command: 'SCAN_FOCUS', label: 'Focus scan field', navigationOnly: true },
   { key: 'Escape', command: 'CLOSE', label: 'Close drawer or return', navigationOnly: true },
   {

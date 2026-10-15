@@ -56,6 +56,14 @@ export class DispensingWorkflow {
   }
 
   /**
+   * Clear loaded episode and reset state to allow returning to the queue.
+   */
+  unload(): void {
+    this.episode = null;
+    this.unknownOutcome = false;
+  }
+
+  /**
    * Re-read authoritative state. Required after any unknown outcome, and after
    * a restart, before the UI re-enables anything.
    */

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, FormEvent } from 'react';
 
 import {
@@ -9,7 +9,6 @@ import {
 import { AccessWorkspace } from './AccessWorkspace.js';
 import { accessibleHqViews, canOpenHqDestination } from './navigationAccess.js';
 import { ExecutiveDashboard } from './ExecutiveDashboard.js';
-import { FieldSearch } from './FieldSearch.js';
 import { GS1Workspace } from './GS1Workspace.js';
 import { IntegrationWorkspace } from './IntegrationWorkspace.js';
 import { LegacyItemSetup } from './LegacyItemSetup.js';
@@ -280,6 +279,35 @@ function visibleNavigation(overview: HQOverview): readonly NavigationItem[] {
   });
 }
 
+type NavSection =
+  | 'Executive & Command'
+  | 'Clinical & Supply'
+  | 'Commercial & Finance'
+  | 'Assurance & Standards'
+  | 'Platform & Security';
+
+const NAV_SECTION_MAP: Record<WorkspaceView, NavSection> = {
+  overview: 'Executive & Command',
+  executive: 'Executive & Command',
+  network: 'Executive & Command',
+  people: 'Clinical & Supply',
+  catalogue: 'Clinical & Supply',
+  inventory: 'Clinical & Supply',
+  operations: 'Clinical & Supply',
+  commerce: 'Commercial & Finance',
+  pricing: 'Commercial & Finance',
+  cash: 'Commercial & Finance',
+  insurance: 'Commercial & Finance',
+  clinical: 'Assurance & Standards',
+  regulatory: 'Assurance & Standards',
+  gs1: 'Assurance & Standards',
+  reports: 'Assurance & Standards',
+  governance: 'Platform & Security',
+  integration: 'Platform & Security',
+  platform_owner: 'Platform & Security',
+  access: 'Platform & Security',
+};
+
 const viewMeta: Record<WorkspaceView, { readonly eyebrow: string; readonly title: string; readonly description: string }> = {
   overview: {
     eyebrow: 'Operational command centre',
@@ -289,7 +317,7 @@ const viewMeta: Record<WorkspaceView, { readonly eyebrow: string; readonly title
   executive: {
     eyebrow: 'Executive Command Centre',
     title: 'Executive Operations & Risk Dashboard',
-    description: 'Real-time visibility across 18 operational, clinical, inventory, financial and regulatory indicators.',
+    description: 'Explore example operational, clinical, inventory, financial and regulatory indicators. Values shown here are illustrative.',
   },
   regulatory: {
     eyebrow: 'Regulatory Compliance Engine',
@@ -781,10 +809,6 @@ export function Dashboard({
             </div>
           </section>
 
-          <div style={{ marginBottom: '20px' }}>
-            <FieldSearch onSearch={(field, query) => console.log('Search field:', field, 'query:', query)} />
-          </div>
-
           {refreshFailed ? (
             <div className="inline-alert" role="status">
               <Icon name="alert" />
@@ -793,7 +817,14 @@ export function Dashboard({
           ) : null}
 
           {activeView === 'overview' ? <OverviewView overview={overview} onNavigate={setActiveView} /> : null}
-          {activeView === 'executive' ? <ExecutiveDashboard csrfToken={csrfToken} onNavigate={(tab) => setActiveView((tab.toLowerCase() === 'dispensing' ? 'commerce' : tab.toLowerCase() === 'inventory' ? 'inventory' : tab.toLowerCase() === 'insurance' ? 'insurance' : tab.toLowerCase() === 'regulatory' ? 'regulatory' : tab.toLowerCase() === 'sales' ? 'commerce' : tab.toLowerCase() === 'procurement' ? 'operations' : 'overview') as WorkspaceView)} /> : null}
+          {activeView === 'executive' ? <ExecutiveDashboard csrfToken={csrfToken} onNavigate={(tab) => {
+            const destinations: Readonly<Record<string, WorkspaceView>> = {
+              Dispensing: 'commerce', Inventory: 'inventory', Insurance: 'insurance',
+              Regulatory: 'regulatory', Sales: 'commerce', Procurement: 'operations',
+              'National Integration': 'integration', Administration: 'access',
+            };
+            setActiveView(destinations[tab] ?? 'overview');
+          }} /> : null}
           {activeView === 'network' ? <NetworkView csrfToken={csrfToken} onChanged={onRefresh} overview={overview} /> : null}
           {activeView === 'people' ? <PeopleView csrfToken={csrfToken} data={scopedWorkspace} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} overview={overview} /> : null}
           {activeView === 'catalogue' ? <CatalogueView csrfToken={csrfToken} data={scopedWorkspace} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} overview={overview} /> : null}
@@ -895,20 +926,33 @@ function Sidebar({
           <strong>{overview.tenant_name}</strong>
         </div>
       </div>
-      <p className="sidebar-label">HQ workspace</p>
       <nav aria-label="Headquarters navigation">
-        {visibleNavigation(overview).map((item) => (
-          <a
-            aria-current={activeView === item.key ? 'page' : undefined}
-            className={activeView === item.key ? 'nav-link nav-link-active' : 'nav-link'}
-            href={`#${item.key}`}
-            key={item.key}
-            onClick={onNavigate}
-          >
-            <span><Icon name={item.icon} /></span>
-            <div><strong>{item.label}</strong><small>{item.caption}</small></div>
-          </a>
-        ))}
+        {(() => {
+          let lastSection = '';
+          return visibleNavigation(overview).map((item) => {
+            const section = NAV_SECTION_MAP[item.key] ?? 'Modules';
+            const showHeading = section !== lastSection;
+            lastSection = section;
+            return (
+              <Fragment key={item.key}>
+                {showHeading ? (
+                  <div className="nav-section-heading" role="presentation">
+                    {section}
+                  </div>
+                ) : null}
+                <a
+                  aria-current={activeView === item.key ? 'page' : undefined}
+                  className={activeView === item.key ? 'nav-link nav-link-active' : 'nav-link'}
+                  href={`#${item.key}`}
+                  onClick={onNavigate}
+                >
+                  <span><Icon name={item.icon} /></span>
+                  <div><strong>{item.label}</strong><small>{item.caption}</small></div>
+                </a>
+              </Fragment>
+            );
+          });
+        })()}
       </nav>
       {overview.is_platform_owner === true ? <div className="sidebar-support">
         <div className="support-icon"><Icon name="docs" /></div>
