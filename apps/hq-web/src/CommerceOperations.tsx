@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react';
-import type { FormEvent, ReactNode } from 'react';
+import { createContext, useContext } from 'react';
+import type { ReactNode } from 'react';
+import { IntakeForm } from './IntakeModal.js';
 import { loadCommerceDesk, runCommerceCommand } from './api.js';
 import type { CommerceDesk, CommerceDispatch, CommerceTask } from './api.js';
 
+const CommandError = createContext('');
 const retryKey = () => window.crypto.randomUUID();
 export function CommerceOperations({ csrfToken, revision, onChanged }: { readonly csrfToken: string; readonly revision: string; readonly onChanged: () => Promise<void> }) {
   const [desk, setDesk] = useState<CommerceDesk | null>(null);
@@ -30,20 +33,21 @@ export function CommerceOperations({ csrfToken, revision, onChanged }: { readonl
       if (!id && (resource === 'orders' || resource === 'quotations')) setSelectedId(result.id);
       setKey(retryKey()); setRefresh((value) => value + 1);
       setNotice('Authoritative workflow step recorded. Continue its governed approval/fulfilment actions below.');
-      await onChanged();
-    } catch (cause: unknown) { setError(cause instanceof Error ? cause.message : 'Command failed. Refresh and verify the record before retrying an uncertain outcome.'); }
+      try { await onChanged(); } catch { setNotice('The step was saved. Refresh the workspace to load its current state.'); }
+      return true;
+    } catch (cause: unknown) { setError(cause instanceof Error ? cause.message : 'Command failed. Refresh and verify the record before retrying an uncertain outcome.'); return false; }
     finally { setBusy(false); }
   };
   const drafts = desk?.[kind] ?? [];
   const selected = drafts.find((draft) => draft.id === selectedId);
   const selectedSku = desk?.skus.find((sku) => sku.id === skuId);
-  return <article className="panel" aria-labelledby="commerce-execution-heading"><h2 id="commerce-execution-heading">Create and execute fulfilment</h2>
+  return <CommandError.Provider value={error}><article className="panel" aria-labelledby="commerce-execution-heading"><h2 id="commerce-execution-heading">Create and execute fulfilment</h2>
     <p className="panel-note">Draft offers/orders, add actual SKU lines, pick authoritative allocations, pack verified stock and capture genuine delivery evidence. Independent checks and backend permissions apply at each step.</p>
     {error && <p className="inline-alert" role="alert">{error}</p>}{notice && <p className="inline-success" role="status">{notice}</p>}
     {!desk ? <p role="status">{error ? 'Desk unavailable; no empty activity is implied.' : 'Loading execution desk…'}</p> : <fieldset disabled={busy} style={{ border: 0, padding: 0 }}>
       <div className="stocktake-form-grid"><label className="business-field">Document<select value={kind} onChange={(event) => { setKind(event.target.value as typeof kind); setSelectedId(''); }}><option value="orders">Sales order</option><option value="quotations">Quotation</option></select></label>
         <label className="business-field">Existing document<select value={selectedId} onChange={(event) => setSelectedId(event.target.value)}><option value="">Select or create below</option>{drafts.map((draft) => <option key={draft.id} value={draft.id}>{draft.order_number ?? draft.quotation_number} · {draft.customer_name} · {draft.status}</option>)}</select></label></div>
-      {!selected && <DeskForm label="Create draft" submit={() => execute(kind, '', '', { branch: branchId, customer: customerId, currency: 'KES' })}>
+      {!selected && <DeskForm label={kind === 'orders' ? 'Create sales order draft' : 'Create quotation draft'} submit={() => execute(kind, '', '', { branch: branchId, customer: customerId, currency: 'KES' })}>
         <label className="business-field">Branch<select required value={branchId} onChange={(event) => setBranchId(event.target.value)}><option value="">Select branch</option>{desk.options.branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select></label>
         <label className="business-field">Active customer<select required value={customerId} onChange={(event) => setCustomerId(event.target.value)}><option value="">Select customer</option>{desk.options.customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.customer_number} · {customer.legal_name}</option>)}</select></label>
       </DeskForm>}
@@ -64,13 +68,14 @@ export function CommerceOperations({ csrfToken, revision, onChanged }: { readonl
       </>}
     </fieldset>}
     <button className="secondary-button" type="button" disabled={busy} onClick={() => setRefresh((value) => value + 1)}>Refresh execution records</button>
-  </article>;
+  </article></CommandError.Provider>;
 }
 
-function DeskForm({ label, submit, children }: { readonly label: string; readonly submit: () => Promise<void>; readonly children: ReactNode }) {
-  return <form onSubmit={(event: FormEvent) => { event.preventDefault(); void submit(); }}><div className="stocktake-form-grid">{children}</div><button className="secondary-button" type="submit">{label}</button></form>;
+function DeskForm({ label, submit, children }: { readonly label: string; readonly submit: () => Promise<boolean>; readonly children: ReactNode }) {
+  const error = useContext(CommandError);
+  return <IntakeForm title={label} submitLabel={label} submit={submit} error={error}>{children}</IntakeForm>;
 }
-function PickingTaskCard({ task, busy, onExecute }: { readonly task: CommerceTask; readonly busy: boolean; readonly onExecute: (action: string, payload: Record<string, unknown>) => Promise<void> }) {
+function PickingTaskCard({ task, busy, onExecute }: { readonly task: CommerceTask; readonly busy: boolean; readonly onExecute: (action: string, payload: Record<string, unknown>) => Promise<boolean> }) {
   const [picked, setPicked] = useState(''); const [short, setShort] = useState('0');
   return <section className="business-record"><h4>{task.sku_code} · requested {task.requested_quantity} · {task.status}</h4>
     {task.status === 'PENDING' && <button disabled={busy} type="button" onClick={() => void onExecute('assign', {})}>Assign to me</button>}
@@ -79,20 +84,20 @@ function PickingTaskCard({ task, busy, onExecute }: { readonly task: CommerceTas
     {['PICKED', 'SHORT_PICK'].includes(task.status) && <button disabled={busy} type="button" onClick={() => void onExecute('verify', {})}>Independent pick verification</button>}
   </section>;
 }
-function PackageCard({ packageItem, desk, onExecute }: { readonly packageItem: CommerceDesk['packages'][number]; readonly desk: CommerceDesk; readonly onExecute: (action: string, payload: Record<string, unknown>) => Promise<void> }) {
+function PackageCard({ packageItem, desk, onExecute }: { readonly packageItem: CommerceDesk['packages'][number]; readonly desk: CommerceDesk; readonly onExecute: (action: string, payload: Record<string, unknown>) => Promise<boolean> }) {
   const [taskId, setTaskId] = useState(''); const [quantity, setQuantity] = useState(''); const [seal, setSeal] = useState('');
   return <section className="business-record"><h4>{packageItem.package_number} · {packageItem.status}</h4><p>{packageItem.lines.length} packed lines</p>
     {['OPEN', 'PACKING'].includes(packageItem.status) && <><DeskForm label="Pack verified stock" submit={() => onExecute('pack-line', { picking_task_id: taskId, quantity })}><label className="business-field">Verified pick<select required value={taskId} onChange={(event) => setTaskId(event.target.value)}><option value="">Select verified task</option>{desk.tasks.filter((task) => task.sales_order === packageItem.sales_order && task.status === 'VERIFIED').map((task) => <option key={task.id} value={task.id}>{task.sku_code} · picked {task.picked_quantity}</option>)}</select></label><label className="business-field">Actual packed quantity<input required type="number" min="0.001" step="0.001" value={quantity} onChange={(event) => setQuantity(event.target.value)} /></label></DeskForm>
       <DeskForm label="Independent verify and seal" submit={() => onExecute('seal', { seal_number: seal })}><label className="business-field">Actual tamper seal<input required value={seal} onChange={(event) => setSeal(event.target.value)} maxLength={100} /></label></DeskForm></>}
   </section>;
 }
-function SessionPackageForm({ sessionNumber, onExecute }: { readonly sessionNumber: string; readonly onExecute: (payload: Record<string, unknown>) => Promise<void> }) {
+function SessionPackageForm({ sessionNumber, onExecute }: { readonly sessionNumber: string; readonly onExecute: (payload: Record<string, unknown>) => Promise<boolean> }) {
   const [zone, setZone] = useState(''); const [type, setType] = useState('');
   return <section><h4>{sessionNumber}</h4><DeskForm label="Create confirmed package" submit={() => onExecute({ temperature_zone: zone, package_type: type })}>
     <label className="business-field">Actual package temperature zone<select required value={zone} onChange={(event) => setZone(event.target.value)}><option value="">Confirm package conditions</option><option value="AMBIENT">Ambient</option><option value="COLD_CHAIN">Cold chain</option><option value="FROZEN">Frozen</option></select></label><label className="business-field">Packaging type / evidence<input required value={type} onChange={(event) => setType(event.target.value)} maxLength={100} /></label>
   </DeskForm><p className="panel-note">Use validated cold/controlled packaging and maintain genuine temperature evidence where required.</p></section>;
 }
-function DispatchCreate({ orderId, customerId, desk, onExecute }: { readonly orderId: string; readonly customerId: string; readonly desk: CommerceDesk; readonly onExecute: (payload: Record<string, unknown>) => Promise<void> }) {
+function DispatchCreate({ orderId, customerId, desk, onExecute }: { readonly orderId: string; readonly customerId: string; readonly desk: CommerceDesk; readonly onExecute: (payload: Record<string, unknown>) => Promise<boolean> }) {
   const [address, setAddress] = useState(''); const [carrier, setCarrier] = useState(''); const [ids, setIds] = useState<readonly string[]>([]);
   return <DeskForm label="Create dispatch for selected sealed packages" submit={() => onExecute({ delivery_address_id: address, carrier, package_ids: ids })}>
     <label className="business-field">Customer delivery address<select required value={address} onChange={(event) => setAddress(event.target.value)}><option value="">Select registered address</option>{desk.options.addresses.filter((item) => item.customer_id === customerId).map((item) => <option key={item.id} value={item.id}>{item.address_code} · {item.address_line1} · {item.city}</option>)}</select></label>
@@ -100,7 +105,7 @@ function DispatchCreate({ orderId, customerId, desk, onExecute }: { readonly ord
     <fieldset><legend>Sealed packages</legend>{desk.packages.filter((item) => item.sales_order === orderId && item.status === 'SEALED').map((item) => <label key={item.id}><input type="checkbox" checked={ids.includes(item.id)} onChange={() => setIds((current) => current.includes(item.id) ? current.filter((id) => id !== item.id) : [...current, item.id])} />{item.package_number}</label>)}</fieldset>
   </DeskForm>;
 }
-function DeliveryForm({ dispatch, desk, onExecute }: { readonly dispatch: CommerceDispatch; readonly desk: CommerceDesk; readonly onExecute: (payload: Record<string, unknown>) => Promise<void> }) {
+function DeliveryForm({ dispatch, desk, onExecute }: { readonly dispatch: CommerceDispatch; readonly desk: CommerceDesk; readonly onExecute: (payload: Record<string, unknown>) => Promise<boolean> }) {
   const [recipient, setRecipient] = useState(''); const [proof, setProof] = useState(''); const [notes, setNotes] = useState('');
   const [lines, setLines] = useState(() => dispatch.lines.map((line) => ({ dispatch_line_id: line.id, accepted_quantity: '', rejected_quantity: '0', damaged_quantity: '0', missing_quantity: '0' })));
   return <section className="business-record"><h4>Proof of delivery · {dispatch.dispatch_number}</h4><DeskForm label="Record evidenced delivery" submit={() => onExecute({ recipient_name: recipient, proof_type: 'DOCUMENT_REFERENCE', signature_ref: proof, delivery_notes: notes, delivery_lines_data: lines })}>

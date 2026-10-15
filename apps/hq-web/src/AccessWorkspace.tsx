@@ -1,3 +1,4 @@
+import { IntakeModal } from './IntakeModal.js';
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 
 import { AccessUsersDirectory } from './AccessUsersDirectory.js';
@@ -341,7 +342,7 @@ function RolePermissionsPanel({
         </div>
 
         {showCreateRole ? (
-          <form className="access-create-role" onSubmit={(event) => void createRole(event)}>
+          <IntakeModal title="Add role" busy={busy} onClose={() => setShowCreateRole(false)}><form className="access-create-role" onSubmit={(event) => void createRole(event)}>
             <label>
               <span>Role code</span>
               <input
@@ -360,11 +361,13 @@ function RolePermissionsPanel({
                 value={createRoleForm.name}
               />
             </label>
+            {error && <p role="alert" className="business-dialog-error">{error}</p>}
             <p className="muted-cell">Capabilities can be refined after the role is created.</p>
             <button className="primary-button" disabled={busy} type="submit">
               {busy ? 'Creating…' : 'Create role'}
             </button>
-          </form>
+            <button className="secondary-button" disabled={busy} type="button" onClick={() => setShowCreateRole(false)}>Cancel</button>
+          </form></IntakeModal>
         ) : null}
 
         {!roles.length ? (

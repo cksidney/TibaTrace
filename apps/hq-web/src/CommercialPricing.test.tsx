@@ -68,6 +68,7 @@ it('binds review to actual contents and tenant, retaining the retry key on uncer
 
 it('keeps the draft form mounted during debounced SKU search', async () => {
   await render(); await select();
+  await act(async () => button('Add draft price').click());
   const input = container.querySelector('input[placeholder="Code or item name"]')!;
   await change(input as HTMLInputElement, 'Confirmed');
   expect(container.querySelector('input[placeholder="Code or item name"]')).toBe(input);
@@ -91,4 +92,20 @@ it('clears draft and reason when changing tenant and does not render an empty su
   expect(container.querySelector('[role="alert"]')?.textContent).toContain('403 Forbidden');
   expect(container.textContent).not.toContain('Tenant A reason');
   expect(container.querySelector('select')?.value).toBe('');
+});
+
+it('opens list creation in a modal and preserves the form when the server refuses it', async () => {
+  await render();
+  expect(container.querySelector('input[maxlength="64"]')).toBeNull();
+  await act(async () => button('Create commercial list').click());
+  const dialog = container.querySelector('[role="dialog"]')!;
+  await change(dialog.querySelector('input[maxlength="1000"]')!, 'Actual tenant pricing setup');
+  await change(dialog.querySelector('input[maxlength="64"]')!, 'B2B-NEW');
+  await change(dialog.querySelector('input[maxlength="255"]')!, 'New commercial prices');
+  await change(dialog.querySelector('input[type="date"]')!, '2026-10-15');
+  vi.mocked(api.saveCommercialList).mockRejectedValue(new Error('Current pricing permission refused'));
+  await act(async () => { dialog.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); });
+  expect(dialog.querySelector('[role="alert"]')?.textContent).toContain('Current pricing permission refused');
+  expect((dialog.querySelector('input[maxlength="64"]') as HTMLInputElement).value).toBe('B2B-NEW');
+  expect(api.saveCommercialList).toHaveBeenCalledWith(expect.objectContaining({ code: 'B2B-NEW', currency: 'KES' }), 'tenant-a', 'csrf-test');
 });
