@@ -154,12 +154,12 @@ export function SyncCentre({ apiFetch, deviceId, journal, onOpenPrint, initialSn
         : `Aligned with HQ release ${clientVersion.latest_version || clientVersion.client_version}. Rechecks daily.`;
 
   return (
-    <main style={root} aria-label="Sync Centre">
-      <header style={header}>
+    <main className="pos-support-workspace" style={root} aria-label="Sync Centre">
+      <header className="pos-page-heading" style={header}>
         <div>
-          <p style={eyebrow}>Authoritative recovery</p>
+          <p className="pos-eyebrow" style={eyebrow}>Connection & recovery</p>
           <h1 style={heading}>Sync Centre</h1>
-          <p style={subheading}>Refreshes status only. It never blindly replays payment, collection, supply or clinical decisions.</p>
+          <p style={subheading}>Check connections and review work awaiting recovery. Refreshing checks status without repeating transactions.</p>
         </div>
         <button type="button" disabled={busy} onClick={() => void refresh()} style={secondaryButton}>{busy ? 'Refreshing…' : 'Refresh status'}</button>
       </header>

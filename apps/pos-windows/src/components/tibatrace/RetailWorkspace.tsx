@@ -21,6 +21,7 @@ import {
 } from '@dawatrace/shared/retail/index.js';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { PosIcon } from './PosIcon.js';
 import { resolveShortcut } from '../../state/keyboard.js';
 import { useViewport } from '../../state/useViewport.js';
 import { RetailReturns } from './RetailReturns.js';
@@ -45,6 +46,7 @@ export function RetailWorkspace({ apiFetch, deviceId }: RetailWorkspaceProps) {
   );
   const barcodeInput = useRef<HTMLInputElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
+  const returnsPanel = useRef<HTMLDetailsElement>(null);
   const [storeId, setStoreId] = useState('');
   const [stores, setStores] = useState<
     readonly { id: string; name: string; location_type: string; status: string }[]
@@ -54,6 +56,8 @@ export function RetailWorkspace({ apiFetch, deviceId }: RetailWorkspaceProps) {
   const [barcode, setBarcode] = useState('');
   const [search, setSearch] = useState('');
   const [cashReceived, setCashReceived] = useState('');
+  const [returnsOpen, setReturnsOpen] = useState(false);
+  const operationInFlight = useRef(false);
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -89,14 +93,15 @@ export function RetailWorkspace({ apiFetch, deviceId }: RetailWorkspaceProps) {
   }, []);
 
   const run = useCallback(async (operation: () => Promise<void>) => {
-    setBusy(true);
+    if (operationInFlight.current) return;
+    operationInFlight.current = true; setBusy(true);
     setNotice('');
     try {
       await operation();
     } catch (cause) {
       setNotice(message(cause));
     } finally {
-      setBusy(false);
+      operationInFlight.current = false; setBusy(false);
     }
   }, []);
 
@@ -236,8 +241,9 @@ export function RetailWorkspace({ apiFetch, deviceId }: RetailWorkspaceProps) {
   const viewport = useViewport();
 
   return (
-    <main style={layoutFor(viewport)} aria-label="Retail sale workspace">
-      <section style={panel} aria-label="Product search and barcode input">
+    <main className="pos-retail" style={layoutFor(viewport)} aria-label="Retail sale workspace">
+      <header className="pos-page-heading pos-retail-heading"><div><span className="pos-eyebrow">Retail checkout</span><h1>A smooth sale, start to finish.</h1><p>Find the right item. Check the basket. Settle with confidence.</p></div><button className="pos-button" type="button" onClick={() => { setReturnsOpen(true); requestAnimationFrame(() => returnsPanel.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })); }}><PosIcon name="sync" size={16} /> Returns & refunds</button></header>
+      <section className="pos-retail-search" style={panel} aria-label="Product search and barcode input">
         <SectionTitle title="Find and add" detail="Scan first, then search the sellable catalogue." />
         <label style={labelStyle}>
           Retail store
@@ -255,6 +261,7 @@ export function RetailWorkspace({ apiFetch, deviceId }: RetailWorkspaceProps) {
             ))}
           </select>
         </label>
+        {(!transaction || ['COMPLETED', 'CANCELLED', 'PAID'].includes(transaction.state)) && <button className="pos-start-sale" type="button" disabled={busy || !storeId} onClick={startSale}><PosIcon name="retail" size={18} /> Start new sale <PosIcon name="arrow" size={17} /></button>}
         <p style={helperText}>{primary.detail}</p>
 
         <label style={labelStyle}>
@@ -327,7 +334,7 @@ export function RetailWorkspace({ apiFetch, deviceId }: RetailWorkspaceProps) {
         </div>
       </section>
 
-      <section style={panel} aria-label="Current retail basket">
+      <section className="pos-retail-basket" style={panel} aria-label="Current retail basket">
         <SectionTitle
           title={transaction ? transaction.transaction_number : 'Current basket'}
           detail={
@@ -357,8 +364,8 @@ export function RetailWorkspace({ apiFetch, deviceId }: RetailWorkspaceProps) {
         )}
       </section>
 
-      <aside style={summaryPanel} aria-label="Retail sale summary">
-        <SectionTitle title="Sale context" detail="Server-authoritative operational and pricing context." />
+      <aside className="pos-retail-summary" style={summaryPanel} aria-label="Retail sale summary">
+        <SectionTitle title="Sale summary" detail="Review your basket before taking payment." />
         <dl style={contextList}>
           <Context label="Store" value={selectedStoreName(stores, storeId)} />
           <Context label="Register" value={transaction?.register_code ?? 'Opened when sale starts'} />
@@ -422,14 +429,14 @@ export function RetailWorkspace({ apiFetch, deviceId }: RetailWorkspaceProps) {
             <p style={helperText}>{receipt.disclaimer}</p>
           </section>
         ) : null}
-        <RetailReturns client={client} deviceId={deviceId} />
+        <details ref={returnsPanel} className="pos-returns" open={returnsOpen} onToggle={(event) => setReturnsOpen(event.currentTarget.open)}><summary>Returns & cash refunds</summary><RetailReturns client={client} deviceId={deviceId} /></details>
         <div style={actions}>
           {transaction?.state === 'DRAFT' ? (
             <button type="button" disabled={busy} onClick={hold} style={secondaryButton}>
               Hold sale
             </button>
           ) : null}
-          <button
+          {primary.kind !== 'START_SALE' && <button
             type="button"
             disabled={busy || !primary.enabled || (primary.kind === 'SETTLE_CASH' && changeDue === null)}
             onClick={performPrimaryAction}
@@ -437,7 +444,7 @@ export function RetailWorkspace({ apiFetch, deviceId }: RetailWorkspaceProps) {
             title={primary.detail}
           >
             {primary.label}
-          </button>
+          </button>}
           {transaction && ['DRAFT', 'HELD', 'READY_FOR_PAYMENT'].includes(transaction.state) ? (
             <button type="button" disabled={busy} onClick={cancel} style={dangerButton}>
               Cancel sale
@@ -512,8 +519,7 @@ function SafetyNote() {
         lineHeight: 1.4,
       }}
     >
-      Prescription medicines must be processed through the prescription workspace. Retail
-      medicine screening is not available in this pilot.
+      Use Clinical for prescription medicines. This checkout does not perform clinical screening.
     </p>
   );
 }
@@ -531,7 +537,7 @@ function SectionTitle({ title, detail }: { readonly title: string; readonly deta
 
 function EmptyBasket() {
   return (
-    <div style={emptyState}>
+    <div className="pos-basket-empty" style={emptyState}><span className="pos-empty-icon"><PosIcon name="bag" size={30} /></span>
       <strong>No items are in this sale.</strong>
       <span>Scan a barcode or search for a priced, sellable item.</span>
     </div>
@@ -597,7 +603,7 @@ function layoutFor(viewport: ViewportClass) {
     display: 'grid',
     gridTemplateColumns: viewportAtMost(viewport, 'expanded')
       ? autoColumns(300)
-      : 'minmax(270px, 0.8fr) minmax(440px, 1.45fr) minmax(300px, 0.9fr)',
+      : 'minmax(250px, 0.85fr) minmax(360px, 1.4fr) minmax(275px, 0.85fr)',
     gap: spacing.lg,
     padding: viewportAtMost(viewport, 'compact') ? spacing.md : spacing.xl,
     overflow: 'auto',

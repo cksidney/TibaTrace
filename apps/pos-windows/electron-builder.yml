@@ -39,6 +39,7 @@ extraMetadata:
   main: dist/main/main.js
 
 win:
+  icon: public/brand/tibatrace.ico
   target:
     - target: nsis
       arch: [x64]
@@ -62,6 +63,8 @@ win:
     timeStampServer: http://timestamp.digicert.com
 
 nsis:
+  installerIcon: public/brand/tibatrace.ico
+  uninstallerIcon: public/brand/tibatrace.ico
   oneClick: false
   perMachine: true
   allowToChangeInstallationDirectory: true

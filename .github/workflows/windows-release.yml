@@ -125,6 +125,10 @@ jobs:
             Write-Host "Signing certificate removed from the runner."
           }
 
+      - name: Verify TibaTrace executable and installer icons
+        shell: pwsh
+        run: ./scripts/verify_windows_branding.ps1
+
       - name: Verify Authenticode signature
         id: verify
         if: github.event_name != 'workflow_dispatch' || inputs.sign

@@ -69,7 +69,7 @@ describe('console keyboard navigation', () => {
   });
 
   it('opens help from other workspaces and does not navigate the clinical episode', () => {
-    act(() => button('retail').click());
+    act(() => button('Retail').click());
     key('F1');
     const modal = container.querySelector('[aria-labelledby="keyboard-help-title"]');
     expect(modal).not.toBeNull();

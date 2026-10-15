@@ -104,10 +104,10 @@ export function RegisterCentre({
   };
 
   return (
-    <main style={root} aria-label="Register Centre">
-      <header style={header}>
+    <main className="pos-support-workspace" style={root} aria-label="Register Centre">
+      <header className="pos-page-heading" style={header}>
         <div>
-          <p style={eyebrow}>Accountable till operations</p>
+          <p className="pos-eyebrow" style={eyebrow}>Accountable till operations</p>
           <h1 style={heading}>Register Centre</h1>
           <p style={subheading}>
             Open, count, move and close physical cash against the server-authoritative register session.
@@ -139,7 +139,7 @@ export function RegisterCentre({
         <div style={sectionHeader}>
           <div>
             <h2 style={sectionHeading}>Register lifecycle</h2>
-            <p style={subheading}>Every consequential action opens a confirmation dialog and refreshes the authoritative state.</p>
+            <p style={subheading}>Review and confirm each action before it is recorded.</p>
           </div>
         </div>
         <div style={actionGrid}>
@@ -222,7 +222,7 @@ export function RegisterCentre({
           <div style={sectionHeader}>
             <div>
               <h2 style={sectionHeading}>Immutable reports</h2>
-              <p style={subheading}>Snapshots are read as generated; totals are never recalculated in the client.</p>
+              <p style={subheading}>Saved reports preserve the totals recorded when they were generated.</p>
             </div>
           </div>
           {!latestX && !latestZ ? <Empty message="No X or Z report exists for this register." /> : (

@@ -97,6 +97,7 @@ function createWindow(): void {
 }
 
 app.whenReady().then(async () => {
+  app.setAppUserModelId('com.esenai.tibatrace.pos');
   clientMetadata = installedClientMetadata(app.getVersion(), JSON.parse(await readFile(join(app.getAppPath(), 'package.json'), 'utf8')));
   sessionStore = new EncryptedSessionStore();
   deviceId = await readDeviceId();
