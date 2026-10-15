@@ -385,6 +385,7 @@ export function OperationsConsole({
       style={{
         display: 'grid',
         gridTemplateRows: 'auto auto auto auto 1fr auto',
+        gridTemplateColumns: 'minmax(0, 1fr)',
         // dvh, not vh: on a phone the browser chrome is subtracted from dvh, so
         // the action bar sits above the address bar instead of under it. The
         // height is only pinned once the workspace scrolls internally; on a
