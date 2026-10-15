@@ -1,5 +1,9 @@
 # TibaTrace 1.0.0-rc48 — HQ layout and guided Windows dispensing
 
+Deployed 15 October 2026. Final-source gates and live acceptance passed; signed
+Windows POS 1.0.7 is published. See the
+[deployment verification](RC48_RELEASE_VERIFICATION_2026-10-15.md).
+
 Groups the existing permission-filtered HQ navigation into functional sections,
 compacts the header, and makes executive cards responsive and keyboard
 accessible. Executive figures are explicitly labelled as examples because they
