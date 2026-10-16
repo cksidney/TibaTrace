@@ -8,7 +8,7 @@ import { ClinicalReviewWorkspace, type ClinicalOverrideActionInput } from './com
 import { CollectionPanel, CounsellingPanel } from './components/tibatrace/CounsellingAndCollection.js';
 import { PatientSafetyBanner } from './components/tibatrace/PatientSafetyBanner.js';
 import { OperationalStatusBar } from './components/tibatrace/OperationalStatusBar.js';
-import { PaymentPanel } from './components/tibatrace/PaymentPanel.js';
+import { CheckoutPayments } from './components/tibatrace/CheckoutPayments.js';
 import { PrintCentre } from './components/tibatrace/PrintCentre.js';
 import { RegisterCentre } from './components/tibatrace/RegisterCentre.js';
 import { PrescriptionWorkspace } from './components/tibatrace/PrescriptionWorkspace.js';
@@ -113,10 +113,11 @@ export function OperationsConsole({
   readonly onLogout: () => Promise<void>;
   readonly onActivationRefresh: () => Promise<void>;
 }) {
+  const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [workspace, setWorkspace] = useState<
     'clinical' | 'retail' | 'register' | 'print' | 'sync' | 'activation'
   >(session.activationValid ? 'clinical' : 'activation');
-  const { state, refreshQueue, select, refresh, takePayment, confirmCollection, recordCounselling, journal } =
+  const { state, refreshQueue, select, refresh, confirmCollection, recordCounselling, journal } =
     usePosWorkflow('/api/pos/dispensing', apiFetch, runtime.offline, session.deviceId);
   // Was `useState<ClinicalSummary | null>(null)` with no setter, so the rail
   // rendered "No clinical result" for every episode and the screening endpoint
@@ -125,6 +126,7 @@ export function OperationsConsole({
     deviceId: session.deviceId,
     fetcher: apiFetch,
   });
+  const consoleBusy = state.busy || checkoutBusy;
   const [reviewFindingId, setReviewFindingId] = useState('');
   const [clinicalReviewBusy, setClinicalReviewBusy] = useState(false);
   const [clinicalReviewError, setClinicalReviewError] = useState('');
@@ -210,7 +212,7 @@ export function OperationsConsole({
         setShowKeyboardHelp(true);
         return;
       }
-      if (workspace !== 'clinical' || !session.activationValid || state.busy || clinicalReviewBusy) return;
+      if (workspace !== 'clinical' || !session.activationValid || consoleBusy || clinicalReviewBusy) return;
       if (command === 'CLOSE') {
         if (reviewFindingId) {
           event.preventDefault();
@@ -247,7 +249,7 @@ export function OperationsConsole({
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [locked, workspace, session.activationValid, state.busy, clinicalReviewBusy,
+  }, [locked, workspace, session.activationValid, consoleBusy, clinicalReviewBusy,
     showKeyboardHelp, reviewFindingId, state.selected, clinicalResult, refresh, refreshClinical, select]);
 
   const activeRibbonStage = useMemo(() => {
@@ -399,7 +401,7 @@ export function OperationsConsole({
       }}
     >
       <Header
-        busy={state.busy}
+        busy={consoleBusy}
         operator={session.username ?? session.userId}
         workspace={workspace}
         onWorkspaceChange={(next) => setWorkspace(session.activationValid ? next : 'activation')}
@@ -413,7 +415,7 @@ export function OperationsConsole({
         onOpenWorkspace={(next) => setWorkspace(session.activationValid ? next : 'activation')}
       />
       {workspace === 'retail' ? (
-        <RetailWorkspace apiFetch={apiFetch} deviceId={session.deviceId} />
+        <RetailWorkspace apiFetch={apiFetch} deviceId={session.deviceId} journal={journal} onPaymentBusy={setCheckoutBusy} />
       ) : workspace === 'register' ? (
         <RegisterCentre apiFetch={apiFetch} deviceId={session.deviceId} />
       ) : workspace === 'print' ? (
@@ -498,7 +500,7 @@ export function OperationsConsole({
             <div style={{ display: 'grid', gap: spacing.lg }}>
               <EpisodeWorkspace
                 episode={state.selected}
-                busy={state.busy || clinicalReviewBusy}
+                busy={consoleBusy || clinicalReviewBusy}
                 gateReason={state.gate.blockedReason}
                 onRefresh={() => void refresh()}
                 onBackToQueue={() => void select(null)}
@@ -564,17 +566,10 @@ export function OperationsConsole({
                 </div>
               ) : activeStep === 'payment' ? (
                 <section id="payment-workspace" style={{ display: 'grid', gap: spacing.xl }}>
-                  <PaymentPanel
-                    paymentState={state.selected.payment_state}
-                    amountDue={state.selected.amount_due ?? null}
-                    amountSettled={state.selected.amount_settled ?? null}
-                    canTakePayment={state.gate.canTakePayment}
-                    blockedReason={state.gate.canTakePayment ? '' : state.gate.blockedReason}
-                    busy={state.busy}
-                    onTakePayment={(tender, amount, reference) =>
-                      void takePayment(tender, amount, reference)
-                    }
-                  />
+                  <CheckoutPayments key={state.selected.id} apiFetch={apiFetch}
+                    path={`/api/pos/dispensing/episodes/${state.selected.id}/checkout/`}
+                    sourceId={state.selected.id} deviceId={session.deviceId} journal={journal}
+                    onChanged={refresh} onBusyChange={setCheckoutBusy} />
                   {paymentPermitsSupply(state.selected.payment_state) ? (
                     <div
                       style={{
@@ -619,7 +614,7 @@ export function OperationsConsole({
                 <div style={{ display: 'grid', gap: spacing.xl }}>
                   <CounsellingPanel
                     counsellingStatus={state.selected.counselling_status}
-                    busy={state.busy}
+                    busy={consoleBusy}
                     onRecord={(request) => void recordCounselling(request)}
                   />
                   <section id="collection-workspace">
@@ -628,7 +623,7 @@ export function OperationsConsole({
                       blockedReason={state.gate.canConfirmCollection ? '' : state.gate.blockedReason}
                       collectedAt={state.selected.collected_at ?? null}
                       collectorName={state.selected.collector_name}
-                      busy={state.busy}
+                      busy={consoleBusy}
                       onConfirm={(name, id, relationship) =>
                         void confirmCollection(name, id, relationship)
                       }
@@ -647,7 +642,7 @@ export function OperationsConsole({
           ) : (
             <Queue
               queue={state.queue}
-              busy={state.busy}
+              busy={consoleBusy}
               onSelect={(id) => void select(id)}
               apiFetch={apiFetch}
               operator={session.userId}

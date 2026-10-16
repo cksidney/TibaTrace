@@ -95,3 +95,32 @@ describe('DurableActionJournal', () => {
     expect(journal.canProceed(payment.episodeId)).toBe(true);
   });
 });
+
+it('stages an offline payment without sending it or claiming settlement', async () => {
+  const store = new MemoryStore();
+  const journal = new DurableActionJournal(store);
+  await journal.initialise();
+  await journal.stage(payment);
+  expect(journal.entries[0]?.state).toBe('PENDING');
+  expect(journal.entries[0]?.sentAt).toBeUndefined();
+  await journal.stage(payment);
+  expect(journal.entries).toHaveLength(1);
+  const restarted = new DurableActionJournal(store);
+  await restarted.initialise();
+  expect(restarted.entries[0]?.idempotencyKey).toBe(payment.idempotencyKey);
+  expect(restarted.entries[0]?.state).toBe('PENDING');
+});
+
+it('retries the original pending command without leaving a duplicate in recovery', async () => {
+  const journal = new DurableActionJournal(new MemoryStore());
+  await journal.initialise();
+  await journal.run(payment, async () => ({ kind: 'unknown' as const }));
+  const original = journal.entries[0]!;
+  await journal.reconcile(original.id, false);
+  await expect(journal.run({ ...payment, payload: { changed: true } }, async () => ({ kind: 'ok' as const }))).rejects.toThrow('saved command cannot be changed');
+  await journal.run({ ...payment, id: 'new-render-id' }, async () => ({ kind: 'ok' as const }));
+  expect(journal.entries).toHaveLength(1);
+  expect(journal.entries[0]?.id).toBe(original.id);
+  expect(journal.entries[0]?.state).toBe('CONFIRMED');
+  expect(journal.entries[0]?.attempts).toBe(2);
+});

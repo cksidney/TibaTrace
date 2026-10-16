@@ -125,9 +125,28 @@ class RetailRefundService:
             total += amount
         if total <= 0 or total > receipt.amount:
             raise ValidationError("The refundable cash amount must be positive and not exceed the original receipt.")
+        from apps.prescription.payment_models import PaymentTender
+        tenders = list(PaymentTender.all_objects.filter(tenant=tenant, payment_intent__retail_transaction=sale).order_by("created_at"))
+        prior_plans = RetailRefundRequest.all_objects.filter(tenant=tenant, transaction=sale, status__in=RESERVED).values_list("payment_plan", flat=True)
+        used_by_tender = {}
+        for plan in prior_plans:
+            for part in plan:
+                used_by_tender[part["tender_id"]] = used_by_tender.get(part["tender_id"], Decimal(0)) + Decimal(part["amount"])
+        outstanding = total
+        payment_plan = []
+        for tender in sorted(tenders, key=lambda t: t.tender_type != "CASH"):
+            available = tender.effective_settled - used_by_tender.get(str(tender.pk), Decimal(0))
+            amount = min(outstanding, available)
+            if amount > 0:
+                payment_plan.append({"tender_id": str(tender.pk), "tender_type": tender.tender_type, "amount": str(amount)})
+                outstanding -= amount
+        if tenders and outstanding > 0:
+            raise ValidationError("The refund exceeds unrefunded original payment value.")
+        if not tenders:
+            payment_plan = [{"tender_id": "legacy-cash", "tender_type": "CASH", "amount": str(total)}]
         request = RetailRefundRequest.all_objects.create(tenant=tenant, transaction=sale, original_receipt=receipt,
             reason=reason, amount=total, currency=receipt.currency, return_location=location, requested_by=actor,
-            idempotency_key=key, request_fingerprint=fingerprint)
+            idempotency_key=key, request_fingerprint=fingerprint, payment_plan=payment_plan)
         for original, qty, amount, physical, batch in prepared:
             RetailRefundLine.all_objects.create(tenant=tenant, refund_request=request, original_line=original,
                 quantity=qty, amount=amount, return_to_stock=physical, inventory_batch=batch)
@@ -158,7 +177,7 @@ class RetailRefundService:
 
     @classmethod
     @transaction.atomic
-    def execute_cash(cls, *, tenant, transaction_id, request_id, actor, device_id, idempotency_key):
+    def execute_cash(cls, *, tenant, transaction_id, request_id, actor, device_id, idempotency_key, payment_references=None):
         _require(actor, tenant.pk, "pos.refund.cash.execute")
         key = idempotency_key.strip()
         if not key:
@@ -175,17 +194,39 @@ class RetailRefundService:
         if keyed or existing:
             receipt = existing or keyed
             if receipt.refund_request_id == request.pk and receipt.idempotency_key == key and receipt.created_by_id == actor.pk and receipt.device_id == device_id:
+                for part in receipt.payment_plan:
+                    if part["tender_type"] == "CARD" and str((payment_references or {}).get(part["tender_id"], "")).strip() != part.get("reference", ""):
+                        raise ValidationError("This refund retry has different terminal approval details.")
                 return receipt
             raise ValidationError("This refund or idempotency key has already been completed with different details.")
         if request.status != RetailRefundRequest.Status.APPROVED or request.approved_by_id == request.requested_by_id:
             raise ValidationError("An independently approved refund request is required before handing cash back.")
         if not request.approved_by or not request.approved_by.has_capability("pos.refund.approve", tenant_id=tenant.pk):
             raise ValidationError("The refund approver is no longer active or authorised; an active independent approval is required.")
+        payment_references = payment_references or {}
+        plan = request.payment_plan or [{"tender_id": "legacy-cash", "tender_type": "CASH", "amount": str(request.amount)}]
+        cash_amount = sum((Decimal(part["amount"]) for part in plan if part["tender_type"] == "CASH"), Decimal(0))
+        completed_plan = []
+        used_references = set()
+        for part in plan:
+            reference = str(payment_references.get(part["tender_id"], "")).strip()
+            if part["tender_type"] == "MPESA":
+                raise ValidationError("M-PESA refunds require a verified Daraja reversal integration; cash cannot substitute for a mobile payment reversal.")
+            if part["tender_type"] == "CARD":
+                if not reference or len(reference) > 128:
+                    raise ValidationError("Record the external terminal refund approval reference for each card portion.")
+                if reference in used_references:
+                    raise ValidationError("Record a distinct terminal approval for each card refund portion.")
+                used_references.add(reference)
+                prior_refunds = RetailCashRefund.all_objects.filter(tenant=tenant).values_list("payment_plan", flat=True)
+                if any(reference == item.get("reference") for previous in prior_refunds for item in previous if item.get("tender_type") == "CARD"):
+                    raise ValidationError("This terminal refund approval reference has already been recorded.")
+            completed_plan.append({**part, "reference": reference})
         authority = PosRetailService._authority(tenant=tenant, branch=sale.branch, actor=actor, device_id=device_id)
         if request.currency != authority.register.currency:
             raise ValidationError("Refund currency does not match the active register.")
         from apps.pos_shift.cash_control import CashControlService
-        if CashControlService.expected_cash(session=authority.session).expected < request.amount:
+        if CashControlService.expected_cash(session=authority.session).expected < cash_amount:
             raise ValidationError("The active drawer has insufficient expected cash for this refund; use an authorised cash-in or funded register.")
         lines = list(RetailRefundLine.all_objects.filter(tenant=tenant, refund_request=request).select_related("original_line__sku", "inventory_batch"))
         location = request.return_location
@@ -214,10 +255,12 @@ class RetailRefundService:
                 "disposition": "QUARANTINE_PENDING_QUALITY_REVIEW" if line.return_to_stock else "FINANCIAL_ONLY_NO_STOCK_RECEIVED"})
         receipt = RetailCashRefund.all_objects.create(tenant=tenant, refund_request=request, original_receipt=original_receipt,
             register=authority.register, register_session=authority.session, operator_shift=authority.operator_shift,
-            device_id=device_id, amount=request.amount, currency=request.currency, lines_snapshot=snapshot,
+            device_id=device_id, amount=request.amount, cash_amount=cash_amount, payment_plan=completed_plan, currency=request.currency, lines_snapshot=snapshot,
             created_by=actor, approved_by=request.approved_by, idempotency_key=key)
         request.status = RetailRefundRequest.Status.COMPLETED
         request.save(update_fields=["status", "updated_at"])
+        from apps.prescription.fiscal import FiscalService
+        FiscalService.enqueue(source=receipt)
         cls._audit(request, actor, "RETAIL_CASH_REFUND_COMPLETED", {"receipt": receipt.refund_number, "amount": str(receipt.amount)})
         try:
             from apps.prescription.pos_printing_services import PosPrintDocumentService

@@ -2009,6 +2009,7 @@ class PosLabelReprintAudit(TenantConsistencyMixin, TimestampedModel):
 
 # The POS payment intent and settlement ledger lives in its own module for
 # readability; re-exported here so Django registers it with this app.
+from apps.prescription.fiscal_models import FiscalSubmission  # noqa: E402,F401
 from apps.prescription.payment_models import (  # noqa: E402,F401
     PaymentAttempt,
     PaymentIntent,

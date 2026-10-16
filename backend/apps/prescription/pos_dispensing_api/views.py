@@ -64,6 +64,11 @@ class PosDispensingViewSet(RequireAlignedPosClientMixin, viewsets.ReadOnlyModelV
     pos_read_capabilities = DISPENSING_READ_CAPABILITIES
     serializer_class = PosDispensingEpisodeSerializer
 
+    @action(detail=True, methods=["get", "post"])
+    def checkout(self, request, pk=None):
+        from apps.prescription.checkout_api import checkout_response
+        return checkout_response(request, self.get_object())
+
     def get_queryset(self):
         tenant = getattr(self.request, "tenant", None)
         if not tenant:

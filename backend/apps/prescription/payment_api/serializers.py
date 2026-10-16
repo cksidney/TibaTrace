@@ -12,6 +12,7 @@ from apps.prescription.payment_models import (
 
 
 class PaymentTenderSerializer(serializers.ModelSerializer):
+    command_key = serializers.CharField(source="idempotency_key", read_only=True)
     effective_settled = serializers.SerializerMethodField()
     allocated_amount = serializers.SerializerMethodField()
     settled_amount = serializers.SerializerMethodField()
@@ -22,7 +23,7 @@ class PaymentTenderSerializer(serializers.ModelSerializer):
     class Meta:
         model = PaymentTender
         fields = [
-            "id",
+            "id", "command_key",
             "tender_type",
             "provider",
             "allocated_amount",
@@ -154,3 +155,21 @@ class PaymentSettlementSerializer(serializers.ModelSerializer):
             "settled_at",
         ]
         read_only_fields = fields
+
+
+class CheckoutCommandSerializer(serializers.Serializer):
+    operation = serializers.ChoiceField(choices=["collect", "initiate", "query", "fiscal", "finish", "request_void", "complete_void"])
+    reason = serializers.CharField(max_length=1000, allow_blank=True, default="")
+    payment_references = serializers.DictField(child=serializers.CharField(max_length=128), default=dict)
+    device_id = serializers.CharField(max_length=128)
+    tender_type = serializers.ChoiceField(choices=["CASH", "CARD", "MPESA"], default="CASH")
+    amount = serializers.DecimalField(max_digits=15, decimal_places=2, min_value=Decimal("0.01"), required=False)
+    cash_received = serializers.DecimalField(max_digits=15, decimal_places=2, min_value=Decimal("0"), default=Decimal("0"))
+    reference = serializers.CharField(max_length=128, allow_blank=True, default="")
+    phone_number = serializers.CharField(max_length=24, allow_blank=True, default="")
+    idempotency_key = serializers.CharField(max_length=180, required=False, trim_whitespace=True, allow_blank=False)
+
+    def validate(self, data):
+        if data["operation"] in {"collect", "initiate"} and ("amount" not in data or "idempotency_key" not in data):
+            raise serializers.ValidationError("An amount and stable command key are required.")
+        return data

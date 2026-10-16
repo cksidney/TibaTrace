@@ -159,3 +159,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 @media(max-width:600px) { .pos-header-tools .pos-signout { display:inline-flex; } .pos-header-tools { gap:3px; } .pos-header-tools button { padding:6px 7px; } }
 @media(min-width:1101px) { .pos-header .pos-operator { display:flex; } }
 @media(max-width:1100px) { .pos-workspace-nav { order:3; width:100%; } .pos-header-tools { margin-left:auto; } }
+.pos-checkout { display:grid; gap:18px; padding:22px; border:1px solid #dce6e9; border-radius:14px; background:#fff; }
+.pos-checkout h2 { margin:5px 0; font-size:22px; }
+.pos-payment-totals { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; padding:17px; border-radius:10px; background:#f0f7f5; }
+.pos-payment-totals small,.pos-payment-totals strong { display:block; }.pos-payment-totals small { color:#5f7b80; font-size:11px; margin-bottom:8px; }.pos-payment-totals strong { font-size:21px; overflow-wrap:anywhere; }
+.pos-tender-options { display:flex; gap:8px; flex-wrap:wrap; }.pos-tender-options button { min-height:44px; padding:10px 14px; border:1px solid #d5e2e6; border-radius:8px; background:white; color:#365465; font-size:12px; font-weight:650; cursor:pointer; }.pos-tender-options button[aria-pressed=true] { background:#e6f4ee; color:#146550; border-color:#5eaa92; }
+.pos-payment-fields { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,190px),1fr)); gap:16px; }.pos-payment-fields label { display:grid; gap:7px; font-size:12px; font-weight:600; }.pos-payment-help { margin:0; color:#69818c; font-size:12px; line-height:1.6; }
+.pos-payment-notice { padding:14px; border:1px solid #e8d6b1; background:#fff8e9; color:#775921; border-radius:8px; font-size:13px; line-height:1.5; overflow-wrap:anywhere; }
+.pos-settlement-list { display:grid; gap:10px; }.pos-settlement-list article { display:flex; align-items:center; flex-wrap:wrap; gap:14px; padding:14px 0; border-top:1px solid #e2ebed; }.pos-settlement-list article div { flex:1; }.pos-settlement-list article span { display:block; color:#728996; font-size:11px; margin-top:5px; }
+.pos-fiscal-status { padding:15px; border:1px solid #d7e7e0; border-radius:9px; font-size:12px; line-height:1.6; }.pos-fiscal-status p { overflow-wrap:anywhere; }.pos-fiscal-status dl { display:grid; gap:7px; }.pos-fiscal-status dd { margin:2px 0; overflow-wrap:anywhere; }

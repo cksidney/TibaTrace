@@ -36,9 +36,10 @@ export class PosRetailClient {
     });
   }
 
-  cashRefund(transactionId: string, refundId: string, deviceId: string, key: string): Promise<RetailCashRefundDTO> {
+  cashRefund(transactionId: string, refundId: string, deviceId: string, key: string, paymentReferences?: Readonly<Record<string, string>>): Promise<RetailCashRefundDTO> {
     return this.request(`/transactions/${transactionId}/cash-refund/`, 'POST', {
       refund_request_id: refundId, device_id: deviceId, idempotency_key: key,
+      ...(paymentReferences ? { payment_references: paymentReferences } : {}),
     });
   }
 

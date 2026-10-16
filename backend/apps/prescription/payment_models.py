@@ -67,14 +67,15 @@ class PaymentIntent(TenantConsistencyMixin, TimestampedModel):
         {"CREATED", "OPEN", "PARTIALLY_SETTLED", "REVERSAL_PENDING"}
     )
 
-    tenant_relation_fields = ("branch", "dispensing_episode")
+    tenant_relation_fields = ("branch", "dispensing_episode", "retail_transaction")
     tenant = models.ForeignKey("tenancy.Tenant", on_delete=models.CASCADE, related_name="+")
     branch = models.ForeignKey("organizations.Location", on_delete=models.PROTECT, related_name="+")
     dispensing_episode = models.ForeignKey(
         "prescription.DispensingEpisode",
         on_delete=models.PROTECT,
-        related_name="payment_intents",
+        related_name="payment_intents", null=True, blank=True,
     )
+    retail_transaction = models.ForeignKey("pos_transactions.PosTransaction", on_delete=models.PROTECT, null=True, blank=True, related_name="payment_intents")
     device_id = models.CharField(max_length=128, blank=True, default="")
     register_id = models.CharField(max_length=128, blank=True, default="")
 
@@ -96,6 +97,8 @@ class PaymentIntent(TenantConsistencyMixin, TimestampedModel):
 
     class Meta:
         constraints = [
+            models.CheckConstraint(condition=(Q(dispensing_episode__isnull=False, retail_transaction__isnull=True) | Q(dispensing_episode__isnull=True, retail_transaction__isnull=False)), name="chk_payment_intent_one_source"),
+            models.UniqueConstraint(fields=["retail_transaction"], condition=Q(retail_transaction__isnull=False), name="uq_payment_intent_retail_sale"),
             models.UniqueConstraint(
                 fields=["tenant", "idempotency_key"], name="uq_payment_intent_idempotency"
             ),

@@ -117,6 +117,17 @@ export function SyncCentre({ apiFetch, deviceId, journal, onOpenPrint, initialSn
     setBusy(true);
     setError('');
     try {
+      const checkoutPath = entryToReconcile.payload.checkout_path;
+      if (typeof checkoutPath === 'string' && /^\/api\/pos\/(retail\/transactions|dispensing\/episodes)\/[a-f0-9-]+\/checkout\/$/.test(checkoutPath)) {
+        const response = await request(checkoutPath);
+        const result = await response.json() as { intent?: { tenders?: readonly { command_key: string }[] } };
+        const applied = result.intent?.tenders?.some(t => t.command_key === entryToReconcile.idempotencyKey) ?? false;
+        await journal.reconcile(entryToReconcile.id, applied);
+        setEntries(journal.entries);
+        setNotice(applied ? 'The original checkout command is recorded. Refresh the sale to see settlement status.' : 'No original command was found. Return to the sale and retry the saved command with its original key.');
+        setEntryToReconcile(null);
+        return;
+      }
       const response = await request(`/api/pos/dispensing/episodes/${entryToReconcile.episodeId}/reconcile-action/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

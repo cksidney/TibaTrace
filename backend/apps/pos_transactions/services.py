@@ -459,9 +459,11 @@ class PosRetailService:
         device_id: str,
         cash_received,
         idempotency_key: str,
+        _settled_intent=None,
     ):
         """Atomically accept cash, issue FEFO stock, and complete a retail sale."""
-        _require(actor, tenant.pk, "pos.payment.cash.accept")
+        if _settled_intent is None:
+            _require(actor, tenant.pk, "pos.payment.cash.accept")
         key = idempotency_key.strip()
         if not key:
             raise ValidationError("A cash settlement idempotency key is required.")
@@ -491,8 +493,20 @@ class PosRetailService:
                 return transaction_record
             raise ValidationError("This retail sale has already been settled.")
 
-        if transaction_record.state != PosTransaction.State.READY_FOR_PAYMENT:
+        if transaction_record.state != PosTransaction.State.READY_FOR_PAYMENT and not (_settled_intent and transaction_record.state == PosTransaction.State.PAYMENT_IN_PROGRESS):
             raise ValidationError("Only a sale ready for payment can be settled in cash.")
+        ledger_tenders = []
+        if _settled_intent:
+            from apps.prescription.payment_models import PaymentIntent, PaymentTender
+            _settled_intent = PaymentIntent.all_objects.select_for_update().get(pk=_settled_intent.pk, tenant=tenant, retail_transaction=transaction_record)
+            if _settled_intent.status != "SETTLED" or _settled_intent.effective_settled != transaction_record.total:
+                raise ValidationError("The complete sale must be settled in the payment ledger.")
+            ledger_tenders = [t for t in PaymentTender.all_objects.filter(tenant=tenant, payment_intent=_settled_intent).exclude(status="CANCELLED") if t.effective_settled > 0]
+            from apps.inventory.models import InventoryReservation
+            from apps.inventory.services import InventoryReservationService
+            reservations = InventoryReservation.all_objects.filter(tenant=tenant, source_document=str(transaction_record.pk), purpose="POS_CHECKOUT", status="ALLOCATED").order_by("pk")
+            for reservation in reservations:
+                InventoryReservationService.release_reservation(reservation=reservation, actor=actor)
         if received <= 0:
             raise ValidationError("Cash received must be greater than zero.")
         if transaction_record.store.status != InventoryLocation.Status.ACTIVE:
@@ -550,13 +564,15 @@ class PosRetailService:
             if line.sku.stock_tracking_required and item.available_quantity < line.quantity:
                 insufficient_stock = True
             current_price = money(item.resolved_price.unit_price)
-            if current_price != line.unit_price:
+            if current_price != line.unit_price and _settled_intent is None:
                 price_changed = True
                 line.unit_price = current_price
                 line.line_total = money(current_price * line.quantity)
                 line.price_snapshot = cls._price_snapshot(item=item, unit_price=current_price)
                 repriced_lines.append(line)
             cls._update_inventory_context(line=line, item=item, store=transaction_record.store)
+        if _settled_intent and (price_changed or insufficient_stock):
+            raise ValidationError("The paid basket needs stock/price review; settlement is retained and may not be repeated.")
         if price_changed or insufficient_stock:
             transaction_record.state = PosTransaction.State.DRAFT
             transaction_record.save(update_fields=["state", "updated_at"])
@@ -576,12 +592,16 @@ class PosRetailService:
                     actor=actor,
                 )
 
+        methods = {t.tender_type for t in ledger_tenders}
+        receipt_method = (next(iter(methods)) if len(methods) == 1 else "SPLIT") if methods else "CASH"
+        tender_snapshot = [{"tender_type": t.tender_type, "amount": str(t.effective_settled), "reference": t.external_reference} for t in ledger_tenders]
         receipt = RetailCashReceipt.all_objects.create(
             tenant=tenant,
             transaction=transaction_record,
+            tender_type=receipt_method,
             amount=transaction_record.total,
-            cash_received=received,
-            change_due=received - transaction_record.total,
+            cash_received=sum((t.cash_received or Decimal("0") for t in ledger_tenders), Decimal("0")) if ledger_tenders else received,
+            change_due=sum((t.change_due or Decimal("0") for t in ledger_tenders), Decimal("0")) if ledger_tenders else received - transaction_record.total,
             currency=transaction_record.currency,
             lines_snapshot=[
                 {
@@ -597,6 +617,7 @@ class PosRetailService:
                 for line in lines
             ],
             totals_snapshot={
+                "tenders": tender_snapshot,
                 "subtotal": str(transaction_record.subtotal),
                 "discount_total": str(transaction_record.discount_total),
                 "tax_total": str(transaction_record.tax_total),
@@ -635,7 +656,7 @@ class PosRetailService:
                 "register_session_id": str(transaction_record.register_session_id),
                 "total": str(receipt.amount),
                 "currency": receipt.currency,
-                "tender_type": "CASH",
+                "tender_type": receipt_method,
             },
         )
         return transaction_record

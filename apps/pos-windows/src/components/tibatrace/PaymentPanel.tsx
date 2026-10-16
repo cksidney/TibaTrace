@@ -2,7 +2,7 @@ import { action, autoColumns, fontFamily, fontSize, spacing, statusPalette, surf
 import type { PaymentMode, PaymentState, PaymentTenderType } from '@dawatrace/shared/dispensing/index.js';
 import { TENDER_OPTIONS, paymentPermitsSupply } from '@dawatrace/shared/dispensing/index.js';
 import { formatDecimal, formatMoney } from '@dawatrace/shared/money.js';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 import { BlockingReason, StatusBadge } from './StatusBadge.js';
 
@@ -167,12 +167,13 @@ export function PaymentPanel({
   readonly canTakePayment: boolean;
   readonly blockedReason: string;
   readonly busy: boolean;
-  readonly onTakePayment: (tender: PaymentTenderType, amount: string, reference: string) => void;
+  readonly onTakePayment: (tender: PaymentTenderType, amount: string, reference: string) => unknown | Promise<unknown>;
 }) {
   const [tender, setTender] = useState<PaymentMode>('CASH');
   const [amount, setAmount] = useState(() => defaultAmount(amountDue, amountSettled));
   const [reference, setReference] = useState('');
   const [submitted, setSubmitted] = useState(false);
+  const submitting = useRef(false);
 
   const meta = paymentStatusMeta(paymentState);
   const selected = TENDER_OPTIONS.find((option) => option.type === tender);
@@ -292,13 +293,20 @@ export function PaymentPanel({
         // same answer, so the control can never look available while inert.
         disabled={!paymentControl.enabled}
         title={paymentControl.reason}
-        onClick={() => {
+        onClick={async () => {
           // Guards a double-submit: a second click must not become a second
           // charge while the first is still in flight.
+          if (submitting.current) return;
+          submitting.current = true;
           setSubmitted(true);
           // SPLIT is a UI mode, never a tender the server accepts, so it can
           // only reach here as a real tender type.
-          onTakePayment(tender as PaymentTenderType, amount, reference);
+          try {
+            await onTakePayment(tender as PaymentTenderType, amount, reference);
+          } finally {
+            submitting.current = false;
+            setSubmitted(false);
+          }
         }}
         style={{
           alignSelf: 'flex-start',

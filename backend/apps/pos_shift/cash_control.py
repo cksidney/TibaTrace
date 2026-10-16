@@ -173,12 +173,15 @@ class CashControlService:
         retail_cash = RetailCashReceipt.all_objects.filter(
             tenant_id=session.tenant_id,
             transaction__register_session_id=session.pk,
+            transaction__payment_intents__isnull=True,
         ).aggregate(total=Sum("amount"))["total"] or ZERO
-        retail_refunds = RetailCashRefund.all_objects.filter(
-            tenant_id=session.tenant_id, register_session=session
-        ).aggregate(total=Sum("amount"))["total"] or ZERO
-        if retail_cash or retail_refunds:
-            by_type["CASH"] = money(by_type.get("CASH", ZERO) + retail_cash - retail_refunds)
+        if retail_cash:
+            by_type["CASH"] = money(by_type.get("CASH", ZERO) + retail_cash)
+        for refund in RetailCashRefund.all_objects.filter(tenant_id=session.tenant_id, register_session=session):
+            plan = refund.payment_plan or [{"tender_type": "CASH", "amount": refund.cash_amount}]
+            for part in plan:
+                key = part["tender_type"]
+                by_type[key] = money(by_type.get(key, ZERO) - money(part["amount"]))
         return TenderBreakdown(by_type=by_type)
 
     @staticmethod
@@ -210,7 +213,7 @@ class CashControlService:
         from apps.pos_transactions.models import RetailCashRefund
         retail_refunds = money(RetailCashRefund.all_objects.filter(
             tenant_id=session.tenant_id, register_session=session
-        ).aggregate(total=Sum("amount"))["total"])
+        ).aggregate(total=Sum("cash_amount"))["total"])
         return ExpectedCash(
             opening=cls.opening_cash(session=session),
             # Tender totals are net; expose retail refunds separately in X/Z

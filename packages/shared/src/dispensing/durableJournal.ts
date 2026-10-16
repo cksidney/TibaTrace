@@ -69,13 +69,17 @@ export class DurableActionJournal {
       );
     }
 
-    const queued: OfflineAction = {
+    const pending = this.actions.find(entry => entry.idempotencyKey === input.idempotencyKey && entry.state === 'PENDING');
+    if (pending && (pending.episodeId !== input.episodeId || pending.type !== input.type || JSON.stringify(pending.payload) !== JSON.stringify(input.payload))) {
+      throw new Error('The saved command cannot be changed while it is pending.');
+    }
+    const queued: OfflineAction = pending ?? {
       ...input,
       state: 'PENDING',
       queuedAt: new Date().toISOString(),
       attempts: 0,
     };
-    this.actions = [...this.actions, queued];
+    if (!pending) this.actions = [...this.actions, queued];
     await this.persist(markSent(this.actions, queued.id));
 
     try {
@@ -98,6 +102,15 @@ export class DurableActionJournal {
       await this.persist(recoverAfterRestart(this.actions));
       throw cause;
     }
+  }
+
+  /** Stage an operator-confirmed command without claiming server settlement. */
+  async stage(input: JournalAction): Promise<void> {
+    if (!this.ready || !canProceed(this.actions, input.episodeId)) {
+      throw new Error('Resolve the previous unknown action before staging another command.');
+    }
+    if (this.actions.some(action => action.idempotencyKey === input.idempotencyKey)) return;
+    await this.persist([...this.actions, { ...input, state: 'PENDING', queuedAt: new Date().toISOString(), attempts: 0 }]);
   }
 
   /**
