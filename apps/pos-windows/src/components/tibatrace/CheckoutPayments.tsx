@@ -25,7 +25,12 @@ export function CheckoutPayments({apiFetch, path, sourceId, deviceId, journal, o
     let response:Response;
     try {response=await apiFetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});}
     catch{return{kind:'unknown' as const,message:'Outcome unknown. Check the original payment before collecting again.'};}
-    if(!response.ok){const data:unknown=await response.json().catch(()=>null);return{kind:response.status>=500?'unknown' as const:'blocked' as const,message:typeof data==='string'?data:JSON.stringify(data??'Payment refused')};}
+    if(!response.ok){
+      const data:unknown=await response.json().catch(()=>null);
+      const messages=typeof data==='string'?[data]:Array.isArray(data)?data:data&&typeof data==='object'?Object.values(data).flat():[];
+      const detail=messages.filter((value):value is string=>typeof value==='string').join(' ');
+      return{kind:response.status>=500?'unknown' as const:'blocked' as const,message:response.status>=500?'Outcome unknown. Check the original payment before collecting again.':response.status===403?'Your account is not authorised for this payment action.':detail||'Payment was refused. Refresh the sale and review its requirements.'};
+    }
     const data=await response.json() as Checkout;setCheckout(data);
     return{kind:'ok' as const};
   };
@@ -59,6 +64,7 @@ export function CheckoutPayments({apiFetch, path, sourceId, deviceId, journal, o
   const changeDue=retailCashChangeDue(amount||balance||'',received||amount||balance||'');
   const available=checkout?.methods.find(m=>m.type===method)?.available??false;
   const disabled=busy||checkout?.intent?.status==='REVERSAL_PENDING'||pending.length>0||!available||balance===null||!validAmount||!Number.isFinite(keyed)||keyed<=0||keyed>Number(balance)||(method==='CARD'&&!reference.trim())||(method==='CASH'&&changeDue===null)||(method==='MPESA'&&!phone.trim());
+  const fullySettled=checkout?.intent?.status==='SETTLED'&&Number(checkout.intent.effective_settled)>0&&balance!==null&&Number(balance)===0;
   const pendingProvider=checkout?.intent?.tenders.some(t=>t.status==='PENDING');
   return <section className="pos-checkout" aria-label="Payment checkout">
     <header className="pos-page-heading"><div><span className="pos-eyebrow">Secure checkout</span><h2>Payment</h2><p>Pay in full or enter a part amount and complete the balance with another method.</p></div><button className="pos-button" disabled={busy} onClick={()=>void execute(async()=>{await load();await onChanged();})}><PosIcon name="sync" size={16}/>Refresh</button></header>
@@ -82,6 +88,7 @@ export function CheckoutPayments({apiFetch, path, sourceId, deviceId, journal, o
       {!!checkout.voids?.length&&<button className="pos-button" disabled={busy||!checkout.can_approve_void||checkout.voids.some(v=>v.own_request||v.method==='MPESA'||(v.method==='CARD'&&!voidReferences[v.id]?.trim()))} onClick={()=>command('complete_void')}>Supervisor: confirm original-method return</button>}
     </details>}
     {pendingProvider&&<button className="pos-button" disabled={busy} onClick={()=>command('query')}>Check M-PESA status</button>}
-    {balance!==null&&Number(balance)===0&&<div className="pos-fiscal-status"><b>Payment settled</b>{checkout?.completion_error&&<p role="alert">{checkout.completion_error}</p>}{checkout?.sale_state==='PAYMENT_IN_PROGRESS'&&<><p>Payment is recorded. Complete the stock handover after resolving any stock or register warning.</p><button className="pos-button" disabled={busy} onClick={()=>command('finish')}>Finish paid sale</button></>}<p>Fiscal receipt: {checkout?.fiscal.status.replace(/_/g,' ')}. {checkout?.fiscal.message}</p>{checkout?.fiscal.receipt&&<dl>{Object.entries(checkout.fiscal.receipt).map(([k,v])=><div key={k}><dt>{k}</dt><dd>{String(v)}</dd></div>)}</dl>}<button className="pos-button" disabled={busy} onClick={()=>command('fiscal')}>Check / issue VSCU receipt</button></div>}
+    {balance!==null&&Number(balance)===0&&!fullySettled&&<p className="pos-payment-notice">No amount to collect. Coverage or exemption status is checked separately before supply.</p>}
+    {fullySettled&&<div className="pos-fiscal-status"><b>Payment settled</b>{checkout?.completion_error&&<p role="alert">{checkout.completion_error}</p>}{checkout?.sale_state==='PAYMENT_IN_PROGRESS'&&<><p>Payment is recorded. Complete the stock handover after resolving any stock or register warning.</p><button className="pos-button" disabled={busy} onClick={()=>command('finish')}>Finish paid sale</button></>}<p>Fiscal receipt: {checkout?.fiscal.status.replace(/_/g,' ')}. {checkout?.fiscal.message}</p>{checkout?.fiscal.receipt&&<dl>{Object.entries(checkout.fiscal.receipt).map(([k,v])=><div key={k}><dt>{k}</dt><dd>{String(v)}</dd></div>)}</dl>}<button className="pos-button" disabled={busy} onClick={()=>command('fiscal')}>Check / issue VSCU receipt</button></div>}
   </section>;
 }

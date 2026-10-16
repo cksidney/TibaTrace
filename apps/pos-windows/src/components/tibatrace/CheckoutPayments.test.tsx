@@ -15,3 +15,23 @@ it('releases the old submit latch after a definite refusal without remounting',a
 it('retains rejected payment input and allows correction and retry',async()=>{const j=await journal();const writes:Record<string,unknown>[]=[];const fetcher=vi.fn<typeof fetch>(async(_p,init)=>{if(init?.method==='POST'){writes.push(JSON.parse(String(init.body)));return new Response(JSON.stringify({detail:'Card reference refused'}),{status:400});}return new Response(JSON.stringify(snapshot));});await act(async()=>root.render(<CheckoutPayments apiFetch={fetcher} path="/api/pos/retail/transactions/sale-1/checkout/" sourceId="sale-1" deviceId="till-1" journal={j} onChanged={async()=>{}}/>));input('Amount to settle','400');await act(async()=>button('Confirm payment').click());expect(writes[0]?.amount).toBe('400');expect(j.entries[0]?.state).toBe('REJECTED');expect(button('Confirm payment').disabled).toBe(false);expect(container.textContent).toContain('Card reference refused');});
 it('records an unknown outcome and prevents another collection',async()=>{const j=await journal();const fetcher=vi.fn<typeof fetch>(async(_p,init)=>{if(init?.method==='POST')throw Error('network');return new Response(JSON.stringify(snapshot));});await act(async()=>root.render(<CheckoutPayments apiFetch={fetcher} path="/api/pos/retail/transactions/sale-1/checkout/" sourceId="sale-1" deviceId="till-1" journal={j} onChanged={async()=>{}}/>));await act(async()=>button('Confirm payment').click());expect(j.entries[0]?.state).toBe('NEEDS_RECONCILIATION');expect(button('Confirm payment').disabled).toBe(true);expect(container.textContent).toContain('Check original payment');expect(button('M-PESA').disabled).toBe(true);});
 it('never posts a payment without secure recovery storage',async()=>{const fetcher=vi.fn<typeof fetch>(async()=>new Response(JSON.stringify(snapshot)));await act(async()=>root.render(<CheckoutPayments apiFetch={fetcher} path="/checkout/" sourceId="sale" deviceId="till" journal={null} onChanged={async()=>{}}/>));await act(async()=>button('Confirm payment').click());expect(fetcher).toHaveBeenCalledTimes(1);expect(container.textContent).toContain('Secure payment recovery is unavailable');});
+
+it('does not claim payment or offer fiscal issuance for a zero balance with no settlement',async()=>{
+  const fetcher=vi.fn<typeof fetch>(async()=>new Response(JSON.stringify({...snapshot,amount_due:'0.00'})));
+  await act(async()=>root.render(<CheckoutPayments apiFetch={fetcher} path="/checkout/" sourceId="sale" deviceId="till" journal={null} onChanged={async()=>{}}/>));
+  expect(container.textContent).toContain('No amount to collect');
+  expect(container.textContent).not.toContain('Payment settled');
+  expect(container.textContent).not.toContain('Check / issue VSCU receipt');
+});
+it('does not label a legacy zero-value intent as collected money',async()=>{
+  const fetcher=vi.fn<typeof fetch>(async()=>new Response(JSON.stringify({...snapshot,amount_due:'0.00',intent:{status:'SETTLED',amount_remaining:'0.00',effective_settled:'0.00',tenders:[]}})));
+  await act(async()=>root.render(<CheckoutPayments apiFetch={fetcher} path="/checkout/" sourceId="sale" deviceId="till" journal={null} onChanged={async()=>{}}/>));
+  expect(container.textContent).toContain('No amount to collect');
+  expect(container.textContent).not.toContain('Payment settled');
+});
+it('shows paid confirmation only for positive settled ledger evidence',async()=>{
+  const fetcher=vi.fn<typeof fetch>(async()=>new Response(JSON.stringify({...snapshot,intent:{status:'SETTLED',amount_remaining:'0.00',effective_settled:'1000.00',tenders:[]}})));
+  await act(async()=>root.render(<CheckoutPayments apiFetch={fetcher} path="/checkout/" sourceId="sale" deviceId="till" journal={null} onChanged={async()=>{}}/>));
+  expect(container.textContent).toContain('Payment settled');
+  expect(container.textContent).toContain('Check / issue VSCU receipt');
+});
