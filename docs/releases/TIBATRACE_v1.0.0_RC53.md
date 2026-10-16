@@ -1,0 +1,9 @@
+# TibaTrace 1.0.0-rc53
+
+Adds a tenant-scoped physical register setup modal with explicit device/identity management authority, duplicate-code prevention and non-negative KES float validation. Cash-control views, current POS shifts and new X/Z snapshots expose completed customer visit counts; historical reports without counts remain labelled Not recorded. New eTIMS monitoring reads the existing payment fiscal outbox, displays only accepted provider evidence and never retransmits a queued, accepted, rejected or uncertain invoice. Configuration remains server-managed. A platform owner may prepare an unprepared invoice after the existing registered service/mapping validation; the existing worker performs delivery.
+
+Windows POS 1.0.11 build 11 includes the new counts and disables episode step changes during payment/clinical writes. Existing checkout, clinical gates, TibaTrace branding, recovery and refund rules are preserved.
+
+Review of the original local drafts retained already-deployed dashboard/workflow improvements and replaced their competing fiscal ledger with the existing authoritative outbox. Draft demo certification placeholders and a second clinical transition engine did not pass source review and remain in the preserved local snapshot, outside the production release. No clinical certification claim is made. Dependency stores, alternate generated lockfiles and unrelated document exports are excluded. The original working checkout is unchanged.
+
+No database migrations are introduced. Validation requires the full SQLite and PostgreSQL production suites, all application checks/builds/tests, image scans and provenance, plus signed Windows installation/branding checks. The installed VSCU configuration location and Daraja credentials have not been supplied; live provider activation stays pending.

@@ -61,6 +61,7 @@ import {
   loadCustomers,
   loadPosDeviceHealth,
   loadPosRegisters,
+  createPosRegister,
   loadCashMovements,
   loadCashDeclarations,
   loadBusinessDays,
@@ -845,7 +846,7 @@ export function Dashboard({
           {activeView === 'gs1' ? <GS1Workspace overview={overview} /> : null}
           {activeView === 'reports' ? <ReportsWorkspace csrfToken={csrfToken} overview={overview} onNavigate={setActiveView} /> : null}
           {activeView === 'governance' ? <GovernanceView data={scopedWorkspace} failed={workspaceFailed} /> : null}
-          {activeView === 'integration' ? <IntegrationWorkspace csrfToken={csrfToken} /> : null}
+          {activeView === 'integration' ? <IntegrationWorkspace key={overview.tenant_id} csrfToken={csrfToken} /> : null}
           {activeView === 'platform_owner' ? <PlatformOwnerConsole csrfToken={csrfToken} /> : null}
           {activeView === 'access' ? <AccessView csrfToken={csrfToken} data={scopedWorkspace} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} overview={overview} /> : null}
         </main>
@@ -4474,7 +4475,7 @@ function CashControlView({
           </label>
         </section>
       ) : null}
-      <TenantCashControlView csrfToken={csrfToken} tenantId={tenantId} />
+      <TenantCashControlView key={tenantId} csrfToken={csrfToken} tenantId={tenantId} />
     </>
   );
 }
@@ -4494,6 +4495,15 @@ function TenantCashControlView({
   const [movements, setMovements] = useState<readonly CashMovementItem[] | null>(null);
   const [declarations, setDeclarations] = useState<readonly CashDeclarationItem[] | null>(null);
   const [businessDays, setBusinessDays] = useState<readonly BusinessDayItem[] | null>(null);
+  const [branches, setBranches] = useState<readonly HQInventoryBranch[]>([]);
+  const [showAddRegister, setShowAddRegister] = useState(false);
+  const [newRegBranchId, setNewRegBranchId] = useState('');
+  const [newRegCode, setNewRegCode] = useState('');
+  const [newRegName, setNewRegName] = useState('');
+  const [newRegFloat, setNewRegFloat] = useState('0.00');
+  const [newRegBusy, setNewRegBusy] = useState(false);
+  const newRegInFlight = useRef(false);
+  const [newRegError, setNewRegError] = useState('');
   const [failed, setFailed] = useState(false);
   const [cashReload, setCashReload] = useState(0);
   const [movementReview, setMovementReview] = useState<CashMovementItem | null>(null);
@@ -4519,8 +4529,9 @@ function TenantCashControlView({
       loadCashMovements(tenantId, controller.signal),
       loadCashDeclarations(tenantId, controller.signal),
       loadBusinessDays(tenantId, controller.signal),
+      loadInventoryBranches(tenantId, controller.signal).catch(() => [] as readonly HQInventoryBranch[]),
     ])
-      .then(([a, u, b, c, t, m, d, bd]) => {
+      .then(([a, u, b, c, t, m, d, bd, br]) => {
         setOpen(a);
         setUnclosed(u);
         setVariances(b);
@@ -4529,6 +4540,9 @@ function TenantCashControlView({
         setMovements(m);
         setDeclarations(d);
         setBusinessDays(bd);
+        setBranches(br);
+        const firstBranch = br[0];
+        if (firstBranch && !newRegBranchId) setNewRegBranchId(firstBranch.id);
         setFailed(false);
       })
       .catch(() => {
@@ -4536,6 +4550,37 @@ function TenantCashControlView({
       });
     return () => controller.abort();
   }, [cashReload, tenantId]);
+
+  const handleCreateRegister = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!newRegCode.trim() || !newRegName.trim() || !newRegBranchId) {
+      setNewRegError('Branch, register code, and register name are required.');
+      return;
+    }
+    if (newRegInFlight.current) return;
+    newRegInFlight.current = true;
+    setNewRegBusy(true);
+    setNewRegError('');
+    try {
+      const created = await createPosRegister(tenantId, csrfToken, {
+        code: newRegCode.trim().toUpperCase(),
+        name: newRegName.trim(),
+        branch_id: newRegBranchId,
+        expected_float: newRegFloat.trim() || '0.00',
+      });
+      setShowAddRegister(false);
+      setNewRegCode('');
+      setNewRegName('');
+      setNewRegFloat('0.00');
+      setCashNotice(`Physical register ${created.code} (${created.name}) created successfully.`);
+      setCashReload((prev) => prev + 1);
+    } catch (err) {
+      setNewRegError(err instanceof Error ? err.message : 'Failed to register physical till.');
+    } finally {
+      newRegInFlight.current = false;
+      setNewRegBusy(false);
+    }
+  };
 
   if (failed) return <Unavailable />;
   if (!open || !unclosed || !variances || !forced || !tills || !movements || !declarations || !businessDays) {
@@ -4636,7 +4681,7 @@ function TenantCashControlView({
         ) : (
           <div className="table-scroll">
             <table>
-              <thead><tr><th>Register</th><th>Business date</th><th>Opened by</th><th>Opened</th><th>Final Z</th><th>State</th></tr></thead>
+              <thead><tr><th>Register</th><th>Business date</th><th>Opened by</th><th>Opened</th><th>Served</th><th>Final Z</th><th>State</th></tr></thead>
               <tbody>
                 {open.map((session) => (
                   <tr key={session.id}>
@@ -4644,6 +4689,7 @@ function TenantCashControlView({
                     <td>{session.business_date}</td>
                     <td>{session.opened_by_username}</td>
                     <td><span className="muted-cell">{formatDateTime(session.opened_at)}</span></td>
+                    <td><strong>{session.served_customer_count ?? 0}</strong></td>
                     <td>{session.has_final_report ? <StatusBadge value="RECORDED" /> : <span className="muted-cell">Pending closure</span>}</td>
                     <td><StatusBadge value={session.state} /></td>
                   </tr>
@@ -4656,7 +4702,19 @@ function TenantCashControlView({
 
       {/* Till Registers Directory */}
       <article className="panel" id="cash-tills" style={{ marginBottom: '24px' }}>
-        <PanelHeader eyebrow="Till Infrastructure" title="Physical POS Register Directory" />
+        <PanelHeader
+          eyebrow="Till Infrastructure"
+          title="Physical POS Register Directory"
+          actionLabel="+ Register Physical Till"
+          onAction={() => {
+            setShowAddRegister(true);
+            setNewRegError('');
+            const first = branches[0];
+            if (first && !newRegBranchId) {
+              setNewRegBranchId(first.id);
+            }
+          }}
+        />
         {!tills ? (
           <p className="muted-cell">Loading physical tills…</p>
         ) : tills.length === 0 ? (
@@ -4700,6 +4758,84 @@ function TenantCashControlView({
           </div>
         )}
       </article>
+
+      {showAddRegister && <IntakeModal title="Register Physical Till" busy={newRegBusy} onClose={() => setShowAddRegister(false)}>
+            <form onSubmit={(event) => void handleCreateRegister(event)}>
+              {newRegError ? (
+                <p className="business-dialog-error" role="alert">
+                  <Icon name="alert" /> {newRegError}
+                </p>
+              ) : null}
+              <fieldset disabled={newRegBusy} style={{ display: 'grid', gap: '16px' }}>
+                <label className="business-field">
+                  <span>Branch / Dispensary Location</span>
+                  <select
+                    value={newRegBranchId}
+                    onChange={(e) => setNewRegBranchId(e.target.value)}
+                    required
+                  >
+                    <option value="">Select branch location</option>
+                    {branches.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name} ({b.code})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="business-field">
+                  <span>Register Code</span>
+                  <input
+                    maxLength={40}
+                    placeholder="e.g. REG-02"
+                    required
+                    value={newRegCode}
+                    onChange={(e) => setNewRegCode(e.target.value.toUpperCase())}
+                  />
+                  <small className="panel-note">
+                    Unique till identifier used during POS device activation and daily cashier shifts.
+                  </small>
+                </label>
+                <label className="business-field">
+                  <span>Register Display Name</span>
+                  <input
+                    maxLength={120}
+                    placeholder="e.g. Dispensary Counter 2"
+                    required
+                    value={newRegName}
+                    onChange={(e) => setNewRegName(e.target.value)}
+                  />
+                </label>
+                <label className="business-field">
+                  <span>Expected Opening Float (KES)</span>
+                  <input
+                    min="0"
+                    placeholder="0.00"
+                    step="0.01"
+                    type="number"
+                    value={newRegFloat}
+                    onChange={(e) => setNewRegFloat(e.target.value)}
+                  />
+                </label>
+              </fieldset>
+              <footer style={{ marginTop: '24px', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                <button
+                  className="secondary-button"
+                  disabled={newRegBusy}
+                  onClick={() => setShowAddRegister(false)}
+                  type="button"
+                >
+                  Cancel
+                </button>
+                <button
+                  className="primary-button"
+                  disabled={newRegBusy || !newRegCode.trim() || !newRegName.trim() || !newRegBranchId}
+                  type="submit"
+                >
+                  {newRegBusy ? 'Registering…' : 'Register Physical Till'}
+                </button>
+              </footer>
+            </form>
+      </IntakeModal>}
 
       <section className="content-grid content-grid-primary">
         <article className="panel" id="cash-variances">

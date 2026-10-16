@@ -130,13 +130,20 @@ class RetailCashReceiptSerializer(serializers.ModelSerializer):
     change_due = MoneyField()
     disclaimer = serializers.SerializerMethodField()
     print_job = serializers.SerializerMethodField()
+    fiscal_receipt = serializers.SerializerMethodField()
 
     class Meta:
         model = RetailCashReceipt
         fields = [
             "receipt_number", "tender_type", "amount", "cash_received", "change_due", "currency",
-            "lines_snapshot", "totals_snapshot", "settled_at", "disclaimer", "print_job",
+            "lines_snapshot", "totals_snapshot", "settled_at", "disclaimer", "print_job", "fiscal_receipt",
         ]
+
+    @staticmethod
+    def get_fiscal_receipt(receipt):
+        from apps.prescription.fiscal import FiscalService
+
+        return FiscalService.status(receipt.transaction)
 
     @staticmethod
     def get_disclaimer(_receipt):

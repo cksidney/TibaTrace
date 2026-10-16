@@ -8915,3 +8915,7 @@ td, th, .tabular-nums, .metric-value, .stat-value, .count-badge, .executive-widg
 .intake-modal input, .intake-modal select, .intake-modal textarea { max-width: 100%; min-width: 0; }
 .intake-modal .legacy-detail { margin: 0; padding: 0; border: 0; }
 @media (max-width: 640px) { .workspace-intake-bar { align-items: stretch; } .workspace-intake-bar .button-row { width: 100%; } .workspace-intake-bar button { flex: 1 1 160px; } .intake-modal .stocktake-form-grid, .intake-modal .legacy-fields, .intake-modal .people-intake-grid, .intake-modal .tenant-form-grid { grid-template-columns: minmax(0, 1fr) !important; } }
+
+.etims-workspace { min-width: 0; }
+.etims-branches { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); gap: 16px; margin: 20px 0; }
+.etims-workspace dd { overflow-wrap: anywhere; }

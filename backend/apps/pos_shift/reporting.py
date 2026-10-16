@@ -125,6 +125,8 @@ class ShiftReportService:
             )
         ]
 
+        from apps.pos_shift.customer_metrics import count_served_customers_for_session
+
         return {
             "period_start": session.opened_at.isoformat(),
             "generated_at": timezone.now().isoformat(),
@@ -148,6 +150,7 @@ class ShiftReportService:
             },
             "cash_movements": movements,
             "variance": variance,
+            "served_customers": count_served_customers_for_session(session),
         }
 
     # -------------------------------------------------------------- X report

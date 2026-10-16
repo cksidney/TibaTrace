@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 
 import { Icon } from './icons.js';
+import { EtimsWorkspaceTab } from './EtimsWorkspaceTab.js';
 
 interface IntegrationWorkspaceProps {
   csrfToken: string;
@@ -102,7 +103,7 @@ interface ConnectivityResult {
   }[];
 }
 
-type IntegrationTab = 'providers' | 'activations' | 'compliance' | 'reports' | 'evidence' | 'dlq' | 'rules';
+type IntegrationTab = 'providers' | 'etims' | 'activations' | 'compliance' | 'reports' | 'evidence' | 'dlq' | 'rules';
 type DialogState =
   | { readonly kind: 'provider' }
   | { readonly kind: 'activation'; readonly provider: ProviderConfiguration }
@@ -151,6 +152,7 @@ const NEXT_STATES: Partial<Record<ProviderState, readonly ProviderState[]>> = {
 const TERMINAL_STATES = new Set<ProviderState>(['REJECTED', 'REVOKED', 'DECOMMISSIONED']);
 const TABS: readonly { readonly id: IntegrationTab; readonly label: string }[] = [
   { id: 'providers', label: 'Providers' },
+  { id: 'etims', label: 'KRA eTIMS VSCU' },
   { id: 'activations', label: 'Activation workflow' },
   { id: 'compliance', label: 'Compliance status' },
   { id: 'reports', label: 'Reports' },
@@ -416,6 +418,8 @@ export function IntegrationWorkspace({ csrfToken }: IntegrationWorkspaceProps) {
           })}
         </div>
       </section> : null}
+
+      {activeTab === 'etims' ? <EtimsWorkspaceTab csrfToken={csrfToken} /> : null}
 
       {activeTab === 'activations' ? <section aria-labelledby="integration-tab-activations" className="integration-activation-list" id="integration-panel-activations" role="tabpanel" tabIndex={0}>
         <div className="integration-section-head"><div><p className="eyebrow">Audited state transitions</p><h3>Activation requests</h3></div><span className="muted-cell">Only valid next states are offered</span></div>

@@ -102,6 +102,7 @@ INSTALLED_APPS = [
     "apps.insurance",
     "apps.integrations",
     "apps.inventory.recalls",
+    "apps.taxation",
 ]
 
 MIDDLEWARE = [

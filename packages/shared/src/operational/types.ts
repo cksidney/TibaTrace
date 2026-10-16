@@ -30,6 +30,7 @@ export interface OperatorShiftDTO {
   readonly ended_at: string | null;
   readonly handed_over_to_username: string;
   readonly close_reason: string;
+  readonly served_customer_count?: number;
 }
 
 export interface RegisterSessionDTO {
@@ -45,6 +46,7 @@ export interface RegisterSessionDTO {
   readonly forced_closure_reason: string;
   readonly has_final_report: boolean;
   readonly operator_shifts: readonly OperatorShiftDTO[];
+  readonly served_customer_count?: number;
 }
 
 export interface DeviceHealthDTO {
@@ -147,6 +149,7 @@ export interface ShiftReportSnapshotDTO {
     readonly classification: string;
     readonly requires_explanation: boolean;
   } | null;
+  readonly served_customers?: number;
 }
 
 export interface ShiftReportDTO {

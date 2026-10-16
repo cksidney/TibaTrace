@@ -507,6 +507,7 @@ export function OperationsConsole({
               />
 
               <EpisodeStepNav
+                busy={consoleBusy || clinicalReviewBusy}
                 activeStep={activeStep}
                 onStepChange={setActiveStep}
                 linesCount={state.selected.lines.length}
@@ -1288,6 +1289,7 @@ function EpisodeWorkspace({
 }
 
 function EpisodeStepNav({
+  busy,
   activeStep,
   onStepChange,
   linesCount,
@@ -1297,6 +1299,7 @@ function EpisodeStepNav({
 }: {
   readonly activeStep: EpisodeStep;
   readonly onStepChange: (step: EpisodeStep) => void;
+  readonly busy: boolean;
   readonly linesCount: number;
   readonly preparedCount: number;
   readonly paymentState: string;
@@ -1358,6 +1361,7 @@ function EpisodeStepNav({
           <button
             key={s.id}
             type="button"
+            disabled={busy}
             onClick={() => onStepChange(s.id)}
             style={{
               flex: 1,
