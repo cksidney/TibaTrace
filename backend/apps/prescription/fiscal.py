@@ -29,7 +29,7 @@ class FiscalService:
         if cls.kind(source) == "PRESCRIPTION" and source.payment_state != "PAID":
             return None
         branch = source.register.location if cls.kind(source) == "RETAIL_REFUND" else source.branch
-        row, _ = FiscalSubmission.objects.get_or_create(
+        row, _ = FiscalSubmission.all_objects.get_or_create(
             tenant=source.tenant, branch=branch, source_kind=cls.kind(source), source_id=source.pk
         )
         return row
@@ -42,7 +42,7 @@ class FiscalService:
         # Credit notes use the original fiscal device's branch and invoice.
         if sale.branch_id != row.branch_id:
             raise ValidationError("Fiscal credit notes must be issued by the original sale branch's VSCU.")
-        original = FiscalSubmission.objects.filter(tenant=row.tenant, source_kind="RETAIL", source_id=sale.pk, status="ACCEPTED").first()
+        original = FiscalSubmission.all_objects.filter(tenant=row.tenant, source_kind="RETAIL", source_id=sale.pk, status="ACCEPTED").first()
         if not original:
             raise ValidationError("The original fiscal invoice must be accepted before issuing its credit note.")
         payload = deepcopy(original.payload)
@@ -68,7 +68,7 @@ class FiscalService:
 
     @classmethod
     def status(cls, source):
-        row = FiscalSubmission.objects.filter(
+        row = FiscalSubmission.all_objects.filter(
             tenant=source.tenant, source_kind=cls.kind(source), source_id=source.pk
         ).first()
         if not row:
@@ -87,7 +87,7 @@ class FiscalService:
         from apps.pos_transactions.models import PosTransaction, PosTransactionLine
         from apps.prescription.models import DispensingEpisode
 
-        row = FiscalSubmission.objects.select_for_update().get(pk=row.pk)
+        row = FiscalSubmission.all_objects.select_for_update().get(tenant_id=row.tenant_id, pk=row.pk)
         if row.payload:
             return row
         config = vscu_config(tenant=row.tenant, branch=row.branch)
@@ -195,7 +195,7 @@ class FiscalService:
 
     @staticmethod
     def freeze(row, payload, config):
-        last = FiscalSubmission.objects.filter(tenant=row.tenant, branch=row.branch).aggregate(n=Max("invoice_number"))[
+        last = FiscalSubmission.all_objects.filter(tenant=row.tenant, branch=row.branch).aggregate(n=Max("invoice_number"))[
             "n"
         ]
         row.invoice_number = max(last or 0, int(config.get("last_invoice_number", 0))) + 1
@@ -213,10 +213,10 @@ class FiscalService:
         try:
             row = cls.prepare(row)
         except ValidationError as exc:
-            FiscalSubmission.objects.filter(tenant_id=row.tenant_id, pk=row.pk, payload={}).update(error=" ".join(exc.messages)[:300])
+            FiscalSubmission.all_objects.filter(tenant_id=row.tenant_id, pk=row.pk, payload={}).update(error=" ".join(exc.messages)[:300])
             return
         with transaction.atomic():
-            row = FiscalSubmission.objects.select_for_update().get(pk=row.pk)
+            row = FiscalSubmission.all_objects.select_for_update().get(tenant_id=row.tenant_id, pk=row.pk)
             if row.status != "QUEUED":
                 return  # SENDING after a process crash also requires reconciliation.
             row.status = "SENDING"
@@ -269,7 +269,7 @@ class FiscalService:
         from apps.prescription.payment_models import PaymentIntent
         from apps.prescription.pos_printing_models import PosPrintDocument, PosPrintJob
         from apps.prescription.pos_printing_services import _hash_snapshot
-        row = FiscalSubmission.objects.select_for_update().get(pk=row.pk)
+        row = FiscalSubmission.all_objects.select_for_update().get(tenant_id=row.tenant_id, pk=row.pk)
         if row.status != "ACCEPTED":
             return
         number = f"VSCU-{row.branch_id.hex[:8]}-{row.invoice_number}"

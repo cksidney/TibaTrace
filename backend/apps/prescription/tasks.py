@@ -5,7 +5,7 @@ from celery import shared_task
 def process_fiscal_outbox():
     from apps.prescription.fiscal import FiscalService
     from apps.prescription.fiscal_models import FiscalSubmission
-    for row in FiscalSubmission.objects.filter(status__in=["NOT_CONFIGURED", "QUEUED"]).order_by("created_at")[:50]:
+    for row in FiscalSubmission.all_objects.filter(status__in=["NOT_CONFIGURED", "QUEUED"]).order_by("created_at")[:50]:
         FiscalService.submit(row)
     # Retry document creation independently; fiscal acceptance never depends
     # on a printer or the document queue being available.
@@ -13,7 +13,7 @@ def process_fiscal_outbox():
     from django.db.models.functions import Cast, Concat, Replace, Substr
 
     from apps.prescription.pos_printing_models import PosPrintDocument
-    missing = FiscalSubmission.objects.filter(status="ACCEPTED").annotate(
+    missing = FiscalSubmission.all_objects.filter(status="ACCEPTED").annotate(
         document_number=Concat(Value("VSCU-"), Substr(Replace(Cast("branch_id", CharField()), Value("-"), Value("")), 1, 8), Value("-"), Cast("invoice_number", CharField())),
     ).annotate(has_document=Exists(PosPrintDocument.all_objects.filter(tenant_id=OuterRef("tenant_id"), document_number=OuterRef("document_number")))).filter(has_document=False)
     for row in missing.order_by("updated_at")[:50]:

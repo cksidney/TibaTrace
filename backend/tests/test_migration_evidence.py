@@ -84,6 +84,10 @@ RELEASE_MIGRATIONS = [
     "backend/apps/pos_transactions/migrations/0003_retailrefundrequest_retailrefundline_and_more.py",
     "backend/apps/prescription/migrations/0016_alter_posprintdocument_document_type.py",
     "backend/apps/sales/migrations/0005_commercial_quantity_breaks.py",
+    "backend/apps/pos_transactions/migrations/0004_checkout_payments.py",
+    "backend/apps/pos_transactions/migrations/0005_original_method_refunds.py",
+    "backend/apps/prescription/migrations/0017_checkout_payments.py",
+    "backend/apps/prescription/migrations/0018_fiscal_print_documents.py",
 ]
 
 
@@ -308,3 +312,29 @@ def test_git_baseline_matches_the_declared_release_migration():
                 added.append(u.strip())
 
     assert sorted(added) == sorted(RELEASE_MIGRATIONS), added
+
+
+def test_checkout_constraint_replacement_inventory_preserves_reviewed_removal_evidence(tmp_path):
+    source = 'backend/apps/pos_transactions/migrations/0004_checkout_payments.py'
+    out = tmp_path / 'MIGRATIONS.json'
+    result = run(source, out)
+    assert result.returncode == 0, result.stderr
+    entry = json.loads(out.read_text())[0]
+    assert entry['destructive'] and entry['reviewed_constraint_replacement']
+    assert entry['destructive_operations'] == ['RemoveConstraint']
+    assert entry['operation_types'] == ['RemoveConstraint'] * 3 + ['AlterField'] + ['AddConstraint'] * 3
+
+
+def test_checkout_constraint_review_rejects_changed_cash_predicate(monkeypatch):
+    from copy import deepcopy
+    from importlib import import_module
+
+    from django.db.models import Q
+
+    monkeypatch.syspath_prepend(str(REPO_ROOT / 'scripts'))
+    import migration_evidence as me
+    operations = deepcopy(import_module('apps.pos_transactions.migrations.0004_checkout_payments').Migration.operations)
+    assert me._reviewed_checkout_constraints('pos_transactions', '0004_checkout_payments', operations)
+    operations[5].constraint.condition = Q(cash_received__gte=0)
+    assert not me._reviewed_checkout_constraints('pos_transactions', '0004_checkout_payments', operations)
+    sys.modules.pop('migration_evidence', None)
