@@ -197,7 +197,7 @@ class PaymentEventService:
             attempt.completed_at = timezone.now() if event.status == "FAILED" else None
             attempt.save(update_fields=["status", "completed_at"])
             if event.status == "FAILED" and attempt.payment_tender.settled_amount == 0:
-                PaymentTender.all_objects.filter(pk=attempt.payment_tender_id).update(status="FAILED")
+                PaymentTender.all_objects.filter(tenant=tenant, pk=attempt.payment_tender_id).update(status="FAILED")
             record.processing_status = PaymentProviderEvent.ProcessingStatus.PROCESSED
             record.save(update_fields=["processing_status"])
             return record, None

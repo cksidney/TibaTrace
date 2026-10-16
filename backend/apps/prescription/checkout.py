@@ -168,7 +168,7 @@ class CheckoutService:
         replay = PaymentTender.all_objects.filter(tenant_id=source.tenant_id, idempotency_key=idempotency_key).first()
         if replay:
             if (
-                not PaymentIntent.all_objects.filter(pk=replay.payment_intent_id, **cls.relation(source)).exists()
+                not PaymentIntent.all_objects.filter(tenant_id=source.tenant_id, pk=replay.payment_intent_id, **cls.relation(source)).exists()
                 or replay.tender_type != tender_type
                 or replay.allocated_amount != amount
                 or replay.payment_intent.device_id != device_id

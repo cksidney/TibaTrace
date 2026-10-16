@@ -213,7 +213,7 @@ class FiscalService:
         try:
             row = cls.prepare(row)
         except ValidationError as exc:
-            FiscalSubmission.objects.filter(pk=row.pk, payload={}).update(error=" ".join(exc.messages)[:300])
+            FiscalSubmission.objects.filter(tenant_id=row.tenant_id, pk=row.pk, payload={}).update(error=" ".join(exc.messages)[:300])
             return
         with transaction.atomic():
             row = FiscalSubmission.objects.select_for_update().get(pk=row.pk)
