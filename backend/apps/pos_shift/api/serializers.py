@@ -44,13 +44,14 @@ class MoneyField(serializers.Field):
 
 
 class PosRegisterSerializer(serializers.ModelSerializer):
+    branch_id = serializers.UUIDField(source="location_id", read_only=True)
     branch_code = serializers.CharField(source="location.code", read_only=True)
     expected_float = MoneyField()
 
     class Meta:
         model = PosRegister
         fields = [
-            "id", "code", "name", "branch_code", "device_id", "currency",
+            "id", "code", "name", "branch_id", "branch_code", "device_id", "currency",
             "state", "expected_float", "last_synchronised_at",
         ]
 
@@ -100,15 +101,34 @@ class PosRegisterCreateSerializer(serializers.ModelSerializer):
 
 
 class BusinessDaySerializer(serializers.ModelSerializer):
+    branch_id = serializers.UUIDField(source="location_id", read_only=True)
     branch_code = serializers.CharField(source="location.code", read_only=True)
     accepts_transactions = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = BusinessDay
         fields = [
-            "id", "branch_code", "business_date", "state", "opened_at",
+            "id", "branch_id", "branch_code", "business_date", "state", "opened_at",
             "closed_at", "accepts_transactions", "reopen_reason",
         ]
+
+
+class BusinessDayOpenRequestSerializer(serializers.Serializer):
+    branch_id = serializers.UUIDField()
+    business_date = serializers.DateField(required=False)
+
+
+class BusinessDayCloseRequestSerializer(serializers.Serializer):
+    reason = serializers.CharField(min_length=10, max_length=500)
+
+
+class RegisterExpectedFloatRequestSerializer(serializers.Serializer):
+    expected_float = serializers.DecimalField(max_digits=12, decimal_places=2, min_value=Decimal("0.00"))
+    reason = serializers.CharField(min_length=10, max_length=500)
+
+
+class RegisterHeartbeatRequestSerializer(serializers.Serializer):
+    device_id = serializers.CharField(max_length=120, allow_blank=False, trim_whitespace=True)
 
 
 class OperatorShiftSerializer(serializers.ModelSerializer):

@@ -49,6 +49,7 @@ export function RetailWorkspace({ apiFetch, deviceId }: RetailWorkspaceProps) {
   const [stores, setStores] = useState<
     readonly { id: string; name: string; location_type: string; status: string }[]
   >([]);
+  const [storesLoading, setStoresLoading] = useState(true);
   const [transaction, setTransaction] = useState<RetailTransactionDTO | null>(null);
   const [results, setResults] = useState<readonly RetailCatalogueItemDTO[]>([]);
   const [barcode, setBarcode] = useState('');
@@ -69,7 +70,8 @@ export function RetailWorkspace({ apiFetch, deviceId }: RetailWorkspaceProps) {
         setStores(sellableStores);
         setStoreId((current) => current || sellableStores[0]?.id || '');
       })
-      .catch((cause: unknown) => setNotice(message(cause)));
+      .catch((cause: unknown) => setNotice(message(cause)))
+      .finally(() => setStoresLoading(false));
   }, [client, deviceId]);
 
   useEffect(() => {
@@ -255,6 +257,11 @@ export function RetailWorkspace({ apiFetch, deviceId }: RetailWorkspaceProps) {
             ))}
           </select>
         </label>
+        {!storesLoading && stores.length === 0 ? (
+          <p role="status" style={{ ...helperText, color: text.secondary, padding: `${spacing.sm}px ${spacing.md}px`, border: `1px solid ${surface.border}`, borderRadius: 8 }}>
+            No retail store is available to this register. Ask an HQ manager to verify that its branch has an active STORE, PHARMACY, or DISPENSARY location and that your cashier account is assigned to that branch in People & Access.
+          </p>
+        ) : null}
         <p style={helperText}>{primary.detail}</p>
 
         <label style={labelStyle}>

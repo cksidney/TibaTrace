@@ -49,9 +49,21 @@ export class PosOperationsClient {
   }
 
   async getRuntime(deviceId: string): Promise<PosOperationalRuntimeDTO> {
-    return this.request<PosOperationalRuntimeDTO>(
+    const runtime = await this.request<PosOperationalRuntimeDTO>(
       `/registers/runtime/?device_id=${encodeURIComponent(deviceId)}`,
     );
+    if (!runtime.register || runtime.register.device_id !== deviceId) return runtime;
+    try {
+      const register = await this.command<PosRegisterDTO>(
+        '/registers/sync-heartbeat/',
+        { device_id: deviceId },
+      );
+      return { ...runtime, register };
+    } catch {
+      // Runtime status remains useful when a heartbeat is temporarily refused;
+      // HQ will keep showing the last confirmed sync time.
+      return runtime;
+    }
   }
 
   async getCashDeclarations(sessionId: string): Promise<readonly CashDeclarationDTO[]> {

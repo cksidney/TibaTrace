@@ -61,9 +61,12 @@ import {
   loadPosDeviceHealth,
   loadPosRegisters,
   createPosRegister,
+  updatePosRegisterExpectedFloat,
   loadCashMovements,
   loadCashDeclarations,
   loadBusinessDays,
+  openBusinessDay,
+  closeBusinessDay,
   loadOpenRegisterSessions,
   loadUnclosedRegisterSessions,
   loadClaims,
@@ -220,6 +223,17 @@ import { RequiredPasswordChange } from './RequiredPasswordChange.js';
 import type { IconName } from './icons.js';
 import { ProcurementWorkspace } from './ProcurementWorkspace.js';
 import { TenantManagement } from './TenantManagement.js';
+
+function nairobiDateInputValue(): string {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Africa/Nairobi',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
 
 type WorkspaceView =
   | 'overview'
@@ -4503,6 +4517,16 @@ function TenantCashControlView({
   const [declarations, setDeclarations] = useState<readonly CashDeclarationItem[] | null>(null);
   const [businessDays, setBusinessDays] = useState<readonly BusinessDayItem[] | null>(null);
   const [branches, setBranches] = useState<readonly HQInventoryBranch[]>([]);
+  const [showOpenBusinessDay, setShowOpenBusinessDay] = useState(false);
+  const [openDayBranchId, setOpenDayBranchId] = useState('');
+  const [openDayDate, setOpenDayDate] = useState(nairobiDateInputValue);
+  const [dayCloseTarget, setDayCloseTarget] = useState<BusinessDayItem | null>(null);
+  const [dayCloseReason, setDayCloseReason] = useState('');
+  const [floatEditTarget, setFloatEditTarget] = useState<PosRegisterItem | null>(null);
+  const [floatEditValue, setFloatEditValue] = useState('');
+  const [floatEditReason, setFloatEditReason] = useState('');
+  const [controlBusy, setControlBusy] = useState(false);
+  const [controlError, setControlError] = useState('');
   const [showAddRegister, setShowAddRegister] = useState(false);
   const [newRegBranchId, setNewRegBranchId] = useState('');
   const [newRegCode, setNewRegCode] = useState('');
@@ -4549,6 +4573,7 @@ function TenantCashControlView({
         setBranches(br);
         const firstBranch = br[0];
         if (firstBranch && !newRegBranchId) setNewRegBranchId(firstBranch.id);
+        if (firstBranch && !openDayBranchId) setOpenDayBranchId(firstBranch.id);
         setFailed(false);
       })
       .catch(() => {
@@ -4585,12 +4610,77 @@ function TenantCashControlView({
     }
   };
 
+  const handleOpenBusinessDay = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!openDayBranchId || !openDayDate) {
+      setControlError('Choose an active branch and business date.');
+      return;
+    }
+    setControlBusy(true);
+    setControlError('');
+    try {
+      const day = await openBusinessDay(tenantId, csrfToken, {
+        branch_id: openDayBranchId,
+        business_date: openDayDate,
+      });
+      setShowOpenBusinessDay(false);
+      setCashNotice(`${day.branch_code} business day ${day.business_date} is open.`);
+      setCashReload((prev) => prev + 1);
+    } catch (err) {
+      setControlError(err instanceof Error ? err.message : 'Could not open the business day.');
+    } finally {
+      setControlBusy(false);
+    }
+  };
+
+  const handleCloseBusinessDay = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!dayCloseTarget) return;
+    setControlBusy(true);
+    setControlError('');
+    try {
+      const day = await closeBusinessDay(tenantId, csrfToken, dayCloseTarget.id, dayCloseReason);
+      setDayCloseTarget(null);
+      setDayCloseReason('');
+      setCashNotice(`${day.branch_code} business day ${day.business_date} was closed.`);
+      setCashReload((prev) => prev + 1);
+    } catch (err) {
+      setControlError(err instanceof Error ? err.message : 'Could not close the business day.');
+    } finally {
+      setControlBusy(false);
+    }
+  };
+
+  const handleUpdateExpectedFloat = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!floatEditTarget) return;
+    setControlBusy(true);
+    setControlError('');
+    try {
+      const register = await updatePosRegisterExpectedFloat(
+        tenantId,
+        csrfToken,
+        floatEditTarget.id,
+        floatEditValue,
+        floatEditReason,
+      );
+      setFloatEditTarget(null);
+      setCashNotice(`${register.code} expected float updated to ${formatMoney(register.expected_float, register.currency)}.`);
+      setCashReload((prev) => prev + 1);
+    } catch (err) {
+      setControlError(err instanceof Error ? err.message : 'Could not update the expected float.');
+    } finally {
+      setControlBusy(false);
+    }
+  };
+
   if (failed) return <Unavailable />;
   if (!open || !unclosed || !variances || !forced || !tills || !movements || !declarations || !businessDays) {
     return <p className="muted-cell">Loading cash control data…</p>;
   }
 
   const pendingMovements = movements.filter((movement) => movement.approved_at === null);
+  const currentBusinessDate = nairobiDateInputValue();
 
   return (
     <>
@@ -4728,10 +4818,12 @@ function TenantCashControlView({
               <thead>
                 <tr>
                   <th>Code & Name</th>
+                  <th>Branch</th>
                   <th>Device ID</th>
                   <th>Expected Float</th>
                   <th>Last Synchronised</th>
                   <th>State</th>
+                  <th>Controls</th>
                 </tr>
               </thead>
               <tbody>
@@ -4742,6 +4834,7 @@ function TenantCashControlView({
                       <br />
                       <strong>{till.name}</strong>
                     </td>
+                    <td><span className="muted-cell">{till.branch_code}</span></td>
                     <td><code>{till.device_id || 'Unbound'}</code></td>
                     <td>{formatMoney(till.expected_float, till.currency)}</td>
                     <td>
@@ -4753,6 +4846,22 @@ function TenantCashControlView({
                       <span className={`status-badge status-${till.state === 'OPEN' || till.state === 'AVAILABLE' ? 'active' : 'suspended'}`}>
                         <i /> {titleCase(till.state)}
                       </span>
+                    </td>
+                    <td>
+                      {['AVAILABLE', 'CLOSED'].includes(till.state) ? (
+                        <button
+                          className="secondary-button"
+                          onClick={() => {
+                            setFloatEditTarget(till);
+                            setFloatEditValue(till.expected_float);
+                            setFloatEditReason('');
+                            setControlError('');
+                          }}
+                          type="button"
+                        >
+                          Set float
+                        </button>
+                      ) : <span className="muted-cell">Locked while active</span>}
                     </td>
                   </tr>
                 ))}
@@ -5116,34 +5225,169 @@ function TenantCashControlView({
       </section>
 
       {/* Business Day Accounting Calendar */}
-      {businessDays && businessDays.length > 0 ? (
-        <article className="panel" style={{ marginTop: '24px' }}>
-          <PanelHeader eyebrow="Accounting Periods" title="Business Days Calendar" />
+      <article className="panel" style={{ marginTop: '24px' }}>
+        <PanelHeader
+          actionLabel="Open business day"
+          eyebrow="Accounting Periods"
+          onAction={() => {
+            setControlError('');
+            setShowOpenBusinessDay(true);
+          }}
+          title="Business Days Calendar"
+        />
+        {branches.length === 0 ? (
+          <p className="inline-alert" role="status">
+            No active branches are available. Activate a branch in HQ before opening a business day or assigning a register.
+          </p>
+        ) : null}
+        {businessDays.length === 0 ? (
+          <EmptyState
+            detail="Open a business day for an active branch before a register can begin trading."
+            icon="activity"
+            title="No business day has been opened"
+          />
+        ) : (
           <div className="table-scroll">
             <table>
               <thead>
                 <tr>
+                  <th>Branch</th>
                   <th>Business Date</th>
                   <th>Opened At</th>
                   <th>Closed At</th>
                   <th>State</th>
                   <th>Reopen Reason</th>
+                  <th>Controls</th>
                 </tr>
               </thead>
               <tbody>
                 {businessDays.map((bd) => (
                   <tr key={bd.id}>
+                    <td><code>{bd.branch_code}</code></td>
                     <td><strong>{bd.business_date}</strong></td>
                     <td><small>{formatDate(bd.opened_at)}</small></td>
                     <td><small className="muted-cell">{bd.closed_at ? formatDate(bd.closed_at) : '—'}</small></td>
-                    <td><span className={`status-badge status-${bd.state === 'OPEN' ? 'active' : 'suspended'}`}><i /> {titleCase(bd.state)}</span></td>
+                    <td><span className={`status-badge status-${bd.state === 'OPEN' || bd.state === 'REOPENED_BY_EXCEPTION' ? 'active' : 'suspended'}`}><i /> {titleCase(bd.state)}</span></td>
                     <td><small className="muted-cell">{bd.reopen_reason || '—'}</small></td>
+                    <td>
+                      {bd.state === 'OPEN' || bd.state === 'REOPENED_BY_EXCEPTION' ? (
+                        <button
+                          className="secondary-button"
+                          onClick={() => {
+                            setDayCloseTarget(bd);
+                            setDayCloseReason('');
+                            setControlError('');
+                          }}
+                          type="button"
+                        >
+                          Close day
+                        </button>
+                      ) : <span className="muted-cell">—</span>}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        </article>
+        )}
+      </article>
+      {showOpenBusinessDay ? (
+        <div className="business-dialog-backdrop" role="presentation">
+          <section aria-labelledby="open-business-day-title" aria-modal="true" className="business-dialog" role="dialog">
+            <header>
+              <div>
+                <p className="eyebrow">Accounting periods</p>
+                <h2 id="open-business-day-title">Open a business day</h2>
+              </div>
+              <button aria-label="Close dialog" disabled={controlBusy} onClick={() => setShowOpenBusinessDay(false)} type="button">
+                <Icon name="close" />
+              </button>
+            </header>
+            <form onSubmit={(event) => void handleOpenBusinessDay(event)}>
+              {controlError ? <p className="business-dialog-error" role="alert"><Icon name="alert" /> {controlError}</p> : null}
+              <p className="panel-note">
+                One branch can have one active accounting day. All register sessions must be closed before the next day can open.
+              </p>
+              <label className="business-field">
+                <span>Active branch</span>
+                <select required value={openDayBranchId} onChange={(event) => setOpenDayBranchId(event.target.value)}>
+                  <option value="">Select branch</option>
+                  {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name} ({branch.code})</option>)}
+                </select>
+              </label>
+              <label className="business-field">
+                <span>Business date</span>
+                <input max={currentBusinessDate} required type="date" value={openDayDate} onChange={(event) => setOpenDayDate(event.target.value)} />
+                <small className="panel-note">Date uses the tenant’s Africa/Nairobi calendar.</small>
+              </label>
+              <footer>
+                <button className="secondary-button" disabled={controlBusy} onClick={() => setShowOpenBusinessDay(false)} type="button">Cancel</button>
+                <button className="primary-button" disabled={controlBusy || !branches.length || !openDayBranchId || !openDayDate || openDayDate > currentBusinessDate} type="submit">
+                  {controlBusy ? 'Opening…' : 'Open business day'}
+                </button>
+              </footer>
+            </form>
+          </section>
+        </div>
+      ) : null}
+      {dayCloseTarget ? (
+        <div className="business-dialog-backdrop" role="presentation">
+          <section aria-labelledby="close-business-day-title" aria-modal="true" className="business-dialog" role="dialog">
+            <header>
+              <div>
+                <p className="eyebrow">Accounting periods</p>
+                <h2 id="close-business-day-title">Close business day</h2>
+              </div>
+              <button aria-label="Close dialog" disabled={controlBusy} onClick={() => setDayCloseTarget(null)} type="button">
+                <Icon name="close" />
+              </button>
+            </header>
+            <div className="business-dialog-record"><div><code>{dayCloseTarget.branch_code}</code><strong>{dayCloseTarget.business_date}</strong></div></div>
+            <p className="business-dialog-confirm"><Icon name="shield" /> Every register must be closed through POS with its final Z report recorded. HQ will refuse the close while a till is active or unreconciled.</p>
+            <form onSubmit={(event) => void handleCloseBusinessDay(event)}>
+              {controlError ? <p className="business-dialog-error" role="alert"><Icon name="alert" /> {controlError}</p> : null}
+              <label className="business-field">
+                <span>Close reason</span>
+                <textarea minLength={10} maxLength={500} required value={dayCloseReason} onChange={(event) => setDayCloseReason(event.target.value)} />
+              </label>
+              <footer>
+                <button className="secondary-button" disabled={controlBusy} onClick={() => setDayCloseTarget(null)} type="button">Cancel</button>
+                <button className="primary-button" disabled={controlBusy || dayCloseReason.trim().length < 10} type="submit">{controlBusy ? 'Closing…' : 'Close business day'}</button>
+              </footer>
+            </form>
+          </section>
+        </div>
+      ) : null}
+      {floatEditTarget ? (
+        <div className="business-dialog-backdrop" role="presentation">
+          <section aria-labelledby="expected-float-title" aria-modal="true" className="business-dialog" role="dialog">
+            <header>
+              <div>
+                <p className="eyebrow">Till infrastructure</p>
+                <h2 id="expected-float-title">Set expected opening float</h2>
+              </div>
+              <button aria-label="Close dialog" disabled={controlBusy} onClick={() => setFloatEditTarget(null)} type="button">
+                <Icon name="close" />
+              </button>
+            </header>
+            <div className="business-dialog-record"><div><code>{floatEditTarget.code}</code><strong>{floatEditTarget.name} · {floatEditTarget.branch_code}</strong></div></div>
+            <form onSubmit={(event) => void handleUpdateExpectedFloat(event)}>
+              {controlError ? <p className="business-dialog-error" role="alert"><Icon name="alert" /> {controlError}</p> : null}
+              <label className="business-field">
+                <span>Expected float ({floatEditTarget.currency})</span>
+                <input min="0" required step="0.01" type="number" value={floatEditValue} onChange={(event) => setFloatEditValue(event.target.value)} />
+              </label>
+              <label className="business-field">
+                <span>Reason for change</span>
+                <textarea minLength={10} maxLength={500} required value={floatEditReason} onChange={(event) => setFloatEditReason(event.target.value)} />
+              </label>
+              <footer>
+                <button className="secondary-button" disabled={controlBusy} onClick={() => setFloatEditTarget(null)} type="button">Cancel</button>
+                <button className="primary-button" disabled={controlBusy || !floatEditValue || floatEditReason.trim().length < 10} type="submit">{controlBusy ? 'Saving…' : 'Save expected float'}</button>
+              </footer>
+            </form>
+          </section>
+        </div>
       ) : null}
       {cashReviewAction ? (
         <div className="business-dialog-backdrop" role="presentation">

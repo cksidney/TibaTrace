@@ -1631,6 +1631,8 @@ export interface PosRegisterItem {
   readonly id: string;
   readonly code: string;
   readonly name: string;
+  readonly branch_id: string;
+  readonly branch_code: string;
   readonly device_id: string;
   readonly state: string;
   readonly expected_float: string;
@@ -1672,6 +1674,8 @@ export interface CashDeclarationItem {
 
 export interface BusinessDayItem {
   readonly id: string;
+  readonly branch_id: string;
+  readonly branch_code: string;
   readonly business_date: string;
   readonly state: string;
   readonly opened_at: string;
@@ -1715,6 +1719,20 @@ export const createPosRegister = async (
   return (await response.json()) as PosRegisterItem;
 };
 
+export const updatePosRegisterExpectedFloat = (
+  tenantId: string,
+  csrfToken: string,
+  registerId: string,
+  expectedFloat: string,
+  reason: string,
+) => mutateJson<PosRegisterItem>(
+  `/api/pos/shift/registers/${encodeURIComponent(registerId)}/expected-float/`,
+  'POST',
+  { expected_float: expectedFloat, reason },
+  csrfToken,
+  tenantId,
+);
+
 export interface PosDeviceHealthItem {
   readonly id: string;
   readonly device_id: string;
@@ -1740,6 +1758,31 @@ export const loadCashDeclarations = (tenantId = '', signal?: AbortSignal) =>
 
 export const loadBusinessDays = (tenantId = '', signal?: AbortSignal) =>
   getTenantCollection<BusinessDayItem>('/api/pos/shift/business-days/', tenantId, signal);
+
+export const openBusinessDay = (
+  tenantId: string,
+  csrfToken: string,
+  payload: { readonly branch_id: string; readonly business_date: string },
+) => mutateJson<BusinessDayItem>(
+  '/api/pos/shift/business-days/open/',
+  'POST',
+  payload,
+  csrfToken,
+  tenantId,
+);
+
+export const closeBusinessDay = (
+  tenantId: string,
+  csrfToken: string,
+  businessDayId: string,
+  reason: string,
+) => mutateJson<BusinessDayItem>(
+  `/api/pos/shift/business-days/${encodeURIComponent(businessDayId)}/close/`,
+  'POST',
+  { reason },
+  csrfToken,
+  tenantId,
+);
 
 export const approveCashMovement = (
   movementId: string,

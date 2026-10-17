@@ -13,13 +13,16 @@ from __future__ import annotations
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Prefetch
+from django.utils import timezone
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied, ValidationError as DRFValidationError
+from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.response import Response
 
 from apps.platform.client_alignment import RequireAlignedPosClientMixin
 from apps.pos_shift.authority import RegisterAuthorityService
+from apps.pos_shift.business_days import BusinessDayControlService, require_branch_access
 from apps.pos_shift.models import (
     BusinessDay,
     CashDeclaration,
@@ -38,10 +41,13 @@ from apps.pos_shift.operations import (
     RegisterOpeningService,
     RegisterReportService,
 )
+from apps.pos_shift.register_control import PosRegisterControlService
 from apps.prescription.pos_dispensing_api.serializers import PosDeviceHealthRecordSerializer
 from apps.prescription.pos_permissions import PosReadCapabilityPermission
 
 from .serializers import (
+    BusinessDayCloseRequestSerializer,
+    BusinessDayOpenRequestSerializer,
     BusinessDaySerializer,
     CashDeclarationSerializer,
     CashExceptionReviewRequestSerializer,
@@ -53,6 +59,8 @@ from .serializers import (
     PosRegisterCreateSerializer,
     PosRegisterSerializer,
     RegisterCloseRequestSerializer,
+    RegisterExpectedFloatRequestSerializer,
+    RegisterHeartbeatRequestSerializer,
     RegisterOpeningRequestSerializer,
     RegisterSessionSerializer,
     ReportRequestSerializer,
@@ -87,7 +95,7 @@ class TenantScopedViewSet(RequireAlignedPosClientMixin, viewsets.ReadOnlyModelVi
     permission_classes = [permissions.IsAuthenticated, PosReadCapabilityPermission]
     pos_read_capabilities = (
         "pos.shift.manage", "pos.session.view", "pos.report.read", "pos.cash.read",
-        "dispensing.complete", "prescriptions.record_payment", "pos.retail.checkout",
+        "pos.device.read", "dispensing.complete", "prescriptions.record_payment", "pos.retail.checkout",
     )
     model = None
 
@@ -117,6 +125,28 @@ class PosRegisterViewSet(TenantScopedViewSet):
 
     def get_queryset(self):
         return super().get_queryset().select_related("location")
+
+    @action(detail=False, methods=["post"], url_path="sync-heartbeat")
+    @transaction.atomic
+    def sync_heartbeat(self, request):
+        payload = RegisterHeartbeatRequestSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        tenant = _tenant(request)
+        if not any(
+            request.user.has_capability(capability, tenant_id=tenant.pk)
+            for capability in self.pos_read_capabilities
+        ):
+            raise PermissionDenied("An authorised POS operator is required to record a sync heartbeat.")
+        registers = list(
+            self.get_queryset().select_for_update().filter(device_id=payload.validated_data["device_id"])
+        )
+        if len(registers) != 1:
+            raise DRFValidationError("This device is not assigned to exactly one register in this tenant.")
+        register = registers[0]
+        require_branch_access(request.user, register.location_id)
+        register.last_synchronised_at = timezone.now()
+        register.save(update_fields=["last_synchronised_at", "updated_at"])
+        return Response(PosRegisterSerializer(register).data)
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
@@ -196,6 +226,22 @@ class PosRegisterViewSet(TenantScopedViewSet):
             status=201,
         )
 
+    @action(detail=True, methods=["post"], url_path="expected-float")
+    def update_expected_float(self, request, pk=None):
+        register = self.get_object()
+        serializer = RegisterExpectedFloatRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        tenant = _tenant(request)
+        data = serializer.validated_data
+        updated = _run(lambda: PosRegisterControlService.update_expected_float(
+            tenant=tenant,
+            register_id=register.pk,
+            actor=request.user,
+            expected_float=data["expected_float"],
+            reason=data["reason"],
+        ))
+        return Response(PosRegisterSerializer(updated).data)
+
     @action(detail=True, methods=["post"], url_path="x-report")
     def x_report(self, request, pk=None):
         register = self.get_object()
@@ -265,6 +311,31 @@ class BusinessDayViewSet(TenantScopedViewSet):
 
     def get_queryset(self):
         return super().get_queryset().select_related("location")
+
+    @action(detail=False, methods=["post"], url_path="open")
+    def open_day(self, request):
+        serializer = BusinessDayOpenRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        day = _run(lambda: BusinessDayControlService.open_day(
+            tenant=_tenant(request),
+            branch_id=data["branch_id"],
+            actor=request.user,
+            business_date=data.get("business_date"),
+        ))
+        return Response(BusinessDaySerializer(day).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["post"], url_path="close")
+    def close_day(self, request, pk=None):
+        serializer = BusinessDayCloseRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        day = _run(lambda: BusinessDayControlService.close_day(
+            tenant=_tenant(request),
+            business_day_id=pk,
+            actor=request.user,
+            reason=serializer.validated_data["reason"],
+        ))
+        return Response(BusinessDaySerializer(day).data)
 
 
 class RegisterSessionViewSet(TenantScopedViewSet):

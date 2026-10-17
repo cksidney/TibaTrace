@@ -3,6 +3,42 @@ import { describe, expect, it } from 'vitest';
 import { PosOperationsClient } from './client.js';
 
 describe('PosOperationsClient', () => {
+  it('records a device heartbeat after loading an assigned register runtime', async () => {
+    let requestCount = 0;
+    const runtime = {
+      readiness: 'READY',
+      register: { id: 'register-1', code: 'TILL-01', name: 'Front', branch_code: 'BR-01', device_id: 'device-1', currency: 'KES', state: 'OPEN', expected_float: '0.00', last_synchronised_at: null },
+      business_day: null,
+      register_session: null,
+      operator_shift: null,
+      device_health: null,
+      notices: [],
+      allowed_actions: [],
+      closure_eligibility: { eligible: false, blocking_reasons: [] },
+    };
+    const fetcher = async (input: string | URL | Request, init?: RequestInit) => {
+      requestCount += 1;
+      if (requestCount === 1) {
+        expect(String(input)).toBe('/api/pos/shift/registers/runtime/?device_id=device-1');
+        expect(init?.method).toBeUndefined();
+        return new Response(JSON.stringify(runtime), { status: 200 });
+      }
+      expect(String(input)).toBe('/api/pos/shift/registers/sync-heartbeat/');
+      expect(init?.method).toBe('POST');
+      expect(JSON.parse(String(init?.body))).toEqual({ device_id: 'device-1' });
+      return new Response(JSON.stringify({
+        ...runtime.register,
+        last_synchronised_at: '2026-10-17T12:00:00Z',
+      }), { status: 200 });
+    };
+    const client = new PosOperationsClient('/api/pos/shift', { fetcher: fetcher as typeof fetch });
+
+    const result = await client.getRuntime('device-1');
+
+    expect(requestCount).toBe(2);
+    expect(result.register?.last_synchronised_at).toBe('2026-10-17T12:00:00Z');
+  });
+
   it('submits a blind closing count to the selected register and device', async () => {
     const fetcher = async (input: string | URL | Request, init?: RequestInit) => {
       expect(String(input)).toBe('/api/pos/shift/registers/register-1/close/');

@@ -6,7 +6,7 @@ closure. And a Z report is served from its frozen snapshot, never recomputed --
 it is what somebody counted, signed and banked against, and the operator holds
 the printed copy.
 """
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
@@ -78,6 +78,17 @@ def declare(world, kind, amount):
         declared_amount=cash(amount), declared_by=world["operator"],
         confirmed_at=timezone.now(),
     )
+
+
+def grant_capability(world, capability):
+    role = Role.all_objects.create(
+        tenant=world["tenant"],
+        code=f"TEST_{capability.upper().replace('.', '_')}",
+        name=f"Test {capability}",
+        capabilities=[capability],
+    )
+    UserRole.all_objects.create(tenant=world["tenant"], user=world["operator"], role=role)
+    return role
 
 
 # ─── nothing here closes a till ──────────────────────────────────────────────
@@ -196,6 +207,8 @@ class TestWorkbenchLists:
         assert body["register_session"]["id"] == str(world["session"].pk)
         assert body["operator_shift"]["operator_id"] == str(world["operator"].pk)
         assert body["business_day"]["business_date"] == TODAY.isoformat()
+        register.refresh_from_db()
+        assert register.last_synchronised_at is None
 
     def test_runtime_does_not_guess_an_unassigned_register(self, world):
         response = world["client"].get("/api/pos/shift/registers/runtime/?device_id=UNKNOWN")
@@ -205,6 +218,233 @@ class TestWorkbenchLists:
         assert body["readiness"] == "UNASSIGNED"
         assert body["allowed_actions"] == []
         assert body["notices"] == ["This device is not assigned to a register."]
+
+    def test_sync_heartbeat_updates_only_the_tenant_register_assigned_to_device(self, world):
+        register = world["register"]
+        register.device_id = "POS-SA-HEARTBEAT"
+        register.save(update_fields=["device_id", "updated_at"])
+
+        response = world["client"].post(
+            "/api/pos/shift/registers/sync-heartbeat/",
+            {"device_id": register.device_id},
+            format="json",
+        )
+
+        assert response.status_code == 200
+        register.refresh_from_db()
+        assert register.last_synchronised_at is not None
+        assert response.json()["last_synchronised_at"] is not None
+
+    def test_sync_heartbeat_refuses_unassigned_devices(self, world):
+        response = world["client"].post(
+            "/api/pos/shift/registers/sync-heartbeat/",
+            {"device_id": "UNKNOWN-DEVICE"},
+            format="json",
+        )
+
+        assert response.status_code == 400
+
+    def test_sync_heartbeat_respects_operator_branch_scope(self, world):
+        register = world["register"]
+        register.device_id = "POS-SA-SCOPED"
+        register.save(update_fields=["device_id", "updated_at"])
+        world["operator"].metadata = {"branch_ids": []}
+        world["operator"].save(update_fields=["metadata"])
+
+        response = world["client"].post(
+            "/api/pos/shift/registers/sync-heartbeat/",
+            {"device_id": register.device_id},
+            format="json",
+        )
+
+        assert response.status_code == 403
+
+
+class TestBusinessDayControls:
+    def test_open_day_refuses_to_roll_while_a_register_session_is_open(self, world):
+        grant_capability(world, "pos.shift.manage")
+
+        response = world["client"].post(
+            "/api/pos/shift/business-days/open/",
+            {"branch_id": str(world["branch"].pk), "business_date": "2026-10-17"},
+            format="json",
+        )
+
+        assert response.status_code == 400
+        assert "still open" in str(response.json()).lower()
+
+    def test_open_day_refuses_a_closed_session_without_a_final_z(self, world):
+        from apps.pos_shift.business_days import tenant_business_date
+
+        grant_capability(world, "pos.shift.manage")
+        world["day"].state = "CLOSED"
+        world["day"].save(update_fields=["state", "updated_at"])
+        world["session"].state = "CLOSED"
+        world["session"].save(update_fields=["state", "updated_at"])
+        world["register"].state = "CLOSED"
+        world["register"].save(update_fields=["state", "updated_at"])
+
+        response = world["client"].post(
+            "/api/pos/shift/business-days/open/",
+            {
+                "branch_id": str(world["branch"].pk),
+                "business_date": tenant_business_date(world["tenant"]).isoformat(),
+            },
+            format="json",
+        )
+
+        assert response.status_code == 400
+        assert "without a final z" in str(response.json()).lower()
+
+    def test_open_day_creates_an_audited_current_day_after_previous_day_is_reconciled(self, world):
+        from apps.pos_shift.business_days import tenant_business_date
+
+        grant_capability(world, "pos.shift.manage")
+        declare(world, "OPENING", "0.00")
+        declare(world, "CLOSING", "0.00")
+        ShiftReportService.finalise_z(
+            session=world["session"], actor=world["operator"], declared_cash=cash("0.00")
+        )
+        business_date = tenant_business_date(world["tenant"])
+        if world["day"].business_date >= business_date:
+            world["day"].business_date = business_date - timedelta(days=1)
+        world["day"].state = "CLOSED"
+        world["day"].save(update_fields=["business_date", "state", "updated_at"])
+
+        response = world["client"].post(
+            "/api/pos/shift/business-days/open/",
+            {"branch_id": str(world["branch"].pk), "business_date": business_date.isoformat()},
+            format="json",
+        )
+
+        assert response.status_code == 201, response.content
+        assert response.json()["business_date"] == business_date.isoformat()
+        assert response.json()["state"] == "OPEN"
+
+    def test_open_day_requires_manager_capability(self, world):
+        world["day"].state = "CLOSED"
+        world["day"].save(update_fields=["state", "updated_at"])
+        world["session"].state = "CLOSED"
+        world["session"].save(update_fields=["state", "updated_at"])
+        world["register"].state = "CLOSED"
+        world["register"].save(update_fields=["state", "updated_at"])
+
+        response = world["client"].post(
+            "/api/pos/shift/business-days/open/",
+            {"branch_id": str(world["branch"].pk), "business_date": "2026-10-17"},
+            format="json",
+        )
+
+        assert response.status_code == 403
+
+    def test_open_day_respects_manager_branch_scope(self, world):
+        grant_capability(world, "pos.shift.manage")
+        world["operator"].metadata = {"branch_ids": []}
+        world["operator"].save(update_fields=["metadata"])
+
+        response = world["client"].post(
+            "/api/pos/shift/business-days/open/",
+            {"branch_id": str(world["branch"].pk), "business_date": "2026-10-17"},
+            format="json",
+        )
+
+        assert response.status_code == 403
+
+    def test_close_day_refuses_active_sessions_and_closed_sessions_without_z(self, world):
+        grant_capability(world, "pos.shift.manage")
+        active = world["client"].post(
+            f"/api/pos/shift/business-days/{world['day'].pk}/close/",
+            {"reason": "End of trading"},
+            format="json",
+        )
+        assert active.status_code == 400
+        assert "register session" in str(active.json()).lower()
+
+        world["session"].state = "CLOSED"
+        world["session"].save(update_fields=["state", "updated_at"])
+        world["register"].state = "CLOSED"
+        world["register"].save(update_fields=["state", "updated_at"])
+        missing_z = world["client"].post(
+            f"/api/pos/shift/business-days/{world['day'].pk}/close/",
+            {"reason": "End of trading"},
+            format="json",
+        )
+        assert missing_z.status_code == 400
+        assert "final z" in str(missing_z.json()).lower()
+
+    def test_close_day_succeeds_only_after_final_z_and_records_reason(self, world):
+        grant_capability(world, "pos.shift.manage")
+        declare(world, "OPENING", "0.00")
+        declare(world, "CLOSING", "0.00")
+        ShiftReportService.finalise_z(
+            session=world["session"], actor=world["operator"], declared_cash=cash("0.00")
+        )
+
+        response = world["client"].post(
+            f"/api/pos/shift/business-days/{world['day'].pk}/close/",
+            {"reason": "End of trading, drawer reconciled"},
+            format="json",
+        )
+
+        assert response.status_code == 200, response.content
+        world["day"].refresh_from_db()
+        assert world["day"].state == "CLOSED"
+
+
+class TestExpectedFloatControls:
+    def test_expected_float_requires_manager_and_a_closed_register(self, world):
+        url = f"/api/pos/shift/registers/{world['register'].pk}/expected-float/"
+        response = world["client"].post(
+            url,
+            {"expected_float": "500.00", "reason": "Set opening float"},
+            format="json",
+        )
+        assert response.status_code == 403
+
+        grant_capability(world, "pos.shift.manage")
+        active_session = world["client"].post(
+            url,
+            {"expected_float": "500.00", "reason": "Set opening float"},
+            format="json",
+        )
+        assert active_session.status_code == 400
+        assert "active register session" in str(active_session.json()).lower()
+
+        world["session"].state = "CLOSED"
+        world["session"].save(update_fields=["state", "updated_at"])
+        missing_z = world["client"].post(
+            url,
+            {"expected_float": "500.00", "reason": "Set approved opening float"},
+            format="json",
+        )
+        assert missing_z.status_code == 400
+        assert "without a final z" in str(missing_z.json()).lower()
+        declare(world, "OPENING", "0.00")
+        declare(world, "CLOSING", "0.00")
+        ShiftReportService.finalise_z(
+            session=world["session"], actor=world["operator"], declared_cash=cash("0.00")
+        )
+        response = world["client"].post(
+            url,
+            {"expected_float": "500.00", "reason": "Set approved opening float"},
+            format="json",
+        )
+        assert response.status_code == 200, response.content
+        world["register"].refresh_from_db()
+        assert world["register"].expected_float == cash("500.00")
+
+    def test_expected_float_respects_manager_branch_scope(self, world):
+        grant_capability(world, "pos.shift.manage")
+        world["operator"].metadata = {"branch_ids": []}
+        world["operator"].save(update_fields=["metadata"])
+
+        response = world["client"].post(
+            f"/api/pos/shift/registers/{world['register'].pk}/expected-float/",
+            {"expected_float": "500.00", "reason": "Set expected float"},
+            format="json",
+        )
+
+        assert response.status_code == 403
 
     def test_register_open_creates_an_immutable_opening_count_and_shift(self, world):
         operator = world["operator"]
