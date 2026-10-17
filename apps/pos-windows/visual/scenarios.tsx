@@ -48,7 +48,7 @@ export interface Scenario {
   /** Why this state is in the catalogue. Read during baseline review. */
   readonly rationale: string;
   readonly width: number;
-  /** False until the Linux CI pixel baseline is captured and committed. */
+  /** False until the Linux CI pixel baseline is captured and reviewed. */
   readonly pixelBaseline?: boolean;
   readonly render: () => ReactNode;
 }
