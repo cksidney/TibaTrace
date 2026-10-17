@@ -4,19 +4,65 @@ This checklist is operational acceptance, not a claim of regulatory certificatio
 
 ## Independent activation workflow
 
-1. A tenant Manager with `identity.manage` or tenant activation permissions creates
-   an existing register in the correct branch and submits the real installation's
-   device ID, stable fingerprint, register code and business justification.
+1. An authorised tenant Manager creates a physical till in HQ **Finance & Cash
+   Control → Register Physical Till**. Sign in on the real installation after
+   completing any temporary-password change in HQ. In POS **Activation → Submit
+   Activation Request**, choose the branch and available register by name and
+   enter the device name and business justification. The native installation
+   supplies its device ID and stable fingerprint. Only active branches and
+   unassigned registers that can be opened appear as available. Requesting and enrolment require
+   `identity.manage` or `tenant.pos_activation.request`; view-only authority cannot
+   enrol a device. Creating the till separately requires device/identity management.
 2. A different platform administrator reviews the request. Tenant role names and
    usernames do not grant platform authority. Approval and rejection require a
-   rationale; a requester cannot review their own request.
-3. Approval returns a challenge once, valid for 15 minutes. Transfer it directly
-   to the requesting Manager. It is not a reusable activation credential.
-4. Enrolment must supply the approved device ID and fingerprint. It consumes the
-   challenge, binds the register and returns a signed, expiring credential.
-5. `/api/v1/tenant/pos-activations/requests/validate/` checks the signed credential
+   rationale; a requester cannot review their own request. Approval rechecks the
+   branch and register. Close any session and post its final Z report before
+   approving a first-time installation.
+3. In HQ **Administration & Users → POS Activations**, approval returns a challenge
+   once, valid for 15 minutes. Give it directly to the requesting Manager. It is
+   not a reusable activation credential. Windows refreshes approval status every
+   15 seconds and has a manual refresh control; reopening the app is unnecessary.
+4. Enrolment must supply the approved device ID and fingerprint. It rechecks that
+   the branch and register are still active and ready, and that there is no open
+   session or unreconciled prior session. It consumes the challenge, binds the
+   register and returns a signed, expiring credential.
+5. The credential lasts 365 days. `/api/v1/tenant/pos-activations/requests/validate/` checks it
    against durable approval, tenant/device/fingerprint, current register assignment,
    expiry and revocation. Client-side status alone is not approval.
+6. Activation does not open the cash drawer session. A valid open branch business
+   day is required. In **Register → Open register**, the authorised operator counts
+   the opening float by denomination. This creates the register session and the
+   accountable operator shift. Prior sessions require their final Z report.
+
+## Recovery, renewal, suspension and replacement
+
+- For a lost/expired approval code, or an enrolled installation with missing local
+  credentials, a different explicit platform owner selects **Issue renewal /
+  recovery code** with a 10–2000 character rationale. This invalidates the previous
+  code and preserves the approved installation/branch/register identity. The old
+  credential remains valid until its existing expiry, suspension/revocation, or
+  successful replacement. Enrolling the new code rotates the credential and starts
+  a new 365-day term; the old credential and consumed code are then refused.
+- Native clients check encrypted-storage availability before sending an enrolment
+  request. A storage write or lost network response can still fail after server
+  enrolment. Restore storage and use the platform-owner recovery action on the
+  existing request; creating a duplicate request or copying another till's token
+  is not the recovery mechanism.
+- **Suspend device** blocks trading immediately while retaining the register's
+  cash accountability. **Resume device** requires a different platform owner from
+  the original requester and a rationale. It preserves the original expiry; an
+  expired or missing credential additionally needs renewal/recovery enrolment.
+- For a replacement installation, close and reconcile the old register, revoke
+  the old activation, then use **Release register for replacement**. Release
+  refuses an open/closing register session, a previous session without a final Z
+  report, or a conflicting activation. The new installation selects that available
+  till, submits a fresh request and receives a new independent review. Historical
+  sessions, reports and the revoked activation remain intact. This does not move
+  an active till between branches or transfer an open cash session.
+- A register and an installation cannot be reserved by competing pending, active
+  or suspended activation requests. Requests and governance actions serialize on
+  the tenant before changing the register assignment. No arbitrary commercial
+  device quota is imposed; the UI does not claim quota enforcement.
 
 Requests, reviews, enrolment and revocation are audited without recording secrets.
 Do not place signed credentials or challenge codes in logs, tickets or this chat.

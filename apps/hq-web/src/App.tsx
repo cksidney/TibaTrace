@@ -9829,6 +9829,8 @@ function AccessView({
 
       {tenantId ? (
         <AccessWorkspace
+          isPlatformOwner={overview.is_platform_owner === true}
+          currentUserName={overview.user_name}
           cashFailed={cashFailed}
           csrfToken={csrfToken}
           forcedClosures={forcedClosures}

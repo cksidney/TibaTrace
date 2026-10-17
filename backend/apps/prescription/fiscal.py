@@ -4,8 +4,8 @@ import hashlib
 import json
 from copy import deepcopy
 from decimal import Decimal
-from urllib.request import Request, urlopen
 
+import requests
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Max
@@ -227,14 +227,29 @@ class FiscalService:
             if transport:
                 result = transport(row.payload)
             else:
-                request = Request(
-                    config["base_url"].rstrip("/") + "/trnsSales/saveSales",
-                    data=json.dumps(row.payload).encode(),
-                    headers={"Content-Type": "application/json"},
-                    method="POST",
-                )
-                with urlopen(request, timeout=25) as response:
-                    result = json.loads(response.read(262144))
+                # Do not inherit proxy settings from the host environment or
+                # follow redirects: the configured fiscal endpoint receives
+                # invoice data and credentials, so its destination must stay
+                # exactly as configured.
+                with requests.Session() as session:
+                    session.trust_env = False
+                    with session.post(
+                        config["base_url"].rstrip("/") + "/trnsSales/saveSales",
+                        json=row.payload,
+                        headers={"Content-Type": "application/json"},
+                        timeout=25,
+                        allow_redirects=False,
+                        stream=True,
+                    ) as response:
+                        if 300 <= response.status_code < 400:
+                            raise ValueError("VSCU redirects are not allowed.")
+                        response.raise_for_status()
+                        body = bytearray()
+                        for chunk in response.iter_content(chunk_size=16384):
+                            body.extend(chunk)
+                            if len(body) > 262144:
+                                raise ValueError("VSCU response exceeded the size limit.")
+                        result = json.loads(body)
             data = result.get("data") or {}
             accepted = result.get("resultCd") == "000" and all(
                 data.get(k) for k in ("rcptNo", "rcptSign", "intrlData", "sdcId")

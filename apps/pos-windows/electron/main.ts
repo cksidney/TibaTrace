@@ -4,7 +4,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import { app, BrowserWindow, ipcMain, net, session } from 'electron';
+import { app, BrowserWindow, ipcMain, net, safeStorage, session } from 'electron';
 
 import { EncryptedSessionStore } from './sessionStore.js';
 import type { StoredPosSession } from './sessionStore.js';
@@ -242,6 +242,10 @@ async function executeApiRequest(
   request: ApiRequest,
   stored: StoredPosSession,
 ): Promise<ApiResponse> {
+  if (request.path.startsWith('/api/v1/tenant/pos-activations/requests/') && request.path.endsWith('/enrol/')) {
+    // Check native encryption before consuming the server's single-use code.
+    if (!safeStorage.isEncryptionAvailable()) throw new Error('Secure activation storage is unavailable. Restore OS secure storage before enrolling.');
+  }
   const headers = new Headers();
   for (const [name, value] of Object.entries(request.headers ?? {})) {
     if (ALLOWED_RENDERER_HEADERS.has(name.toLowerCase())) headers.set(name, value);
@@ -274,7 +278,11 @@ async function executeApiRequest(
   if (response.ok && request.path.startsWith('/api/v1/tenant/pos-activations/requests/') && request.path.endsWith('/enrol/')) {
     const activation = JSON.parse(body) as DeviceActivation;
     if (activation.deviceFingerprint !== deviceFingerprint()) throw new Error('Approved activation belongs to another installation.');
-    await new EncryptedActivationStore(stored.tenantId, deviceId).save(activation);
+    try {
+      await new EncryptedActivationStore(stored.tenantId, deviceId).save(activation);
+    } catch {
+      throw new Error('The server enrolled this installation, but secure storage failed. Restore OS secure storage, then ask a different platform owner to issue a recovery code for this request.');
+    }
     // The native process retains the credential; the UI only needs the outcome.
     body = JSON.stringify({ ...activation, signedToken: undefined });
   }

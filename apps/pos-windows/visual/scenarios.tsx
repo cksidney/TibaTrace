@@ -20,6 +20,8 @@ import { RegisterCentre } from '../src/components/tibatrace/RegisterCentre.js';
 import { SyncCentre } from '../src/components/tibatrace/SyncCentre.js';
 import { BlockingReason, StatusBadge } from '../src/components/tibatrace/StatusBadge.js';
 import { WorkflowRibbon } from '../src/components/tibatrace/WorkflowRibbon.js';
+import { PosActivationConsole } from '../src/components/tibatrace/PosActivationConsole.js';
+import { RetailWorkspace } from '../src/components/tibatrace/RetailWorkspace.js';
 import type { ClinicalStatus } from '@dawatrace/shared/design-system/index.js';
 import type { StageView } from '@dawatrace/shared/design-system/index.js';
 import type { OfflineAction } from '@dawatrace/shared/dispensing/index.js';
@@ -46,8 +48,30 @@ export interface Scenario {
   /** Why this state is in the catalogue. Read during baseline review. */
   readonly rationale: string;
   readonly width: number;
+  /** False until the Linux CI pixel baseline is captured and reviewed. */
+  readonly pixelBaseline?: boolean;
   readonly render: () => ReactNode;
 }
+
+const activationFetch: typeof fetch = async (input) => {
+  const path = String(input);
+  if (path.includes('/requests/options/')) {
+    return new Response(JSON.stringify({
+      branches: [{ id: 'branch-1', code: 'NBO-01', name: 'Nairobi Central' }],
+      registers: [{ id: 'register-1', branchId: 'branch-1', code: 'REG-01', name: 'Front counter', available: true }],
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  }
+  return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+};
+
+const retailFetch: typeof fetch = async (input) => {
+  if (String(input).includes('/catalogue/stores/')) {
+    return new Response(JSON.stringify([
+      { id: 'store-1', branch: 'branch-1', name: 'Nairobi Central Pharmacy', location_type: 'PHARMACY', status: 'ACTIVE' },
+    ]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  }
+  return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+};
 
 const ALL_STATUSES: readonly ClinicalStatus[] = [
   'SAFE',
@@ -124,6 +148,32 @@ function stages(active: string, overrides: Partial<Record<string, Partial<StageV
 }
 
 export const SCENARIOS: readonly Scenario[] = [
+  {
+    id: 'activation-no-request',
+    title: 'POS activation — ready to request',
+    rationale: 'A first-time operator should see the next step, installation identity, and the trading prerequisites without searching other workspaces.',
+    width: 1280,
+    pixelBaseline: false,
+    render: () => <div className="pos-console"><PosActivationConsole
+        apiFetch={activationFetch}
+        userId="manager-1"
+        userRole="MANAGER"
+        userCapabilities={['tenant.pos_activation.request']}
+        isPlatformOwnerContext={false}
+        tenantId="tenant-1"
+        deviceId="windows-counter-01"
+        fingerprint="5ef1c3b784d24b668a130f7cba91e5295ef1c3b784d24b668a130f7cba91e529"
+        appVersion="1.0.11"
+      /></div>,
+  },
+  {
+    id: 'retail-empty-sale',
+    title: 'Retail POS — new sale',
+    rationale: 'The first sale view should make store selection, scan/search, basket state, and the next action clear at till sizes.',
+    width: 1280,
+    pixelBaseline: false,
+    render: () => <div className="pos-console"><RetailWorkspace apiFetch={retailFetch} deviceId="windows-counter-01" /></div>,
+  },
   // ------------------------------------------------------------ status badges
   {
     id: 'status-badge-all',
