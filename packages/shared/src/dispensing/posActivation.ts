@@ -140,6 +140,9 @@ export interface PosActivationRequestDTO {
   readonly approvalRationale?: string;
   readonly rejectionRationale?: string;
   readonly activationExpiry?: string;
+  readonly challengeExpiresAt?: string | null;
+  readonly challengeAvailable?: boolean;
+  readonly credentialExpired?: boolean;
   readonly correlationId: string;
 }
 
