@@ -1,4 +1,5 @@
 import { action, autoColumns, fontSize, spacing, statusPalette, surface, text } from '@dawatrace/shared/design-system/index.js';
+import { PosIcon } from './PosIcon.js';
 import { useCallback, useEffect, useState } from 'react';
 
 type PrintStatus = 'QUEUED' | 'RENDERED' | 'SENDING' | 'PRINTED' | 'FAILED' | 'RETRY_REQUIRED' | 'CANCELLED';
@@ -34,6 +35,8 @@ export function PrintCentre({ apiFetch, deviceId, initialJobs = [], autoRefresh 
   /** Used only by deterministic visual scenarios; production always refreshes. */
   readonly autoRefresh?: boolean;
 }) {
+  const [filter, setFilter] = useState<'all' | 'pending' | 'attention' | 'printed'>('all');
+  const [setupOpen, setSetupOpen] = useState(false);
   const [jobs, setJobs] = useState<readonly PosPrintJob[]>(initialJobs);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -146,42 +149,38 @@ export function PrintCentre({ apiFetch, deviceId, initialJobs = [], autoRefresh 
     }
   };
 
+  const pending = jobs.filter((job) => ['QUEUED', 'RENDERED', 'SENDING'].includes(job.status));
+  const attention = jobs.filter((job) => ['FAILED', 'RETRY_REQUIRED'].includes(job.status));
+  const printed = jobs.filter((job) => job.status === 'PRINTED');
+  const shown = filter === 'pending' ? pending : filter === 'attention' ? attention : filter === 'printed' ? printed : jobs;
   return (
-    <main style={root} aria-label="Print Centre">
-      <header style={header}>
+    <main className="pos-print" style={root} aria-label="Print Centre">
+      <header className="pos-page-heading" style={header}>
         <div>
           <p style={eyebrow}>Durable document queue</p>
           <h1 style={heading}>Print Centre</h1>
-          <p style={subheading}>This terminal shows its own branch/device queue. Simulator results validate queue controls only; physical printer certification is still required.</p>
+          <p style={subheading}>Receipts and labels for this terminal, with every print attempt accounted for.</p>
         </div>
         <button type="button" onClick={() => void refresh()} disabled={busy} style={secondaryButton}>
           {busy ? 'Refreshing…' : 'Refresh queue'}
         </button>
       </header>
 
-      <section style={simulatorNotice} aria-label="Simulator scope">
-        <strong>{physicalAvailable ? 'Windows printer driver' : 'Simulator-only mode'}</strong>
-        <span>{physicalAvailable ? 'Install the USB printer driver and select its correct paper size. Configure drawer opening in that driver, then have the Manager test it. Spooler acceptance is not proof that paper printed.' : 'No physical printer receives simulator documents. Use the installed Windows till for USB printing.'}</span>
-      </section>
-      {physicalAvailable ? <label style={fieldLabel}>Installed USB / Windows printer
-        <select value={printer} onChange={event => setPrinter(event.target.value)} disabled={busy}>
-          <option value="">Choose an installed printer</option>
-          {printers.map(item => <option key={item.name} value={item.name}>{item.displayName || item.name}</option>)}
-        </select>
-        {printers.length === 0 ? <span>No installed printer found. Install its Windows driver before printing.</span> : null}
-      </label> : null}
+      <section className="pos-print-connection"><span className="pos-empty-icon"><PosIcon name="print" size={24} /></span><div><strong>{physicalAvailable ? 'Windows printer' : 'Preview environment'}</strong><p>{physicalAvailable ? 'Choose an installed printer for this terminal.' : 'Simulator only. No physical printer is connected.'}</p></div>{physicalAvailable && <label className="pos-printer-picker"><span className="sr-only">Installed USB / Windows printer</span><select value={printer} onChange={event => setPrinter(event.target.value)} disabled={busy}><option value="">Choose an installed printer</option>{printers.map(item => <option key={item.name} value={item.name}>{item.displayName || item.name}</option>)}</select></label>}<button className="pos-button" type="button" aria-expanded={setupOpen} onClick={() => setSetupOpen((value) => !value)}>Printer setup</button></section>
+      {setupOpen && <section style={simulatorNotice} aria-label="Simulator scope"><strong>{physicalAvailable ? 'Windows printer driver' : 'Simulator-only mode'}</strong><span>{physicalAvailable ? 'Install the printer’s Windows driver, select its paper size, then print and inspect a test copy. Spooler acceptance does not confirm physical output.' : 'Simulator results check the queue lifecycle only. Use the installed Windows till for physical printing.'}</span>{physicalAvailable && printers.length === 0 && <span>No installed printer found. Install the Windows driver, then reopen Print Centre.</span>}</section>}
+      <div className="pos-print-filters" role="group" aria-label="Filter print jobs">{([{id:'all',label:'All documents',count:jobs.length},{id:'pending',label:'In queue',count:pending.length},{id:'attention',label:'Need attention',count:attention.length},{id:'printed',label:'Printed',count:printed.length}] as const).map((item)=><button key={item.id} type="button" aria-pressed={filter===item.id} onClick={()=>setFilter(item.id)}>{item.label}<b>{item.count}</b></button>)}</div>
 
       {error ? <p role="alert" style={errorText}>{error}</p> : null}
       {notice ? <p role="status" style={noticeText}>{notice}</p> : null}
 
-      {jobs.length === 0 && !busy ? (
-        <section style={emptyState}>
-          <h2 style={sectionHeading}>No print jobs for this device</h2>
-          <p style={subheading}>Completed payments create an immutable receipt snapshot and its first queued document job.</p>
+      {shown.length === 0 && !busy ? (
+        <section className="pos-empty-state" style={emptyState}><span className="pos-empty-icon"><PosIcon name="print" size={32} /></span>
+          <h2 style={sectionHeading}>{jobs.length ? 'No documents in this view' : 'Your print queue is clear'}</h2>
+          <p style={subheading}>Receipts and labels appear here when they are created. A confirmed payment stays recorded if printing needs a retry.</p>
         </section>
       ) : (
         <section style={jobList} aria-live="polite">
-          {jobs.map((job) => <PrintJobCard key={job.id} job={job} busy={busy} physicalReady={physicalAvailable && !!printer} onAction={(kind) => {
+          {shown.map((job) => <PrintJobCard key={job.id} job={job} busy={busy} physicalReady={physicalAvailable && !!printer} onAction={(kind) => {
             setNotice('');
             setReason('');
             setSimulatedOutcome('success');

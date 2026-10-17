@@ -69,14 +69,20 @@ class PosTransactionLineSerializer(serializers.ModelSerializer):
 
 
 class RetailCashRefundSerializer(serializers.ModelSerializer):
+    fiscal = serializers.SerializerMethodField()
     amount = MoneyField()
     original_receipt_number = serializers.CharField(source="original_receipt.receipt_number", read_only=True)
     print_job = serializers.SerializerMethodField()
 
     class Meta:
         model = RetailCashRefund
-        fields = ["id", "refund_number", "original_receipt_number", "refund_request", "amount", "currency",
-                  "completed_at", "register_session", "created_by", "approved_by", "lines_snapshot", "print_job"]
+        fields = ["id", "refund_number", "original_receipt_number", "refund_request", "amount", "cash_amount", "payment_plan", "currency",
+                  "completed_at", "register_session", "created_by", "approved_by", "lines_snapshot", "print_job", "fiscal"]
+
+    @staticmethod
+    def get_fiscal(receipt):
+        from apps.prescription.fiscal import FiscalService
+        return FiscalService.status(receipt)
 
     @staticmethod
     def get_print_job(receipt):
@@ -103,7 +109,7 @@ class RetailRefundRequestSerializer(serializers.ModelSerializer):
     class Meta:
         model = RetailRefundRequest
         fields = ["id", "status", "reason", "amount", "currency", "return_location", "requested_by", "approved_by",
-                  "reviewed_at", "review_reason", "created_at", "lines", "receipt"]
+                  "reviewed_at", "review_reason", "created_at", "lines", "receipt", "payment_plan"]
 
     @staticmethod
     def get_lines(request):
@@ -303,6 +309,7 @@ class RefundReviewSerializer(serializers.Serializer):
 
 
 class CashRefundRequestSerializer(DeviceActionRequestSerializer):
+    payment_references = serializers.DictField(child=serializers.CharField(max_length=128, allow_blank=False), default=dict)
     refund_request_id = serializers.UUIDField()
     idempotency_key = serializers.CharField(max_length=255, allow_blank=False)
 

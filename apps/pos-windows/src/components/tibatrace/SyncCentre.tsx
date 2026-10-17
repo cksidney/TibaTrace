@@ -117,6 +117,17 @@ export function SyncCentre({ apiFetch, deviceId, journal, onOpenPrint, initialSn
     setBusy(true);
     setError('');
     try {
+      const checkoutPath = entryToReconcile.payload.checkout_path;
+      if (typeof checkoutPath === 'string' && /^\/api\/pos\/(retail\/transactions|dispensing\/episodes)\/[a-f0-9-]+\/checkout\/$/.test(checkoutPath)) {
+        const response = await request(checkoutPath);
+        const result = await response.json() as { intent?: { tenders?: readonly { command_key: string }[] } };
+        const applied = result.intent?.tenders?.some(t => t.command_key === entryToReconcile.idempotencyKey) ?? false;
+        await journal.reconcile(entryToReconcile.id, applied);
+        setEntries(journal.entries);
+        setNotice(applied ? 'The original checkout command is recorded. Refresh the sale to see settlement status.' : 'No original command was found. Return to the sale and retry the saved command with its original key.');
+        setEntryToReconcile(null);
+        return;
+      }
       const response = await request(`/api/pos/dispensing/episodes/${entryToReconcile.episodeId}/reconcile-action/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -154,12 +165,12 @@ export function SyncCentre({ apiFetch, deviceId, journal, onOpenPrint, initialSn
         : `Aligned with HQ release ${clientVersion.latest_version || clientVersion.client_version}. Rechecks daily.`;
 
   return (
-    <main style={root} aria-label="Sync Centre">
-      <header style={header}>
+    <main className="pos-support-workspace" style={root} aria-label="Sync Centre">
+      <header className="pos-page-heading" style={header}>
         <div>
-          <p style={eyebrow}>Authoritative recovery</p>
+          <p className="pos-eyebrow" style={eyebrow}>Connection & recovery</p>
           <h1 style={heading}>Sync Centre</h1>
-          <p style={subheading}>Refreshes status only. It never blindly replays payment, collection, supply or clinical decisions.</p>
+          <p style={subheading}>Check connections and review work awaiting recovery. Refreshing checks status without repeating transactions.</p>
         </div>
         <button type="button" disabled={busy} onClick={() => void refresh()} style={secondaryButton}>{busy ? 'Refreshing…' : 'Refresh status'}</button>
       </header>

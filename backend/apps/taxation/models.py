@@ -3,11 +3,9 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from django.core.exceptions import ValidationError
 from django.db import models
-from django.utils import timezone
 
-from apps.core.models import StrictTenantManager, StrictTenantQuerySet, TenantConsistencyMixin, TimestampedModel
+from apps.core.models import StrictTenantManager, TenantConsistencyMixin, TimestampedModel
 
 MONEY = {"max_digits": 15, "decimal_places": 2}
 

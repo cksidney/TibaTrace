@@ -86,6 +86,11 @@ class PosTransactionViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [permissions.IsAuthenticated, RetailReadPermission]
     serializer_class = PosTransactionSerializer
 
+    @action(detail=True, methods=["get", "post"])
+    def checkout(self, request, pk=None):
+        from apps.prescription.checkout_api import checkout_response
+        return checkout_response(request, self.get_object())
+
     def get_queryset(self):
         tenant_id = (
             getattr(self.request, "tenant_id", None)
@@ -292,7 +297,7 @@ class PosTransactionViewSet(viewsets.ReadOnlyModelViewSet):
         payload.is_valid(raise_exception=True)
         data = payload.validated_data
         receipt = _run(lambda: RetailRefundService.execute_cash(tenant=_tenant(request), transaction_id=pk,
-            request_id=data["refund_request_id"], actor=request.user, device_id=data["device_id"], idempotency_key=data["idempotency_key"]))
+            request_id=data["refund_request_id"], actor=request.user, device_id=data["device_id"], idempotency_key=data["idempotency_key"], payment_references=data["payment_references"]))
         return Response(RetailCashRefundSerializer(receipt).data)
 
     @staticmethod

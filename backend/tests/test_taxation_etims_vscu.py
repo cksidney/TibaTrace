@@ -3,9 +3,11 @@ from __future__ import annotations
 
 from datetime import timedelta
 from decimal import Decimal
+from io import StringIO
 from unittest.mock import MagicMock, patch
 
 import pytest
+from django.core.management import call_command
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -23,7 +25,8 @@ from apps.organizations.models import Location, Organization
 from apps.pos_shift.models import BusinessDay, OperatorShift, PosRegister, RegisterSession
 from apps.pos_transactions.models import PosTransaction, PosTransactionLine, RetailCashReceipt
 from apps.pos_transactions.services import PosRetailService
-from apps.taxation.models import FiscalReceipt, FiscalSubmissionLog, TenantEtimsProfile
+from apps.prescription.fiscal_models import FiscalSubmission
+from apps.taxation.models import FiscalReceipt, TenantEtimsProfile
 from apps.taxation.qr_generator import (
     build_kra_qr_verification_url,
     compute_offline_receipt_signature,
@@ -296,12 +299,12 @@ def test_vscu_client_initialize_device(test_setup):
 
 
 # ==============================================================================
-# 4. End-to-End Fiscalization on Sale Settlement
+# 4. One Authoritative Fiscal Outbox on Sale Settlement
 # ==============================================================================
 
 @patch.object(PosRetailService, "_authority")
 @patch.object(PosRetailService, "_catalogue_item")
-def test_retail_sale_fiscalization_pipeline(mock_item, mock_auth, test_setup):
+def test_retail_sale_uses_the_checkout_fiscal_outbox(mock_item, mock_auth, test_setup):
     tenant = test_setup["tenant"]
     branch = test_setup["branch"]
     store = test_setup["store"]
@@ -311,8 +314,6 @@ def test_retail_sale_fiscalization_pipeline(mock_item, mock_auth, test_setup):
     shift = test_setup["shift"]
     session = test_setup["session"]
     sku_exempt = test_setup["sku_exempt"]
-    profile = test_setup["profile"]
-
     auth = MagicMock()
     auth.register = register
     auth.session = session
@@ -357,52 +358,23 @@ def test_retail_sale_fiscalization_pipeline(mock_item, mock_auth, test_setup):
         price_snapshot={"unit_price": "500.00"},
     )
 
-    mock_resp = MagicMock()
-    mock_resp.status_code = 200
-    mock_resp.json.return_value = {
-        "resultCd": "000",
-        "resultMsg": "SUCCESS",
-        "data": {
-            "curTrnsDt": "20261016",
-            "curTrnsTm": "141000",
-            "rcptNo": 1,
-            "intrlData": "KRA-INTRL-101614",
-            "rcptSign": "KRA-SIGN-998877",
-            "totRcptNo": 1,
-            "vsdcRcptPbctDate": "20261016141000",
-            "sdcId": "SDC0010001",
-            "mrcNo": "MRC01",
-        },
-    }
-
     user.has_capability = MagicMock(return_value=True)
 
-    with patch("requests.post", return_value=mock_resp):
-        settled_tx = PosRetailService.settle_cash(
-            tenant=tenant,
-            transaction_id=tx.pk,
-            actor=user,
-            device_id="DEV-01",
-            cash_received="1000.00",
-            idempotency_key="test-settle-etims-1",
-        )
+    settled_tx = PosRetailService.settle_cash(
+        tenant=tenant,
+        transaction_id=tx.pk,
+        actor=user,
+        device_id="DEV-01",
+        cash_received="1000.00",
+        idempotency_key="test-settle-etims-1",
+    )
 
-        assert settled_tx.state == PosTransaction.State.COMPLETED
-        receipt = RetailCashReceipt.all_objects.get(transaction=settled_tx)
-        assert receipt.amount == Decimal("1000.00")
-
-        fiscal = FiscalReceipt.all_objects.get(tenant=tenant, retail_cash_receipt=receipt)
-        assert fiscal.invoice_number == 1
-        assert fiscal.submission_status == FiscalReceipt.SubmissionStatus.SUBMITTED
-        assert fiscal.receipt_signature == "KRA-SIGN-998877"
-        assert fiscal.internal_data == "KRA-INTRL-101614"
-        assert "etims-sbx.kra.go.ke" in fiscal.qr_code_url
-        assert "<svg" in fiscal.qr_code_image_data
-
-        log = FiscalSubmissionLog.all_objects.filter(fiscal_receipt=fiscal).first()
-        assert log is not None
-        assert log.success is True
-        assert log.endpoint == "/saveTrnsSalesOsdc"
+    assert settled_tx.state == PosTransaction.State.COMPLETED
+    receipt = RetailCashReceipt.all_objects.get(transaction=settled_tx)
+    assert receipt.amount == Decimal("1000.00")
+    fiscal = FiscalSubmission.all_objects.get(tenant=tenant, source_kind="RETAIL", source_id=settled_tx.pk)
+    assert fiscal.status == "NOT_CONFIGURED"
+    assert not FiscalReceipt.all_objects.filter(tenant=tenant, retail_cash_receipt=receipt).exists()
 
 
 # ==============================================================================
@@ -411,7 +383,7 @@ def test_retail_sale_fiscalization_pipeline(mock_item, mock_auth, test_setup):
 
 @patch.object(PosRetailService, "_authority")
 @patch.object(PosRetailService, "_catalogue_item")
-def test_offline_resilience_when_kra_fails(mock_item, mock_auth, test_setup):
+def test_offline_resilience_keeps_sale_pending_until_vscu_is_configured(mock_item, mock_auth, test_setup):
     tenant = test_setup["tenant"]
     branch = test_setup["branch"]
     store = test_setup["store"]
@@ -468,26 +440,22 @@ def test_offline_resilience_when_kra_fails(mock_item, mock_auth, test_setup):
 
     user.has_capability = MagicMock(return_value=True)
 
-    with patch("requests.post", side_effect=Exception("Connection timed out to KRA")):
-        settled_tx = PosRetailService.settle_cash(
-            tenant=tenant,
-            transaction_id=tx.pk,
-            actor=user,
-            device_id="DEV-01",
-            cash_received="200.00",
-            idempotency_key="test-settle-offline-1",
-        )
+    settled_tx = PosRetailService.settle_cash(
+        tenant=tenant,
+        transaction_id=tx.pk,
+        actor=user,
+        device_id="DEV-01",
+        cash_received="200.00",
+        idempotency_key="test-settle-offline-1",
+    )
 
-        assert settled_tx.state == PosTransaction.State.COMPLETED
-        receipt = RetailCashReceipt.all_objects.get(transaction=settled_tx)
-
-        fiscal = FiscalReceipt.all_objects.get(tenant=tenant, retail_cash_receipt=receipt)
-        assert fiscal.submission_status == FiscalReceipt.SubmissionStatus.FAILED
-        assert fiscal.attempt_count == 1
-        assert "Connection timed out" in fiscal.last_error
-        assert len(fiscal.receipt_signature) == 16
-        assert len(fiscal.internal_data) == 16
-        assert fiscal.qr_code_url != ""
+    assert settled_tx.state == PosTransaction.State.COMPLETED
+    receipt = RetailCashReceipt.all_objects.get(transaction=settled_tx)
+    fiscal = FiscalSubmission.all_objects.get(tenant=tenant, source_kind="RETAIL", source_id=settled_tx.pk)
+    assert receipt.amount == Decimal("200.00")
+    assert fiscal.status == "NOT_CONFIGURED"
+    assert not fiscal.response
+    assert not FiscalReceipt.all_objects.filter(tenant=tenant, retail_cash_receipt=receipt).exists()
 
 
 # ==============================================================================
@@ -553,3 +521,42 @@ def test_taxation_api_profile_and_retry(test_setup):
         fiscal.refresh_from_db()
         assert fiscal.submission_status == FiscalReceipt.SubmissionStatus.SUBMITTED
         assert fiscal.receipt_signature == "RETRY-SIGN"
+
+
+def test_taxation_profile_api_is_platform_owner_only(test_setup):
+    tenant = test_setup["tenant"]
+    operator = User.objects.create_user(
+        username="ordinary_tenant_operator", password="password123", tenant=tenant
+    )
+    client = APIClient()
+    client.force_authenticate(user=operator)
+
+    response = client.get("/api/taxation/profile/", HTTP_X_TENANT_ID=str(tenant.pk))
+
+    assert response.status_code == 403
+
+
+def test_etims_queue_limit_counts_due_receipts_not_future_retries(test_setup, monkeypatch):
+    tenant = test_setup["tenant"]
+    future = FiscalReceipt.all_objects.create(
+        tenant=tenant,
+        invoice_number=201,
+        submission_status=FiscalReceipt.SubmissionStatus.FAILED,
+        next_retry_at=timezone.now() + timedelta(hours=1),
+    )
+    due = FiscalReceipt.all_objects.create(
+        tenant=tenant,
+        invoice_number=202,
+        submission_status=FiscalReceipt.SubmissionStatus.FAILED,
+        next_retry_at=timezone.now() - timedelta(minutes=1),
+    )
+    submitted = []
+    monkeypatch.setattr(
+        "apps.taxation.management.commands.process_etims_queue.FiscalizationPipeline.transmit_to_vscu",
+        lambda receipt, profile: submitted.append(receipt.pk) or True,
+    )
+
+    call_command("process_etims_queue", "--limit", "1", stdout=StringIO())
+
+    assert future.pk not in submitted
+    assert submitted == [due.pk]

@@ -170,19 +170,21 @@ class MpesaAdapter:
 
         try:
             status, body = self._post("/mpesa/stkpush/v1/processrequest", payload)
-        except Exception as exc:  # noqa: BLE001 - transport failures are normalised
+        except Exception:  # noqa: BLE001 - unknown outcomes require reconciliation
             return InitiationResult(
                 accepted=False,
                 request_reference=attempt.request_reference,
                 failure_code="PROVIDER_UNAVAILABLE",
-                failure_reason=str(exc),
-                # Nothing was collected, so retrying is safe.
-                retryable=True,
+                failure_reason="Daraja outcome is unknown. Check status before retrying.",
+                retryable=False,
             )
 
         return self._interpret_initiation(attempt, status, body)
 
     def _interpret_initiation(self, attempt, status: int, body: dict[str, Any]) -> InitiationResult:
+        if status >= 500 or status == 429:
+            return InitiationResult(accepted=False, request_reference=attempt.request_reference,
+                failure_code="PROVIDER_UNAVAILABLE", failure_reason="Daraja outcome is unknown. Reconcile before another request.", retryable=False)
         response_code = str(body.get("ResponseCode", ""))
         if status == 200 and response_code == "0":
             return InitiationResult(
@@ -200,8 +202,7 @@ class MpesaAdapter:
             request_reference=attempt.request_reference,
             failure_code=code,
             failure_reason=reason,
-            # 5xx and throttling may succeed later; a refusal will not.
-            retryable=status >= 500 or code in {"500.001.1001"},
+            retryable=False,
         )
 
     # ------------------------------------------------------------------- query
@@ -227,9 +228,9 @@ class MpesaAdapter:
             provider_reference=attempt.provider_reference,
             request_reference=attempt.request_reference,
             event_type="PAYMENT",
-            status="SUCCEEDED" if result_code == "0" else "FAILED" if result_code else "PENDING",
+            status="SUCCEEDED" if result_code == "0" else "PENDING" if result_code in {"", "1037", "4999"} else "FAILED",
             amount=Decimal(str(attempt.requested_amount)) if result_code == "0" else None,
-            event_id=f"QUERY-{attempt.provider_reference}",
+            event_id=f"QUERY-{attempt.provider_reference}-{result_code or 'PENDING'}",
             raw_status=result_code,
         )
 
@@ -296,3 +297,32 @@ class MpesaAdapter:
             {"Content-Type": "application/json"},
             json.loads(json.dumps(payload)),
         )
+
+
+class DarajaTransport:
+    """Bounded OAuth-authenticated calls to the fixed official Daraja host."""
+
+    def __init__(self, config):
+        self.config = config
+
+    def __call__(self, method, url, headers, payload):
+        from urllib.error import HTTPError
+        from urllib.request import Request, urlopen
+
+        if not url.startswith(self.config.base_url + "/mpesa/"):
+            raise ValueError("Daraja request destination is invalid.")
+        credential = base64.b64encode(f"{self.config.consumer_key}:{self.config.consumer_secret}".encode()).decode()
+        auth = Request(self.config.base_url + "/oauth/v1/generate?grant_type=client_credentials", headers={"Authorization": "Basic " + credential})
+        try:
+            with urlopen(auth, timeout=15) as response:
+                token = json.loads(response.read(65536)).get("access_token")
+            if not token:
+                raise ValueError("Daraja authentication refused.")
+            request = Request(url, data=json.dumps(payload).encode(), method=method,
+                headers={**headers, "Authorization": "Bearer " + token})
+            with urlopen(request, timeout=20) as response:
+                return response.status, json.loads(response.read(65536))
+        except HTTPError as exc:
+            return exc.code, {"errorCode": "PROVIDER_HTTP_ERROR", "errorMessage": "Daraja refused this request. Review provider status before retrying."}
+        except Exception:
+            raise RuntimeError("Daraja outcome is unknown. Check payment status before another collection.") from None

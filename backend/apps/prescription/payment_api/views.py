@@ -7,6 +7,7 @@ enforce allocation limits, idempotency and separation of duties.
 """
 from django.core.exceptions import PermissionDenied
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import transaction
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
@@ -56,6 +57,16 @@ def _handle(fn):
         raise ValidationError(str(exc)) from exc
 
 
+def _legacy_authority(intent, actor):
+    # Retail checkout owns stock, price, device and receipt finalisation. Its
+    # ledger cannot be mutated through the lower-level historical API.
+    if intent.retail_transaction_id:
+        raise ValidationError("Use this retail sale's scoped checkout commands.")
+    from apps.prescription.checkout import CheckoutService
+    source = DispensingEpisode.all_objects.select_for_update().get(pk=intent.dispensing_episode_id, tenant_id=intent.tenant_id)
+    return _handle(lambda: CheckoutService.authority(source=source, actor=actor, device_id=intent.device_id))
+
+
 class PaymentIntentViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [IsAuthenticated, PosReadCapabilityPermission]
     pos_read_capabilities = (
@@ -70,9 +81,10 @@ class PaymentIntentViewSet(viewsets.ReadOnlyModelViewSet):
             queryset = PaymentIntent.all_objects.filter(tenant_id=get_current_tenant_id())
         else:
             queryset = PaymentIntent.all_objects.filter(tenant=tenant)
-        return scope_to_actor_branches(queryset, self.request, "dispensing_episode__branch_id")
+        return scope_to_actor_branches(queryset, self.request, "branch_id")
 
     @action(detail=False, methods=["post"])
+    @transaction.atomic
     def create_intent(self, request):
         serializer = CreateIntentSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -85,6 +97,12 @@ class PaymentIntentViewSet(viewsets.ReadOnlyModelViewSet):
             # Deliberately not distinguishing "wrong tenant" from "absent": the
             # response must not confirm that another tenant's episode exists.
             raise ValidationError("Dispensing episode not found.")
+
+        from apps.prescription.checkout import CheckoutService
+        episode = DispensingEpisode.all_objects.select_for_update().get(pk=episode.pk)
+        authority = _handle(lambda: CheckoutService.authority(source=episode, actor=request.user, device_id=data["device_id"]))
+        if data["amount_due"] != CheckoutService.amount_due(episode) or data["register_id"] != authority.register.code or data["currency"] != "KES":
+            raise ValidationError("Use the authoritative sale amount, currency and assigned register.")
 
         intent = _handle(
             lambda: PaymentIntentService.create(
@@ -100,11 +118,13 @@ class PaymentIntentViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(PaymentIntentSerializer(intent).data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=["post"])
+    @transaction.atomic
     def tenders(self, request, pk=None):
         intent = self.get_object()
         serializer = AllocateTenderSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
+        authority = _legacy_authority(intent, request.user)
 
         tender = _handle(
             lambda: PaymentTenderService.allocate(
@@ -114,6 +134,9 @@ class PaymentIntentViewSet(viewsets.ReadOnlyModelViewSet):
                 actor=request.user,
                 idempotency_key=data["idempotency_key"],
                 provider=data["provider"],
+                register_id=authority.register.code,
+                register_session=authority.session,
+                operator_shift=authority.operator_shift,
             )
         )
         return Response(PaymentTenderSerializer(tender).data, status=status.HTTP_201_CREATED)
@@ -125,11 +148,13 @@ class PaymentIntentViewSet(viewsets.ReadOnlyModelViewSet):
         summary = SplitTenderService.summary(intent=intent)
         from apps.core.money import format_money
 
-        return Response({key: format_money(value) for key, value in summary.items()})
+        return Response({key: value if isinstance(value, bool) else format_money(value) for key, value in summary.items()})
 
     @action(detail=True, methods=["post"])
+    @transaction.atomic
     def cancel(self, request, pk=None):
         intent = self.get_object()
+        _legacy_authority(intent, request.user)
         result = _handle(
             lambda: PaymentIntentService.cancel(
                 intent=intent, actor=request.user, reason=request.data.get("reason", "")
@@ -149,14 +174,16 @@ class PaymentTenderViewSet(viewsets.ReadOnlyModelViewSet):
             queryset = PaymentTender.all_objects.filter(tenant_id=get_current_tenant_id())
         else:
             queryset = PaymentTender.all_objects.filter(tenant=tenant)
-        return scope_to_actor_branches(queryset, self.request, "payment_intent__dispensing_episode__branch_id")
+        return scope_to_actor_branches(queryset, self.request, "payment_intent__branch_id")
 
     @action(detail=True, methods=["post"], url_path="cash-settle")
+    @transaction.atomic
     def cash_settle(self, request, pk=None):
         tender = self.get_object()
         serializer = CashSettleSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
+        _legacy_authority(tender.payment_intent, request.user)
 
         _handle(
             lambda: PaymentSettlementService.settle_cash(
@@ -171,11 +198,13 @@ class PaymentTenderViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(PaymentTenderSerializer(tender).data)
 
     @action(detail=True, methods=["post"], url_path="card-confirm")
+    @transaction.atomic
     def card_confirm(self, request, pk=None):
         tender = self.get_object()
         serializer = CardConfirmSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
+        _legacy_authority(tender.payment_intent, request.user)
 
         _handle(
             lambda: PaymentSettlementService.confirm_card(
@@ -190,11 +219,15 @@ class PaymentTenderViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(PaymentTenderSerializer(tender).data)
 
     @action(detail=True, methods=["post"])
+    @transaction.atomic
     def initiate(self, request, pk=None):
         """Ask a provider to collect. Records only that we asked."""
         tender = self.get_object()
         serializer = InitiateProviderSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        _legacy_authority(tender.payment_intent, request.user)
+        if serializer.validated_data["provider"] != "FAKE":
+            raise ValidationError("Use the scoped checkout for durable provider initiation.")
 
         attempt, result = _handle(
             lambda: PaymentAttemptService.initiate(
@@ -221,8 +254,10 @@ class PaymentTenderViewSet(viewsets.ReadOnlyModelViewSet):
         )
 
     @action(detail=True, methods=["post"])
+    @transaction.atomic
     def cancel(self, request, pk=None):
         tender = self.get_object()
+        _legacy_authority(tender.payment_intent, request.user)
         result = _handle(
             lambda: PaymentTenderService.cancel(
                 tender=tender, actor=request.user, reason=request.data.get("reason", "")
@@ -242,7 +277,7 @@ class PaymentSettlementViewSet(viewsets.ReadOnlyModelViewSet):
             queryset = PaymentSettlement.all_objects.filter(tenant_id=get_current_tenant_id())
         else:
             queryset = PaymentSettlement.all_objects.filter(tenant=tenant)
-        return scope_to_actor_branches(queryset, self.request, "payment_tender__payment_intent__dispensing_episode__branch_id")
+        return scope_to_actor_branches(queryset, self.request, "payment_tender__payment_intent__branch_id")
 
     @action(detail=True, methods=["post"])
     def reverse(self, request, pk=None):

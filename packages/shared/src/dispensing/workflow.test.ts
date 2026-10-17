@@ -45,6 +45,20 @@ function workflowWith(ep: DispensingEpisodeDTO) {
 }
 
 describe('supply gate', () => {
+  it('requires a new authoritative read after returning to the queue', async () => {
+    const { workflow, client } = workflowWith(episode());
+    await workflow.load('ep-1');
+    workflow.unload();
+    const confirm = vi.spyOn(client, 'confirmCollection');
+    expect(workflow.current).toBeNull();
+    expect(workflow.gate().canTakePayment).toBe(false);
+    expect(workflow.gate().canConfirmCollection).toBe(false);
+    await expect(workflow.confirmCollection({ collector_name: 'Test Collector', idempotency_key: 'collect-after-unload' }))
+      .rejects.toThrow('No dispensing episode loaded.');
+    expect(confirm).not.toHaveBeenCalled();
+    await workflow.load('ep-1');
+    expect(workflow.gate().canConfirmCollection).toBe(true);
+  });
   it('allows authoritative paid status to proceed to collection without a fake status button', async () => {
     const { workflow } = workflowWith(episode({ status: 'PAID', payment_state: 'PAID' }));
     await workflow.load('ep-1');

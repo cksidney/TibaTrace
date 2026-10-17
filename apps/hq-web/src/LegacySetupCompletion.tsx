@@ -1,3 +1,4 @@
+import { IntakeModal } from './IntakeModal.js';
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { loadInventoryLocations, loadTenantSkus, releaseLegacySetup, stageLegacySetup } from './api.js';
@@ -38,7 +39,7 @@ export function LegacySetupCompletion({ item, tenantId, csrfToken, onClose, onSa
     } catch (cause: unknown) { setError(cause instanceof Error ? cause.message : 'Opening setup could not be completed.'); }
     finally { setBusy(false); }
   };
-  return <section className="legacy-detail" aria-labelledby="opening-setup-title">
+  return <IntakeModal title={releasing ? 'Independent opening-stock release' : 'Stage opening setup'} busy={busy} onClose={onClose}><section className="legacy-detail" aria-labelledby="opening-setup-title">
     <h3 id="opening-setup-title">{releasing ? 'Independent opening-stock release' : 'Link reviewed product and stage opening setup'}</h3>
     <p><strong>{item.source_name}</strong> · confirmed {item.review.counted_quantity} {item.review.sales_unit}, KES {item.review.confirmed_price} per sales unit.</p>
     <p>{releasing ? 'The linked price version must be independently approved, published and effective. A different quality-authorized user then confirms the actual batches and moves quarantine stock into saleable storage.' : 'Create and activate the exact reviewed medicine/pack in the catalogue first. This step creates only a price draft and quarantined opening stock; it does not approve a price or release stock. Imported quantities are never used automatically.'}</p>
@@ -55,5 +56,5 @@ export function LegacySetupCompletion({ item, tenantId, csrfToken, onClose, onSa
       {error && <p className="legacy-error" role="alert">{error}</p>}
       <footer className="legacy-actions"><button className="secondary-button" type="button" onClick={onClose}>Close</button><button className="primary-button" type="submit">{busy ? 'Working…' : releasing ? 'Release verified opening stock' : 'Stage draft price and quarantine stock'}</button></footer>
     </fieldset></form>
-  </section>;
+  </section></IntakeModal>;
 }

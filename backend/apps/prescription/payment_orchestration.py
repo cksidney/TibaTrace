@@ -31,6 +31,7 @@ from apps.prescription.payment_providers import ProviderEvent, get_adapter
 from apps.prescription.payment_services import (
     PaymentSettlementService,
     PaymentStateProjectionService,
+    lock_intent,
     payload_hash,
 )
 from apps.prescription.services.clinical_dispensing import _require_capability
@@ -109,6 +110,12 @@ class PaymentEventService:
         must leave a trace without moving money.
         """
         raw_payload = raw_payload or {}
+        candidate = PaymentAttempt.all_objects.filter(tenant=tenant, provider=provider_code, request_reference=event.request_reference).first()
+        if candidate is None and event.provider_reference:
+            candidate = PaymentAttempt.all_objects.filter(tenant=tenant, provider=provider_code, provider_reference=event.provider_reference).first()
+        if candidate:
+            lock_intent(candidate.payment_tender.payment_intent)
+
         if provider_code.upper() == "FAKE":
             get_adapter("FAKE").validate_configuration(tenant=tenant)
 
@@ -164,8 +171,10 @@ class PaymentEventService:
         )
 
         attempt = PaymentAttempt.all_objects.filter(
-            tenant=tenant, request_reference=event.request_reference
+            tenant=tenant, provider=provider_code, request_reference=event.request_reference
         ).first()
+        if attempt is None and event.provider_reference:
+            attempt = PaymentAttempt.all_objects.filter(tenant=tenant, provider=provider_code, provider_reference=event.provider_reference).first()
         if attempt is None:
             # Callback-before-initiation-response, or an event for a request we
             # never made. Held as unmatched for reconciliation rather than
@@ -175,6 +184,10 @@ class PaymentEventService:
             record.save(update_fields=["processing_status", "processing_error"])
             return record, None
 
+        if attempt.status == PaymentAttempt.Status.SUCCEEDED:
+            record.processing_status = PaymentProviderEvent.ProcessingStatus.DUPLICATE
+            record.save(update_fields=["processing_status"])
+            return record, None
         if event.status != "SUCCEEDED":
             attempt.status = (
                 PaymentAttempt.Status.FAILED
@@ -183,6 +196,8 @@ class PaymentEventService:
             )
             attempt.completed_at = timezone.now() if event.status == "FAILED" else None
             attempt.save(update_fields=["status", "completed_at"])
+            if event.status == "FAILED" and attempt.payment_tender.settled_amount == 0:
+                PaymentTender.all_objects.filter(tenant=tenant, pk=attempt.payment_tender_id).update(status="FAILED")
             record.processing_status = PaymentProviderEvent.ProcessingStatus.PROCESSED
             record.save(update_fields=["processing_status"])
             return record, None
@@ -198,6 +213,11 @@ class PaymentEventService:
             record.save(update_fields=["processing_status", "processing_error"])
             return record, None
 
+        if event.currency and event.currency != attempt.payment_tender.payment_intent.currency:
+            record.processing_status = PaymentProviderEvent.ProcessingStatus.REJECTED
+            record.processing_error = "Provider currency does not match the payment intent."
+            record.save(update_fields=["processing_status", "processing_error"])
+            return record, None
         settlement = PaymentSettlementService.record(
             tender=attempt.payment_tender,
             amount=event.amount,

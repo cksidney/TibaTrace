@@ -57,6 +57,17 @@ def _emit(intent, event_type, payload):
     )
 
 
+def lock_intent(intent):
+    # Source -> intent -> tender throughout checkout, provider settlement and
+    # reconciliation. Consistent ordering avoids a provider callback deadlock.
+    if intent.retail_transaction_id:
+        from apps.pos_transactions.models import PosTransaction
+        PosTransaction.all_objects.select_for_update().get(pk=intent.retail_transaction_id)
+    else:
+        DispensingEpisode.all_objects.select_for_update().get(pk=intent.dispensing_episode_id)
+    return PaymentIntent.all_objects.select_for_update().get(pk=intent.pk)
+
+
 class PaymentStateProjectionService:
     """Derives DispensingEpisode.payment_state from the payment ledger."""
 
@@ -68,7 +79,7 @@ class PaymentStateProjectionService:
         Totals are recomputed from settlement and reversal rows rather than
         incremented in place, so a lost update cannot silently corrupt them.
         """
-        intent = PaymentIntent.all_objects.select_for_update().get(pk=intent.pk)
+        intent = lock_intent(intent)
 
         tenders = PaymentTender.all_objects.filter(payment_intent=intent)
         settled = (
@@ -109,6 +120,9 @@ class PaymentStateProjectionService:
 
         intent.version += 1
         intent.save(update_fields=["amount_settled", "amount_reversed", "status", "version"])
+
+        if intent.retail_transaction_id:
+            return intent
 
         episode_state = PaymentStateProjectionService._episode_state(intent, effective)
         episode = DispensingEpisode.all_objects.select_for_update().get(
@@ -216,7 +230,9 @@ class PaymentIntentService:
     @transaction.atomic
     def cancel(*, intent, actor, reason=""):
         _require_capability(actor, intent.tenant_id, "pos.payment.cancel")
-        intent = PaymentIntent.all_objects.select_for_update().get(pk=intent.pk)
+        intent = lock_intent(intent)
+        if PaymentTender.all_objects.filter(payment_intent=intent, status="PENDING").exists():
+            raise ValidationError("Reconcile pending provider requests before cancelling this payment.")
         if intent.effective_settled > ZERO:
             raise ValidationError(
                 "Cannot cancel an intent that already holds settled value; reverse it instead."
@@ -248,7 +264,10 @@ class PaymentTenderService:
         operator_shift=None,
     ):
         """Allocate part of the intent to a payment method."""
-        _require_capability(actor, intent.tenant_id, "pos.payment.tender.allocate")
+        if intent.retail_transaction_id:
+            _require_capability(actor, intent.tenant_id, {"CASH": "pos.payment.cash.accept", "CARD": "pos.payment.card.confirm", "MPESA": "pos.payment.provider.initiate"}.get(tender_type, "pos.payment.tender.allocate"))
+        else:
+            _require_capability(actor, intent.tenant_id, "pos.payment.tender.allocate")
         idempotency_key = str(idempotency_key or "").strip()
         if not idempotency_key:
             raise ValidationError({"idempotency_key": "Idempotency key is required."})
@@ -257,9 +276,12 @@ class PaymentTenderService:
             tenant_id=intent.tenant_id, idempotency_key=idempotency_key
         ).first()
         if existing:
+            if (existing.payment_intent_id != intent.pk or existing.tender_type != tender_type
+                    or existing.allocated_amount != Decimal(str(allocated_amount)) or existing.provider != provider):
+                raise ValidationError("This retry key belongs to a different tender allocation.")
             return existing
 
-        intent = PaymentIntent.all_objects.select_for_update().get(pk=intent.pk)
+        intent = lock_intent(intent)
         if intent.status not in PaymentIntent.ACTIVE_STATUSES:
             raise ValidationError(f"Payment intent is {intent.status}; cannot allocate a tender.")
 
@@ -302,7 +324,10 @@ class PaymentTenderService:
     @transaction.atomic
     def cancel(*, tender, actor, reason=""):
         _require_capability(actor, tender.tenant_id, "pos.payment.cancel")
+        lock_intent(tender.payment_intent)
         tender = PaymentTender.all_objects.select_for_update().get(pk=tender.pk)
+        if tender.status == "PENDING":
+            raise ValidationError("Reconcile the pending provider request before cancelling this tender.")
         if tender.effective_settled > ZERO:
             raise ValidationError("Cannot cancel a tender holding settled value; reverse it first.")
         tender.status = PaymentTender.Status.CANCELLED
@@ -343,13 +368,16 @@ class PaymentSettlementService:
             tenant_id=tender.tenant_id, idempotency_key=idempotency_key
         ).first()
         if existing:
+            if (existing.payment_tender_id != tender.pk or existing.amount != Decimal(str(amount))
+                    or existing.source != source or existing.provider_reference != provider_reference):
+                raise ValidationError("This retry key belongs to a different settlement.")
             return existing
 
+        intent = lock_intent(tender.payment_intent)
         tender = PaymentTender.all_objects.select_for_update().get(pk=tender.pk)
-        intent = PaymentIntent.all_objects.select_for_update().get(pk=tender.payment_intent_id)
 
         amount = Decimal(str(amount))
-        if amount <= ZERO:
+        if not amount.is_finite() or amount <= ZERO:
             raise ValidationError("Settlement amount must be greater than zero.")
         if tender.status in [PaymentTender.Status.CANCELLED, PaymentTender.Status.REVERSED]:
             raise ValidationError(f"Tender is {tender.status}; it cannot be settled.")
@@ -453,6 +481,9 @@ class PaymentSettlementService:
             raise ValidationError("confirm_card requires a CARD tender.")
         if not approval_reference:
             raise ValidationError("A card approval reference is required.")
+        if PaymentTender.all_objects.filter(tenant_id=tender.tenant_id, provider=tender.provider,
+                external_reference=approval_reference).exclude(pk=tender.pk).exists():
+            raise ValidationError("This terminal approval is already recorded. Use the terminal and transaction reference together.")
 
         return PaymentSettlementService.record(
             tender=tender,
@@ -469,6 +500,8 @@ class PaymentReversalService:
     @transaction.atomic
     def request(*, settlement, amount, reason, actor, idempotency_key):
         _require_capability(actor, settlement.tenant_id, "pos.payment.reverse")
+        if settlement.payment_tender.payment_intent.retail_transaction_id:
+            raise ValidationError("Use the independently approved original-receipt retail refund workflow; a parallel reversal would bypass the refund quantity and payment limits.")
         if not reason:
             raise ValidationError("A reversal reason is required.")
 

@@ -244,11 +244,11 @@ export function EtimsWorkspaceTab({ csrfToken }: EtimsWorkspaceTabProps) {
     <section aria-labelledby="etims-workspace-tab" className="etims-workspace-tab" role="tabpanel">
       <div className="integration-section-head">
         <div>
-          <p className="eyebrow">Kenya Revenue Authority Integration</p>
-          <h3>eTIMS Virtual Sales Control Unit (VSCU) Configuration</h3>
+          <p className="eyebrow">Kenya Revenue Authority readiness</p>
+          <h3>eTIMS Virtual Sales Control Unit (VSCU)</h3>
           <p>
-            Configure your pharmacy tenant KRA PIN, Branch ID, Device Serial Number, and Communication Key.
-            Fiscal receipts and credit notes generate scannable KRA QR codes automatically upon POS transaction completion.
+            POS checkout fiscal documents use the server-side, branch-scoped VSCU outbox and item mappings.
+            This profile is legacy diagnostic metadata and does not activate checkout fiscalization.
           </p>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
@@ -272,10 +272,20 @@ export function EtimsWorkspaceTab({ csrfToken }: EtimsWorkspaceTabProps) {
         </div>
       ) : null}
 
+      <div className="inline-alert" role="note" style={{ margin: '12px 0' }}>
+        <Icon name="alert" />
+        <span>
+          <strong>POS eTIMS is not configured by this profile.</strong> Keep it disabled for live checkout.
+          Activation needs the installed VSCU endpoint, taxpayer and branch device details, verified item/tax
+          mappings, and KRA sandbox and certification evidence in the server-side tenant/branch configuration.
+          A green profile status here is not proof that a POS invoice was accepted by KRA.
+        </span>
+      </div>
+
       <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '16px', margin: '16px 0' }}>
         {/* Form panel */}
         <form className="panel" onSubmit={(e) => void saveProfile(e)} style={{ padding: '16px' }}>
-          <h4>Tenant eTIMS Credentials & Settings</h4>
+          <h4>Legacy profile metadata</h4>
           <p className="muted-cell" style={{ marginBottom: '16px' }}>
             Credentials remain securely isolated per tenant. Cashiers are never blocked if the KRA server is offline.
           </p>

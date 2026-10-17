@@ -11,6 +11,7 @@ export function RetailReturns({ client, deviceId }: { client: PosRetailClient; d
   const [location, setLocation] = useState('');
   const [stores, setStores] = useState<readonly RetailStoreDTO[]>([]);
   const [reason, setReason] = useState('');
+  const [paymentReferences, setPaymentReferences] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
   const key = useRef('');
@@ -39,7 +40,7 @@ export function RetailReturns({ client, deviceId }: { client: PosRetailClient; d
     await reload(); setNotice('Request recorded. A different authorised supervisor must approve it.');
   });
   return <section aria-label="Governed retail returns" style={{ padding: 20, border: '1px solid #cbd5e1', borderRadius: 12, marginTop: 20 }}>
-    <h2>Returns and cash refunds</h2>
+    <h2>Returns and refunds</h2>
     <p>Original internal receipt required. Physical returns stay in quarantine; this does not make returned medicine saleable.</p>
     <label>Original receipt number <input value={number} disabled={busy} onChange={event => setNumber(event.target.value)} /></label>{' '}
     <button disabled={busy || !number.trim()} onClick={load}>Find receipt</button>
@@ -67,16 +68,22 @@ export function RetailReturns({ client, deviceId }: { client: PosRetailClient; d
       <button disabled={busy} onClick={() => void run(reload)}>Refresh original facts</button>
       {sale.refund_requests?.map(refund => <article key={refund.id} style={{ marginTop: 16 }}>
         <strong>{refund.status} · {refund.currency} {refund.amount}</strong><p>{refund.reason}</p>
+        {refund.payment_plan?.map(part => <p key={part.tender_id}>{part.tender_type} refund · {refund.currency} {part.amount}</p>)}
         {refund.status === 'REQUESTED' ? <>
           <button disabled={busy} onClick={() => void run(async () => { await client.reviewRefund(sale.id, refund.id, true); await reload(); })}>Supervisor approve</button>{' '}
           <button disabled={busy || !reason.trim()} onClick={() => void run(async () => { await client.reviewRefund(sale.id, refund.id, false, reason.trim()); await reload(); })}>Reject with reason</button>
           <p>A distinct authorised supervisor must sign in; the server enforces separation of duties.</p>
         </> : null}
-        {refund.status === 'APPROVED' ? <button disabled={busy} onClick={() => void run(async () => {
-          await client.cashRefund(sale.id, refund.id, deviceId, `cash-refund:${refund.id}`); await reload();
-          setNotice('Cash refund recorded. Print or review the immutable refund receipt.');
-        })}>Confirm cash handed back</button> : null}
-        {refund.receipt ? <p>Refund receipt {refund.receipt.refund_number} · {refund.receipt.currency} {refund.receipt.amount}. Print job {refund.receipt.print_job?.status ?? 'not queued'}.</p> : null}
+        {refund.status === 'APPROVED' ? <>
+          {refund.payment_plan?.filter(part => part.tender_type === 'CARD').map(part => <label key={part.tender_id}>Terminal refund approval reference · {refund.currency} {part.amount}
+            <input value={paymentReferences[part.tender_id] ?? ''} disabled={busy} onChange={event => setPaymentReferences(previous => ({ ...previous, [part.tender_id]: event.target.value }))} />
+          </label>)}
+          {refund.payment_plan?.some(part => part.tender_type === 'MPESA') ? <p>M-PESA refunds await verified Daraja reversal setup. Cash cannot replace a mobile payment reversal.</p> : <button disabled={busy || refund.payment_plan?.some(part => part.tender_type === 'CARD' && !paymentReferences[part.tender_id]?.trim())} onClick={() => void run(async () => {
+            await client.cashRefund(sale.id, refund.id, deviceId, `cash-refund:${refund.id}`, paymentReferences); await reload();
+            setNotice('Original-method refund recorded. Print or review its refund receipt.');
+          })}>Confirm original-method refund</button>}
+        </> : null}
+        {refund.receipt ? <p>Refund receipt {refund.receipt.refund_number} · {refund.receipt.currency} {refund.receipt.amount}. Print job {refund.receipt.print_job?.status ?? 'not queued'}. VSCU credit note: {refund.receipt.fiscal?.status ?? 'not issued'}.</p> : null}
       </article>)}
     </> : null}
   </section>;

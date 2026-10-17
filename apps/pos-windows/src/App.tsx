@@ -2,12 +2,13 @@ import { action, deriveStages, fontFamily, fontSize, nextAction, spacing, surfac
 import { paymentPermitsSupply, type TimelineEntry } from '@dawatrace/shared/dispensing/index.js';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { PosIcon, type PosIconName } from './components/tibatrace/PosIcon.js';
 import { ClinicalRail } from './components/tibatrace/ClinicalRail.js';
 import { ClinicalReviewWorkspace, type ClinicalOverrideActionInput } from './components/tibatrace/ClinicalReviewWorkspace.js';
 import { CollectionPanel, CounsellingPanel } from './components/tibatrace/CounsellingAndCollection.js';
 import { PatientSafetyBanner } from './components/tibatrace/PatientSafetyBanner.js';
 import { OperationalStatusBar } from './components/tibatrace/OperationalStatusBar.js';
-import { PaymentPanel } from './components/tibatrace/PaymentPanel.js';
+import { CheckoutPayments } from './components/tibatrace/CheckoutPayments.js';
 import { PrintCentre } from './components/tibatrace/PrintCentre.js';
 import { RegisterCentre } from './components/tibatrace/RegisterCentre.js';
 import { PrescriptionWorkspace } from './components/tibatrace/PrescriptionWorkspace.js';
@@ -20,13 +21,18 @@ import { PosActivationConsole } from './components/tibatrace/PosActivationConsol
 import type { PatientSummary } from './components/tibatrace/PatientSafetyBanner.js';
 import { BlockingReason } from './components/tibatrace/StatusBadge.js';
 import { WorkflowRibbon } from './components/tibatrace/WorkflowRibbon.js';
-import { SHORTCUTS, resolveShortcut } from './state/keyboard.js';
+import { SHORTCUTS, resolveShortcut, type PosCommand } from './state/keyboard.js';
 import { useClinicalScreening } from './state/useClinicalScreening.js';
 import { usePosWorkflow } from './state/usePosWorkflow.js';
 import { useViewport } from './state/useViewport.js';
 import { createPosRuntime } from './runtime.js';
 
 const runtime = createPosRuntime();
+
+const CONSOLE_SHORTCUTS = new Set<PosCommand>([
+  'HELP', 'CLOSE', 'REFRESH', 'PRESCRIPTION', 'PREPARATION',
+  'PAYMENT', 'COLLECTION', 'CLINICAL_FINDINGS', 'PHARMACIST_REVIEW',
+]);
 
 /**
  * TibaTrace Windows clinical operations console.
@@ -96,7 +102,7 @@ export function App() {
 
 export type EpisodeStep = 'items' | 'payment' | 'handover' | 'timeline';
 
-function OperationsConsole({
+export function OperationsConsole({
   session,
   apiFetch,
   onLogout,
@@ -107,10 +113,11 @@ function OperationsConsole({
   readonly onLogout: () => Promise<void>;
   readonly onActivationRefresh: () => Promise<void>;
 }) {
+  const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [workspace, setWorkspace] = useState<
     'clinical' | 'retail' | 'register' | 'print' | 'sync' | 'activation'
   >(session.activationValid ? 'clinical' : 'activation');
-  const { state, refreshQueue, select, refresh, takePayment, confirmCollection, recordCounselling, journal } =
+  const { state, refreshQueue, select, refresh, confirmCollection, recordCounselling, journal } =
     usePosWorkflow('/api/pos/dispensing', apiFetch, runtime.offline, session.deviceId);
   // Was `useState<ClinicalSummary | null>(null)` with no setter, so the rail
   // rendered "No clinical result" for every episode and the screening endpoint
@@ -119,6 +126,7 @@ function OperationsConsole({
     deviceId: session.deviceId,
     fetcher: apiFetch,
   });
+  const consoleBusy = state.busy || checkoutBusy;
   const [reviewFindingId, setReviewFindingId] = useState('');
   const [clinicalReviewBusy, setClinicalReviewBusy] = useState(false);
   const [clinicalReviewError, setClinicalReviewError] = useState('');
@@ -161,6 +169,11 @@ function OperationsConsole({
   const [showKeyboardHelp, setShowKeyboardHelp] = useState(false);
 
   useEffect(() => {
+    setReviewFindingId('');
+    setClinicalReviewError('');
+  }, [state.selected?.id]);
+
+  useEffect(() => {
     if (!state.selected) {
       setActiveStep('items');
       return;
@@ -183,17 +196,25 @@ function OperationsConsole({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (locked || event.defaultPrevented) return;
       const command = resolveShortcut(event);
-      if (!command) return;
+      if (!command || !CONSOLE_SHORTCUTS.has(command)) return;
+      if (showKeyboardHelp) {
+        if (command === 'HELP' || command === 'CLOSE') {
+          event.preventDefault();
+          setShowKeyboardHelp(false);
+        }
+        return;
+      }
 
       if (command === 'HELP') {
         event.preventDefault();
-        setShowKeyboardHelp((open) => !open);
-      } else if (command === 'CLOSE') {
-        if (showKeyboardHelp) {
-          event.preventDefault();
-          setShowKeyboardHelp(false);
-        } else if (reviewFindingId) {
+        setShowKeyboardHelp(true);
+        return;
+      }
+      if (workspace !== 'clinical' || !session.activationValid || consoleBusy || clinicalReviewBusy) return;
+      if (command === 'CLOSE') {
+        if (reviewFindingId) {
           event.preventDefault();
           setReviewFindingId('');
         } else if (state.selected) {
@@ -209,7 +230,12 @@ function OperationsConsole({
         setActiveStep('items');
       } else if (command === 'PAYMENT') {
         event.preventDefault();
+        setReviewFindingId('');
         setActiveStep('payment');
+      } else if (command === 'COLLECTION') {
+        event.preventDefault();
+        setReviewFindingId('');
+        setActiveStep('handover');
       } else if (command === 'CLINICAL_FINDINGS' || command === 'PHARMACIST_REVIEW') {
         event.preventDefault();
         const firstFinding = clinicalResult?.findings[0];
@@ -223,7 +249,8 @@ function OperationsConsole({
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [showKeyboardHelp, reviewFindingId, state.selected, clinicalResult, refresh, refreshClinical, select]);
+  }, [locked, workspace, session.activationValid, consoleBusy, clinicalReviewBusy,
+    showKeyboardHelp, reviewFindingId, state.selected, clinicalResult, refresh, refreshClinical, select]);
 
   const activeRibbonStage = useMemo(() => {
     if (activeStep === 'payment') return 'PAYMENT';
@@ -357,10 +384,11 @@ function OperationsConsole({
   };
 
   return (
-    <div
+    <div className={`pos-console pos-workspace-${workspace}`}
       style={{
         display: 'grid',
-        gridTemplateRows: 'auto auto auto auto 1fr auto',
+        gridTemplateRows: workspace === 'clinical' ? (state.selected ? 'auto auto auto auto minmax(0, 1fr) auto' : 'auto auto minmax(0, 1fr) auto') : 'auto auto minmax(0, 1fr)',
+        gridTemplateColumns: 'minmax(0, 1fr)',
         // dvh, not vh: on a phone the browser chrome is subtracted from dvh, so
         // the action bar sits above the address bar instead of under it. The
         // height is only pinned once the workspace scrolls internally; on a
@@ -373,7 +401,7 @@ function OperationsConsole({
       }}
     >
       <Header
-        busy={state.busy}
+        busy={consoleBusy}
         operator={session.username ?? session.userId}
         workspace={workspace}
         onWorkspaceChange={(next) => setWorkspace(session.activationValid ? next : 'activation')}
@@ -384,9 +412,10 @@ function OperationsConsole({
       <OperationalStatusBar
         apiFetch={apiFetch}
         deviceId={session.deviceId}
+        onOpenWorkspace={(next) => setWorkspace(session.activationValid ? next : 'activation')}
       />
       {workspace === 'retail' ? (
-        <RetailWorkspace apiFetch={apiFetch} deviceId={session.deviceId} />
+        <RetailWorkspace apiFetch={apiFetch} deviceId={session.deviceId} journal={journal} onPaymentBusy={setCheckoutBusy} />
       ) : workspace === 'register' ? (
         <RegisterCentre apiFetch={apiFetch} deviceId={session.deviceId} />
       ) : workspace === 'print' ? (
@@ -408,8 +437,8 @@ function OperationsConsole({
           passwordChangeRequired={authority?.mustChangePassword ?? false}
         />
       ) : <>
-      <PatientSafetyBanner patient={patient} />
-      <WorkflowRibbon
+      {state.selected ? <PatientSafetyBanner patient={patient} /> : null}
+      {state.selected ? <WorkflowRibbon
         stages={stages}
         activeStage={activeRibbonStage}
         onSelect={(stageId) => {
@@ -426,9 +455,9 @@ function OperationsConsole({
             setActiveStep('items');
           }
         }}
-      />
+      /> : null}
 
-      <div
+      <div className="pos-clinical-layout"
         style={{
           display: 'grid',
           gridTemplateColumns: railBeside
@@ -437,7 +466,7 @@ function OperationsConsole({
           minHeight: 0,
         }}
       >
-        <main
+        <main className="pos-clinical-main"
           style={{
             padding: viewportAtMost(viewport, 'compact') ? spacing.md : spacing.xl,
             overflowY: railBeside ? 'auto' : 'visible',
@@ -471,6 +500,7 @@ function OperationsConsole({
             <div style={{ display: 'grid', gap: spacing.lg }}>
               <EpisodeWorkspace
                 episode={state.selected}
+                busy={consoleBusy || clinicalReviewBusy}
                 gateReason={state.gate.blockedReason}
                 onRefresh={() => void refresh()}
                 onBackToQueue={() => void select(null)}
@@ -536,17 +566,10 @@ function OperationsConsole({
                 </div>
               ) : activeStep === 'payment' ? (
                 <section id="payment-workspace" style={{ display: 'grid', gap: spacing.xl }}>
-                  <PaymentPanel
-                    paymentState={state.selected.payment_state}
-                    amountDue={state.selected.amount_due ?? null}
-                    amountSettled={state.selected.amount_settled ?? null}
-                    canTakePayment={state.gate.canTakePayment}
-                    blockedReason={state.gate.canTakePayment ? '' : state.gate.blockedReason}
-                    busy={state.busy}
-                    onTakePayment={(tender, amount, reference) =>
-                      void takePayment(tender, amount, reference)
-                    }
-                  />
+                  <CheckoutPayments key={state.selected.id} apiFetch={apiFetch}
+                    path={`/api/pos/dispensing/episodes/${state.selected.id}/checkout/`}
+                    sourceId={state.selected.id} deviceId={session.deviceId} journal={journal}
+                    onChanged={refresh} onBusyChange={setCheckoutBusy} />
                   {paymentPermitsSupply(state.selected.payment_state) ? (
                     <div
                       style={{
@@ -562,9 +585,9 @@ function OperationsConsole({
                       }}
                     >
                       <div>
-                        <strong style={{ color: '#065F46', fontSize: fontSize.body }}>Payment Settled</strong>
+                        <strong style={{ color: '#065F46', fontSize: fontSize.body }}>Payment requirements met</strong>
                         <p style={{ margin: '2px 0 0 0', color: '#047857', fontSize: fontSize.caption }}>
-                          Authorised transaction journaled. Proceed to patient counselling and handover.
+                          Continue with patient counselling and handover checks.
                         </p>
                       </div>
                       <button
@@ -591,7 +614,7 @@ function OperationsConsole({
                 <div style={{ display: 'grid', gap: spacing.xl }}>
                   <CounsellingPanel
                     counsellingStatus={state.selected.counselling_status}
-                    busy={state.busy}
+                    busy={consoleBusy}
                     onRecord={(request) => void recordCounselling(request)}
                   />
                   <section id="collection-workspace">
@@ -600,7 +623,7 @@ function OperationsConsole({
                       blockedReason={state.gate.canConfirmCollection ? '' : state.gate.blockedReason}
                       collectedAt={state.selected.collected_at ?? null}
                       collectorName={state.selected.collector_name}
-                      busy={state.busy}
+                      busy={consoleBusy}
                       onConfirm={(name, id, relationship) =>
                         void confirmCollection(name, id, relationship)
                       }
@@ -609,6 +632,7 @@ function OperationsConsole({
                 </div>
               ) : (
                 <EpisodeTimelineSection
+                  key={state.selected.id}
                   episodeId={state.selected.id}
                   apiFetch={apiFetch}
                 />
@@ -618,10 +642,11 @@ function OperationsConsole({
           ) : (
             <Queue
               queue={state.queue}
-              busy={state.busy}
+              busy={consoleBusy}
               onSelect={(id) => void select(id)}
               apiFetch={apiFetch}
               operator={session.userId}
+              onRefresh={() => void refreshQueue()}
             />
           )}
         </main>
@@ -635,28 +660,28 @@ function OperationsConsole({
               <BlockingReason status="ACTION_REQUIRED" reason={clinicalError} />
             </div>
           ) : null}
-          <ClinicalRail
+          {state.selected ? <ClinicalRail
             summary={clinical}
             onOpenReview={(findingId) => {
               setClinicalReviewError('');
               setReviewFindingId(findingId);
             }}
-          />
+          /> : <aside className="pos-queue-guide"><span className="pos-eyebrow">Your dispensing workspace</span><h2>A clear path to safe supply.</h2><p>Select a prescription to see its patient, clinical checks and next permitted action.</p><ol><li><b>Review</b><span>Confirm identity and the prescription.</span></li><li><b>Prepare</b><span>Complete screening and independent checks.</span></li><li><b>Settle & hand over</b><span>Record payment, counselling and collection.</span></li></ol><div className="pos-guide-note"><PosIcon name="shield" /><span>Clinical and payment gates stay in place at every step.</span></div><button type="button" className="pos-button" onClick={() => setShowKeyboardHelp(true)}><PosIcon name="help" size={17} /> Keyboard shortcuts <kbd>F1</kbd></button></aside>}
         </div>
       </div>
 
-      <ActionBar
+      {state.selected ? <ActionBar
         nextLabel={next ? next.label : 'No action available'}
         canTakePayment={state.gate.canTakePayment}
         canConfirmCollection={state.gate.canConfirmCollection}
         onOpenPayment={() => setActiveStep('payment')}
         onOpenCollection={() => setActiveStep('handover')}
         onOpenHelp={() => setShowKeyboardHelp(true)}
-      />
-      {showKeyboardHelp ? (
+      /> : <footer className="pos-queue-footer"><span><span className="pos-status-dot" /> Ready for your next prescription</span><button type="button" onClick={() => setShowKeyboardHelp(true)}>Keyboard shortcuts <kbd>F1</kbd></button></footer>}
+      </>}
+      {showKeyboardHelp && !locked ? (
         <KeyboardHelpModal onClose={() => setShowKeyboardHelp(false)} />
       ) : null}
-      </>}
       {locked ? (
         <WorkstationLock
           initialUsername={session.username ?? ''}
@@ -690,130 +715,20 @@ function Header({
   readonly onLogout: () => Promise<void>;
   readonly onOpenHelp?: () => void;
 }) {
-  const viewport = useViewport();
-  const compact = viewportAtMost(viewport, 'compact');
-
-  return (
-    <header
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        // Wraps rather than compressing: the workspace tabs and the lock and
-        // sign-out controls all stay full size and reachable, on a second row
-        // if the width cannot hold one.
-        flexWrap: 'wrap',
-        rowGap: spacing.sm,
-        columnGap: spacing.lg,
-        padding: `${spacing.sm}px ${compact ? spacing.md : spacing.xl}px`,
-        background: surface.inverse,
-        color: action.primaryForeground,
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: spacing.sm }}>
-        <div
-          style={{
-            width: 40,
-            height: 40,
-            overflow: 'hidden',
-            borderRadius: 10,
-            background: '#fff',
-            flex: '0 0 auto',
-          }}
-        >
-          <img
-            src="./brand/tibatrace-logo.jpeg"
-            alt="TibaTrace logo"
-            style={{ display: 'block', width: 100, height: 100, maxWidth: 'none', transform: 'translate(-29px, -15px)' }}
-          />
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <strong style={{ fontSize: fontSize.bodyLarge, letterSpacing: 0.3 }}>TibaTrace</strong>
-          {compact ? null : (
-            <span style={{ fontSize: fontSize.caption, opacity: 0.8 }}>Clinical operations console</span>
-          )}
-        </div>
-      </div>
-      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-        {(['clinical', 'retail', 'register', 'print', 'sync', 'activation'] as const).map((option) => (
-          <button
-            key={option}
-            type="button"
-            onClick={() => onWorkspaceChange(option)}
-            style={{
-              minHeight: 34,
-              padding: '4px 10px',
-              border: '1px solid rgba(255,255,255,0.35)',
-              borderRadius: 7,
-            background: workspace === option ? text.inverse : 'transparent',
-            color: workspace === option ? surface.inverse : text.inverse,
-              fontWeight: 700,
-              cursor: 'pointer',
-              textTransform: 'capitalize',
-            }}
-          >
-            {option === 'print' ? 'Print Centre' : option === 'sync' ? 'Sync Centre' : option}
-          </button>
-        ))}
-      </div>
-      <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: spacing.md, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: fontSize.caption, opacity: 0.8 }}>
-          {/* The operator's name, not a truncated primary key. Falls back to
-              the id only when the server did not send a username. */}
-          {busy ? 'Working…' : operator || 'Signed in'}
-        </span>
-        {onOpenHelp ? (
-          <button
-            type="button"
-            onClick={onOpenHelp}
-            style={{
-              minHeight: 36,
-              padding: '6px 12px',
-              border: '1px solid rgba(255,255,255,0.35)',
-              borderRadius: 8,
-              background: 'transparent',
-              color: action.primaryForeground,
-              cursor: 'pointer',
-              fontWeight: 600,
-              fontSize: 12,
-            }}
-          >
-            Shortcuts [F1]
-          </button>
-        ) : null}
-        <button
-          type="button"
-          onClick={onLock}
-          style={{
-            minHeight: 36,
-            padding: '6px 12px',
-            border: '1px solid rgba(255,255,255,0.35)',
-            borderRadius: 8,
-          background: text.inverse,
-            color: surface.inverse,
-            cursor: 'pointer',
-            fontWeight: 700,
-          }}
-        >
-          Lock
-        </button>
-        <button
-          type="button"
-          onClick={() => void onLogout()}
-          style={{
-            minHeight: 36,
-            padding: '6px 12px',
-            border: '1px solid rgba(255,255,255,0.35)',
-            borderRadius: 8,
-            background: 'transparent',
-          color: action.primaryForeground,
-            cursor: 'pointer',
-          }}
-        >
-          Sign out
-        </button>
-      </div>
-    </header>
-  );
+  const workspaces: readonly { id: typeof workspace; label: string; icon: PosIconName }[] = [
+    { id: 'clinical', label: 'Clinical', icon: 'clinical' }, { id: 'retail', label: 'Retail', icon: 'retail' },
+    { id: 'register', label: 'Register', icon: 'register' }, { id: 'print', label: 'Print Centre', icon: 'print' },
+    { id: 'sync', label: 'Sync Centre', icon: 'sync' }, { id: 'activation', label: 'Activation', icon: 'shield' },
+  ];
+  return <header className="pos-header">
+    <div className="pos-brand"><img src="./brand/tibatrace-150.png" alt="TibaTrace logo" /><div><strong>Tiba<span>Trace</span></strong><small>PHARMACY OPERATIONS</small></div></div>
+    <nav className="pos-workspace-nav" aria-label="POS workspaces">{workspaces.map((item) => <button key={item.id} type="button" aria-current={workspace === item.id ? 'page' : undefined} onClick={() => onWorkspaceChange(item.id)}><PosIcon name={item.icon} size={18} /><span>{item.label}</span></button>)}</nav>
+    <div className="pos-header-tools"><span className="pos-operator"><span className="pos-avatar">{operator.slice(0, 2).toUpperCase() || 'OP'}</span><span><small>{busy ? 'Working…' : 'Signed in'}</small><strong>{operator || 'Operator'}</strong></span></span>
+      {onOpenHelp && <button className="pos-header-icon" type="button" onClick={onOpenHelp} aria-label="Shortcuts [F1]" title="Keyboard shortcuts (F1)"><PosIcon name="help" /></button>}
+      <button className="pos-lock" type="button" onClick={onLock}><PosIcon name="lock" size={16} /> Lock</button>
+      <button className="pos-signout" type="button" onClick={() => void onLogout()}>Sign out</button>
+    </div>
+  </header>;
 }
 
 function WorkstationLock({
@@ -1101,6 +1016,7 @@ function Queue({
   onSelect,
   apiFetch,
   operator,
+  onRefresh,
 }: {
   readonly queue: readonly {
     id: string;
@@ -1113,7 +1029,10 @@ function Queue({
   readonly onSelect: (id: string) => void;
   readonly apiFetch?: typeof fetch;
   readonly operator?: string;
+  readonly onRefresh: () => void;
 }) {
+  const [query, setQuery] = useState('');
+  const matching = queue.filter((item) => `${item.patient_name ?? ''} ${item.patient_number ?? ''} ${item.dispensing_number}`.toLowerCase().includes(query.trim().toLowerCase()));
   const [tasks, setTasks] = useState<readonly import('@dawatrace/shared/dispensing/index.js').ClinicalTask[]>([]);
 
   useEffect(() => {
@@ -1132,7 +1051,9 @@ function Queue({
     return <p style={{ color: text.secondary }}>Loading dispensing queue…</p>;
   }
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.xl }}>
+    <div className="pos-queue" style={{ display: 'flex', flexDirection: 'column', gap: spacing.xl }}>
+      <header className="pos-page-heading"><div><span className="pos-eyebrow">Clinical dispensing</span><h1>Prescription workspace</h1><p>One patient. Every check. A confident handover.</p></div><button className="pos-button" type="button" disabled={busy} onClick={onRefresh}><PosIcon name="sync" size={16} /> Refresh queue</button></header>
+      <div className="pos-queue-search"><PosIcon name="search" /><input aria-label="Search dispensing queue" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Find a patient, reference or prescription…" /><span>{queue.length} waiting</span></div>
       {tasks.length > 0 ? (
         <div>
           <TaskQueue
@@ -1144,13 +1065,14 @@ function Queue({
       ) : null}
       <div>
         <h2 style={{ fontSize: fontSize.sectionTitle, margin: `0 0 ${spacing.md}px` }}>Dispensing queue</h2>
-        {queue.length === 0 ? (
-          <p style={{ color: text.secondary }}>No prescriptions waiting. Scan or search for a prescription to begin.</p>
+        {queue.length > 0 && matching.length === 0 ? <div className="pos-empty-state"><PosIcon name="search" size={28} /><h3>No matching prescriptions</h3><p>Try another name or reference.</p><button type="button" className="pos-button" onClick={() => setQuery('')}>Clear search</button></div> : queue.length === 0 ? (
+          <div className="pos-empty-state"><span className="pos-empty-icon"><PosIcon name="clinical" size={30} /></span><h3>Your queue is clear</h3><p>Prescriptions received and opened for dispensing appear here. Refresh after intake to see new work.</p><button className="pos-button" type="button" disabled={busy} onClick={onRefresh}><PosIcon name="sync" size={16} /> Check for prescriptions</button></div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
-            {queue.map((episode) => (
+            {matching.map((episode) => (
               <button
                 key={episode.id}
+                className="pos-queue-row"
                 type="button"
                 onClick={() => onSelect(episode.id)}
                 style={{
@@ -1255,11 +1177,13 @@ function EpisodeTimelineSection({
 
 function EpisodeWorkspace({
   episode,
+  busy,
   gateReason,
   onRefresh,
   onBackToQueue,
 }: {
   readonly episode: { dispensing_number: string; status: string; payment_state: string };
+  readonly busy: boolean;
   readonly gateReason: string;
   readonly onRefresh: () => void;
   readonly onBackToQueue: () => void;
@@ -1271,6 +1195,7 @@ function EpisodeWorkspace({
           <button
             type="button"
             onClick={onBackToQueue}
+            disabled={busy}
             aria-label="Return to queue"
             title="Return to patient queue (Escape)"
             style={{
@@ -1332,6 +1257,7 @@ function EpisodeWorkspace({
         <button
           type="button"
           onClick={onRefresh}
+          disabled={busy}
           title="Refresh authoritative state (Ctrl+R)"
           style={{
             display: 'inline-flex',
@@ -1486,6 +1412,11 @@ function EpisodeStepNav({
 }
 
 function KeyboardHelpModal({ onClose }: { readonly onClose: () => void }) {
+  useEffect(() => {
+    const previous = document.activeElement;
+    return () => { if (previous instanceof HTMLElement) previous.focus(); };
+  }, []);
+
   return (
     <div
       role="dialog"
@@ -1519,8 +1450,12 @@ function KeyboardHelpModal({ onClose }: { readonly onClose: () => void }) {
             Keyboard Shortcuts
           </h2>
           <button
+            autoFocus
             type="button"
             onClick={onClose}
+            onKeyDown={(event) => {
+              if (event.key === 'Tab') { event.preventDefault(); event.currentTarget.focus(); }
+            }}
             style={{
               border: `1px solid ${surface.borderStrong}`,
               background: 'transparent',
@@ -1534,10 +1469,10 @@ function KeyboardHelpModal({ onClose }: { readonly onClose: () => void }) {
           </button>
         </div>
         <p style={{ margin: '0 0 16px 0', fontSize: fontSize.caption, color: text.secondary }}>
-          The till is fully operable without a mouse. High-frequency actions map to function keys:
+          These shortcuts open workflow views. Payments and handover still require confirmation:
         </p>
         <div style={{ display: 'grid', gap: spacing.sm }}>
-          {SHORTCUTS.map((s) => (
+          {SHORTCUTS.filter((s) => CONSOLE_SHORTCUTS.has(s.command)).map((s) => (
             <div
               key={s.key}
               style={{

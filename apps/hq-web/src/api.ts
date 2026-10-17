@@ -34,18 +34,18 @@ export interface PrescriptionIntakeOptions {
   search_limited: boolean;
 }
 
-export async function loadPrescriptionIntakeOptions(query = '', signal?: AbortSignal): Promise<PrescriptionIntakeOptions> {
+export async function loadPrescriptionIntakeOptions(query = '', signal?: AbortSignal, tenantId = ''): Promise<PrescriptionIntakeOptions> {
   const response = await fetch(`/api/prescriptions/intake-options/?q=${encodeURIComponent(query)}`, {
-    credentials: 'include', headers: { Accept: 'application/json', ...tenantHeaders() }, ...(signal ? { signal } : {}),
+    credentials: 'include', headers: { Accept: 'application/json', ...tenantHeaders(tenantId) }, ...(signal ? { signal } : {}),
   });
   if (!response.ok) throw new Error(apiErrorMessage(await response.json().catch(() => null)) ?? 'Prescription intake options could not be loaded.');
   return response.json() as Promise<PrescriptionIntakeOptions>;
 }
 
-export async function createClinicalWorkflowRecord(path: '/api/prescriptions/' | '/api/dispensing/episodes/', payload: Record<string, unknown>, csrfToken: string): Promise<{ id: string; prescription_number?: string; dispensing_number?: string }> {
+export async function createClinicalWorkflowRecord(path: '/api/prescriptions/' | '/api/dispensing/episodes/', payload: Record<string, unknown>, csrfToken: string, tenantId = ''): Promise<{ id: string; prescription_number?: string; dispensing_number?: string }> {
   let response: Response;
   try { response = await fetch(path, { method: 'POST', credentials: 'include', headers: {
-    Accept: 'application/json', 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken, ...tenantHeaders(),
+    Accept: 'application/json', 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken, ...tenantHeaders(tenantId),
   }, body: JSON.stringify(payload) }); } catch {
     throw new Error('Outcome unknown. Refresh the prescription/episode queue before retrying with the same original reference or episode key.');
   }
@@ -1449,8 +1449,8 @@ export const loadCoverages = (tenantId: string, signal?: AbortSignal) =>
 
 /* ── tenancy & counterparty customers ─────────────────────────────────────── */
 
-export const createPatient = (input: PatientIntakeInput, csrfToken: string) =>
-  mutateJson<HQPatient>('/api/patients/', 'POST', input, csrfToken);
+export const createPatient = (input: PatientIntakeInput, csrfToken: string, tenantId = '') =>
+  mutateJson<HQPatient>('/api/patients/', 'POST', input, csrfToken, tenantId);
 
 export const loadPatientIdentifiers = (patientId: string, tenantId: string, signal?: AbortSignal) =>
   getTenantCollection<PatientIdentifierItem>(
@@ -1486,8 +1486,8 @@ export const verifyPatientIdentifier = (
   tenantId,
 );
 
-export const createPractitioner = (input: PractitionerIntakeInput, csrfToken: string) =>
-  mutateJson<HQPractitioner>('/api/practitioners/', 'POST', input, csrfToken);
+export const createPractitioner = (input: PractitionerIntakeInput, csrfToken: string, tenantId = '') =>
+  mutateJson<HQPractitioner>('/api/practitioners/', 'POST', input, csrfToken, tenantId);
 
 export const verifyPractitioner = (
   id: string,
@@ -1567,8 +1567,9 @@ export interface CreateCustomerInput {
 export const createCustomer = (
   input: CreateCustomerInput,
   csrfToken: string,
+  tenantId = '',
 ): Promise<CustomerItem> =>
-  mutateJson<CustomerItem>('/api/customers/customers/', 'POST', input, csrfToken);
+  mutateJson<CustomerItem>('/api/customers/customers/', 'POST', input, csrfToken, tenantId);
 
 export const approveCustomer = (
   id: string,

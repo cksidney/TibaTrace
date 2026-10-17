@@ -58,6 +58,7 @@ export interface RetailTransactionDTO {
 }
 
 export interface RetailRefundRequestDTO {
+  payment_plan?: readonly RetailRefundPaymentPart[];
   id: string;
   status: 'REQUESTED' | 'APPROVED' | 'REJECTED' | 'COMPLETED';
   reason: string;
@@ -68,6 +69,9 @@ export interface RetailRefundRequestDTO {
 }
 
 export interface RetailCashRefundDTO {
+  fiscal?: { status: string; message: string };
+  cash_amount?: string;
+  payment_plan?: readonly RetailRefundPaymentPart[];
   id: string;
   refund_number: string;
   original_receipt_number: string;
@@ -87,7 +91,7 @@ export interface RetailRefundInput {
 
 export interface RetailCashReceiptDTO {
   readonly receipt_number: string;
-  readonly tender_type: 'CASH';
+  readonly tender_type: 'CASH' | 'CARD' | 'MPESA' | 'SPLIT';
   readonly amount: string;
   readonly cash_received: string;
   readonly change_due: string;
@@ -111,6 +115,13 @@ export interface RetailCashReceiptDTO {
   readonly settled_at: string;
   readonly disclaimer: string;
   readonly print_job: { readonly id: string; readonly status: string; readonly transport: string } | null;
+}
+
+export interface RetailRefundPaymentPart {
+  readonly tender_id: string;
+  readonly tender_type: 'CASH' | 'CARD' | 'MPESA';
+  readonly amount: string;
+  readonly reference?: string;
 }
 
 export interface RetailCatalogueItemDTO {

@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 
 from django.core.management.base import BaseCommand
+from django.db.models import Q
 from django.utils import timezone
 
 from apps.taxation.models import FiscalReceipt, TenantEtimsProfile
@@ -49,18 +50,10 @@ class Command(BaseCommand):
         if tenant_id:
             qs = qs.filter(tenant_id=tenant_id)
 
-        # Include items where next_retry_at is null or due
-        due_qs = qs.filter(
-            models_due := (
-                models_q := FiscalReceipt.all_objects.filter(next_retry_at__isnull=True)
-                | FiscalReceipt.all_objects.filter(next_retry_at__lte=now)
-            )
+        pending_receipts = list(
+            qs.filter(Q(next_retry_at__isnull=True) | Q(next_retry_at__lte=now))
+            .order_by("created_at")[:limit]
         )
-        # Simplify filter
-        pending_receipts = [
-            r for r in qs.order_by("created_at")[:limit]
-            if r.next_retry_at is None or r.next_retry_at <= now
-        ]
 
         self.stdout.write(f"Found {len(pending_receipts)} due fiscal receipt(s) in queue.")
 

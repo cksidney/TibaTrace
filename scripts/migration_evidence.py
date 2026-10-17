@@ -111,6 +111,34 @@ def _reviewed_commercial_quantity_breaks(app_label, name, operations):
     )
 
 
+def _reviewed_checkout_constraints(app_label, name, operations):
+    """Replace cash-only validation with equivalent cash + mixed-tender checks.
+
+    No rows, columns or receipt identities are removed. The exact operation
+    sequence and predicates are reviewed here; any drift fails closed. Older
+    cash-only binaries cannot operate mixed receipts: see RC52 release scope.
+    """
+    from django.db.models import F, Q
+
+    methods = ["CASH", "CARD", "MPESA", "SPLIT"]
+    expected = [
+        ("chk_retail_receipt_tender_type", Q(tender_type__in=methods)),
+        ("chk_retail_cash_receipt_tender_covers_total", ~Q(tender_type="CASH") | Q(cash_received__gte=F("amount"))),
+        ("chk_retail_cash_receipt_change_matches", ~Q(tender_type="CASH") | Q(change_due=F("cash_received") - F("amount"))),
+    ]
+    return (
+        (app_label, name) == ("pos_transactions", "0004_checkout_payments")
+        and [type(op).__name__ for op in operations] == ["RemoveConstraint"] * 3 + ["AlterField"] + ["AddConstraint"] * 3
+        and all(op.model_name == "retailcashreceipt" for op in operations)
+        and [op.name for op in operations[:3]] == ["chk_retail_cash_receipt_cash_only", "chk_retail_cash_receipt_tender_covers_total", "chk_retail_cash_receipt_change_matches"]
+        and operations[3].name == "tender_type"
+        and operations[3].field.max_length == 12
+        and operations[3].field.default == "CASH"
+        and [code for code, _ in operations[3].field.choices] == methods
+        and all(op.constraint.name == constraint_name and op.constraint.condition == condition for op, (constraint_name, condition) in zip(operations[4:], expected))
+    )
+
+
 def build_inventory(new_files: list[str]) -> list[dict]:
     import django
 
@@ -147,7 +175,8 @@ def build_inventory(new_files: list[str]) -> list[dict]:
                 "destructive_operations": destructive,
                 "reviewed_constraint_replacement": _reviewed_recall_constraint_replacement(
                     app_label, name, migration.operations
-                ) or _reviewed_commercial_quantity_breaks(app_label, name, migration.operations),
+                ) or _reviewed_commercial_quantity_breaks(app_label, name, migration.operations)
+                or _reviewed_checkout_constraints(app_label, name, migration.operations),
                 "data_migration": bool(set(operation_types) & DATA_MIGRATION_OPERATIONS),
                 "sql_operation": bool(set(operation_types) & SQL_OPERATIONS),
                 "source_path": source_path,

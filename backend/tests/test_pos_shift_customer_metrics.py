@@ -3,7 +3,6 @@ from datetime import date
 from decimal import Decimal
 
 import pytest
-from django.utils import timezone
 
 from apps.identity.models import Role, User, UserRole
 from apps.inventory.models import InventoryLocation

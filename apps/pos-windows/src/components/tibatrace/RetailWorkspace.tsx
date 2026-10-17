@@ -14,13 +14,15 @@ import {
 import { formatDecimal, formatMoney } from '@dawatrace/shared/money.js';
 import {
   PosRetailClient,
-  retailCashChangeDue,
   type RetailCatalogueItemDTO,
   type RetailTransactionDTO,
   type RetailTransactionLineDTO,
 } from '@dawatrace/shared/retail/index.js';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import type { DurableActionJournal } from '@dawatrace/shared/dispensing/index.js';
+import { CheckoutPayments } from './CheckoutPayments.js';
+import { PosIcon } from './PosIcon.js';
 import { resolveShortcut } from '../../state/keyboard.js';
 import { useViewport } from '../../state/useViewport.js';
 import { RetailReturns } from './RetailReturns.js';
@@ -28,6 +30,8 @@ import { RetailReturns } from './RetailReturns.js';
 interface RetailWorkspaceProps {
   readonly apiFetch: typeof fetch;
   readonly deviceId: string;
+  readonly journal?: DurableActionJournal | null;
+  readonly onPaymentBusy?: (busy:boolean)=>void;
 }
 
 /**
@@ -38,23 +42,27 @@ interface RetailWorkspaceProps {
  * line mutation we rehydrate the complete transaction from the server instead
  * of recalculating totals in the renderer.
  */
-export function RetailWorkspace({ apiFetch, deviceId }: RetailWorkspaceProps) {
+export function RetailWorkspace({ apiFetch, deviceId, journal = null, onPaymentBusy }: RetailWorkspaceProps) {
   const client = useMemo(
     () => new PosRetailClient('/api/pos/retail', { fetcher: apiFetch }),
     [apiFetch],
   );
   const barcodeInput = useRef<HTMLInputElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
+  const returnsPanel = useRef<HTMLDetailsElement>(null);
   const [storeId, setStoreId] = useState('');
   const [stores, setStores] = useState<
     readonly { id: string; name: string; location_type: string; status: string }[]
   >([]);
   const [storesLoading, setStoresLoading] = useState(true);
   const [transaction, setTransaction] = useState<RetailTransactionDTO | null>(null);
+  const receipt = transaction?.receipt;
+  const checkoutVisible = !!transaction && ['READY_FOR_PAYMENT', 'PAYMENT_IN_PROGRESS', 'COMPLETED'].includes(transaction.state);
   const [results, setResults] = useState<readonly RetailCatalogueItemDTO[]>([]);
   const [barcode, setBarcode] = useState('');
   const [search, setSearch] = useState('');
-  const [cashReceived, setCashReceived] = useState('');
+  const [returnsOpen, setReturnsOpen] = useState(false);
+  const operationInFlight = useRef(false);
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -90,15 +98,24 @@ export function RetailWorkspace({ apiFetch, deviceId }: RetailWorkspaceProps) {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
+  useEffect(() => {
+    const last = journal?.entries.filter(entry => entry.episodeId.startsWith('retail:')).at(-1);
+    if (!last) return;
+    const id = last.episodeId.slice(7);
+    if (!/^[a-f0-9-]+$/.test(id)) return;
+    void client.getTransaction(id).then(setTransaction).catch(() => setNotice('The previous retail sale could not be restored. Reconnect before starting another sale.'));
+  }, [client, journal]);
+
   const run = useCallback(async (operation: () => Promise<void>) => {
-    setBusy(true);
+    if (operationInFlight.current) return;
+    operationInFlight.current = true; setBusy(true);
     setNotice('');
     try {
       await operation();
     } catch (cause) {
       setNotice(message(cause));
     } finally {
-      setBusy(false);
+      operationInFlight.current = false; setBusy(false);
     }
   }, []);
 
@@ -116,7 +133,6 @@ export function RetailWorkspace({ apiFetch, deviceId }: RetailWorkspaceProps) {
       setResults([]);
       setBarcode('');
       setSearch('');
-      setCashReceived('');
       requestAnimationFrame(() => barcodeInput.current?.focus());
     });
 
@@ -204,26 +220,6 @@ export function RetailWorkspace({ apiFetch, deviceId }: RetailWorkspaceProps) {
       setTransaction(await client.readyForPayment(transaction.id, { device_id: deviceId }));
     });
 
-  const changeDue = transaction
-    ? retailCashChangeDue(transaction.total, cashReceived)
-    : null;
-  const receipt = transaction?.state === 'COMPLETED' ? transaction.receipt : null;
-  const settleCash = () =>
-    void run(async () => {
-      if (!transaction) throw new Error('Start a sale before taking payment.');
-      if (changeDue === null) throw new Error('Enter cash received equal to or greater than the sale total.');
-      const settled = await client.settleCash(transaction.id, {
-        device_id: deviceId,
-        cash_received: cashReceived,
-        idempotency_key: `retail-cash-${transaction.id}`,
-      });
-      setTransaction(settled);
-      if (settled.state === 'DRAFT') {
-        setCashReceived('');
-        setNotice('The price or eligible stock changed. Review the updated basket; no cash or stock was recorded.');
-      }
-    });
-
   const primary = deriveRetailPrimaryAction({
     state: transaction?.state ?? null,
     lineCount: transaction?.lines.length ?? 0,
@@ -233,13 +229,13 @@ export function RetailWorkspace({ apiFetch, deviceId }: RetailWorkspaceProps) {
     if (primary.kind === 'START_SALE') startSale();
     if (primary.kind === 'RESUME_SALE') resume();
     if (primary.kind === 'PREPARE_PAYMENT') preparePayment();
-    if (primary.kind === 'SETTLE_CASH') settleCash();
   };
   const viewport = useViewport();
 
   return (
-    <main style={layoutFor(viewport)} aria-label="Retail sale workspace">
-      <section style={panel} aria-label="Product search and barcode input">
+    <main className="pos-retail" style={layoutFor(viewport)} aria-label="Retail sale workspace">
+      <header className="pos-page-heading pos-retail-heading"><div><span className="pos-eyebrow">Retail checkout</span><h1>A smooth sale, start to finish.</h1><p>Find the right item. Check the basket. Settle with confidence.</p></div><button className="pos-button" type="button" onClick={() => { setReturnsOpen(true); requestAnimationFrame(() => returnsPanel.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })); }}><PosIcon name="sync" size={16} /> Returns & refunds</button></header>
+      <section className="pos-retail-search" style={panel} aria-label="Product search and barcode input">
         <SectionTitle title="Find and add" detail="Scan first, then search the sellable catalogue." />
         <label style={labelStyle}>
           Retail store
@@ -262,7 +258,8 @@ export function RetailWorkspace({ apiFetch, deviceId }: RetailWorkspaceProps) {
             No retail store is available to this register. Ask an HQ manager to verify that its branch has an active STORE, PHARMACY, or DISPENSARY location and that your cashier account is assigned to that branch in People & Access.
           </p>
         ) : null}
-        <p style={helperText}>{primary.detail}</p>
+        {(!transaction || ['COMPLETED', 'CANCELLED', 'VOIDED', 'PAID'].includes(transaction.state)) && <button className="pos-start-sale" type="button" disabled={busy || !storeId} onClick={startSale}><PosIcon name="retail" size={18} /> Start new sale <PosIcon name="arrow" size={17} /></button>}
+        <p style={helperText}>{transaction?.state === 'READY_FOR_PAYMENT' ? 'Use Payment below for cash, card approval, or a part payment.' : primary.detail}</p>
 
         <label style={labelStyle}>
           Barcode
@@ -334,7 +331,7 @@ export function RetailWorkspace({ apiFetch, deviceId }: RetailWorkspaceProps) {
         </div>
       </section>
 
-      <section style={panel} aria-label="Current retail basket">
+      <section className="pos-retail-basket" style={panel} aria-label="Current retail basket">
         <SectionTitle
           title={transaction ? transaction.transaction_number : 'Current basket'}
           detail={
@@ -364,8 +361,8 @@ export function RetailWorkspace({ apiFetch, deviceId }: RetailWorkspaceProps) {
         )}
       </section>
 
-      <aside style={summaryPanel} aria-label="Retail sale summary">
-        <SectionTitle title="Sale context" detail="Server-authoritative operational and pricing context." />
+      <aside className="pos-retail-summary" style={{ ...summaryPanel, ...(checkoutVisible ? { position: 'static' as const } : {}) }} aria-label="Retail sale summary">
+        <SectionTitle title="Sale summary" detail="Review your basket before taking payment." />
         <dl style={contextList}>
           <Context label="Store" value={selectedStoreName(stores, storeId)} />
           <Context label="Register" value={transaction?.register_code ?? 'Opened when sale starts'} />
@@ -383,30 +380,8 @@ export function RetailWorkspace({ apiFetch, deviceId }: RetailWorkspaceProps) {
             <Total label="Total" amount={transaction.total} currency={transaction.currency} emphatic />
           </div>
         ) : null}
-        {transaction?.state === 'READY_FOR_PAYMENT' ? (
-          <section aria-label="Cash payment" style={paymentPanel}>
-            <strong>Cash payment</strong>
-            <p style={helperText}>Cash only. Card and M-PESA are not enabled for retail checkout.</p>
-            <label style={labelStyle}>
-              Cash received
-              <input
-                value={cashReceived}
-                onChange={(event) => setCashReceived(event.target.value)}
-                inputMode="decimal"
-                disabled={busy}
-                placeholder="0.00"
-                style={inputStyle}
-              />
-            </label>
-            <div style={changeStyle} aria-live="polite">
-              {changeDue === null
-                ? `Amount due: ${money(transaction.total, transaction.currency)}`
-                : `Change due: ${money(changeDue, transaction.currency)}`}
-            </div>
-          </section>
-        ) : null}
         {receipt ? (
-          <section aria-label="Internal cash receipt" style={receiptPanel}>
+          <section aria-label="Internal sale receipt" style={receiptPanel}>
             <strong>Internal receipt · {receipt.receipt_number}</strong>
             {receipt.lines_snapshot.map((line, index) => (
               <div key={`${line.sku_code}-${index}`} style={receiptLine}>
@@ -429,22 +404,22 @@ export function RetailWorkspace({ apiFetch, deviceId }: RetailWorkspaceProps) {
             <p style={helperText}>{receipt.disclaimer}</p>
           </section>
         ) : null}
-        <RetailReturns client={client} deviceId={deviceId} />
+        <details ref={returnsPanel} className="pos-returns" open={returnsOpen} onToggle={(event) => setReturnsOpen(event.currentTarget.open)}><summary>Returns & refunds</summary><RetailReturns client={client} deviceId={deviceId} /></details>
         <div style={actions}>
           {transaction?.state === 'DRAFT' ? (
             <button type="button" disabled={busy} onClick={hold} style={secondaryButton}>
               Hold sale
             </button>
           ) : null}
-          <button
+          {!['START_SALE','SETTLE_CASH'].includes(primary.kind) && <button
             type="button"
-            disabled={busy || !primary.enabled || (primary.kind === 'SETTLE_CASH' && changeDue === null)}
+            disabled={busy || !primary.enabled}
             onClick={performPrimaryAction}
             style={{ ...primaryButton, ...(busy || !primary.enabled ? disabledButton : {}) }}
             title={primary.detail}
           >
             {primary.label}
-          </button>
+          </button>}
           {transaction && ['DRAFT', 'HELD', 'READY_FOR_PAYMENT'].includes(transaction.state) ? (
             <button type="button" disabled={busy} onClick={cancel} style={dangerButton}>
               Cancel sale
@@ -452,6 +427,9 @@ export function RetailWorkspace({ apiFetch, deviceId }: RetailWorkspaceProps) {
           ) : null}
         </div>
       </aside>
+      {transaction && checkoutVisible && <div style={{gridColumn:'1 / -1'}}><CheckoutPayments apiFetch={apiFetch}
+        path={`/api/pos/retail/transactions/${transaction.id}/checkout/`} sourceId={transaction.id} deviceId={deviceId}
+        journal={journal} onChanged={()=>refreshTransaction(transaction.id)} {...(onPaymentBusy?{onBusyChange:onPaymentBusy}:{})} /></div>}
     </main>
   );
 }
@@ -519,8 +497,7 @@ function SafetyNote() {
         lineHeight: 1.4,
       }}
     >
-      Prescription medicines must be processed through the prescription workspace. Retail
-      medicine screening is not available in this pilot.
+      Use Clinical for prescription medicines. This checkout does not perform clinical screening.
     </p>
   );
 }
@@ -538,7 +515,7 @@ function SectionTitle({ title, detail }: { readonly title: string; readonly deta
 
 function EmptyBasket() {
   return (
-    <div style={emptyState}>
+    <div className="pos-basket-empty" style={emptyState}><span className="pos-empty-icon"><PosIcon name="bag" size={30} /></span>
       <strong>No items are in this sale.</strong>
       <span>Scan a barcode or search for a priced, sellable item.</span>
     </div>
@@ -604,7 +581,7 @@ function layoutFor(viewport: ViewportClass) {
     display: 'grid',
     gridTemplateColumns: viewportAtMost(viewport, 'expanded')
       ? autoColumns(300)
-      : 'minmax(270px, 0.8fr) minmax(440px, 1.45fr) minmax(300px, 0.9fr)',
+      : 'minmax(250px, 0.85fr) minmax(360px, 1.4fr) minmax(275px, 0.85fr)',
     gap: spacing.lg,
     padding: viewportAtMost(viewport, 'compact') ? spacing.md : spacing.xl,
     overflow: 'auto',
@@ -742,15 +719,6 @@ const totals = {
   paddingTop: spacing.md,
   borderTop: `1px solid ${surface.border}`,
 } as const;
-const paymentPanel = {
-  display: 'grid',
-  gap: spacing.xs,
-  marginTop: spacing.lg,
-  padding: spacing.md,
-  border: `1px solid ${statusPalette.PROCESSING.border}`,
-  borderRadius: 10,
-  background: statusPalette.PROCESSING.surface,
-} as const;
 const receiptPanel = {
   display: 'grid',
   gap: spacing.sm,
@@ -767,7 +735,6 @@ const receiptLine = {
   paddingTop: spacing.xs,
   borderTop: `1px solid ${surface.border}`,
 } as const;
-const changeStyle = { fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: text.primary } as const;
 const actions = { display: 'grid', gap: spacing.sm, marginTop: spacing.xl } as const;
 const helperText = { margin: `${spacing.sm}px 0 0`, color: text.secondary, fontSize: fontSize.caption } as const;
 const noticeStyle = {

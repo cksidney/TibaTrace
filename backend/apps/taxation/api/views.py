@@ -1,13 +1,12 @@
 """API Views for Taxation & KRA eTIMS."""
 from __future__ import annotations
 
-from django.core.exceptions import ValidationError
 from rest_framework import permissions, status
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.core.permissions import TenantRequired
+from apps.core.permissions import PlatformOwnerRequired, TenantRequired
 from apps.taxation.api.serializers import (
     FiscalReceiptSerializer,
     FiscalSubmissionLogSerializer,
@@ -33,7 +32,7 @@ def _resolve_tenant(request) -> Tenant:
 
 
 class TenantEtimsProfileView(APIView):
-    permission_classes = [permissions.IsAuthenticated, TenantRequired]
+    permission_classes = [permissions.IsAuthenticated, TenantRequired, PlatformOwnerRequired]
 
     def get(self, request):
         tenant = _resolve_tenant(request)
@@ -54,7 +53,7 @@ class TenantEtimsProfileView(APIView):
 
 
 class EtimsTestConnectionView(APIView):
-    permission_classes = [permissions.IsAuthenticated, TenantRequired]
+    permission_classes = [permissions.IsAuthenticated, TenantRequired, PlatformOwnerRequired]
 
     def post(self, request):
         tenant = _resolve_tenant(request)
@@ -70,7 +69,7 @@ class EtimsTestConnectionView(APIView):
 
 
 class EtimsInitializeView(APIView):
-    permission_classes = [permissions.IsAuthenticated, TenantRequired]
+    permission_classes = [permissions.IsAuthenticated, TenantRequired, PlatformOwnerRequired]
 
     def post(self, request):
         tenant = _resolve_tenant(request)
@@ -86,7 +85,7 @@ class EtimsInitializeView(APIView):
 
 
 class FiscalReceiptListView(APIView):
-    permission_classes = [permissions.IsAuthenticated, TenantRequired]
+    permission_classes = [permissions.IsAuthenticated, TenantRequired, PlatformOwnerRequired]
 
     def get(self, request):
         tenant = _resolve_tenant(request)
@@ -110,7 +109,7 @@ class FiscalReceiptListView(APIView):
 
 
 class FiscalReceiptDetailView(APIView):
-    permission_classes = [permissions.IsAuthenticated, TenantRequired]
+    permission_classes = [permissions.IsAuthenticated, TenantRequired, PlatformOwnerRequired]
 
     def get(self, request, pk):
         tenant = _resolve_tenant(request)
@@ -126,7 +125,7 @@ class FiscalReceiptDetailView(APIView):
 
 
 class FiscalReceiptRetryView(APIView):
-    permission_classes = [permissions.IsAuthenticated, TenantRequired]
+    permission_classes = [permissions.IsAuthenticated, TenantRequired, PlatformOwnerRequired]
 
     def post(self, request, pk):
         tenant = _resolve_tenant(request)

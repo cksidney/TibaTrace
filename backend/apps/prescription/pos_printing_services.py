@@ -137,7 +137,8 @@ class PosPrintDocumentService:
             "lines": receipt.lines_snapshot,
             "totals": receipt.totals_snapshot,
             "payment": {
-                "tender_type": "CASH",
+                "tender_type": receipt.tender_type,
+                "tenders": receipt.totals_snapshot.get("tenders", []),
                 "amount": str(receipt.amount),
                 "cash_received": str(receipt.cash_received),
                 "change_due": str(receipt.change_due),
@@ -229,8 +230,12 @@ class PosPrintDocumentService:
             "original_receipt_number": receipt.original_receipt.receipt_number, "issued_at": receipt.completed_at.isoformat(),
             "tenant_id": str(receipt.tenant_id), "branch_id": str(receipt.register.location_id),
             "transaction_id": str(receipt.original_receipt.transaction_id), "register_session_id": str(receipt.register_session_id),
-            "lines": receipt.lines_snapshot, "payment": {"tender_type": "CASH", "refund_amount": str(receipt.amount), "currency": receipt.currency},
-            "disclaimer": "Internal cash refund receipt — not a fiscal/eTIMS credit note. Returned goods remain held pending quality disposition."}
+            "lines": receipt.lines_snapshot, "payment": {
+                "tender_type": "SPLIT" if len(receipt.payment_plan) > 1 else (receipt.payment_plan[0]["tender_type"] if receipt.payment_plan else "CASH"),
+                "refund_amount": str(receipt.amount), "cash_amount": str(receipt.cash_amount),
+                "tenders": receipt.payment_plan, "currency": receipt.currency,
+            },
+            "disclaimer": "Internal refund receipt — not a fiscal/eTIMS credit note. Returned goods remain held pending quality disposition."}
         try:
             from apps.taxation.models import FiscalReceipt
 

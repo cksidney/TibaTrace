@@ -15,6 +15,8 @@ import { LegacyItemSetup } from './LegacyItemSetup.js';
 import { CommerceOperations } from './CommerceOperations.js';
 import { CommercialPricing } from './CommercialPricing.js';
 import { PrescriptionOrigination } from './PrescriptionOrigination.js';
+import { IntakeModal } from './IntakeModal.js';
+import { IngestionWorkspaceProvider, useIngestionWorkspace } from './IngestionWorkspace.js';
 import { PlatformOwnerConsole } from './PlatformOwnerConsole.js';
 import { PosActivationWorkspace } from './PosActivationWorkspace.js';
 import { RegulatoryWorkspace } from './RegulatoryWorkspace.js';
@@ -337,7 +339,7 @@ const viewMeta: Record<WorkspaceView, { readonly eyebrow: string; readonly title
   executive: {
     eyebrow: 'Executive Command Centre',
     title: 'Executive Operations & Risk Dashboard',
-    description: 'Real-time visibility across 18 operational, clinical, inventory, financial and regulatory indicators.',
+    description: 'Explore example operational, clinical, inventory, financial and regulatory indicators. Values shown here are illustrative.',
   },
   regulatory: {
     eyebrow: 'Regulatory Compliance Engine',
@@ -509,11 +511,12 @@ export function App() {
     sessionStorage.setItem('hq-tenant-context', tenantId);
     try {
       setOverview(await loadHQOverview());
-    } catch {
+    } catch (reason) {
       setHQTenantContext(previousTenant);
       setSelectedTenantId(previousTenant);
       sessionStorage.setItem('hq-tenant-context', previousTenant);
       setRefreshFailed(true);
+      throw reason;
     } finally {
       setRefreshing(false);
     }
@@ -720,6 +723,7 @@ export function Dashboard({
   };
 
   return (
+    <IngestionWorkspaceProvider tenantId={overview.tenant_id} tenants={tenantOptions} onSelectTenant={onSelectTenant}>
     <div className="app-shell">
       <a className="skip-link" href="#main-content">Skip to main content</a>
       {mobileNavOpen ? <button className="nav-scrim" aria-label="Close navigation" onClick={() => setMobileNavOpen(false)} type="button" /> : null}
@@ -740,7 +744,7 @@ export function Dashboard({
               <select
                 aria-label="Operating tenant workspace"
                 disabled={refreshing}
-                onChange={(event) => void onSelectTenant(event.target.value)}
+                onChange={(event) => void onSelectTenant(event.target.value).catch(() => {})}
                 value={selectedTenantId}
               >
                 <option value="">All tenants — platform view</option>
@@ -842,13 +846,20 @@ export function Dashboard({
           ) : null}
 
           {activeView === 'overview' ? <OverviewView overview={overview} onNavigate={setActiveView} /> : null}
-          {activeView === 'executive' ? <ExecutiveDashboard csrfToken={csrfToken} onNavigate={(tab) => setActiveView((tab.toLowerCase() === 'dispensing' ? 'commerce' : tab.toLowerCase() === 'inventory' ? 'inventory' : tab.toLowerCase() === 'insurance' ? 'insurance' : tab.toLowerCase() === 'regulatory' ? 'regulatory' : tab.toLowerCase() === 'sales' ? 'commerce' : tab.toLowerCase() === 'procurement' ? 'operations' : 'overview') as WorkspaceView)} /> : null}
+          {activeView === 'executive' ? <ExecutiveDashboard csrfToken={csrfToken} onNavigate={(tab) => {
+            const destinations: Readonly<Record<string, WorkspaceView>> = {
+              Dispensing: 'commerce', Inventory: 'inventory', Insurance: 'insurance',
+              Regulatory: 'regulatory', Sales: 'commerce', Procurement: 'operations',
+              'National Integration': 'integration', Administration: 'access',
+            };
+            setActiveView(destinations[tab] ?? 'overview');
+          }} /> : null}
           {activeView === 'network' ? <NetworkView csrfToken={csrfToken} onChanged={onRefresh} overview={overview} /> : null}
           {activeView === 'people' ? <PeopleView csrfToken={csrfToken} data={scopedWorkspace} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} overview={overview} /> : null}
           {activeView === 'catalogue' ? <CatalogueView csrfToken={csrfToken} data={scopedWorkspace} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} overview={overview} /> : null}
           {activeView === 'inventory' ? <InventoryView csrfToken={csrfToken} overview={overview} /> : null}
           {activeView === 'operations' ? <OperationsView csrfToken={csrfToken} data={scopedWorkspace} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} overview={overview} /> : null}
-          {activeView === 'commerce' ? <CommerceView key={selectedTenantId} csrfToken={csrfToken} data={scopedWorkspace} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} /> : null}
+          {activeView === 'commerce' ? <CommerceView key={selectedTenantId} csrfToken={csrfToken} data={scopedWorkspace} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} overview={overview} /> : null}
           {activeView === 'pricing' ? <PricingView csrfToken={csrfToken} overview={overview} /> : null}
           {activeView === 'cash' ? <CashControlView csrfToken={csrfToken} overview={overview} /> : null}
           {activeView === 'insurance' ? (
@@ -875,6 +886,7 @@ export function Dashboard({
 
       {commandOpen ? <CommandPalette overview={overview} onClose={() => setCommandOpen(false)} onNavigate={setActiveView} /> : null}
     </div>
+    </IngestionWorkspaceProvider>
   );
 }
 
@@ -6624,6 +6636,7 @@ function PeopleView({
   onWorkspaceChanged,
   overview,
 }: BusinessViewProps & { readonly overview: HQOverview }) {
+  const openInWorkspace = useIngestionWorkspace();
   const [counterparties, setCounterparties] = useState<readonly CustomerItem[] | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -6655,14 +6668,15 @@ function PeopleView({
 
   const fetchCounterparties = useCallback((signal?: AbortSignal) => {
     loadCustomers(signal)
-      .then(setCounterparties)
+      .then((rows) => { if (!signal?.aborted) setCounterparties(rows); })
       .catch(() => {
         if (!signal?.aborted) setLoadError(true);
       });
-  }, []);
+  }, [overview.tenant_id]);
 
   useEffect(() => {
     const controller = new AbortController();
+    setCounterparties(null); setLoadError(false);
     fetchCounterparties(controller.signal);
     return () => controller.abort();
   }, [fetchCounterparties]);
@@ -6712,6 +6726,7 @@ function PeopleView({
           cold_chain_capable: coldChainCapable,
         },
         csrfToken,
+        overview.tenant_id,
       );
       setCreateModalOpen(false);
       setCustNumber('');
@@ -6746,6 +6761,15 @@ function PeopleView({
 
   return (
     <>
+      <section className="workspace-intake-bar" aria-label="People intake">
+        <div><p className="eyebrow">People intake</p><strong>Register a patient, practitioner or commercial customer.</strong>
+          {!tenantSelected && <p>Choose a pharmacy in the form to begin intake.</p>}</div>
+        <div className="button-row">
+          <button className="primary-button" type="button" onClick={() => openInWorkspace(() => setPatientIntakeOpen(true))}>Register patient</button>
+          <button className="secondary-button" type="button" onClick={() => openInWorkspace(() => setPractitionerIntakeOpen(true))}>Register practitioner</button>
+          <button className="secondary-button" type="button" onClick={() => openInWorkspace(() => { setCreateError(''); setCreateModalOpen(true); })}>Register commercial customer</button>
+        </div>
+      </section>
       <section className="metric-grid network-metrics" aria-label="People and customer totals">
         <SummaryCard icon="patients" label="Patient records" value={counts.patients} detail={`${formatNumber(counts.active_patients)} active`} onActivate={() => scrollPeople('people-patients')} />
         <SummaryCard icon="clinical" label="Practitioners" value={counts.practitioners} detail={`${formatNumber(counts.verified_practitioners)} verified`} tone="teal" onActivate={() => scrollPeople('people-practitioners')} />
@@ -6754,14 +6778,18 @@ function PeopleView({
       </section>
 
       <div id="people-customers">
-        <BusinessWorkbench csrfToken={csrfToken} data={data} domain="people" onChanged={onWorkspaceChanged} />
+        <BusinessWorkbench csrfToken={csrfToken} data={data} domain="people" onChanged={onWorkspaceChanged} intakeActions={{
+          patients: { label: 'Register patient', onOpen: () => openInWorkspace(() => setPatientIntakeOpen(true)) },
+          practitioners: { label: 'Register practitioner', onOpen: () => openInWorkspace(() => setPractitionerIntakeOpen(true)) },
+          customers: { label: 'Register commercial customer', onOpen: () => openInWorkspace(() => { setCreateError(''); setCreateModalOpen(true); }) },
+        }} />
       </div>
 
       <section className="content-grid content-grid-primary">
         <article className="panel" id="people-patients">
           <div className="people-panel-heading">
             <PanelHeader eyebrow="Care records" title="Recently updated patients" />
-            <button className="primary-button" disabled={!tenantSelected} onClick={() => setPatientIntakeOpen(true)} type="button">
+            <button className="primary-button" onClick={() => openInWorkspace(() => setPatientIntakeOpen(true))} type="button">
               <Icon name="patients" /> Register patient
             </button>
           </div>
@@ -6789,7 +6817,7 @@ function PeopleView({
         <article className="panel" id="people-practitioners">
           <div className="people-panel-heading">
             <PanelHeader eyebrow="Clinical workforce" title="Practitioner verification" />
-            <button className="primary-button" disabled={!tenantSelected} onClick={() => setPractitionerIntakeOpen(true)} type="button">
+            <button className="primary-button" onClick={() => openInWorkspace(() => setPractitionerIntakeOpen(true))} type="button">
               <Icon name="clinical" /> Register practitioner
             </button>
           </div>
@@ -6834,8 +6862,7 @@ function PeopleView({
           <button
             className="primary-button"
             onClick={() => {
-              setCreateError('');
-              setCreateModalOpen(true);
+              openInWorkspace(() => { setCreateError(''); setCreateModalOpen(true); });
             }}
             type="button"
           >
@@ -6974,22 +7001,7 @@ function PeopleView({
       </article>
 
       {createModalOpen ? (
-        <div className="business-dialog-backdrop" role="presentation">
-          <section aria-labelledby="create-customer-title" aria-modal="true" className="business-dialog" role="dialog">
-            <header>
-              <div>
-                <p className="eyebrow">Counterparty Governance</p>
-                <h2 id="create-customer-title">Register Commercial Customer</h2>
-              </div>
-              <button
-                aria-label="Close dialog"
-                disabled={createBusy}
-                onClick={() => setCreateModalOpen(false)}
-                type="button"
-              >
-                <Icon name="close" />
-              </button>
-            </header>
+        <IntakeModal title="Register Commercial Customer" busy={createBusy} onClose={() => setCreateModalOpen(false)}>
             <form onSubmit={(e) => void handleCreateCustomer(e)}>
               {createError ? <p className="business-dialog-error" role="alert"><Icon name="alert" /> {createError}</p> : null}
 
@@ -7134,12 +7146,12 @@ function PeopleView({
                 </button>
               </footer>
             </form>
-          </section>
-        </div>
+        </IntakeModal>
       ) : null}
 
       {patientIntakeOpen ? (
         <PatientIntakeDialog
+          tenantId={overview.tenant_id}
           csrfToken={csrfToken}
           onClose={() => setPatientIntakeOpen(false)}
           onCreated={async () => {
@@ -7161,6 +7173,7 @@ function PeopleView({
       ) : null}
       {practitionerIntakeOpen ? (
         <PractitionerIntakeDialog
+          tenantId={overview.tenant_id}
           csrfToken={csrfToken}
           onClose={() => setPractitionerIntakeOpen(false)}
           onCreated={async () => {
@@ -7280,10 +7293,12 @@ function PeopleView({
 
 function PatientIntakeDialog({
   csrfToken,
+  tenantId,
   onClose,
   onCreated,
 }: {
   readonly csrfToken: string;
+  readonly tenantId: string;
   readonly onClose: () => void;
   readonly onCreated: () => Promise<void>;
 }) {
@@ -7307,11 +7322,12 @@ function PatientIntakeDialog({
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
+    if (busy) return;
     setBusy(true);
     setError('');
     try {
       const input: PatientIntakeInput = { ...draft, date_of_birth: draft.date_of_birth || null };
-      await createPatient(input, csrfToken);
+      await createPatient(input, csrfToken, tenantId);
       await onCreated();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Could not register patient.');
@@ -7321,12 +7337,7 @@ function PatientIntakeDialog({
   };
 
   return (
-    <div className="business-dialog-backdrop" onClick={(event) => { if (event.target === event.currentTarget && !busy) onClose(); }} role="presentation">
-      <section aria-labelledby="patient-intake-title" aria-modal="true" className="business-dialog people-intake-dialog" role="dialog">
-        <header>
-          <div><p className="eyebrow">Patient record</p><h2 id="patient-intake-title">Register patient</h2></div>
-          <button aria-label="Close dialog" disabled={busy} onClick={onClose} type="button"><Icon name="close" /></button>
-        </header>
+    <IntakeModal title="Register patient" busy={busy} onClose={onClose}>
         <form onSubmit={(event) => void submit(event)}>
           <p className="business-dialog-confirm"><Icon name="shield" /> Create the record with minimum identity and contact details. Do not enter national IDs, insurance numbers, or clinical information here.</p>
           <div className="people-intake-grid">
@@ -7346,8 +7357,7 @@ function PatientIntakeDialog({
           {error ? <p className="business-dialog-error" role="alert"><Icon name="alert" /> {error}</p> : null}
           <footer><button className="secondary-button" disabled={busy} onClick={onClose} type="button">Cancel</button><button className="primary-button" disabled={busy || !draft.internal_reference_id.trim() || !draft.first_name.trim() || !draft.last_name.trim()} type="submit">{busy ? 'Registering…' : 'Register patient'}</button></footer>
         </form>
-      </section>
-    </div>
+    </IntakeModal>
   );
 }
 
@@ -7503,10 +7513,12 @@ function PatientIdentityDialog({
 
 function PractitionerIntakeDialog({
   csrfToken,
+  tenantId,
   onClose,
   onCreated,
 }: {
   readonly csrfToken: string;
+  readonly tenantId: string;
   readonly onClose: () => void;
   readonly onCreated: () => Promise<void>;
 }) {
@@ -7529,6 +7541,7 @@ function PractitionerIntakeDialog({
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
+    if (busy) return;
     setBusy(true);
     setError('');
     try {
@@ -7539,7 +7552,7 @@ function PractitionerIntakeDialog({
         prescribing_scope: draft.prescribing_scope.split(',').map((item) => item.trim()).filter(Boolean),
         organization: null,
       };
-      await createPractitioner(input, csrfToken);
+      await createPractitioner(input, csrfToken, tenantId);
       await onCreated();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Could not register practitioner.');
@@ -7549,12 +7562,7 @@ function PractitionerIntakeDialog({
   };
 
   return (
-    <div className="business-dialog-backdrop" onClick={(event) => { if (event.target === event.currentTarget && !busy) onClose(); }} role="presentation">
-      <section aria-labelledby="practitioner-intake-title" aria-modal="true" className="business-dialog people-intake-dialog" role="dialog">
-        <header>
-          <div><p className="eyebrow">Clinical workforce</p><h2 id="practitioner-intake-title">Register practitioner</h2></div>
-          <button aria-label="Close dialog" disabled={busy} onClick={onClose} type="button"><Icon name="close" /></button>
-        </header>
+    <IntakeModal title="Register practitioner" busy={busy} onClose={onClose}>
         <form onSubmit={(event) => void submit(event)}>
           <p className="business-dialog-confirm"><Icon name="shield" /> Registration records an unverified credential claim. It grants no prescribing or controlled-medicine authority until a separate review is recorded.</p>
           <div className="people-intake-grid">
@@ -7573,8 +7581,7 @@ function PractitionerIntakeDialog({
           {error ? <p className="business-dialog-error" role="alert"><Icon name="alert" /> {error}</p> : null}
           <footer><button className="secondary-button" disabled={busy} onClick={onClose} type="button">Cancel</button><button className="primary-button" disabled={busy || !draft.first_name.trim() || !draft.last_name.trim() || !draft.registration_number.trim() || !draft.licensing_body.trim()} type="submit">{busy ? 'Registering…' : 'Register unverified'}</button></footer>
         </form>
-      </section>
-    </div>
+    </IntakeModal>
   );
 }
 
@@ -8650,7 +8657,9 @@ function CommerceView({
   data,
   failed,
   onWorkspaceChanged,
-}: BusinessViewProps) {
+  overview,
+}: BusinessViewProps & { readonly overview: HQOverview }) {
+  const openInWorkspace = useIngestionWorkspace();
   const [tab, setTab] = useState<'orders' | 'quotations' | 'picking' | 'packing' | 'dispatches' | 'deliveries' | 'returns' | 'holds'>('orders');
   const [quotations, setQuotations] = useState<readonly HQQuotationItem[] | null>(null);
   const [pickingWaves, setPickingWaves] = useState<readonly HQPickingWaveItem[] | null>(null);
@@ -8717,7 +8726,10 @@ function CommerceView({
       </section>
 
       <BusinessWorkbench csrfToken={csrfToken} data={data} domain="commerce" onChanged={onWorkspaceChanged} />
-      <CommerceOperations csrfToken={csrfToken} revision={data.generated_at} onChanged={onWorkspaceChanged} />
+      {overview.tenant_id ? <CommerceOperations csrfToken={csrfToken} revision={data.generated_at} onChanged={onWorkspaceChanged} /> : <section className="panel workspace-intake-bar">
+        <div><h2>Create and execute fulfilment</h2><p>Choose a pharmacy before entering orders, quotations or fulfilment evidence.</p></div>
+        <button className="primary-button" type="button" onClick={() => openInWorkspace(() => {})}>Open fulfilment intake</button>
+      </section>}
 
       <article className="panel" style={{ marginTop: '24px' }}>
         <PanelHeader eyebrow="Fulfilment Execution Desk" title="Order-to-Delivery Operations Workbench" />
@@ -9568,6 +9580,7 @@ function ClinicalView({
   onWorkspaceChanged,
   overview,
 }: BusinessViewProps & { readonly overview: HQOverview }) {
+  const openInWorkspace = useIngestionWorkspace();
   const summary = useSummary(overview);
   const [clinicalTable, setClinicalTable] = useState<ClinicalTable>('encounters');
   const [selection, setSelection] = useState<ClinicalSelection | null>(null);
@@ -9637,7 +9650,7 @@ function ClinicalView({
           <p className="eyebrow">Clinical record intake</p>
           <strong>Record a governed encounter, condition or observation.</strong>
         </div>
-        <button className="primary-button" onClick={() => setIntakeOpen(true)} type="button">
+        <button className="primary-button" onClick={() => openInWorkspace(() => setIntakeOpen(true))} type="button">
           <Icon name="clinical" /> Add clinical record
         </button>
       </section>
@@ -9664,7 +9677,7 @@ function ClinicalView({
       />
 
       <div id="clinical-workflow">
-        {data ? <PrescriptionOrigination csrfToken={csrfToken} tenantId={overview.tenant_id} onChanged={onWorkspaceChanged} /> : null}
+        <PrescriptionOrigination csrfToken={csrfToken} tenantId={overview.tenant_id} onChanged={onWorkspaceChanged} />
         {failed
           ? <WorkspaceSectionError domain="clinical workflow" />
           : data
@@ -10448,6 +10461,7 @@ interface BusinessWorkbenchProps {
   readonly data: HQWorkspaceData;
   readonly domain: string;
   readonly onChanged: () => Promise<void>;
+  readonly intakeActions?: Readonly<Record<string, { readonly label: string; readonly onOpen: () => void }>>;
 }
 
 interface PendingBusinessAction {
@@ -10460,6 +10474,7 @@ function BusinessWorkbench({
   data,
   domain,
   onChanged,
+  intakeActions,
 }: BusinessWorkbenchProps) {
   const modules = useMemo(
     () => data.business_modules.filter((module) => module.domain === domain),
@@ -10548,6 +10563,7 @@ function BusinessWorkbench({
                 value={query}
               />
             </label>
+            {activeModule && intakeActions?.[activeModule.key] ? <button className="primary-button" type="button" onClick={intakeActions[activeModule.key]!.onOpen}>{intakeActions[activeModule.key]!.label}</button> : null}
             <small>Server search · Actions remain subject to current permissions and state.</small>
           </div>
           {queueError ? <p className="inline-alert" role="alert">{queueError}</p> : null}

@@ -50,6 +50,7 @@ export function usePosWorkflow(
   const [selected, setSelected] = useState<DispensingEpisodeDTO | null>(null);
   const [gate, setGate] = useState<GateState>(EMPTY_GATE);
   const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
   const [notice, setNotice] = useState<PosState['notice']>(null);
   const [journalReady, setJournalReady] = useState(journal === null);
   const [journalBlocked, setJournalBlocked] = useState(false);
@@ -80,6 +81,8 @@ export function usePosWorkflow(
   }, [workflow, journal]);
 
   const refreshQueue = useCallback(async () => {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
     try {
       setQueue(await client.getQueue());
@@ -87,19 +90,23 @@ export function usePosWorkflow(
     } catch (error) {
       setNotice(describe(error));
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   }, [client]);
 
   const select = useCallback(
     async (episodeId: string | null) => {
+      if (inFlight.current) return;
       if (!episodeId) {
         workflow.unload();
         setSelected(null);
         setGate(EMPTY_GATE);
         setNotice(null);
+        setJournalBlocked(false);
         return;
       }
+      inFlight.current = true;
       setBusy(true);
       try {
         await workflow.load(episodeId);
@@ -109,6 +116,7 @@ export function usePosWorkflow(
         setNotice(describe(error));
       } finally {
         sync();
+        inFlight.current = false;
         setBusy(false);
       }
     },
@@ -116,6 +124,8 @@ export function usePosWorkflow(
   );
 
   const refresh = useCallback(async () => {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
     try {
       await workflow.refresh();
@@ -124,12 +134,15 @@ export function usePosWorkflow(
       setNotice(describe(error));
     } finally {
       sync();
+      inFlight.current = false;
       setBusy(false);
     }
   }, [workflow, sync]);
 
   const run = useCallback(
     async (action: () => Promise<ActionOutcome>) => {
+      if (inFlight.current) return null;
+      inFlight.current = true;
       setBusy(true);
       try {
         const outcome = await action();
@@ -145,6 +158,7 @@ export function usePosWorkflow(
         return null;
       } finally {
         sync();
+        inFlight.current = false;
         setBusy(false);
       }
     },

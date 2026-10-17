@@ -246,7 +246,7 @@ def test_card_approval_reference_cannot_be_reused(domain, intent):  # noqa: F811
         actor=domain["cashier"],
         idempotency_key="s-a",
     )
-    with pytest.raises(IntegrityError):
+    with pytest.raises(ValidationError, match="terminal approval is already recorded"):
         PaymentSettlementService.confirm_card(
             tender=tender_b,
             approval_reference="DUP-REF",

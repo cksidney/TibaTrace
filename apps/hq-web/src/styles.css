@@ -7763,8 +7763,7 @@ td .digest {
   color: var(--muted);
 }
 
-/* ==========================================================================
-   TibaTrace HQ Web — POS-Matching Ultra-Premium Auth Login Styling
+/* ===================================================================   TibaTrace HQ Web — POS-Matching Ultra-Premium Auth Login Styling
    ========================================================================== */
 
 .auth-page {
@@ -8811,7 +8810,7 @@ td, th, .tabular-nums, .metric-value, .stat-value, .count-badge, .executive-widg
 
 .executive-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr));
   gap: 16px;
 }
 
@@ -9115,3 +9114,21 @@ td, th, .tabular-nums, .metric-value, .stat-value, .count-badge, .executive-widg
   border-color: color-mix(in srgb, var(--teal-500) 35%, transparent);
 }
 
+/* Intake remains reachable at every viewport width. */
+.workspace-intake-bar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; padding: 20px; margin-bottom: 20px; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); }
+.workspace-intake-bar p { margin: 4px 0; color: var(--muted); }
+.workspace-intake-bar .button-row, .button-row { display: flex; flex-wrap: wrap; gap: 10px; }
+.intake-modal { width: min(780px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto; min-width: 0; background: #101827; }
+[data-theme="light"] .intake-modal { background: #fff; }
+.intake-modal header h2 { margin: 0; }
+.intake-modal .intake-fields { margin: 0; border: 0; padding: 0; min-inline-size: 0; }
+.intake-modal .stocktake-form-grid > * { min-width: 0; }
+.commercial-pricing .intake-modal form > label.business-field { display: grid; align-items: stretch; gap: 5px; }
+.intake-modal h2, .intake-modal h3 { overflow-wrap: anywhere; }
+.intake-modal .intake-wide { grid-column: 1 / -1; }
+.intake-modal .intake-lines, .intake-modal .intake-lines .business-record { display: grid; gap: 12px; }
+.intake-modal .intake-confirmation { display: flex; align-items: flex-start; gap: 10px; }
+.intake-modal .intake-confirmation input { flex: 0 0 auto; width: auto; margin-top: 4px; }
+.intake-modal input, .intake-modal select, .intake-modal textarea { max-width: 100%; min-width: 0; }
+.intake-modal .legacy-detail { margin: 0; padding: 0; border: 0; }
+@media (max-width: 640px) { .workspace-intake-bar { align-items: stretch; } .workspace-intake-bar .button-row { width: 100%; } .workspace-intake-bar button { flex: 1 1 160px; } .intake-modal .stocktake-form-grid, .intake-modal .legacy-fields, .intake-modal .people-intake-grid, .intake-modal .tenant-form-grid { grid-template-columns: minmax(0, 1fr) !important; } }

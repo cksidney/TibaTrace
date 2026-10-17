@@ -172,14 +172,14 @@ def test_a_refusal_is_not_retryable():
     assert result.retryable is False
 
 
-def test_a_server_error_is_retryable():
+def test_a_server_error_is_unknown_and_not_safe_to_retry():
     adapter = MpesaAdapter(config=config(), transport=transport_returning(503, {}))
     result = adapter.initiate(attempt=FakeAttempt(), context={"phone_number": "0712345678"})
     assert result.accepted is False
-    assert result.retryable is True
+    assert result.retryable is False and result.failure_code == "PROVIDER_UNAVAILABLE"
 
 
-def test_a_transport_failure_is_retryable_and_collects_nothing():
+def test_a_transport_failure_is_unknown_and_cannot_be_retried_blindly():
     def _explode(*args):  # noqa: ARG001
         raise ConnectionError("network down")
 
@@ -187,7 +187,8 @@ def test_a_transport_failure_is_retryable_and_collects_nothing():
     result = adapter.initiate(attempt=FakeAttempt(), context={"phone_number": "0712345678"})
     assert result.accepted is False
     assert result.failure_code == "PROVIDER_UNAVAILABLE"
-    assert result.retryable is True
+    assert result.retryable is False
+    assert "unknown" in result.failure_reason.lower()
 
 
 def test_fractional_amounts_are_refused_rather_than_rounded():

@@ -1,3 +1,4 @@
+import { IntakeModal } from './IntakeModal.js';
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { loadGovernmentCatalogue, loadLegacySetup, saveLegacySetupReview } from './api.js';
@@ -89,7 +90,7 @@ function ItemDetails({ item, csrfToken, onCancel, onSaved }: { readonly item: Le
     catch (err: unknown) { setError(err instanceof Error ? err.message : 'Could not save details.'); }
     finally { setBusy(false); }
   };
-  return <section className="legacy-detail" aria-labelledby="legacy-item-title"><header className="legacy-heading"><div><p className="eyebrow">Manager confirmation</p><h3 id="legacy-item-title" tabIndex={-1}>{item.source_name}</h3></div><button type="button" className="secondary-button" disabled={busy} onClick={onCancel}>Close</button></header>
+  return <IntakeModal title={`Complete item details — ${item.source_name}`} busy={busy} onClose={onCancel}><section className="legacy-detail" aria-labelledby="legacy-item-title"><header className="legacy-heading"><div><p className="eyebrow">Manager confirmation</p><h3 id="legacy-item-title" tabIndex={-1}>{item.source_name}</h3></div><button type="button" className="secondary-button" disabled={busy} onClick={onCancel}>Close</button></header>
     <p>Source: Products.pdf page {item.source_product.page}; stock PDF page {item.source_stock.page}. Original values remain unchanged. The proposed item code is an internal reference, not a barcode.</p>
     {item.source_issues.length > 0 && <ul className="legacy-issues">{item.source_issues.map((issue) => <li key={issue}>{issue}</li>)}</ul>}
     <form onSubmit={(e) => { void save(e); }}><fieldset disabled={busy}><p><button type="button" className="secondary-button" onClick={() => setReview((r) => ({ ...r, confirmed_price: item.source_price, confirmed_cost: item.source_cost }))}>Confirm source cost and price</button> Only use these values after confirming the sales unit.</p><div className="legacy-fields">
@@ -113,7 +114,7 @@ function ItemDetails({ item, csrfToken, onCancel, onSaved }: { readonly item: Le
     </div><label className="legacy-notes">Manager notes<textarea rows={3} maxLength={4000} value={review.notes ?? ''} onChange={(e) => edit('notes', e.target.value)} /></label>
       <label className="legacy-exclude"><input type="checkbox" checked={review.excluded ?? false} onChange={(e) => setReview((r) => ({ ...r, excluded: e.target.checked }))} />Exclude from initial setup (source record retained)</label>
       {error && <p role="alert" className="legacy-error">{error}</p>}<footer className="legacy-actions"><button className="secondary-button" type="button" onClick={onCancel}>Cancel</button><button className="primary-button" type="submit">{busy ? 'Saving…' : 'Save setup details'}</button></footer>
-    </fieldset></form></section>;
+    </fieldset></form></section></IntakeModal>;
 }
 
 function ReferenceSearch({ sourceName, onChoose }: { readonly sourceName: string; readonly onChoose: (code: string) => void }) {

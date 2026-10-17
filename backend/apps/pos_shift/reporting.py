@@ -213,6 +213,15 @@ class ShiftReportService:
         """
         problems: list[dict] = []
 
+        from apps.prescription.payment_models import PaymentIntent, PaymentTender
+        unresolved = PaymentTender.all_objects.filter(
+            tenant_id=session.tenant_id, register_session=session,
+            payment_intent__status__in=PaymentIntent.ACTIVE_STATUSES,
+            status__in=["PENDING", "PARTIALLY_SETTLED", "SETTLED"],
+        ).exists()
+        if unresolved:
+            problems.append({"code": "PAYMENTS_UNRESOLVED", "message": "A split or provider payment is incomplete. Resolve it before closing this register.", "waivable": False})
+
         closing = (
             CashDeclaration.all_objects.filter(
                 tenant_id=session.tenant_id,

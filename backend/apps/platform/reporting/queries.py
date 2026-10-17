@@ -1,6 +1,7 @@
 """Report-specific, tenant-bound facts. Planned packs never become fake snapshots."""
 from dataclasses import dataclass
 from datetime import timezone
+from decimal import Decimal
 
 from django.db.models import Count, Q, Sum
 from django.db.models.functions import TruncDay, TruncHour, TruncMonth, TruncWeek, TruncYear
@@ -99,11 +100,11 @@ def query_report(report_id, tenant_id, actor, window):
         # These are collections, not accrual revenue, VAT, profit or unpaid orders.
         refunds = report_id == "sales-refunds"
         if refunds:
-            qs = PaymentReversal.all_objects.filter(tenant_id=tenant_id, status="COMPLETED")
+            qs = PaymentReversal.all_objects.filter(tenant_id=tenant_id, status="COMPLETED", settlement__payment_tender__payment_intent__retail_transaction__isnull=True)
             qs = _period(qs, "completed_at", window)
             date_field, branch, currency, tender = "completed_at", "settlement__payment_tender__payment_intent__branch__code", "settlement__currency", "settlement__payment_tender__tender_type"
         else:
-            qs = _period(PaymentSettlement.all_objects.filter(tenant_id=tenant_id), "settled_at", window)
+            qs = _period(PaymentSettlement.all_objects.filter(tenant_id=tenant_id, payment_tender__payment_intent__retail_transaction__isnull=True), "settled_at", window)
             date_field, branch, currency, tender = "settled_at", "payment_tender__payment_intent__branch__code", "currency", "payment_tender__tender_type"
         trunc = {"HOURLY": TruncHour, "DAILY": TruncDay, "WEEKLY": TruncWeek, "MONTHLY": TruncMonth, "YEARLY": TruncYear}
         granularity = window.granularity if window else "DAILY"
@@ -114,13 +115,30 @@ def query_report(report_id, tenant_id, actor, window):
         retail_date = "completed_at" if refunds else "settled_at"
         retail_branch = "register__location__code" if refunds else "transaction__branch__code"
         retail = _period(retail_model.all_objects.filter(tenant_id=tenant_id), retail_date, window)
-        retail_groups = retail.annotate(period=trunc[granularity](retail_date, tzinfo=timezone.utc)).values(
-            "period", retail_branch, "currency").annotate(amount_total=Sum("amount"), events=Count("pk"))
-        rows.extend([[row["period"].isoformat(), row[retail_branch], row["currency"], "CASH", str(row["amount_total"]), str(row["events"]), "RETAIL"] for row in _bounded(retail_groups)])
+        if not refunds:
+            retail = retail.filter(transaction__payment_intents__isnull=True)
+        ledger_retail = (PaymentReversal.all_objects.filter(tenant_id=tenant_id, status="COMPLETED", settlement__payment_tender__payment_intent__retail_transaction__isnull=False)
+                         if refunds else PaymentSettlement.all_objects.filter(tenant_id=tenant_id, payment_tender__payment_intent__retail_transaction__isnull=False))
+        ledger_retail = _period(ledger_retail, date_field, window).annotate(period=trunc[granularity](date_field, tzinfo=timezone.utc))
+        ledger_groups = ledger_retail.values("period", branch, currency, tender).annotate(amount_total=Sum("amount"), events=Count("pk"))
+        rows.extend([[row["period"].isoformat(), row[branch], row[currency], row[tender], str(row["amount_total"]), str(row["events"]), "RETAIL"] for row in _bounded(ledger_groups)])
+        if refunds:
+            refund_groups = {}
+            for refund in _bounded(retail.annotate(period=trunc[granularity](retail_date, tzinfo=timezone.utc)).select_related("register__location")):
+                plan = refund.payment_plan or [{"tender_type": "CASH", "amount": refund.amount}]
+                for part in plan:
+                    key = (refund.period.isoformat(), refund.register.location.code, refund.currency, part["tender_type"])
+                    total, count = refund_groups.get(key, (Decimal(0), 0))
+                    refund_groups[key] = (total + Decimal(part["amount"]), count + 1)
+            rows.extend([[*key, str(total), str(count), "RETAIL"] for key, (total, count) in refund_groups.items()])
+        else:
+            retail_groups = retail.annotate(period=trunc[granularity](retail_date, tzinfo=timezone.utc)).values(
+                "period", retail_branch, "currency").annotate(amount_total=Sum("amount"), events=Count("pk"))
+            rows.extend([[row["period"].isoformat(), row[retail_branch], row["currency"], "CASH", str(row["amount_total"]), str(row["events"]), "RETAIL"] for row in _bounded(retail_groups)])
         if len(rows) > MAX_ROWS:
             raise ValueError("Report exceeds 5,000 rows. Choose a narrower reporting window; nothing was truncated.")
         rows.sort(key=lambda row: (row[0], row[1], row[2], row[3], row[6]))
-        return ReportData("Completed clinical payment reversals and receipt-linked retail cash refunds; dated by completion. Refund execution branch is the cash-out till; currencies kept separate." if refunds
+        return ReportData("Completed clinical reversals and receipt-linked retail refunds by original payment method; dated by completion at the execution branch. Currencies kept separate." if refunds
                           else "Gross settled clinical and retail payment collections; not accrual revenue. Refunds are reported separately. Unpaid carts and orders excluded; currencies and source channels kept separate.",
                           ["Period (UTC)", "Branch", "Currency", "Tender", "Refund amount" if refunds else "Gross collected", "Event count", "Source channel"], rows)
     if report_id in MOVEMENTS:

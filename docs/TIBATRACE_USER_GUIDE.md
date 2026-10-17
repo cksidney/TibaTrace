@@ -308,10 +308,12 @@ banner.
 performs the final check. On a controlled drug this is a legal act, and the
 system records who did it.
 
-**Payment.** Take payment in Payment Panel — cash, card, mobile money, insurance
-or a split across several. Payment is idempotent: if the connection drops
-mid-transaction, retrying will **not** charge twice. The episode carries one
-authoritative payment state, so what you see is what settled.
+**Payment.** In Windows POS 1.0.9, use Payment checkout for cash or an external
+card-terminal approval, in full or in parts. Mobile money becomes available only
+after Daraja setup and validation. Insurance and zero-payable approvals use their
+separate governed workflows. After a timeout, check the original payment and
+retry its saved command; do not start a new collection. See
+[POS checkout and recovery](POS_PAYMENT_WORKFLOW_GUIDE.md).
 
 **Counselling and collection.** Counsel the patient, record that you did, and
 release the medicine. The episode reaches `SUPPLIED`.

@@ -44,7 +44,7 @@ export function ExecutiveDashboard({ csrfToken: _csrfToken, onNavigate }: Execut
               Executive Operations Command Centre
             </div>
             <div className="executive-banner-subtitle">
-              TibaTrace National Health &amp; Enterprise Pharmacy Operations Platform · Real-time 18-Indicator Radar
+              Sample operational indicators · These example values are not live operational data.
             </div>
           </div>
         </div>

@@ -111,7 +111,7 @@ class PosTransaction(TenantConsistencyMixin, TimestampedModel):
                 )
                 if any(getattr(self, field) != existing[field] for field in context):
                     raise ValidationError("A paid POS transaction cannot move to another register context.")
-                if self.state != existing["state"]:
+                if self.state != existing["state"] and not (existing["state"] == self.State.PAYMENT_IN_PROGRESS and self.state in {self.State.COMPLETED, self.State.VOIDED}):
                     raise ValidationError("A completed POS transaction cannot be reopened or reclassified.")
                 financial = ("subtotal", "discount_total", "tax_total", "total")
                 if any(getattr(self, field) != existing[field] for field in financial):
@@ -209,7 +209,7 @@ class RetailCashReceipt(TenantConsistencyMixin, TimestampedModel):
         PosTransaction, on_delete=models.PROTECT, related_name="cash_receipt"
     )
     receipt_number = models.CharField(max_length=32, default=retail_receipt_number)
-    tender_type = models.CharField(max_length=12, choices=(("CASH", "Cash"),), default="CASH")
+    tender_type = models.CharField(max_length=12, choices=(("CASH", "Cash"), ("CARD", "Card"), ("MPESA", "M-PESA"), ("SPLIT", "Split tender")), default="CASH")
     amount = models.DecimalField(**MONEY)
     cash_received = models.DecimalField(**MONEY)
     change_due = models.DecimalField(**MONEY)
@@ -225,7 +225,7 @@ class RetailCashReceipt(TenantConsistencyMixin, TimestampedModel):
 
     class Meta:
         constraints = [
-            models.CheckConstraint(condition=models.Q(tender_type="CASH"), name="chk_retail_cash_receipt_cash_only"),
+            models.CheckConstraint(condition=models.Q(tender_type__in=["CASH", "CARD", "MPESA", "SPLIT"]), name="chk_retail_receipt_tender_type"),
             models.UniqueConstraint(
                 fields=["tenant", "receipt_number"], name="uq_retail_cash_receipt_number"
             ),
@@ -234,12 +234,12 @@ class RetailCashReceipt(TenantConsistencyMixin, TimestampedModel):
             ),
             models.CheckConstraint(condition=models.Q(amount__gt=0), name="chk_retail_cash_receipt_amount_positive"),
             models.CheckConstraint(
-                condition=models.Q(cash_received__gte=models.F("amount")),
+                condition=~models.Q(tender_type="CASH") | models.Q(cash_received__gte=models.F("amount")),
                 name="chk_retail_cash_receipt_tender_covers_total",
             ),
             models.CheckConstraint(condition=models.Q(change_due__gte=0), name="chk_retail_cash_receipt_change_nonneg"),
             models.CheckConstraint(
-                condition=models.Q(change_due=models.F("cash_received") - models.F("amount")),
+                condition=~models.Q(tender_type="CASH") | models.Q(change_due=models.F("cash_received") - models.F("amount")),
                 name="chk_retail_cash_receipt_change_matches",
             ),
         ]
@@ -277,6 +277,7 @@ class RetailRefundRequest(TenantConsistencyMixin, TimestampedModel):
     review_reason = models.TextField(blank=True)
     idempotency_key = models.CharField(max_length=255)
     request_fingerprint = models.CharField(max_length=64)
+    payment_plan = models.JSONField(default=list)
 
     objects = StrictTenantManager()
     all_objects = models.Manager()
@@ -291,7 +292,7 @@ class RetailRefundRequest(TenantConsistencyMixin, TimestampedModel):
     def save(self, *args, **kwargs):
         if not self._state.adding:
             fields = ("transaction_id", "original_receipt_id", "reason", "amount", "currency", "return_location_id",
-                      "requested_by_id", "idempotency_key", "request_fingerprint")
+                      "requested_by_id", "idempotency_key", "request_fingerprint", "payment_plan")
             existing = RetailRefundRequest.all_objects.filter(tenant_id=self.tenant_id, pk=self.pk).values(*fields, "status").first()
             if existing and any(getattr(self, field) != existing[field] for field in fields):
                 raise ValidationError("Refund request evidence cannot be edited; reject and create a corrected request.")
@@ -349,6 +350,8 @@ class RetailCashRefund(TenantConsistencyMixin, TimestampedModel):
     operator_shift = models.ForeignKey("pos_shift.OperatorShift", on_delete=models.PROTECT, related_name="+")
     device_id = models.CharField(max_length=128)
     amount = models.DecimalField(**MONEY)
+    cash_amount = models.DecimalField(default=None, **MONEY)
+    payment_plan = models.JSONField(default=list)
     currency = models.CharField(max_length=3)
     lines_snapshot = models.JSONField(default=list)
     completed_at = models.DateTimeField(default=timezone.now)
@@ -367,6 +370,8 @@ class RetailCashRefund(TenantConsistencyMixin, TimestampedModel):
         ]
 
     def save(self, *args, **kwargs):
+        if self._state.adding and self.cash_amount is None:
+            self.cash_amount = self.amount
         if self.pk and RetailCashRefund.all_objects.filter(tenant_id=self.tenant_id, pk=self.pk).exists():
             raise ValidationError("Retail cash refunds are immutable.")
         return super().save(*args, **kwargs)
