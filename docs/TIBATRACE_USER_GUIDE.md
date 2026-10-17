@@ -181,6 +181,22 @@ Order matters. Each step depends on the one before it.
 a pharmacy business; a branch is a physical site with its own stock, tills and
 staff. Everything else attaches to one or the other.
 
+For an older tenant already marked **Active** but showing zero branches, use
+the **Licence** action first. Enter the registered legal entity, a current PPB
+premises licence and expiry, and the named superintendent from the official
+records. Then use **Complete setup** and enter the organisation and first
+branch names/codes. This creates the branch's empty standard inventory areas,
+including its main store; it does not create stock or a till. The licence is
+recorded as entered by hand until registrar verification is available.
+
+After the branch exists, open **Cash Control → Physical POS Register
+Directory → Register Physical Till** and enter the actual register code and
+display name. Then request device activation from the POS app and have a
+separate authorised reviewer approve it in **Activation**. The cashier still
+has to open the business day and register session with the real counted opening
+cash before trading. Add the sellable catalogue, approved prices and received
+stock before starting a sale.
+
 ### 3.2 Users and roles
 
 **Administration & Users** creates accounts and grants capabilities.

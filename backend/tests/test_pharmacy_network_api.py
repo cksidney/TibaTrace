@@ -15,7 +15,11 @@ import pytest
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from apps.audit.models import AuditEvent
 from apps.identity.models import User
+from apps.inventory.models import InventoryLocation
+from apps.organizations.models import Location, Organization
+from apps.pharmacy_network.models import PharmacyProfile
 from apps.pharmacy_network.services import PharmacyOnboardingService
 from apps.tenancy.models import Tenant
 
@@ -240,6 +244,107 @@ class TestProfileMaintenance:
         body = client.get(f"/api/pharmacy-network/pharmacies/{pk}/").json()
         assert body["profile"]["licence_is_current"] is True
         assert body["profile"]["days_until_licence_expiry"] == 200
+
+    def test_a_legacy_tenant_can_create_its_missing_profile(self, client):
+        tenant = Tenant.objects.create(
+            name="Legacy Pharmacy", slug="legacy-profile", status=Tenant.STATUS_ACTIVE,
+        )
+        response = client.patch(
+            f"/api/pharmacy-network/pharmacies/{tenant.pk}/profile/",
+            {
+                "legal_name": "Legacy Pharmacy Limited",
+                "business_registration_number": "PVT-123",
+                "ppb_premises_licence_number": "PPB/PREM/2026/9999",
+                "ppb_licence_expiry": (timezone.localdate() + timedelta(days=100)).isoformat(),
+                "superintendent_name": "Jane Pharmacist",
+            },
+            format="json",
+        )
+        assert response.status_code == 200
+        assert response.json()["profile"]["legal_name"] == "Legacy Pharmacy Limited"
+        assert response.json()["profile"]["licence_is_current"] is True
+        assert PharmacyProfile.all_objects.filter(tenant=tenant).count() == 1
+
+    def test_invalid_legacy_profile_does_not_leave_a_partial_row(self, client):
+        tenant = Tenant.objects.create(
+            name="Incomplete Legacy", slug="incomplete-legacy", status=Tenant.STATUS_ACTIVE,
+        )
+        response = client.patch(
+            f"/api/pharmacy-network/pharmacies/{tenant.pk}/profile/",
+            {"ppb_premises_licence_number": "PPB/PREM/2026/1000"},
+            format="json",
+        )
+        assert response.status_code == 400
+        assert not PharmacyProfile.all_objects.filter(tenant=tenant).exists()
+
+
+class TestLegacyInitialSetupRecovery:
+    def _tenant(self, *, slug="legacy-setup", with_profile=True):
+        tenant = Tenant.objects.create(
+            name="Legacy Pharmacy", slug=slug, status=Tenant.STATUS_ACTIVE,
+        )
+        if with_profile:
+            PharmacyProfile.all_objects.create(
+                tenant=tenant,
+                legal_name="Legacy Pharmacy Limited",
+                ppb_premises_licence_number="PPB/PREM/2026/9999",
+                ppb_licence_expiry=timezone.localdate() + timedelta(days=100),
+                superintendent_name="Jane Pharmacist",
+            )
+        return tenant
+
+    @staticmethod
+    def _payload(**overrides):
+        return {
+            "organization_name": "Legacy Pharmacy Limited",
+            "organization_code": "LPL",
+            "branch_name": "Main Branch",
+            "branch_code": "LPL-MAIN",
+            **overrides,
+        }
+
+    def test_setup_requires_compliance_record_before_creating_locations(self, client):
+        tenant = self._tenant(with_profile=False)
+        response = client.post(
+            f"/api/pharmacy-network/pharmacies/{tenant.pk}/repair-initial-setup/",
+            self._payload(), format="json",
+        )
+        assert response.status_code == 400
+        assert "current PPB premises licence" in str(response.json())
+        assert not Organization.all_objects.filter(tenant=tenant).exists()
+        assert not Location.all_objects.filter(tenant=tenant).exists()
+
+    def test_setup_provisions_branch_and_standard_inventory_layout_without_stock_or_till(self, client):
+        tenant = self._tenant()
+        response = client.post(
+            f"/api/pharmacy-network/pharmacies/{tenant.pk}/repair-initial-setup/",
+            self._payload(), format="json",
+        )
+        assert response.status_code == 200
+        assert response.json()["status"] == Tenant.STATUS_ACTIVE
+        assert response.json()["branch_count"] == 1
+        assert Organization.all_objects.filter(tenant=tenant).count() == 1
+        assert Location.all_objects.filter(tenant=tenant).count() == 1
+        locations = InventoryLocation.all_objects.filter(tenant=tenant)
+        assert locations.count() == 7
+        assert locations.filter(location_code="LPL-MAIN-MAIN", location_type="STORE", status="ACTIVE").exists()
+        from apps.pos_shift.models import PosRegister
+        assert not PosRegister.all_objects.filter(tenant=tenant).exists()
+        assert AuditEvent.all_objects.filter(
+            tenant=tenant, action="TENANT_INITIAL_SETUP_REPAIRED",
+        ).exists()
+
+    def test_setup_recovery_cannot_be_used_again_after_a_branch_exists(self, client):
+        tenant = self._tenant()
+        organization = Organization.all_objects.create(tenant=tenant, name="Legacy", code="OLD")
+        Location.all_objects.create(tenant=tenant, organization=organization, name="Existing", code="OLD-MAIN")
+        response = client.post(
+            f"/api/pharmacy-network/pharmacies/{tenant.pk}/repair-initial-setup/",
+            self._payload(), format="json",
+        )
+        assert response.status_code == 400
+        assert Organization.all_objects.filter(tenant=tenant).count() == 1
+        assert Location.all_objects.filter(tenant=tenant).count() == 1
 
 
 class TestTheOldSurfaceIsClosed:

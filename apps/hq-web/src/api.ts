@@ -966,6 +966,13 @@ export const beginPharmacyOnboarding = (
   csrfToken: string,
 ) => mutateJson<Pharmacy>(pharmacyPath(id, 'begin-onboarding/'), 'POST', values, csrfToken);
 
+/** Repairs an already-active legacy tenant that predates branch provisioning. */
+export const repairPharmacyInitialSetup = (
+  id: string,
+  values: BeginOnboardingInput,
+  csrfToken: string,
+) => mutateJson<Pharmacy>(pharmacyPath(id, 'repair-initial-setup/'), 'POST', values, csrfToken);
+
 /** Refused unless the premises licence is current and a superintendent is named. */
 export const activatePharmacy = (id: string, reason: string, csrfToken: string) =>
   mutateJson<Pharmacy>(pharmacyPath(id, 'activate/'), 'POST', { reason }, csrfToken);

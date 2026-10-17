@@ -259,6 +259,100 @@ class PharmacyOnboardingService:
 
     @staticmethod
     @transaction.atomic
+    def repair_active_initial_setup(
+        *,
+        tenant: Tenant,
+        organization_name: str,
+        organization_code: str,
+        branch_name: str,
+        branch_code: str,
+        actor=None,
+    ) -> Tenant:
+        """Provision the first branch for an already-active legacy pharmacy.
+
+        Older tenant records can predate the governed pharmacy onboarding
+        workflow and be marked ACTIVE despite having no profile, organization,
+        branch, or inventory locations. This narrowly scoped recovery action
+        repairs only that empty state. It does not change the tenant lifecycle
+        state, seed stock, or create a POS register.
+        """
+        from apps.inventory.location_services import InventoryLocationProvisioningService
+        from apps.inventory.models import InventoryLocation
+        from apps.organizations.models import Location, Organization
+
+        locked_tenant = Tenant.objects.select_for_update().get(pk=tenant.pk)
+        if locked_tenant.status != Tenant.STATUS_ACTIVE:
+            raise ValidationError(
+                "Initial setup recovery is only available for an active legacy pharmacy."
+            )
+        if (
+            Location.all_objects.filter(tenant=locked_tenant).exists()
+            or Organization.all_objects.filter(tenant=locked_tenant).exists()
+            or InventoryLocation.all_objects.filter(tenant=locked_tenant).exists()
+        ):
+            raise ValidationError(
+                "This pharmacy already has organization or branch setup. Refresh the network record before continuing."
+            )
+
+        profile = PharmacyProfile.all_objects.filter(tenant=locked_tenant).first()
+        if profile is None:
+            raise ValidationError(
+                "Complete the pharmacy profile with a current PPB premises licence and named superintendent first."
+            )
+        if not (profile.legal_name or "").strip():
+            raise ValidationError(
+                "A registered legal entity is required before the first branch can be provisioned."
+            )
+        if not profile.licence_is_current:
+            raise ValidationError(
+                "A current PPB premises licence is required before the first branch can be provisioned."
+            )
+        if not (profile.superintendent_name or "").strip():
+            raise ValidationError(
+                "A named superintendent pharmacist is required before the first branch can be provisioned."
+            )
+
+        fields = {
+            "organization_name": (organization_name or "").strip(),
+            "organization_code": (organization_code or "").strip().upper(),
+            "branch_name": (branch_name or "").strip(),
+            "branch_code": (branch_code or "").strip().upper(),
+        }
+        for field, value in fields.items():
+            if not value:
+                raise ValidationError({field: "This is required to provision the first branch."})
+
+        organization = Organization.all_objects.create(
+            tenant=locked_tenant,
+            name=fields["organization_name"],
+            code=fields["organization_code"],
+        )
+        branch = Location.all_objects.create(
+            tenant=locked_tenant,
+            organization=organization,
+            name=fields["branch_name"],
+            code=fields["branch_code"],
+        )
+        InventoryLocationProvisioningService.provision_standard_layout(
+            tenant=locked_tenant,
+            branch=branch,
+            prefix=branch.code,
+            actor=actor,
+        )
+        _audit(
+            tenant=locked_tenant,
+            actor=actor,
+            action="TENANT_INITIAL_SETUP_REPAIRED",
+            context={
+                "organization_code": organization.code,
+                "branch_code": branch.code,
+                "inventory_layout": "STANDARD",
+            },
+        )
+        return locked_tenant
+
+    @staticmethod
+    @transaction.atomic
     def activate(*, tenant: Tenant, actor=None, reason: str = "") -> Tenant:
         """Onboarding to trading, gated on the premises licence.
 
