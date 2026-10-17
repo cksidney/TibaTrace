@@ -305,24 +305,63 @@ class DarajaTransport:
     def __init__(self, config):
         self.config = config
 
-    def __call__(self, method, url, headers, payload):
-        from urllib.error import HTTPError
-        from urllib.request import Request, urlopen
+    @staticmethod
+    def _read_json(response):
+        body = bytearray()
+        for chunk in response.iter_content(chunk_size=16384):
+            body.extend(chunk)
+            if len(body) > 65536:
+                raise ValueError("Daraja response exceeded the size limit.")
+        return json.loads(body)
 
-        if not url.startswith(self.config.base_url + "/mpesa/"):
+    def __call__(self, method, url, headers, payload):
+        from urllib.parse import urlsplit
+
+        import requests
+
+        parsed_url = urlsplit(url)
+        expected = urlsplit(self.config.base_url)
+        if (
+            parsed_url.scheme != "https"
+            or parsed_url.hostname != expected.hostname
+            or parsed_url.port not in (None, 443)
+            or parsed_url.username is not None
+            or parsed_url.password is not None
+            or not parsed_url.path.startswith("/mpesa/")
+            or parsed_url.fragment
+        ):
             raise ValueError("Daraja request destination is invalid.")
         credential = base64.b64encode(f"{self.config.consumer_key}:{self.config.consumer_secret}".encode()).decode()
-        auth = Request(self.config.base_url + "/oauth/v1/generate?grant_type=client_credentials", headers={"Authorization": "Basic " + credential})
         try:
-            with urlopen(auth, timeout=15) as response:
-                token = json.loads(response.read(65536)).get("access_token")
-            if not token:
-                raise ValueError("Daraja authentication refused.")
-            request = Request(url, data=json.dumps(payload).encode(), method=method,
-                headers={**headers, "Authorization": "Bearer " + token})
-            with urlopen(request, timeout=20) as response:
-                return response.status, json.loads(response.read(65536))
-        except HTTPError as exc:
-            return exc.code, {"errorCode": "PROVIDER_HTTP_ERROR", "errorMessage": "Daraja refused this request. Review provider status before retrying."}
+            with requests.Session() as session:
+                session.trust_env = False
+                with session.get(
+                    self.config.base_url + "/oauth/v1/generate?grant_type=client_credentials",
+                    headers={"Authorization": "Basic " + credential},
+                    timeout=15,
+                    allow_redirects=False,
+                    stream=True,
+                ) as auth:
+                    if 300 <= auth.status_code < 400:
+                        raise RuntimeError("Daraja authentication redirected.")
+                    if auth.status_code >= 400:
+                        return auth.status_code, {"errorCode": "PROVIDER_HTTP_ERROR", "errorMessage": "Daraja refused this request. Review provider status before retrying."}
+                    token = self._read_json(auth).get("access_token")
+                if not token:
+                    raise ValueError("Daraja authentication refused.")
+                with session.request(
+                    method,
+                    url,
+                    json=payload,
+                    headers={**headers, "Authorization": "Bearer " + token},
+                    timeout=20,
+                    allow_redirects=False,
+                    stream=True,
+                ) as response:
+                    if 300 <= response.status_code < 400:
+                        raise RuntimeError("Daraja request redirected.")
+                    if response.status_code >= 400:
+                        return response.status_code, {"errorCode": "PROVIDER_HTTP_ERROR", "errorMessage": "Daraja refused this request. Review provider status before retrying."}
+                    return response.status_code, self._read_json(response)
         except Exception:
             raise RuntimeError("Daraja outcome is unknown. Check payment status before another collection.") from None

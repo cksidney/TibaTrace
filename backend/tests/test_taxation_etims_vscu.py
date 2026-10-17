@@ -7,6 +7,7 @@ from rest_framework.test import APIClient
 
 from apps.identity.models import Role, User, UserRole
 from apps.organizations.models import Location, Organization
+from apps.prescription.fiscal import FiscalService
 from apps.prescription.fiscal_models import FiscalSubmission
 from apps.tenancy.models import Tenant
 
@@ -102,3 +103,49 @@ def test_no_capability_cannot_read_fiscal_queue(fiscal_world):
     tenant, _, _, _, client = fiscal_world
     client.force_authenticate(user=User.objects.create_user(username='unprivileged', tenant=tenant))
     assert client.get('/api/taxation/receipts/').status_code == 403
+
+
+def test_vscu_redirect_is_not_followed_and_invoice_stays_unknown(fiscal_world):
+    class RedirectResponse:
+        status_code = 302
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def iter_content(self, chunk_size):  # noqa: ARG002
+            return iter(())
+
+        def raise_for_status(self):
+            raise AssertionError("redirect must be rejected before status handling")
+
+    class FakeSession:
+        trust_env = True
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def post(self, url, **kwargs):
+            self.url = url
+            self.kwargs = kwargs
+            return RedirectResponse()
+
+    session = FakeSession()
+    row = make_row(fiscal_world, status="QUEUED", payload={"invoice": "immutable"})
+    with patch("apps.prescription.fiscal.FiscalService.prepare", return_value=row), patch(
+        "apps.prescription.fiscal.vscu_config", return_value={"base_url": "https://vscu.example.test"}
+    ), patch("requests.Session", return_value=session):
+        FiscalService.submit(row)
+
+    row.refresh_from_db()
+    assert row.status == "UNKNOWN"
+    assert session.trust_env is False
+    assert session.kwargs["allow_redirects"] is False
+    assert session.kwargs["timeout"] == 25
+    assert session.kwargs["stream"] is True
+    assert session.url == "https://vscu.example.test/trnsSales/saveSales"
