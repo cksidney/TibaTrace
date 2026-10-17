@@ -219,6 +219,18 @@ class RetailRefundService:
         request.status = RetailRefundRequest.Status.COMPLETED
         request.save(update_fields=["status", "updated_at"])
         cls._audit(request, actor, "RETAIL_CASH_REFUND_COMPLETED", {"receipt": receipt.refund_number, "amount": str(receipt.amount)})
+
+        # eTIMS VSCU Credit Note Fiscalization
+        try:
+            from apps.taxation.services import FiscalizationPipeline
+
+            FiscalizationPipeline.process_retail_refund(
+                receipt=receipt,
+                actor=actor,
+            )
+        except Exception:
+            logger.exception("Could not complete eTIMS fiscalization for retail refund.", extra={"refund_id": str(receipt.pk)})
+
         try:
             from apps.prescription.pos_printing_services import PosPrintDocumentService
             with transaction.atomic():

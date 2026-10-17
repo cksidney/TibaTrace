@@ -25,8 +25,8 @@ export function WorkflowRibbon({
   onSelect,
 }: {
   readonly stages: readonly StageView[];
-  readonly activeStage?: string;
-  readonly onSelect?: (stageId: string) => void;
+  readonly activeStage?: string | undefined;
+  readonly onSelect?: ((stageId: string) => void) | undefined;
 }) {
   return (
     <nav

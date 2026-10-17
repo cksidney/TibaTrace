@@ -632,3 +632,62 @@ class TestIsolation:
             assert world["client"].get(
                 f"/api/pos/shift/{collection}/"
             ).status_code == 200, collection
+
+
+class TestPosRegisterCreation:
+    def test_create_register_success(self, world):
+        role = Role.all_objects.create(
+            tenant=world["tenant"], code="POS_ADMIN", name="POS Admin", capabilities=["pos.device.manage"]
+        )
+        UserRole.all_objects.create(tenant=world["tenant"], user=world["operator"], role=role)
+        client = world["client"]
+        res = client.post(
+            "/api/pos/shift/registers/",
+            data={
+                "code": "TILL-NEW",
+                "name": "New Consultation Till",
+                "branch_id": str(world["branch"].id),
+                "expected_float": "1500.00",
+            },
+            format="json",
+        )
+        assert res.status_code == 201
+        data = res.json()
+        assert data["code"] == "TILL-NEW"
+        assert data["name"] == "New Consultation Till"
+        assert data["expected_float"] == "1500.00"
+        assert data["state"] == "AVAILABLE"
+
+    def test_create_register_duplicate_code_rejected(self, world):
+        role = Role.all_objects.create(
+            tenant=world["tenant"], code="POS_ADMIN_2", name="POS Admin 2", capabilities=["pos.device.manage"]
+        )
+        UserRole.all_objects.create(tenant=world["tenant"], user=world["operator"], role=role)
+        client = world["client"]
+        res = client.post(
+            "/api/pos/shift/registers/",
+            data={
+                "code": "TILL-SA",  # already exists in fixture
+                "name": "Duplicate Till",
+                "branch_id": str(world["branch"].id),
+            },
+            format="json",
+        )
+        assert res.status_code == 400
+        assert "already exists" in str(res.json())
+
+    def test_create_register_requires_capability(self, world):
+        limited_user = User.objects.create_user(username="limited-op", password="pw", tenant=world["tenant"])
+        client = APIClient()
+        client.force_authenticate(user=limited_user)
+        res = client.post(
+            "/api/pos/shift/registers/",
+            data={
+                "code": "TILL-FAIL",
+                "name": "Failing Till",
+                "branch_id": str(world["branch"].id),
+            },
+            format="json",
+            HTTP_X_TENANT_ID=str(world["tenant"].id),
+        )
+        assert res.status_code == 403

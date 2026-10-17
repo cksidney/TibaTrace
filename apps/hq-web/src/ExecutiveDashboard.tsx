@@ -29,61 +29,61 @@ export function ExecutiveDashboard({ csrfToken: _csrfToken, onNavigate }: Execut
     { id: 'platform_notifs', title: 'Platform Notifications', value: '3 Active Alerts', sub: '1 Critical, 2 Info', color: 'var(--amber-700)', icon: '🔔', nav: 'National Integration' },
   ];
 
+  const handleSelect = (widget: (typeof widgets)[number]) => {
+    setSelectedWidget(widget.id);
+    if (onNavigate) onNavigate(widget.nav);
+  };
+
   return (
-    <div style={{ padding: '0 0 40px' }}>
-      {/* Header Banner */}
-      <div
-        style={{
-          background: 'var(--panel)',
-          border: '1px solid var(--line)',
-          borderRadius: '16px',
-          padding: '24px 28px',
-          marginBottom: '24px',
-          boxShadow: 'var(--shadow)',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <div style={{ fontSize: '32px' }}>🏛️</div>
-            <div>
-              <div style={{ fontWeight: 800, fontSize: '22px', color: 'var(--ink)' }}>
-                Executive Operations Command Centre
-              </div>
-              <div style={{ fontSize: '13px', color: 'var(--muted)', marginTop: '4px' }}>
-                TibaTrace National Health & Enterprise Pharmacy Operations Platform v0.2.0-rc10
-              </div>
+    <div className="executive-dashboard">
+      <div className="executive-banner">
+        <div className="executive-banner-content">
+          <div className="executive-banner-icon">🏛️</div>
+          <div>
+            <div className="executive-banner-title">
+              Executive Operations Command Centre
+            </div>
+            <div className="executive-banner-subtitle">
+              TibaTrace National Health &amp; Enterprise Pharmacy Operations Platform · Real-time 18-Indicator Radar
             </div>
           </div>
         </div>
       </div>
 
-      {/* Widget Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
-        {widgets.map(w => (
-          <div
-            key={w.id}
-            onClick={() => {
-              setSelectedWidget(w.id);
-              if (onNavigate) onNavigate(w.nav);
-            }}
-            style={{
-              background: 'var(--panel)',
-              border: `1px solid ${selectedWidget === w.id ? w.color : 'var(--line)'}`,
-              borderRadius: '14px',
-              padding: '20px',
-              cursor: 'pointer',
-              boxShadow: 'var(--shadow)',
-              transition: 'all 0.15s ease',
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-              <span style={{ fontSize: '13px', color: 'var(--muted)', fontWeight: 600 }}>{w.title}</span>
-              <span style={{ fontSize: '22px' }}>{w.icon}</span>
+      <div className="executive-grid">
+        {widgets.map((w) => {
+          const isSelected = selectedWidget === w.id;
+          return (
+            <div
+              key={w.id}
+              role="button"
+              tabIndex={0}
+              aria-label={`${w.title}: ${w.value}. Click to view ${w.nav}`}
+              onClick={() => handleSelect(w)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  handleSelect(w);
+                }
+              }}
+              className={`executive-widget${isSelected ? ' executive-widget-selected' : ''}`}
+              style={{ '--widget-accent': w.color } as React.CSSProperties}
+            >
+              <div className="executive-widget-header">
+                <span className="executive-widget-title">{w.title}</span>
+                <span className="executive-widget-icon">{w.icon}</span>
+              </div>
+              <div className="executive-widget-value" style={{ color: w.color }}>
+                {w.value}
+              </div>
+              <div className="executive-widget-sub">{w.sub}</div>
+              <div className="executive-widget-action">
+                <span>View {w.nav}</span>
+                <span aria-hidden="true">→</span>
+              </div>
             </div>
-            <div style={{ fontSize: '20px', fontWeight: 800, color: w.color, lineHeight: 1.2 }}>{w.value}</div>
-            <div style={{ fontSize: '12px', color: 'var(--muted-2)', marginTop: '8px' }}>{w.sub}</div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

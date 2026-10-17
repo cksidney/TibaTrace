@@ -92,7 +92,14 @@ export function usePosWorkflow(
   }, [client]);
 
   const select = useCallback(
-    async (episodeId: string) => {
+    async (episodeId: string | null) => {
+      if (!episodeId) {
+        workflow.unload();
+        setSelected(null);
+        setGate(EMPTY_GATE);
+        setNotice(null);
+        return;
+      }
       setBusy(true);
       try {
         await workflow.load(episodeId);

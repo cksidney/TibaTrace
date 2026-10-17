@@ -607,6 +607,22 @@ class PosRetailService:
         )
         transaction_record.state = PosTransaction.State.COMPLETED
         transaction_record.save(update_fields=["state", "updated_at"])
+
+        # eTIMS VSCU Fiscalization (if tenant has enabled eTIMS profile)
+        try:
+            from apps.taxation.services import FiscalizationPipeline
+
+            FiscalizationPipeline.process_retail_sale(
+                transaction_record=transaction_record,
+                receipt=receipt,
+                actor=actor,
+            )
+        except Exception:
+            logger.exception(
+                "Could not complete eTIMS fiscalization for retail sale.",
+                extra={"tenant_id": str(tenant.pk), "transaction_id": str(transaction_record.pk)},
+            )
+
         # Queueing is deliberately best-effort: the cash receipt and inventory
         # ledger are the sale. A printer/queue fault must not collect cash twice
         # or roll back a sale that has already been settled.

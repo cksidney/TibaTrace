@@ -55,6 +55,50 @@ class PosRegisterSerializer(serializers.ModelSerializer):
         ]
 
 
+class PosRegisterCreateSerializer(serializers.ModelSerializer):
+    branch_id = serializers.UUIDField(write_only=True)
+    expected_float = serializers.DecimalField(
+        max_digits=12, decimal_places=2, required=False, default=Decimal("0.00")
+    )
+
+    class Meta:
+        model = PosRegister
+        fields = [
+            "id", "code", "name", "branch_id", "currency", "state", "expected_float",
+        ]
+        read_only_fields = ["id", "state"]
+
+    def validate_code(self, value):
+        code = str(value or "").strip().upper()
+        if not code:
+            raise serializers.ValidationError("Register code is required.")
+        if len(code) > 40:
+            raise serializers.ValidationError("Register code cannot exceed 40 characters.")
+        tenant_id = self.context.get("tenant_id")
+        if PosRegister.all_objects.filter(tenant_id=tenant_id, code=code).exists():
+            raise serializers.ValidationError(f"A register with code '{code}' already exists for this tenant.")
+        return code
+
+    def validate_name(self, value):
+        name = str(value or "").strip()
+        if not name:
+            raise serializers.ValidationError("Register name is required.")
+        return name
+
+    def validate_branch_id(self, value):
+        tenant_id = self.context.get("tenant_id")
+        from apps.organizations.models import Location
+        loc = Location.all_objects.filter(tenant_id=tenant_id, id=value).first()
+        if not loc:
+            raise serializers.ValidationError("Branch/Location was not found for this tenant.")
+        return value
+
+    def create(self, validated_data):
+        branch_id = validated_data.pop("branch_id")
+        validated_data["state"] = "AVAILABLE"
+        return PosRegister.all_objects.create(location_id=branch_id, **validated_data)
+
+
 class BusinessDaySerializer(serializers.ModelSerializer):
     branch_code = serializers.CharField(source="location.code", read_only=True)
     accepts_transactions = serializers.BooleanField(read_only=True)
@@ -71,16 +115,22 @@ class OperatorShiftSerializer(serializers.ModelSerializer):
     operator_id = serializers.UUIDField(read_only=True)
     operator_username = serializers.CharField(source="operator.username", read_only=True)
     handed_over_to_username = serializers.SerializerMethodField()
+    served_customer_count = serializers.SerializerMethodField()
 
     class Meta:
         model = OperatorShift
         fields = [
             "id", "operator_id", "operator_username", "state", "started_at", "ended_at",
-            "handed_over_to_username", "close_reason",
+            "handed_over_to_username", "close_reason", "served_customer_count",
         ]
 
     def get_handed_over_to_username(self, shift) -> str:
         return getattr(shift.handed_over_to, "username", "") or ""
+
+    def get_served_customer_count(self, shift) -> int:
+        from apps.pos_shift.customer_metrics import count_served_customers_for_shift
+
+        return count_served_customers_for_shift(shift)
 
 
 class RegisterSessionSerializer(serializers.ModelSerializer):
@@ -90,6 +140,7 @@ class RegisterSessionSerializer(serializers.ModelSerializer):
     closed_by_username = serializers.SerializerMethodField()
     has_final_report = serializers.SerializerMethodField()
     operator_shifts = serializers.SerializerMethodField()
+    served_customer_count = serializers.SerializerMethodField()
 
     class Meta:
         model = RegisterSession
@@ -100,7 +151,7 @@ class RegisterSessionSerializer(serializers.ModelSerializer):
             # person accountable for the drawer, and it should be visible in a
             # list rather than only in a detail view.
             "forced_closure", "forced_closure_reason",
-            "has_final_report", "operator_shifts",
+            "has_final_report", "operator_shifts", "served_customer_count",
         ]
 
     def get_closed_by_username(self, session) -> str:
@@ -124,6 +175,11 @@ class RegisterSessionSerializer(serializers.ModelSerializer):
             register_session=session,
             report_type=ShiftReport.TYPE_Z,
         ).exists()
+
+    def get_served_customer_count(self, session) -> int:
+        from apps.pos_shift.customer_metrics import count_served_customers_for_session
+
+        return count_served_customers_for_session(session)
 
     def get_operator_shifts(self, session) -> list[dict]:
         shifts = (

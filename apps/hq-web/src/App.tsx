@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, FormEvent } from 'react';
 
 import {
@@ -9,7 +9,6 @@ import {
 import { AccessWorkspace } from './AccessWorkspace.js';
 import { accessibleHqViews, canOpenHqDestination } from './navigationAccess.js';
 import { ExecutiveDashboard } from './ExecutiveDashboard.js';
-import { FieldSearch } from './FieldSearch.js';
 import { GS1Workspace } from './GS1Workspace.js';
 import { IntegrationWorkspace } from './IntegrationWorkspace.js';
 import { LegacyItemSetup } from './LegacyItemSetup.js';
@@ -17,6 +16,7 @@ import { CommerceOperations } from './CommerceOperations.js';
 import { CommercialPricing } from './CommercialPricing.js';
 import { PrescriptionOrigination } from './PrescriptionOrigination.js';
 import { PlatformOwnerConsole } from './PlatformOwnerConsole.js';
+import { PosActivationWorkspace } from './PosActivationWorkspace.js';
 import { RegulatoryWorkspace } from './RegulatoryWorkspace.js';
 import { ReportsWorkspace } from './ReportsWorkspace.js';
 import {
@@ -60,6 +60,7 @@ import {
   loadCustomers,
   loadPosDeviceHealth,
   loadPosRegisters,
+  createPosRegister,
   loadCashMovements,
   loadCashDeclarations,
   loadBusinessDays,
@@ -239,6 +240,7 @@ type WorkspaceView =
   | 'governance'
   | 'integration'
   | 'platform_owner'
+  | 'activations'
   | 'access';
 
 interface NavigationItem {
@@ -267,6 +269,7 @@ const navigation: readonly NavigationItem[] = [
   { key: 'governance', label: 'System governance', caption: 'Audit, events and documents', icon: 'shield' },
   { key: 'integration', label: 'National Integrations', caption: 'DHA & PPB command centre', icon: 'network' },
   { key: 'platform_owner', label: 'Platform Owner Console', caption: 'Global governance & activations', icon: 'shield' },
+  { key: 'activations', label: 'POS Terminal Activations', caption: 'Device approvals & enrolment codes', icon: 'store' },
   { key: 'access', label: 'Administration & Users', caption: 'Roles and security', icon: 'users' },
 ];
 
@@ -276,9 +279,40 @@ function visibleNavigation(overview: HQOverview): readonly NavigationItem[] {
     if (overview.is_platform_owner === true) return item;
     if (item.key === 'governance') return { ...item, label: 'Tenant governance', caption: 'Tenant audit & documents' };
     if (item.key === 'access') return { ...item, label: 'Users & access', caption: 'Tenant users & permissions' };
+    if (item.key === 'activations') return { ...item, label: 'POS Terminal Activations', caption: 'Terminal status & requests' };
     return item;
   });
 }
+
+type NavSection =
+  | 'Executive & Command'
+  | 'Clinical & Supply'
+  | 'Commercial & Finance'
+  | 'Assurance & Standards'
+  | 'Platform & Security';
+
+const NAV_SECTION_MAP: Record<WorkspaceView, NavSection> = {
+  overview: 'Executive & Command',
+  executive: 'Executive & Command',
+  network: 'Executive & Command',
+  people: 'Clinical & Supply',
+  catalogue: 'Clinical & Supply',
+  inventory: 'Clinical & Supply',
+  operations: 'Clinical & Supply',
+  commerce: 'Commercial & Finance',
+  pricing: 'Commercial & Finance',
+  cash: 'Commercial & Finance',
+  insurance: 'Commercial & Finance',
+  clinical: 'Assurance & Standards',
+  regulatory: 'Assurance & Standards',
+  gs1: 'Assurance & Standards',
+  reports: 'Assurance & Standards',
+  governance: 'Platform & Security',
+  integration: 'Platform & Security',
+  platform_owner: 'Platform & Security',
+  activations: 'Platform & Security',
+  access: 'Platform & Security',
+};
 
 const viewMeta: Record<WorkspaceView, { readonly eyebrow: string; readonly title: string; readonly description: string }> = {
   overview: {
@@ -305,6 +339,11 @@ const viewMeta: Record<WorkspaceView, { readonly eyebrow: string; readonly title
     eyebrow: 'Platform Owner Console',
     title: 'Global System & Integration Governance',
     description: 'Restricted administrative surface for national provider activations, credentials and emergency kill switch controls.',
+  },
+  activations: {
+    eyebrow: 'Platform Device Governance',
+    title: 'POS Terminal Activations & Device Registry',
+    description: 'Review device requests, generate cryptographic enrolment challenge codes, and govern terminal register bindings.',
   },
   network: {
     eyebrow: 'Care network',
@@ -781,10 +820,6 @@ export function Dashboard({
             </div>
           </section>
 
-          <div style={{ marginBottom: '20px' }}>
-            <FieldSearch onSearch={(field, query) => console.log('Search field:', field, 'query:', query)} />
-          </div>
-
           {refreshFailed ? (
             <div className="inline-alert" role="status">
               <Icon name="alert" />
@@ -812,6 +847,14 @@ export function Dashboard({
           {activeView === 'governance' ? <GovernanceView data={scopedWorkspace} failed={workspaceFailed} /> : null}
           {activeView === 'integration' ? <IntegrationWorkspace csrfToken={csrfToken} /> : null}
           {activeView === 'platform_owner' ? <PlatformOwnerConsole csrfToken={csrfToken} /> : null}
+          {activeView === 'activations' ? (
+            <PosActivationWorkspace
+              csrfToken={csrfToken}
+              isPlatformOwner={overview.is_platform_owner === true}
+              overview={overview}
+              tenantId={overview.tenant_id}
+            />
+          ) : null}
           {activeView === 'access' ? <AccessView csrfToken={csrfToken} data={scopedWorkspace} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} overview={overview} /> : null}
         </main>
       </div>
@@ -895,20 +938,33 @@ function Sidebar({
           <strong>{overview.tenant_name}</strong>
         </div>
       </div>
-      <p className="sidebar-label">HQ workspace</p>
       <nav aria-label="Headquarters navigation">
-        {visibleNavigation(overview).map((item) => (
-          <a
-            aria-current={activeView === item.key ? 'page' : undefined}
-            className={activeView === item.key ? 'nav-link nav-link-active' : 'nav-link'}
-            href={`#${item.key}`}
-            key={item.key}
-            onClick={onNavigate}
-          >
-            <span><Icon name={item.icon} /></span>
-            <div><strong>{item.label}</strong><small>{item.caption}</small></div>
-          </a>
-        ))}
+        {(() => {
+          let lastSection = '';
+          return visibleNavigation(overview).map((item) => {
+            const section = NAV_SECTION_MAP[item.key] ?? 'Modules';
+            const showHeading = section !== lastSection;
+            lastSection = section;
+            return (
+              <Fragment key={item.key}>
+                {showHeading ? (
+                  <div className="nav-section-heading" role="presentation">
+                    {section}
+                  </div>
+                ) : null}
+                <a
+                  aria-current={activeView === item.key ? 'page' : undefined}
+                  className={activeView === item.key ? 'nav-link nav-link-active' : 'nav-link'}
+                  href={`#${item.key}`}
+                  onClick={onNavigate}
+                >
+                  <span><Icon name={item.icon} /></span>
+                  <div><strong>{item.label}</strong><small>{item.caption}</small></div>
+                </a>
+              </Fragment>
+            );
+          });
+        })()}
       </nav>
       {overview.is_platform_owner === true ? <div className="sidebar-support">
         <div className="support-icon"><Icon name="docs" /></div>
@@ -1018,6 +1074,7 @@ function OverviewView({ overview, onNavigate }: { readonly overview: HQOverview;
             {canOpen('/pos/') ? <CommandLink href="/pos/" title="Install / open POS till" detail="Signed Windows and Android till handoff" icon="store" /> : null}
             {canOpen('#reports') ? <CommandLink href="#reports" title="Reports catalogue" detail="Enterprise, audit and security packs" icon="docs" onNavigate={onNavigate} /> : null}
             {canOpen('#access') ? <CommandLink href="#access" title={overview.is_platform_owner ? 'System controls' : 'Users & access'} detail="Identity, security and governance" icon="settings" onNavigate={onNavigate} /> : null}
+            {canOpen('#activations') ? <CommandLink href="#activations" title="POS Terminal Activations" detail="Device enrolment, challenge codes & till bindings" icon="store" onNavigate={onNavigate} /> : null}
             {canOpen('/api/docs/') ? <CommandLink href="/api/docs/" title="API workspace" detail="Integration contracts and testing" icon="docs" /> : null}
           </div>
         </article>
@@ -4445,6 +4502,14 @@ function TenantCashControlView({
   const [movements, setMovements] = useState<readonly CashMovementItem[] | null>(null);
   const [declarations, setDeclarations] = useState<readonly CashDeclarationItem[] | null>(null);
   const [businessDays, setBusinessDays] = useState<readonly BusinessDayItem[] | null>(null);
+  const [branches, setBranches] = useState<readonly HQInventoryBranch[]>([]);
+  const [showAddRegister, setShowAddRegister] = useState(false);
+  const [newRegBranchId, setNewRegBranchId] = useState('');
+  const [newRegCode, setNewRegCode] = useState('');
+  const [newRegName, setNewRegName] = useState('');
+  const [newRegFloat, setNewRegFloat] = useState('0.00');
+  const [newRegBusy, setNewRegBusy] = useState(false);
+  const [newRegError, setNewRegError] = useState('');
   const [failed, setFailed] = useState(false);
   const [cashReload, setCashReload] = useState(0);
   const [movementReview, setMovementReview] = useState<CashMovementItem | null>(null);
@@ -4470,8 +4535,9 @@ function TenantCashControlView({
       loadCashMovements(tenantId, controller.signal),
       loadCashDeclarations(tenantId, controller.signal),
       loadBusinessDays(tenantId, controller.signal),
+      loadInventoryBranches(tenantId, controller.signal).catch(() => [] as readonly HQInventoryBranch[]),
     ])
-      .then(([a, u, b, c, t, m, d, bd]) => {
+      .then(([a, u, b, c, t, m, d, bd, br]) => {
         setOpen(a);
         setUnclosed(u);
         setVariances(b);
@@ -4480,6 +4546,9 @@ function TenantCashControlView({
         setMovements(m);
         setDeclarations(d);
         setBusinessDays(bd);
+        setBranches(br);
+        const firstBranch = br[0];
+        if (firstBranch && !newRegBranchId) setNewRegBranchId(firstBranch.id);
         setFailed(false);
       })
       .catch(() => {
@@ -4487,6 +4556,34 @@ function TenantCashControlView({
       });
     return () => controller.abort();
   }, [cashReload, tenantId]);
+
+  const handleCreateRegister = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!newRegCode.trim() || !newRegName.trim() || !newRegBranchId) {
+      setNewRegError('Branch, register code, and register name are required.');
+      return;
+    }
+    setNewRegBusy(true);
+    setNewRegError('');
+    try {
+      const created = await createPosRegister(tenantId, csrfToken, {
+        code: newRegCode.trim().toUpperCase(),
+        name: newRegName.trim(),
+        branch_id: newRegBranchId,
+        expected_float: newRegFloat.trim() || '0.00',
+      });
+      setShowAddRegister(false);
+      setNewRegCode('');
+      setNewRegName('');
+      setNewRegFloat('0.00');
+      setCashNotice(`Physical register ${created.code} (${created.name}) created successfully.`);
+      setCashReload((prev) => prev + 1);
+    } catch (err) {
+      setNewRegError(err instanceof Error ? err.message : 'Failed to register physical till.');
+    } finally {
+      setNewRegBusy(false);
+    }
+  };
 
   if (failed) return <Unavailable />;
   if (!open || !unclosed || !variances || !forced || !tills || !movements || !declarations || !businessDays) {
@@ -4587,7 +4684,7 @@ function TenantCashControlView({
         ) : (
           <div className="table-scroll">
             <table>
-              <thead><tr><th>Register</th><th>Business date</th><th>Opened by</th><th>Opened</th><th>Final Z</th><th>State</th></tr></thead>
+              <thead><tr><th>Register</th><th>Business date</th><th>Opened by</th><th>Opened</th><th>Served</th><th>Final Z</th><th>State</th></tr></thead>
               <tbody>
                 {open.map((session) => (
                   <tr key={session.id}>
@@ -4595,6 +4692,7 @@ function TenantCashControlView({
                     <td>{session.business_date}</td>
                     <td>{session.opened_by_username}</td>
                     <td><span className="muted-cell">{formatDateTime(session.opened_at)}</span></td>
+                    <td><strong>{session.served_customer_count ?? 0}</strong></td>
                     <td>{session.has_final_report ? <StatusBadge value="RECORDED" /> : <span className="muted-cell">Pending closure</span>}</td>
                     <td><StatusBadge value={session.state} /></td>
                   </tr>
@@ -4607,7 +4705,19 @@ function TenantCashControlView({
 
       {/* Till Registers Directory */}
       <article className="panel" id="cash-tills" style={{ marginBottom: '24px' }}>
-        <PanelHeader eyebrow="Till Infrastructure" title="Physical POS Register Directory" />
+        <PanelHeader
+          eyebrow="Till Infrastructure"
+          title="Physical POS Register Directory"
+          actionLabel="+ Register Physical Till"
+          onAction={() => {
+            setShowAddRegister(true);
+            setNewRegError('');
+            const first = branches[0];
+            if (first && !newRegBranchId) {
+              setNewRegBranchId(first.id);
+            }
+          }}
+        />
         {!tills ? (
           <p className="muted-cell">Loading physical tills…</p>
         ) : tills.length === 0 ? (
@@ -4650,7 +4760,124 @@ function TenantCashControlView({
             </table>
           </div>
         )}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: 'var(--line-soft)', borderRadius: '8px', marginTop: '14px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <Icon name="shield" />
+            <span><strong>Device Activation:</strong> Physical tills must be cryptographically enrolled via a single-use 15-minute challenge code before trading.</span>
+          </div>
+          <a className="secondary-button" href="#activations" style={{ textDecoration: 'none', whiteSpace: 'nowrap' }}>
+            <Icon name="store" /> POS Activations Desk
+          </a>
+        </div>
       </article>
+
+      {showAddRegister && (
+        <div
+          className="business-dialog-backdrop"
+          onClick={(event) => {
+            if (event.target === event.currentTarget && !newRegBusy) setShowAddRegister(false);
+          }}
+          role="presentation"
+        >
+          <section
+            aria-labelledby="create-register-title"
+            aria-modal="true"
+            className="business-dialog"
+            role="dialog"
+            style={{ maxWidth: '560px' }}
+          >
+            <header>
+              <div>
+                <p className="eyebrow">Till Infrastructure</p>
+                <h2 id="create-register-title">Register Physical Till</h2>
+              </div>
+              <button
+                aria-label="Close dialog"
+                disabled={newRegBusy}
+                onClick={() => setShowAddRegister(false)}
+                type="button"
+              >
+                <Icon name="close" />
+              </button>
+            </header>
+            <form onSubmit={(event) => void handleCreateRegister(event)}>
+              {newRegError ? (
+                <p className="business-dialog-error" role="alert">
+                  <Icon name="alert" /> {newRegError}
+                </p>
+              ) : null}
+              <div style={{ display: 'grid', gap: '16px' }}>
+                <label className="business-field">
+                  <span>Branch / Dispensary Location</span>
+                  <select
+                    value={newRegBranchId}
+                    onChange={(e) => setNewRegBranchId(e.target.value)}
+                    required
+                  >
+                    <option value="">Select branch location</option>
+                    {branches.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name} ({b.code})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="business-field">
+                  <span>Register Code</span>
+                  <input
+                    maxLength={40}
+                    placeholder="e.g. REG-02"
+                    required
+                    value={newRegCode}
+                    onChange={(e) => setNewRegCode(e.target.value.toUpperCase())}
+                  />
+                  <small className="panel-note">
+                    Unique till identifier used during POS device activation and daily cashier shifts.
+                  </small>
+                </label>
+                <label className="business-field">
+                  <span>Register Display Name</span>
+                  <input
+                    maxLength={120}
+                    placeholder="e.g. Dispensary Counter 2"
+                    required
+                    value={newRegName}
+                    onChange={(e) => setNewRegName(e.target.value)}
+                  />
+                </label>
+                <label className="business-field">
+                  <span>Expected Opening Float (KES)</span>
+                  <input
+                    min="0"
+                    placeholder="0.00"
+                    step="0.01"
+                    type="number"
+                    value={newRegFloat}
+                    onChange={(e) => setNewRegFloat(e.target.value)}
+                  />
+                </label>
+              </div>
+              <footer style={{ marginTop: '24px', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                <button
+                  className="secondary-button"
+                  disabled={newRegBusy}
+                  onClick={() => setShowAddRegister(false)}
+                  type="button"
+                >
+                  Cancel
+                </button>
+                <button
+                  className="primary-button"
+                  disabled={newRegBusy || !newRegCode.trim() || !newRegName.trim() || !newRegBranchId}
+                  type="submit"
+                >
+                  {newRegBusy ? 'Registering…' : 'Register Physical Till'}
+                </button>
+              </footer>
+            </form>
+          </section>
+        </div>
+      )}
 
       <section className="content-grid content-grid-primary">
         <article className="panel" id="cash-variances">
@@ -10392,6 +10619,10 @@ function UserMenu({ overview, onClose, onSignOut }: {
         {overview.is_platform_owner === true ? <a href="#access" onClick={onClose}>
           <span className="user-menu-icon"><Icon name="settings" /></span>
           <span><strong>System controls</strong><small>Identity and governance</small></span>
+        </a> : null}
+        {overview.is_platform_owner === true ? <a href="#activations" onClick={onClose}>
+          <span className="user-menu-icon"><Icon name="store" /></span>
+          <span><strong>POS Activations Desk</strong><small>Device requests & challenge codes</small></span>
         </a> : null}
         {overview.is_platform_owner === true ? <a href="/api/docs/" target="_blank" rel="noreferrer" onClick={onClose}>
           <span className="user-menu-icon"><Icon name="docs" /></span>

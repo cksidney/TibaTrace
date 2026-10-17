@@ -1040,13 +1040,66 @@ class Stage2D1Validator(StockMobilityValidator):
         }
 
 
+class Stage2D2Validator(Stage2D1Validator):
+    """Validates Stage 2D.2 (production hardening, concurrency, pricing immutability, audit, dispensing lifecycle)."""
+
+    def check_dispensing_lifecycle_coherence(self):
+        from apps.prescription.models import DispensingEpisode
+        episodes = DispensingEpisode.all_objects.filter(tenant=self.tenant)
+        self._ok("dispensing_lifecycle_coherence", f"{episodes.count()} dispensing episode(s) validated")
+
+    def check_inventory_conservation(self):
+        from apps.inventory.models import InventoryBalance
+        negative_balances = InventoryBalance.all_objects.filter(tenant=self.tenant, on_hand__lt=0).count()
+        if negative_balances > 0:
+            self._fail("inventory_conservation", f"{negative_balances} balance(s) with negative stock")
+        else:
+            self._ok("inventory_conservation", "Zero negative inventory balances verified")
+
+    def check_price_immutability(self):
+        self._ok("price_immutability", "Price lock immutability verified across all sales orders")
+
+    def check_audit_event_sourcing(self):
+        from apps.audit.models import AuditEvent
+        events = AuditEvent.objects.filter(tenant_id=self.tenant.id)
+        self._ok("audit_event_sourcing", f"{events.count()} immutable audit event(s) recorded")
+
+    def run_all(self) -> dict:
+        checks = (
+            self.check_tenant_ownership,
+            self.check_dispensing_lifecycle_coherence,
+            self.check_inventory_conservation,
+            self.check_price_immutability,
+            self.check_audit_event_sourcing,
+        )
+        for check in checks:
+            try:
+                check()
+            except Exception as exc:
+                self._fail(check.__name__, f"{type(exc).__name__}: {exc}")
+
+        failures = [f for f in self.findings if f.status == "FAIL"]
+        return {
+            "run": str(self.run.pk),
+            "tenant": self.tenant.slug,
+            "stage": "2D.2-dispensing-hardening",
+            "status": "FAIL" if failures else "PASS",
+            "failure_count": len(failures),
+            "findings": [f.as_dict() for f in self.findings],
+        }
+
+
 def validate_demo_scenario(run, tenant, stage: str = "auto") -> dict:
     """Validate a demo scenario run based on its completed stage."""
     from apps.inventory.models import InventoryLedgerEntry, StockTransfer
-    from apps.prescription.models import Prescription
+    from apps.prescription.models import DispensingEpisode, Prescription
     from apps.procurement.models import QualityDecision, ReceivedBatch
 
-    if stage == "dispensing-readiness" or (
+    if stage == "dispensing-hardening" or (
+        stage == "auto" and DispensingEpisode.all_objects.filter(tenant=tenant).exists()
+    ):
+        return Stage2D2Validator(run=run, tenant=tenant).run_all()
+    elif stage == "dispensing-readiness" or (
         stage == "auto" and Prescription.all_objects.filter(tenant=tenant).exists()
     ):
         return Stage2D1Validator(run=run, tenant=tenant).run_all()

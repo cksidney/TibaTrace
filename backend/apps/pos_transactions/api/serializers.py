@@ -124,16 +124,46 @@ class RetailCashReceiptSerializer(serializers.ModelSerializer):
     change_due = MoneyField()
     disclaimer = serializers.SerializerMethodField()
     print_job = serializers.SerializerMethodField()
+    fiscal_receipt = serializers.SerializerMethodField()
 
     class Meta:
         model = RetailCashReceipt
         fields = [
             "receipt_number", "tender_type", "amount", "cash_received", "change_due", "currency",
-            "lines_snapshot", "totals_snapshot", "settled_at", "disclaimer", "print_job",
+            "lines_snapshot", "totals_snapshot", "settled_at", "disclaimer", "print_job", "fiscal_receipt",
         ]
 
     @staticmethod
-    def get_disclaimer(_receipt):
+    def get_fiscal_receipt(receipt):
+        from apps.taxation.models import FiscalReceipt
+
+        fiscal = FiscalReceipt.all_objects.filter(
+            tenant_id=receipt.tenant_id,
+            retail_cash_receipt=receipt,
+        ).first()
+        if fiscal is None:
+            return None
+        return {
+            "invoice_number": fiscal.invoice_number,
+            "receipt_signature": fiscal.receipt_signature,
+            "internal_data": fiscal.internal_data,
+            "qr_code_url": fiscal.qr_code_url,
+            "qr_code_svg": fiscal.qr_code_image_data,
+            "submission_status": fiscal.submission_status,
+        }
+
+    @staticmethod
+    def get_disclaimer(receipt):
+        from apps.taxation.models import FiscalReceipt
+
+        fiscal = FiscalReceipt.all_objects.filter(
+            tenant_id=receipt.tenant_id,
+            retail_cash_receipt=receipt,
+        ).first()
+        if fiscal and fiscal.submission_status in {"SUBMITTED", "OFFLINE_GENERATED"}:
+            return "KRA eTIMS FISCAL RECEIPT"
+        if fiscal and fiscal.submission_status in {"PENDING", "FAILED"}:
+            return "Internal sales receipt — pending eTIMS fiscalization."
         return "Internal sales receipt — not a fiscal/eTIMS receipt."
 
     @staticmethod

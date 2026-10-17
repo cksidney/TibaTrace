@@ -1,5 +1,5 @@
 import { action, deriveStages, fontFamily, fontSize, nextAction, spacing, surface, text, viewportAtMost } from '@dawatrace/shared/design-system/index.js';
-import type { TimelineEntry } from '@dawatrace/shared/dispensing/index.js';
+import { paymentPermitsSupply, type TimelineEntry } from '@dawatrace/shared/dispensing/index.js';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { ClinicalRail } from './components/tibatrace/ClinicalRail.js';
@@ -20,6 +20,7 @@ import { PosActivationConsole } from './components/tibatrace/PosActivationConsol
 import type { PatientSummary } from './components/tibatrace/PatientSafetyBanner.js';
 import { BlockingReason } from './components/tibatrace/StatusBadge.js';
 import { WorkflowRibbon } from './components/tibatrace/WorkflowRibbon.js';
+import { SHORTCUTS, resolveShortcut } from './state/keyboard.js';
 import { useClinicalScreening } from './state/useClinicalScreening.js';
 import { usePosWorkflow } from './state/usePosWorkflow.js';
 import { useViewport } from './state/useViewport.js';
@@ -93,6 +94,8 @@ export function App() {
   );
 }
 
+export type EpisodeStep = 'items' | 'payment' | 'handover' | 'timeline';
+
 function OperationsConsole({
   session,
   apiFetch,
@@ -154,6 +157,82 @@ function OperationsConsole({
   );
 
   const next = nextAction(stages);
+  const [activeStep, setActiveStep] = useState<EpisodeStep>('items');
+  const [showKeyboardHelp, setShowKeyboardHelp] = useState(false);
+
+  useEffect(() => {
+    if (!state.selected) {
+      setActiveStep('items');
+      return;
+    }
+    if (state.selected.status === 'READY_FOR_PAYMENT') {
+      setActiveStep('payment');
+    } else if (
+      state.selected.status === 'PAID' ||
+      state.selected.status === 'READY_FOR_SUPPLY' ||
+      state.selected.status === 'READY_FOR_COLLECTION' ||
+      state.selected.status === 'PARTIALLY_SUPPLIED' ||
+      state.selected.status === 'SUPPLIED' ||
+      state.selected.status === 'CLOSED'
+    ) {
+      setActiveStep('handover');
+    } else {
+      setActiveStep('items');
+    }
+  }, [state.selected?.id, state.selected?.status]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const command = resolveShortcut(event);
+      if (!command) return;
+
+      if (command === 'HELP') {
+        event.preventDefault();
+        setShowKeyboardHelp((open) => !open);
+      } else if (command === 'CLOSE') {
+        if (showKeyboardHelp) {
+          event.preventDefault();
+          setShowKeyboardHelp(false);
+        } else if (reviewFindingId) {
+          event.preventDefault();
+          setReviewFindingId('');
+        } else if (state.selected) {
+          event.preventDefault();
+          void select(null);
+        }
+      } else if (command === 'REFRESH') {
+        event.preventDefault();
+        void refresh();
+        void refreshClinical();
+      } else if (command === 'PRESCRIPTION' || command === 'PREPARATION') {
+        event.preventDefault();
+        setActiveStep('items');
+      } else if (command === 'PAYMENT') {
+        event.preventDefault();
+        setActiveStep('payment');
+      } else if (command === 'CLINICAL_FINDINGS' || command === 'PHARMACIST_REVIEW') {
+        event.preventDefault();
+        const firstFinding = clinicalResult?.findings[0];
+        if (firstFinding) {
+          setReviewFindingId(firstFinding.id);
+        } else {
+          setActiveStep('items');
+        }
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [showKeyboardHelp, reviewFindingId, state.selected, clinicalResult, refresh, refreshClinical, select]);
+
+  const activeRibbonStage = useMemo(() => {
+    if (activeStep === 'payment') return 'PAYMENT';
+    if (activeStep === 'handover') {
+      return state.selected?.collected_at ? 'COLLECTION' : 'SUPPLY';
+    }
+    if (activeStep === 'timeline') return undefined;
+    return stages.find((s) => s.state !== 'COMPLETE' && s.state !== 'NOT_STARTED')?.id ?? 'PRESCRIPTION';
+  }, [activeStep, state.selected?.collected_at, stages]);
   const patient: PatientSummary | null = state.selected
     ? {
         // The resolved name, not `patient`, which is the row's UUID. This
@@ -300,6 +379,7 @@ function OperationsConsole({
         onWorkspaceChange={(next) => setWorkspace(session.activationValid ? next : 'activation')}
         onLock={() => setLocked(true)}
         onLogout={onLogout}
+        onOpenHelp={() => setShowKeyboardHelp(true)}
       />
       <OperationalStatusBar
         apiFetch={apiFetch}
@@ -329,7 +409,24 @@ function OperationsConsole({
         />
       ) : <>
       <PatientSafetyBanner patient={patient} />
-      <WorkflowRibbon stages={stages} />
+      <WorkflowRibbon
+        stages={stages}
+        activeStage={activeRibbonStage}
+        onSelect={(stageId) => {
+          if (stageId === 'PAYMENT') {
+            setActiveStep('payment');
+          } else if (stageId === 'SUPPLY' || stageId === 'COLLECTION') {
+            setActiveStep('handover');
+          } else if (stageId === 'CLINICAL_SCREENING' || stageId === 'PHARMACIST_VERIFICATION') {
+            setActiveStep('items');
+            if (clinical?.blockingCount && clinicalResult?.findings[0]) {
+              setReviewFindingId(clinicalResult.findings[0].id);
+            }
+          } else {
+            setActiveStep('items');
+          }
+        }}
+      />
 
       <div
         style={{
@@ -371,60 +468,152 @@ function OperationsConsole({
                 onOverrideAction={(input) => void submitClinicalOverride(input)}
               />
             ) : (
-            <>
+            <div style={{ display: 'grid', gap: spacing.lg }}>
               <EpisodeWorkspace
                 episode={state.selected}
                 gateReason={state.gate.blockedReason}
                 onRefresh={() => void refresh()}
+                onBackToQueue={() => void select(null)}
               />
-              <div style={{ marginTop: spacing.xl }}>
-                <ClinicalPreparation key={state.selected.id} episode={state.selected} apiFetch={apiFetch} onChanged={() => void refresh()} />
-                <PrescriptionWorkspace
-                  lines={state.selected.lines}
-                  apiFetch={apiFetch}
-                  episodeId={state.selected.id}
-                  onTransition={() => void refresh()}
-                />
-              </div>
-              <div style={{ marginTop: spacing.xxl }}>
+
+              <EpisodeStepNav
+                activeStep={activeStep}
+                onStepChange={setActiveStep}
+                linesCount={state.selected.lines.length}
+                preparedCount={state.selected.lines.filter((l) => l.status === 'PREPARED').length}
+                paymentState={state.selected.payment_state}
+                isCollected={Boolean(state.selected.collected_at)}
+              />
+
+              {activeStep === 'items' ? (
+                <div style={{ display: 'grid', gap: spacing.xl }}>
+                  <ClinicalPreparation key={state.selected.id} episode={state.selected} apiFetch={apiFetch} onChanged={() => void refresh()} />
+                  <PrescriptionWorkspace
+                    lines={state.selected.lines}
+                    apiFetch={apiFetch}
+                    episodeId={state.selected.id}
+                    onTransition={() => void refresh()}
+                  />
+                  {state.gate.canTakePayment ? (
+                    <div
+                      style={{
+                        padding: `${spacing.md}px ${spacing.lg}px`,
+                        borderRadius: 10,
+                        background: '#ECFDF5',
+                        border: '1px solid #10B981',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: spacing.md,
+                        flexWrap: 'wrap',
+                      }}
+                    >
+                      <div>
+                        <strong style={{ color: '#065F46', fontSize: fontSize.body }}>All prescription items prepared</strong>
+                        <p style={{ margin: '2px 0 0 0', color: '#047857', fontSize: fontSize.caption }}>
+                          Lines verified and allocated. Proceed to payment settlement to authorise supply.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setActiveStep('payment')}
+                        style={{
+                          padding: '10px 18px',
+                          borderRadius: 8,
+                          border: 'none',
+                          background: '#059669',
+                          color: '#fff',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          fontSize: fontSize.body,
+                          minHeight: 40,
+                        }}
+                      >
+                        Proceed to Payment [F8] →
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              ) : activeStep === 'payment' ? (
+                <section id="payment-workspace" style={{ display: 'grid', gap: spacing.xl }}>
+                  <PaymentPanel
+                    paymentState={state.selected.payment_state}
+                    amountDue={state.selected.amount_due ?? null}
+                    amountSettled={state.selected.amount_settled ?? null}
+                    canTakePayment={state.gate.canTakePayment}
+                    blockedReason={state.gate.canTakePayment ? '' : state.gate.blockedReason}
+                    busy={state.busy}
+                    onTakePayment={(tender, amount, reference) =>
+                      void takePayment(tender, amount, reference)
+                    }
+                  />
+                  {paymentPermitsSupply(state.selected.payment_state) ? (
+                    <div
+                      style={{
+                        padding: `${spacing.md}px ${spacing.lg}px`,
+                        borderRadius: 10,
+                        background: '#ECFDF5',
+                        border: '1px solid #10B981',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: spacing.md,
+                        flexWrap: 'wrap',
+                      }}
+                    >
+                      <div>
+                        <strong style={{ color: '#065F46', fontSize: fontSize.body }}>Payment Settled</strong>
+                        <p style={{ margin: '2px 0 0 0', color: '#047857', fontSize: fontSize.caption }}>
+                          Authorised transaction journaled. Proceed to patient counselling and handover.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setActiveStep('handover')}
+                        style={{
+                          padding: '10px 18px',
+                          borderRadius: 8,
+                          border: 'none',
+                          background: '#059669',
+                          color: '#fff',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          fontSize: fontSize.body,
+                          minHeight: 40,
+                        }}
+                      >
+                        Proceed to Handover →
+                      </button>
+                    </div>
+                  ) : null}
+                </section>
+              ) : activeStep === 'handover' ? (
+                <div style={{ display: 'grid', gap: spacing.xl }}>
+                  <CounsellingPanel
+                    counsellingStatus={state.selected.counselling_status}
+                    busy={state.busy}
+                    onRecord={(request) => void recordCounselling(request)}
+                  />
+                  <section id="collection-workspace">
+                    <CollectionPanel
+                      canConfirm={state.gate.canConfirmCollection}
+                      blockedReason={state.gate.canConfirmCollection ? '' : state.gate.blockedReason}
+                      collectedAt={state.selected.collected_at ?? null}
+                      collectorName={state.selected.collector_name}
+                      busy={state.busy}
+                      onConfirm={(name, id, relationship) =>
+                        void confirmCollection(name, id, relationship)
+                      }
+                    />
+                  </section>
+                </div>
+              ) : (
                 <EpisodeTimelineSection
                   episodeId={state.selected.id}
                   apiFetch={apiFetch}
                 />
-              </div>
-              <section id="payment-workspace" style={{ marginTop: spacing.xxl }}>
-                <PaymentPanel
-                  paymentState={state.selected.payment_state}
-                  amountDue={state.selected.amount_due ?? null}
-                  amountSettled={state.selected.amount_settled ?? null}
-                  canTakePayment={state.gate.canTakePayment}
-                  blockedReason={state.gate.canTakePayment ? '' : state.gate.blockedReason}
-                  busy={state.busy}
-                  onTakePayment={(tender, amount, reference) =>
-                    void takePayment(tender, amount, reference)
-                  }
-                />
-              </section>
-              <div style={{ marginTop: spacing.xxl }}>
-                <CounsellingPanel
-                  counsellingStatus={state.selected.counselling_status}
-                  busy={state.busy}
-                  onRecord={(request) => void recordCounselling(request)}
-                />
-              </div>
-              <section id="collection-workspace" style={{ marginTop: spacing.xxl }}>
-                <CollectionPanel
-                  canConfirm={state.gate.canConfirmCollection}
-                  blockedReason={state.gate.canConfirmCollection ? '' : state.gate.blockedReason}
-                  collectedAt={state.selected.collected_at ?? null}
-                  collectorName={state.selected.collector_name}
-                  busy={state.busy}
-                  onConfirm={(name, id, relationship) =>
-                    void confirmCollection(name, id, relationship)
-                  }
-                />
-              </section>
-            </>
+              )}
+            </div>
             )
           ) : (
             <Queue
@@ -460,9 +649,13 @@ function OperationsConsole({
         nextLabel={next ? next.label : 'No action available'}
         canTakePayment={state.gate.canTakePayment}
         canConfirmCollection={state.gate.canConfirmCollection}
-        onOpenPayment={() => document.getElementById('payment-workspace')?.scrollIntoView({ block: 'start' })}
-        onOpenCollection={() => document.getElementById('collection-workspace')?.scrollIntoView({ block: 'start' })}
+        onOpenPayment={() => setActiveStep('payment')}
+        onOpenCollection={() => setActiveStep('handover')}
+        onOpenHelp={() => setShowKeyboardHelp(true)}
       />
+      {showKeyboardHelp ? (
+        <KeyboardHelpModal onClose={() => setShowKeyboardHelp(false)} />
+      ) : null}
       </>}
       {locked ? (
         <WorkstationLock
@@ -487,6 +680,7 @@ function Header({
   onWorkspaceChange,
   onLock,
   onLogout,
+  onOpenHelp,
 }: {
   readonly busy: boolean;
   readonly operator: string;
@@ -494,6 +688,7 @@ function Header({
   readonly onWorkspaceChange: (workspace: 'clinical' | 'retail' | 'register' | 'print' | 'sync' | 'activation') => void;
   readonly onLock: () => void;
   readonly onLogout: () => Promise<void>;
+  readonly onOpenHelp?: () => void;
 }) {
   const viewport = useViewport();
   const compact = viewportAtMost(viewport, 'compact');
@@ -566,6 +761,25 @@ function Header({
               the id only when the server did not send a username. */}
           {busy ? 'Working…' : operator || 'Signed in'}
         </span>
+        {onOpenHelp ? (
+          <button
+            type="button"
+            onClick={onOpenHelp}
+            style={{
+              minHeight: 36,
+              padding: '6px 12px',
+              border: '1px solid rgba(255,255,255,0.35)',
+              borderRadius: 8,
+              background: 'transparent',
+              color: action.primaryForeground,
+              cursor: 'pointer',
+              fontWeight: 600,
+              fontSize: 12,
+            }}
+          >
+            Shortcuts [F1]
+          </button>
+        ) : null}
         <button
           type="button"
           onClick={onLock}
@@ -1043,42 +1257,316 @@ function EpisodeWorkspace({
   episode,
   gateReason,
   onRefresh,
+  onBackToQueue,
 }: {
   readonly episode: { dispensing_number: string; status: string; payment_state: string };
   readonly gateReason: string;
   readonly onRefresh: () => void;
+  readonly onBackToQueue: () => void;
 }) {
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'baseline', flexWrap: 'wrap', gap: spacing.md }}>
-        <h2 style={{ fontSize: fontSize.sectionTitle, margin: 0, fontVariantNumeric: 'tabular-nums' }}>
-          {episode.dispensing_number}
-        </h2>
-        <span style={{ color: text.secondary, fontSize: fontSize.caption }}>
-          {episode.status.replace(/_/g, ' ')} · payment {episode.payment_state.replace(/_/g, ' ')}
-        </span>
+      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: spacing.md, justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: spacing.md, flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={onBackToQueue}
+            aria-label="Return to queue"
+            title="Return to patient queue (Escape)"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '6px 12px',
+              borderRadius: 8,
+              border: `1px solid ${surface.borderStrong}`,
+              background: surface.raised,
+              color: text.primary,
+              cursor: 'pointer',
+              fontWeight: 600,
+              fontSize: fontSize.caption,
+              minHeight: 34,
+            }}
+          >
+            <span>← Queue</span>
+            <kbd style={{ fontSize: 10, opacity: 0.65, border: '1px solid rgba(0,0,0,0.2)', padding: '1px 4px', borderRadius: 4 }}>Esc</kbd>
+          </button>
+
+          <h2 style={{ fontSize: fontSize.sectionTitle, margin: 0, fontVariantNumeric: 'tabular-nums' }}>
+            {episode.dispensing_number}
+          </h2>
+
+          <span
+            style={{
+              padding: '3px 8px',
+              borderRadius: 6,
+              background: episode.status === 'CLOSED' || episode.status === 'SUPPLIED' ? '#ECFDF5' : '#EFF6FF',
+              color: episode.status === 'CLOSED' || episode.status === 'SUPPLIED' ? '#065F46' : '#1E40AF',
+              border: `1px solid ${episode.status === 'CLOSED' || episode.status === 'SUPPLIED' ? '#A7F3D0' : '#BFDBFE'}`,
+              fontSize: 12,
+              fontWeight: 600,
+              textTransform: 'uppercase',
+              letterSpacing: 0.5,
+            }}
+          >
+            {episode.status.replace(/_/g, ' ')}
+          </span>
+
+          <span
+            style={{
+              padding: '3px 8px',
+              borderRadius: 6,
+              background: episode.payment_state === 'PAID' || episode.payment_state === 'WAIVED' ? '#ECFDF5' : '#FEF3C7',
+              color: episode.payment_state === 'PAID' || episode.payment_state === 'WAIVED' ? '#065F46' : '#92400E',
+              border: `1px solid ${episode.payment_state === 'PAID' || episode.payment_state === 'WAIVED' ? '#A7F3D0' : '#FDE68A'}`,
+              fontSize: 12,
+              fontWeight: 600,
+              textTransform: 'uppercase',
+              letterSpacing: 0.5,
+            }}
+          >
+            {episode.payment_state.replace(/_/g, ' ')}
+          </span>
+        </div>
+
         <button
           type="button"
           onClick={onRefresh}
+          title="Refresh authoritative state (Ctrl+R)"
           style={{
-            marginLeft: 'auto',
-            padding: '8px 12px',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '6px 12px',
             borderRadius: 8,
             border: `1px solid ${surface.borderStrong}`,
             background: surface.raised,
             cursor: 'pointer',
-            minHeight: 36,
+            minHeight: 34,
+            fontSize: fontSize.caption,
+            fontWeight: 600,
           }}
         >
-          Refresh
+          <span>Refresh</span>
+          <kbd style={{ fontSize: 10, opacity: 0.65, border: '1px solid rgba(0,0,0,0.2)', padding: '1px 4px', borderRadius: 4 }}>Ctrl+R</kbd>
         </button>
       </div>
 
       {gateReason ? (
-        <div style={{ marginTop: spacing.lg }}>
+        <div style={{ marginTop: spacing.md }}>
           <BlockingReason status="BLOCKING" reason={gateReason} />
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function EpisodeStepNav({
+  activeStep,
+  onStepChange,
+  linesCount,
+  preparedCount,
+  paymentState,
+  isCollected,
+}: {
+  readonly activeStep: EpisodeStep;
+  readonly onStepChange: (step: EpisodeStep) => void;
+  readonly linesCount: number;
+  readonly preparedCount: number;
+  readonly paymentState: string;
+  readonly isCollected: boolean;
+}) {
+  const steps: {
+    id: EpisodeStep;
+    label: string;
+    shortcut: string;
+    badge: string;
+    badgeColor?: string | undefined;
+  }[] = [
+    {
+      id: 'items',
+      label: 'Prescription & Items',
+      shortcut: 'F4',
+      badge: `${preparedCount}/${linesCount} prepared`,
+      badgeColor: preparedCount === linesCount && linesCount > 0 ? '#10B981' : undefined,
+    },
+    {
+      id: 'payment',
+      label: 'Payment & Billing',
+      shortcut: 'F8',
+      badge: paymentState.replace(/_/g, ' '),
+      badgeColor: paymentState === 'PAID' || paymentState === 'WAIVED' ? '#10B981' : undefined,
+    },
+    {
+      id: 'handover',
+      label: 'Handover & Counselling',
+      shortcut: 'F10',
+      badge: isCollected ? 'Collected' : 'Pending',
+      badgeColor: isCollected ? '#10B981' : undefined,
+    },
+    {
+      id: 'timeline',
+      label: 'Timeline & Audit',
+      shortcut: '',
+      badge: 'History',
+    },
+  ];
+
+  return (
+    <nav
+      aria-label="Episode workflow steps"
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: spacing.xs,
+        padding: 4,
+        background: surface.sunken,
+        borderRadius: 10,
+        marginTop: spacing.sm,
+        overflowX: 'auto',
+      }}
+    >
+      {steps.map((s) => {
+        const isActive = activeStep === s.id;
+        return (
+          <button
+            key={s.id}
+            type="button"
+            onClick={() => onStepChange(s.id)}
+            style={{
+              flex: 1,
+              minWidth: 160,
+              padding: '8px 12px',
+              borderRadius: 8,
+              border: 'none',
+              background: isActive ? surface.raised : 'transparent',
+              color: isActive ? text.primary : text.secondary,
+              boxShadow: isActive ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 2,
+              transition: 'background 0.15s ease',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontWeight: isActive ? 700 : 500, fontSize: fontSize.body }}>
+                {s.label}
+              </span>
+              {s.shortcut ? (
+                <kbd
+                  style={{
+                    fontSize: 10,
+                    padding: '1px 4px',
+                    borderRadius: 4,
+                    background: isActive ? 'rgba(0,0,0,0.06)' : 'rgba(0,0,0,0.03)',
+                    border: '1px solid rgba(0,0,0,0.1)',
+                    color: text.secondary,
+                  }}
+                >
+                  {s.shortcut}
+                </kbd>
+              ) : null}
+            </div>
+            <span
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                color: s.badgeColor ?? text.tertiary,
+              }}
+            >
+              {s.badge}
+            </span>
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+
+function KeyboardHelpModal({ onClose }: { readonly onClose: () => void }) {
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="keyboard-help-title"
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 100,
+        display: 'grid',
+        placeItems: 'center',
+        padding: spacing.xl,
+        background: 'rgba(0, 0, 0, 0.65)',
+        backdropFilter: 'blur(4px)',
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          width: 'min(520px, 100%)',
+          background: surface.raised,
+          borderRadius: 14,
+          padding: spacing.xl,
+          boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+          color: text.primary,
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.lg }}>
+          <h2 id="keyboard-help-title" style={{ margin: 0, fontSize: fontSize.screenTitle }}>
+            Keyboard Shortcuts
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              border: `1px solid ${surface.borderStrong}`,
+              background: 'transparent',
+              borderRadius: 6,
+              padding: '4px 8px',
+              cursor: 'pointer',
+              fontWeight: 600,
+            }}
+          >
+            Esc
+          </button>
+        </div>
+        <p style={{ margin: '0 0 16px 0', fontSize: fontSize.caption, color: text.secondary }}>
+          The till is fully operable without a mouse. High-frequency actions map to function keys:
+        </p>
+        <div style={{ display: 'grid', gap: spacing.sm }}>
+          {SHORTCUTS.map((s) => (
+            <div
+              key={s.key}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '6px 10px',
+                borderRadius: 6,
+                background: surface.sunken,
+              }}
+            >
+              <span style={{ fontSize: fontSize.body }}>{s.label}</span>
+              <kbd
+                style={{
+                  fontFamily: 'monospace',
+                  fontWeight: 700,
+                  fontSize: 12,
+                  padding: '2px 8px',
+                  borderRadius: 4,
+                  background: surface.raised,
+                  border: `1px solid ${surface.borderStrong}`,
+                }}
+              >
+                {s.ctrl ? `Ctrl + ${s.key}` : s.key}
+              </kbd>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -1089,17 +1577,19 @@ function ActionBar({
   canConfirmCollection,
   onOpenPayment,
   onOpenCollection,
+  onOpenHelp,
 }: {
   readonly nextLabel: string;
   readonly canTakePayment: boolean;
   readonly canConfirmCollection: boolean;
   readonly onOpenPayment: () => void;
   readonly onOpenCollection: () => void;
+  readonly onOpenHelp?: () => void;
 }) {
   const primary = canTakePayment
-    ? { label: 'Review payment', onClick: onOpenPayment }
+    ? { label: 'Review payment [F8]', onClick: onOpenPayment }
     : canConfirmCollection
-      ? { label: 'Review collection', onClick: onOpenCollection }
+      ? { label: 'Review collection [F10]', onClick: onOpenCollection }
       : null;
 
   return (
@@ -1109,19 +1599,42 @@ function ActionBar({
         alignItems: 'center',
         flexWrap: 'wrap',
         gap: spacing.md,
-        padding: `${spacing.md}px clamp(${spacing.md}px, 3vw, ${spacing.xl}px)`,
+        padding: `${spacing.sm}px clamp(${spacing.md}px, 3vw, ${spacing.xl}px)`,
         background: surface.raised,
         borderTop: `1px solid ${surface.border}`,
-        // Once the layout stacks, the document scrolls rather than the
-        // workspace, and a non-sticky bar would leave the next action at the
-        // bottom of a long page.
         position: 'sticky',
         bottom: 0,
         zIndex: 1,
+        minHeight: 48,
       }}
     >
-      <span style={{ fontSize: fontSize.caption, color: text.secondary }}>Next: {nextLabel}</span>
-      <div style={{ marginLeft: 'auto', display: 'flex', gap: spacing.sm, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: spacing.md }}>
+        <span style={{ fontSize: fontSize.caption, color: text.secondary }}>Next: {nextLabel}</span>
+        {onOpenHelp ? (
+          <button
+            type="button"
+            onClick={onOpenHelp}
+            style={{
+              padding: '2px 8px',
+              borderRadius: 6,
+              border: `1px solid ${surface.borderStrong}`,
+              background: surface.sunken,
+              color: text.secondary,
+              fontSize: 11,
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+            }}
+          >
+            <span>Shortcuts</span>
+            <kbd style={{ fontSize: 10, opacity: 0.7 }}>F1</kbd>
+          </button>
+        ) : null}
+      </div>
+
+      <div style={{ marginLeft: 'auto', display: 'flex', gap: spacing.sm, flexWrap: 'wrap', alignItems: 'center' }}>
         {primary ? (
           <PrimaryButton onClick={primary.onClick}>{primary.label}</PrimaryButton>
         ) : (

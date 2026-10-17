@@ -1682,6 +1682,39 @@ export interface BusinessDayItem {
 export const loadPosRegisters = (tenantId = '', signal?: AbortSignal) =>
   getTenantCollection<PosRegisterItem>('/api/pos/shift/registers/', tenantId, signal);
 
+export interface CreatePosRegisterPayload {
+  readonly code: string;
+  readonly name: string;
+  readonly branch_id: string;
+  readonly expected_float?: string;
+  readonly currency?: string;
+}
+
+export const createPosRegister = async (
+  tenantId: string,
+  csrfToken: string,
+  payload: CreatePosRegisterPayload,
+): Promise<PosRegisterItem> => {
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+    'Content-Type': 'application/json',
+    'X-CSRFToken': csrfToken,
+  };
+  if (tenantId) headers['X-Tenant-ID'] = tenantId;
+  const response = await fetch('/api/pos/shift/registers/', {
+    method: 'POST',
+    credentials: 'include',
+    headers,
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const errorBody = (await response.json().catch(() => null)) as { detail?: string; code?: string[] } | null;
+    const detailMsg = errorBody?.detail || (errorBody?.code ? errorBody.code.join(', ') : null);
+    throw new Error(detailMsg ?? `Failed to configure register (HTTP ${response.status}).`);
+  }
+  return (await response.json()) as PosRegisterItem;
+};
+
 export interface PosDeviceHealthItem {
   readonly id: string;
   readonly device_id: string;
@@ -2805,6 +2838,7 @@ export interface RegisterSessionSummary {
   readonly forced_closure_reason: string;
   /** The report is the authority on closure, not the session's own state. */
   readonly has_final_report: boolean;
+  readonly served_customer_count?: number;
 }
 
 export interface ShiftReportSummary {
@@ -2851,6 +2885,7 @@ export interface ShiftReportSnapshot {
     readonly classification?: string;
     readonly requires_explanation?: boolean;
   } | null;
+  readonly served_customers?: number;
 }
 
 /** Registers currently trading. Checked at close of business. */

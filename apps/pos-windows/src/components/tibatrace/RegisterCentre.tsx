@@ -126,6 +126,7 @@ export function RegisterCentre({
         <Summary label="State" value={runtime?.register?.state ?? 'Unavailable'} detail={runtime?.readiness ?? 'Status unavailable'} />
         <Summary label="Business date" value={runtime?.business_day?.business_date ?? 'Unavailable'} detail={runtime?.business_day?.state ?? 'No open day'} />
         <Summary label="Accountable shift" value={runtime?.operator_shift?.operator_username ?? 'No active operator'} detail={runtime?.operator_shift?.state.replace(/_/g, ' ') ?? 'Action required'} />
+        <Summary label="Served customers" value={String(runtime?.operator_shift?.served_customer_count ?? 0)} detail={runtime?.operator_shift ? 'Customers served this shift' : 'No active shift'} />
       </section>
 
       {runtime?.notices.length ? (
@@ -489,6 +490,7 @@ function ReportSnapshot({ report }: { readonly report: ShiftReportDTO }) {
         <Detail label="Cash out" value={`${report.snapshot.currency} ${report.snapshot.cash.cash_out}`} />
         <Detail label="Expected closing" value={`${report.snapshot.currency} ${report.snapshot.cash.expected_closing}`} />
         <Detail label="Grand total" value={`${report.snapshot.currency} ${report.snapshot.tenders.grand_total}`} />
+        <Detail label="Customers served" value={String(report.snapshot.served_customers ?? '0')} />
         {variance ? <Detail label="Declared cash" value={`${report.snapshot.currency} ${variance.declared}`} /> : null}
         {variance ? <Detail label="Variance" value={`${report.snapshot.currency} ${variance.difference} · ${variance.classification}`} /> : null}
       </dl>

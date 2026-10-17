@@ -11,10 +11,11 @@ current data would restate history while the operator holds the printed copy.
 from __future__ import annotations
 
 from django.core.exceptions import ValidationError
+from django.db import transaction
 from django.db.models import Prefetch
-from rest_framework import permissions, viewsets
+from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError as DRFValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError as DRFValidationError
 from rest_framework.response import Response
 
 from apps.platform.client_alignment import RequireAlignedPosClientMixin
@@ -49,6 +50,7 @@ from .serializers import (
     CashMovementSerializer,
     OperatorShiftActionRequestSerializer,
     OperatorShiftSerializer,
+    PosRegisterCreateSerializer,
     PosRegisterSerializer,
     RegisterCloseRequestSerializer,
     RegisterOpeningRequestSerializer,
@@ -115,6 +117,32 @@ class PosRegisterViewSet(TenantScopedViewSet):
 
     def get_queryset(self):
         return super().get_queryset().select_related("location")
+
+    @transaction.atomic
+    def create(self, request, *args, **kwargs):
+        tenant_id = self._tenant_id()
+        if not tenant_id:
+            raise DRFValidationError("No tenant context is available.")
+        if not any(
+            request.user.has_capability(cap, tenant_id=tenant_id)
+            for cap in ("pos.device.manage", "identity.manage", "pos.shift.manage")
+        ):
+            raise PermissionDenied("Capability pos.device.manage or identity.manage is required to configure a register.")
+
+        serializer = PosRegisterCreateSerializer(data=request.data, context={"tenant_id": tenant_id})
+        serializer.is_valid(raise_exception=True)
+        register = serializer.save(tenant_id=tenant_id)
+
+        from apps.audit.service import log_audit
+        log_audit(
+            tenant_id=tenant_id,
+            actor_id=request.user.pk,
+            action="POS_REGISTER_CREATED",
+            model_name="pos_shift.PosRegister",
+            object_id=str(register.pk),
+            metadata={"code": register.code, "name": register.name, "location_id": str(register.location_id)},
+        )
+        return Response(PosRegisterSerializer(register).data, status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=["get"], url_path="runtime")
     def runtime(self, request):

@@ -1,6 +1,6 @@
 import type { HQOverview } from './api.js';
 
-const ownerOnlyViews = new Set(['executive', 'network', 'integration', 'platform_owner']);
+const ownerOnlyViews = new Set(['executive', 'network', 'integration', 'platform_owner', 'activations']);
 
 /** The server supplies current grants; scope labels and tenant roles never imply ownership. */
 export function accessibleHqViews(overview: HQOverview): ReadonlySet<string> {

@@ -62,7 +62,7 @@ describe('workspace navigation', () => {
     // Mirrors the WorkspaceView union in App.tsx; add to both when a view lands.
     const views = [
       'overview', 'network', 'people', 'catalogue', 'inventory', 'operations', 'commerce',
-      'pricing', 'cash', 'insurance', 'clinical', 'reports', 'governance', 'access',
+      'pricing', 'cash', 'insurance', 'clinical', 'reports', 'governance', 'access', 'activations',
     ];
     // #main-content is the skip link's target, not a view.
     // Deep links like #catalogue/skus are allowed when the view segment is known.

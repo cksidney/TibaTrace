@@ -62,3 +62,5 @@ apps/pos-android/.metro-health-check*
 # scripts/docs/build_user_guide_docx.js rather than committing a binary that
 # silently drifts from docs/TIBATRACE_USER_GUIDE.md.
 docs/exports/
+.pnpm-store/
+*.docx

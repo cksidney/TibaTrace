@@ -145,6 +145,42 @@ class PosPrintDocumentService:
             },
             "disclaimer": "Internal sales receipt — not a fiscal/eTIMS receipt.",
         }
+        try:
+            from apps.taxation.models import FiscalReceipt
+
+            fiscal = FiscalReceipt.all_objects.filter(
+                tenant_id=receipt.tenant_id,
+                retail_cash_receipt=receipt,
+            ).first()
+            if fiscal:
+                snapshot["fiscal"] = {
+                    "is_fiscal": True,
+                    "receipt_type": fiscal.receipt_type,
+                    "invoice_number": fiscal.invoice_number,
+                    "sdc_id": fiscal.internal_data[:8] if fiscal.internal_data else "",
+                    "tin": getattr(receipt.tenant.etims_profile, "tin", "") if hasattr(receipt.tenant, "etims_profile") else "",
+                    "bhf_id": getattr(receipt.tenant.etims_profile, "bhf_id", "00") if hasattr(receipt.tenant, "etims_profile") else "00",
+                    "receipt_signature": fiscal.receipt_signature,
+                    "internal_data": fiscal.internal_data,
+                    "qr_code_url": fiscal.qr_code_url,
+                    "qr_code_svg": fiscal.qr_code_image_data,
+                    "submission_status": fiscal.submission_status,
+                    "tax_breakdown": {
+                        "A_taxable": str(fiscal.taxable_amount_a),
+                        "A_tax": str(fiscal.tax_amount_a),
+                        "B_taxable": str(fiscal.taxable_amount_b),
+                        "B_tax": str(fiscal.tax_amount_b),
+                        "E_taxable": str(fiscal.taxable_amount_e),
+                        "E_tax": str(fiscal.tax_amount_e),
+                        "total_tax": str(fiscal.total_tax_amount),
+                    },
+                }
+                if fiscal.submission_status in {"SUBMITTED", "OFFLINE_GENERATED"}:
+                    snapshot["disclaimer"] = "KRA eTIMS FISCAL RECEIPT"
+                else:
+                    snapshot["disclaimer"] = "Internal sales receipt — pending eTIMS fiscalization."
+        except Exception:
+            pass
         document = PosPrintDocument.all_objects.create(
             tenant_id=receipt.tenant_id,
             document_type=PosPrintDocument.DocumentType.RETAIL_RECEIPT,
@@ -195,6 +231,34 @@ class PosPrintDocumentService:
             "transaction_id": str(receipt.original_receipt.transaction_id), "register_session_id": str(receipt.register_session_id),
             "lines": receipt.lines_snapshot, "payment": {"tender_type": "CASH", "refund_amount": str(receipt.amount), "currency": receipt.currency},
             "disclaimer": "Internal cash refund receipt — not a fiscal/eTIMS credit note. Returned goods remain held pending quality disposition."}
+        try:
+            from apps.taxation.models import FiscalReceipt
+
+            fiscal = FiscalReceipt.all_objects.filter(
+                tenant_id=receipt.tenant_id,
+                retail_cash_refund=receipt,
+            ).first()
+            if fiscal:
+                snapshot["fiscal"] = {
+                    "is_fiscal": True,
+                    "receipt_type": fiscal.receipt_type,
+                    "invoice_number": fiscal.invoice_number,
+                    "original_invoice_number": fiscal.original_invoice_number,
+                    "sdc_id": fiscal.internal_data[:8] if fiscal.internal_data else "",
+                    "tin": getattr(receipt.tenant.etims_profile, "tin", "") if hasattr(receipt.tenant, "etims_profile") else "",
+                    "bhf_id": getattr(receipt.tenant.etims_profile, "bhf_id", "00") if hasattr(receipt.tenant, "etims_profile") else "00",
+                    "receipt_signature": fiscal.receipt_signature,
+                    "internal_data": fiscal.internal_data,
+                    "qr_code_url": fiscal.qr_code_url,
+                    "qr_code_svg": fiscal.qr_code_image_data,
+                    "submission_status": fiscal.submission_status,
+                }
+                if fiscal.submission_status in {"SUBMITTED", "OFFLINE_GENERATED"}:
+                    snapshot["disclaimer"] = "KRA eTIMS FISCAL CREDIT NOTE"
+                else:
+                    snapshot["disclaimer"] = "Internal cash refund receipt — pending eTIMS credit note fiscalization."
+        except Exception:
+            pass
         document = PosPrintDocument.all_objects.create(tenant_id=receipt.tenant_id, document_type="RETAIL_REFUND",
             document_number=receipt.refund_number, snapshot=snapshot, document_hash=_hash_snapshot(snapshot),
             register_session=receipt.register_session, created_by=actor)
