@@ -110,7 +110,7 @@ export function PosActivationConsole({ apiFetch, userId, userCapabilities, isPla
       : selected?.state === 'ACTIVATED' ? ['issue-code','suspend','revoke']
         : selected?.state === 'SUSPENDED' ? ['resume','revoke'] : selected?.state === 'REVOKED' ? ['release-register'] : [];
   const canEnrol = requester && selected?.deviceId === deviceId && (selected.state === 'APPROVED' || (selected.state === 'ACTIVATED' && selected.challengeAvailable));
-  return <main className="pos-support-workspace" style={{ padding: spacing.xl, display: 'grid', gap: spacing.lg }}>
+  return <main className="pos-support-workspace" style={{ padding: spacing.lg, display: 'grid', gap: spacing.md }}>
     <header style={{ display: 'flex', gap: 16, justifyContent: 'space-between', flexWrap: 'wrap' }}>
       <div><p className="pos-eyebrow">Device enrolment</p><h1>Activate this POS</h1><p>Independent approval links this installation to one branch and physical till.</p></div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -165,8 +165,8 @@ function ActivationDialog({ title, busy, onClose, children }: { title: string; b
     ref.current?.querySelector<HTMLElement>('select, input, textarea, button')?.focus();
     return () => previous?.focus();
   }, []);
-  return <div style={{ position: 'fixed', inset: 0, zIndex: 100, background: '#0b122988', display: 'grid', placeItems: 'center', padding: 20 }} onClick={e => { if (e.target === e.currentTarget && !busy) onClose(); }}>
-    <section ref={ref} role="dialog" aria-modal="true" aria-labelledby="activation-dialog-title" style={{ ...card, width: 'min(640px, 100%)', maxHeight: '90dvh', overflowY: 'auto', boxSizing: 'border-box' }} onKeyDown={e => {
+  return <div className="pos-compact-dialog-backdrop" style={{ position: 'fixed', inset: 0, zIndex: 100, background: '#0b122988', display: 'grid', placeItems: 'center', padding: 20 }} onClick={e => { if (e.target === e.currentTarget && !busy) onClose(); }}>
+    <section className="pos-compact-dialog" ref={ref} role="dialog" aria-modal="true" aria-labelledby="activation-dialog-title" style={{ ...card, width: 'min(640px, 100%)', maxHeight: '90dvh', overflowY: 'auto', boxSizing: 'border-box' }} onKeyDown={e => {
       if (e.key === 'Escape' && !busy) { e.preventDefault(); onClose(); }
       if (e.key === 'Tab') {
         const fields = Array.from(ref.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled)') ?? []);

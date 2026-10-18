@@ -342,8 +342,8 @@ function RegisterActionModal({
     (action.kind !== 'movement' || (Number(amount) > 0 && reasonCode.trim().length > 0));
 
   return (
-    <div role="presentation" onClick={(e) => { if (e.target === e.currentTarget && !busy) onClose(); }} style={modalBackdrop}>
-      <section role="dialog" aria-modal="true" aria-labelledby="register-action-title" style={modalCard}>
+    <div className="pos-compact-dialog-backdrop" role="presentation" onClick={(e) => { if (e.target === e.currentTarget && !busy) onClose(); }} style={modalBackdrop}>
+      <section className="pos-compact-dialog" role="dialog" aria-modal="true" aria-labelledby="register-action-title" style={modalCard}>
         <p style={eyebrow}>Governed register action</p>
         <h2 id="register-action-title" style={heading}>{title}</h2>
 
@@ -568,7 +568,7 @@ function describe(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
 }
 
-const root = { minHeight: 0, overflowY: 'auto' as const, padding: spacing.xl, display: 'grid', alignContent: 'start', gap: spacing.lg };
+const root = { minHeight: 0, overflowY: 'auto' as const, padding: spacing.lg, display: 'grid', alignContent: 'start', gap: spacing.md };
 const header = { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: spacing.lg };
 const eyebrow = { margin: 0, color: text.secondary, fontSize: fontSize.caption, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase' as const };
 const heading = { margin: `${spacing.xs}px 0`, color: text.primary, fontSize: fontSize.screenTitle };

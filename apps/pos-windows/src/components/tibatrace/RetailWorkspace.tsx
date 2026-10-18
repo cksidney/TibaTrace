@@ -584,7 +584,7 @@ function layoutFor(viewport: ViewportClass) {
       ? autoColumns(300)
       : 'minmax(250px, 0.85fr) minmax(360px, 1.4fr) minmax(275px, 0.85fr)',
     gap: spacing.lg,
-    padding: viewportAtMost(viewport, 'compact') ? spacing.md : spacing.xl,
+    padding: spacing.lg,
     overflow: 'auto',
   } as const;
 }
@@ -592,7 +592,7 @@ const panel = {
   background: surface.raised,
   border: `1px solid ${surface.border}`,
   borderRadius: 14,
-  padding: spacing.lg,
+  padding: spacing.md,
   alignSelf: 'start',
 } as const;
 const summaryPanel = {

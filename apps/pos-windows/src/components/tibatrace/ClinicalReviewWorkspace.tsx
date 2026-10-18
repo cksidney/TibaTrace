@@ -249,8 +249,8 @@ function OverrideLifecycle({
         {['REQUESTED', 'UNDER_REVIEW'].includes(current?.status ?? '') ? <button type="button" disabled={busy} onClick={() => setAction('reject')} style={secondaryButton}>Reject override</button> : null}
         {['APPROVED', 'APPROVED_WITH_CONDITIONS'].includes(current?.status ?? '') ? <button type="button" disabled={busy} onClick={() => setAction('revoke')} style={secondaryButton}>Revoke override</button> : null}
       </div>
-      {action ? <div role="dialog" aria-modal="true" aria-label={actionLabel} onClick={(e) => { if (e.target === e.currentTarget && !busy) setAction(null); }} style={modalBackdrop}>
-        <section style={modalCard}>
+      {action ? <div className="pos-compact-dialog-backdrop" role="dialog" aria-modal="true" aria-label={actionLabel} onClick={(e) => { if (e.target === e.currentTarget && !busy) setAction(null); }} style={modalBackdrop}>
+        <section className="pos-compact-dialog" style={modalCard}>
           <p style={eyebrow}>Controlled clinical action</p>
           <h3 style={sectionHeading}>{actionLabel}</h3>
           {action === 'request' ? <>

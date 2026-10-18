@@ -212,14 +212,14 @@ function JournalEntry({ entry, busy, onReconcile }: { readonly entry: OfflineAct
 }
 
 function ReconciliationModal({ entry, busy, onClose, onConfirm }: { readonly entry: OfflineAction; readonly busy: boolean; readonly onClose: () => void; readonly onConfirm: () => void }) {
-  return <div role="presentation" onClick={(e) => { if (e.target === e.currentTarget && !busy) onClose(); }} style={modalBackdrop}><section role="dialog" aria-modal="true" aria-labelledby="reconciliation-title" style={modalCard}><p style={eyebrow}>Authoritative reconciliation</p><h2 id="reconciliation-title" style={heading}>Query original {entry.type.toLowerCase()} action</h2><p style={subheading}>TibaTrace will query the server using this exact idempotency key. It will not resend, cancel or modify the original action.</p><p style={keyText}>{entry.idempotencyKey}</p><div style={modalActions}><button type="button" disabled={busy} onClick={onClose} style={secondaryButton}>Back</button><button type="button" disabled={busy} onClick={onConfirm} style={primaryButton}>Query server</button></div></section></div>;
+  return <div className="pos-compact-dialog-backdrop" role="presentation" onClick={(e) => { if (e.target === e.currentTarget && !busy) onClose(); }} style={modalBackdrop}><section className="pos-compact-dialog" role="dialog" aria-modal="true" aria-labelledby="reconciliation-title" style={modalCard}><p style={eyebrow}>Authoritative reconciliation</p><h2 id="reconciliation-title" style={heading}>Query original {entry.type.toLowerCase()} action</h2><p style={subheading}>TibaTrace will query the server using this exact idempotency key. It will not resend, cancel or modify the original action.</p><p style={keyText}>{entry.idempotencyKey}</p><div style={modalActions}><button type="button" disabled={busy} onClick={onClose} style={secondaryButton}>Back</button><button type="button" disabled={busy} onClick={onConfirm} style={primaryButton}>Query server</button></div></section></div>;
 }
 
 function plural(count: number): string { return count === 1 ? '' : 's'; }
 function formatDate(value: string): string { const date = new Date(value); return Number.isNaN(date.getTime()) ? 'Timestamp unavailable' : date.toLocaleString(); }
 function describe(cause: unknown): string { return cause instanceof Error ? cause.message : String(cause); }
 
-const root = { minHeight: 0, overflowY: 'auto' as const, padding: spacing.xl, display: 'grid', alignContent: 'start', gap: spacing.lg };
+const root = { minHeight: 0, overflowY: 'auto' as const, padding: spacing.lg, display: 'grid', alignContent: 'start', gap: spacing.md };
 const header = { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: spacing.lg };
 const eyebrow = { margin: 0, color: text.secondary, fontSize: fontSize.caption, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase' as const };
 const heading = { margin: `${spacing.xs}px 0`, color: text.primary, fontSize: fontSize.screenTitle };

@@ -470,7 +470,7 @@ export function OperationsConsole({
       >
         <main className="pos-clinical-main"
           style={{
-            padding: viewportAtMost(viewport, 'compact') ? spacing.md : spacing.xl,
+            padding: spacing.lg,
             overflowY: railBeside ? 'auto' : 'visible',
             minWidth: 0,
           }}
@@ -523,7 +523,7 @@ export function OperationsConsole({
               />
 
               {activeStep === 'items' ? (
-                <div style={{ display: 'grid', gap: spacing.xl }}>
+                <div style={{ display: 'grid', gap: spacing.lg }}>
                   <ClinicalPreparation key={state.selected.id} episode={state.selected} apiFetch={apiFetch} onChanged={() => void refresh()} />
                   <PrescriptionWorkspace
                     lines={state.selected.lines}
@@ -572,7 +572,7 @@ export function OperationsConsole({
                   ) : null}
                 </div>
               ) : activeStep === 'payment' ? (
-                <section id="payment-workspace" style={{ display: 'grid', gap: spacing.xl }}>
+                <section id="payment-workspace" style={{ display: 'grid', gap: spacing.lg }}>
                   <CheckoutPayments key={state.selected.id} apiFetch={apiFetch}
                     path={`/api/pos/dispensing/episodes/${state.selected.id}/checkout/`}
                     sourceId={state.selected.id} deviceId={session.deviceId} journal={journal}
@@ -618,7 +618,7 @@ export function OperationsConsole({
                   ) : null}
                 </section>
               ) : activeStep === 'handover' ? (
-                <div style={{ display: 'grid', gap: spacing.xl }}>
+                <div style={{ display: 'grid', gap: spacing.lg }}>
                   <CounsellingPanel
                     counsellingStatus={state.selected.counselling_status}
                     busy={consoleBusy}
@@ -754,6 +754,7 @@ function WorkstationLock({
 
   return (
     <div
+      className="pos-compact-dialog-backdrop"
       role="dialog"
       aria-modal="true"
       aria-labelledby="workstation-lock-title"
@@ -769,6 +770,7 @@ function WorkstationLock({
       }}
     >
       <form
+        className="pos-compact-dialog"
         onSubmit={(event) => {
           event.preventDefault();
           setBusy(true);
@@ -1058,7 +1060,7 @@ function Queue({
     return <p style={{ color: text.secondary }}>Loading dispensing queue…</p>;
   }
   return (
-    <div className="pos-queue" style={{ display: 'flex', flexDirection: 'column', gap: spacing.xl }}>
+    <div className="pos-queue" style={{ display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
       <header className="pos-page-heading"><div><span className="pos-eyebrow">Clinical dispensing</span><h1>Prescription workspace</h1><p>One patient. Every check. A confident handover.</p></div><button className="pos-button" type="button" disabled={busy} onClick={onRefresh}><PosIcon name="sync" size={16} /> Refresh queue</button></header>
       <div className="pos-queue-search"><PosIcon name="search" /><input aria-label="Search dispensing queue" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Find a patient, reference or prescription…" /><span>{queue.length} waiting</span></div>
       {tasks.length > 0 ? (
@@ -1429,6 +1431,7 @@ function KeyboardHelpModal({ onClose }: { readonly onClose: () => void }) {
 
   return (
     <div
+      className="pos-compact-dialog-backdrop"
       role="dialog"
       aria-modal="true"
       aria-labelledby="keyboard-help-title"
@@ -1445,6 +1448,7 @@ function KeyboardHelpModal({ onClose }: { readonly onClose: () => void }) {
       onClick={onClose}
     >
       <div
+        className="pos-compact-dialog"
         style={{
           width: 'min(520px, 100%)',
           background: surface.raised,
