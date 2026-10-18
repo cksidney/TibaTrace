@@ -22,6 +22,10 @@ def releaseRequested = gradle.startParameter.taskNames.any {
     it.toLowerCase().contains("release")
 }
 def apiBaseUrl = System.getenv("TIBATRACE_API_BASE_URL") ?: "https://tibatrace.esenai.co.ke"
+def posPackage = new groovy.json.JsonSlurper().parse(file("../../package.json"))
+if (!(posPackage.version ==~ /(?:0|[1-9][0-9]*)\.[0-9]\.[0-9]/) || !(posPackage.tibatraceBuildNumber instanceof Integer) || posPackage.tibatraceBuildNumber < 1) {
+    throw new GradleException("Android POS requires a version such as 1.1.0 and a positive tibatraceBuildNumber in package.json.")
+}
 def jscFlavor = "io.github.react-native-community:jsc-android:2026004.+"
 
 android {
@@ -34,8 +38,8 @@ android {
         applicationId "co.ke.esenai.tibatrace.pos"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 6
-        versionName "0.1.0-alpha.6"
+        versionCode posPackage.tibatraceBuildNumber
+        versionName posPackage.version
         buildConfigField "String", "TIBATRACE_API_BASE_URL", "\"${apiBaseUrl}\""
     }
 

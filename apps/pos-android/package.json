@@ -1,6 +1,6 @@
 {
   "name": "@dawatrace/pos-android",
-  "version": "0.1.0-alpha.6",
+  "version": "1.1.0",
   "private": true,
   "description": "DawaTrace / TibaTrace Android POS (React Native)",
   "main": "index.js",
@@ -32,5 +32,6 @@
     "@types/react": "^19.2.17",
     "typescript": "5.7.3",
     "vitest": "^4.1.10"
-  }
+  },
+  "tibatraceBuildNumber": 7
 }

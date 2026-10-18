@@ -15,5 +15,6 @@ if [[ "${TIBATRACE_API_BASE_URL}" != https://* ]]; then
 fi
 
 cd "${ROOT}"
+python3 scripts/pos_version.py --platform android
 npm run android:bundle:release --workspace @dawatrace/pos-android
 npm run android:apk:release --workspace @dawatrace/pos-android

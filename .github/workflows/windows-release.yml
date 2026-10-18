@@ -38,6 +38,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Validate POS version format and release tag
+        run: python scripts/pos_version.py --platform windows
+
       - name: Resolve POS Windows version
         id: posver
         shell: pwsh

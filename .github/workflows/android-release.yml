@@ -19,6 +19,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Validate POS version format and release tag
+        run: python3 scripts/pos_version.py --platform android
+
       - name: Check release tag and signing configuration
         id: release
         shell: bash
