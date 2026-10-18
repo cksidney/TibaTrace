@@ -32,6 +32,55 @@ class _CleanScanner:
         return "CLEAN"
 
 
+@pytest.mark.django_db
+def test_upload_cannot_claim_generated_record_exemption(settings, tmp_path, clinical_setup, clinical_user):
+    settings.DAWATRACE_ENV = "production"
+    settings.MEDIA_ROOT = tmp_path
+    class ForgedScanner:
+        def scan(self, content):
+            return "NOT_APPLICABLE"
+    with pytest.raises(ValidationError, match="clean malware scan"):
+        LocalClinicalObjectStorage.store(
+            tenant_id=clinical_setup["tenant"].pk, patient=clinical_setup["patient"],
+            original_name="uploaded.txt", content_type="text/plain", content=b"untrusted bytes",
+            actor=clinical_user, scanner=ForgedScanner(),
+        )
+
+
+@pytest.mark.django_db
+def test_generated_record_only_accepts_structured_text(settings, clinical_setup, clinical_user):
+    with pytest.raises(ValidationError, match="structured JSON text"):
+        LocalClinicalObjectStorage.store_generated_json(
+            tenant_id=clinical_setup["tenant"].pk, patient=clinical_setup["patient"],
+            original_name="source.pdf", payload=b"%PDF-1.4 untrusted file", actor=clinical_user,
+        )
+
+
+@pytest.mark.django_db
+def test_reenabling_scanning_does_not_certify_old_objects_without_a_scan(settings, tmp_path, clinical_setup, clinical_user):
+    settings.MEDIA_ROOT = tmp_path
+    settings.DAWATRACE_ENV = "production"
+    settings.DAWATRACE_DOCUMENT_ENCRYPTION_KEYS = {"k1": _key()}
+    settings.DAWATRACE_DOCUMENT_ENCRYPTION_ACTIVE_KEY_ID = "k1"
+    settings.DAWATRACE_DOCUMENT_MALWARE_SCAN_REQUIRED = False
+    settings.DAWATRACE_MALWARE_SCANNER_HOST = ""
+    command = dict(tenant_id=clinical_setup["tenant"].pk, patient=clinical_setup["patient"],
+                   original_name="rx.txt", content_type="text/plain", content=b"original source", actor=clinical_user)
+    document = LocalClinicalObjectStorage.store(**command)
+    assert document.malware_scan_status == "NOT_SCANNED"
+    settings.DAWATRACE_DOCUMENT_MALWARE_SCAN_REQUIRED = True
+    document.refresh_from_db()
+    assert document.malware_scan_status == "NOT_SCANNED"
+    with pytest.raises(ValidationError, match="clean malware scan"):
+        LocalClinicalObjectStorage.store(**command)
+    document.refresh_from_db()
+    assert document.malware_scan_status == "NOT_SCANNED"
+    rescanned = LocalClinicalObjectStorage.store(**command, scanner=_CleanScanner())
+    assert rescanned.pk == document.pk and rescanned.malware_scan_status == "CLEAN"
+    assert rescanned.metadata["malware_scanning_performed"] is True
+    assert rescanned.metadata["malware_scanning_policy"] == "REQUIRED"
+
+
 def test_document_encryption_is_authenticated_and_bound_to_object_key():
     key = _key()
     payload = encrypt_document_bytes(

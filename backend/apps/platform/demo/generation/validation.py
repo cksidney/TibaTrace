@@ -1061,7 +1061,7 @@ class Stage2D2Validator(Stage2D1Validator):
 
     def check_audit_event_sourcing(self):
         from apps.audit.models import AuditEvent
-        events = AuditEvent.objects.filter(tenant_id=self.tenant.id)
+        events = AuditEvent.all_objects.filter(tenant_id=self.tenant.id)
         self._ok("audit_event_sourcing", f"{events.count()} immutable audit event(s) recorded")
 
     def run_all(self) -> dict:

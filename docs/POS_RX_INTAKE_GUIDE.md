@@ -44,12 +44,26 @@ and audited document access are retained. `documents.write` is required to
 upload and `documents.read` to open/download a stored original. Legal validation,
 clinical review, verification and episode opening require their separate roles.
 
-Production requires configured document encryption and a clean malware result.
+Production always requires configured document encryption. Uploads are disabled
+unless `DAWATRACE_RX_SOURCE_UPLOADS_ENABLED=true`. Malware scanning is required
+by default (`DAWATRACE_DOCUMENT_MALWARE_SCAN_REQUIRED=true`).
+
+On 18 October 2026 the operator requested that scanning be deferred while RX
+intake proceeds. With `DAWATRACE_DOCUMENT_MALWARE_SCAN_REQUIRED=false`, photo/PDF
+uploads remain available and are recorded as `NOT_SCANNED`, with a deferred-policy
+audit event and a visible POS notice. This is an explicit deployment decision;
+file validation, encryption, access control and pharmacist review still apply.
+It does not establish that a file is malware-free. Structured records generated
+by the application use `NOT_APPLICABLE`; uploaded files cannot claim that origin.
+
+To activate scanning later, restore `DAWATRACE_DOCUMENT_MALWARE_SCAN_REQUIRED=true`.
 Set `DAWATRACE_MALWARE_SCANNER_HOST` and `DAWATRACE_MALWARE_SCANNER_PORT` (3310 by
 default) to a private ClamAV INSTREAM service with current signatures. The port
 must remain on a trusted private network: INSTREAM TCP itself provides no TLS or
 authentication. An infected result, scanner error, timeout or missing production
-scanner blocks upload. The service is not installed automatically by this change.
+scanner blocks new uploads when scanning is required. Existing unscanned files
+remain labelled unscanned; enabling the scanner does not retrospectively certify
+them. The service is not installed automatically by this change.
 
 Apply prescription migration `0020_prescription_intake_evidence` after `0019`.
 The native bridge permits 12 MiB JSON bodies only on the two intake endpoints;

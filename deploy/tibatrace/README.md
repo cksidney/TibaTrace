@@ -20,8 +20,9 @@ TLS terminate at the dedicated subdomain instead.
    secret file; never commit the key material.
    Docker named volumes are not encrypted by Compose: also use an encrypted host
    volume and an encrypted backup policy for the `clinical-objects` volume.
-   Production document uploads fail closed until a malware scanner returns a
-   `CLEAN` result; configure that scanner before enabling document uploads.
+   Production document uploads require a `CLEAN` malware result by default.
+   The operator may explicitly defer scanning through the documented deployment
+   flag; those uploads retain `NOT_SCANNED` provenance and a visible POS notice.
 5. Store the real `.env.production` in the host secret manager or deployment
    system. Never commit it.
 
@@ -130,9 +131,12 @@ required; do not rely on Docker volumes as the sole recovery mechanism.
 
 ## Prescription source intake
 
-RX source upload requires the private malware scanner and document encryption
-settings in `.env.production.example`. Apply prescription migration `0020` and
+RX source upload requires document encryption and the explicit upload enable
+flag in `.env.production.example`. Scanning is required by default. The current
+operator instruction defers it: set `DAWATRACE_DOCUMENT_MALWARE_SCAN_REQUIRED=false`
+and `DAWATRACE_RX_SOURCE_UPLOADS_ENABLED=true`. Apply prescription migration `0020` and
 build the updated Windows client. See
 [`POS_RX_INTAKE_GUIDE.md`](../../docs/POS_RX_INTAKE_GUIDE.md) for limits, camera
 validation and tenant EMR/DHA commissioning. Missing scanner configuration blocks
-production uploads; tenant feeds remain disabled until explicitly commissioned.
+production uploads when scanning is required. Tenant feeds remain disabled until
+explicitly commissioned. Requiring scanning later does not certify older files.

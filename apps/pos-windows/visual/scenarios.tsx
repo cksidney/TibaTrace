@@ -31,6 +31,7 @@ import type { ReactNode } from 'react';
 const visualFetch: typeof fetch = async () => new Response(null, { status: 503 });
 const intakeFetch: typeof fetch = async input => new Response(JSON.stringify(String(input).includes('/options/') ? {
   branch: { id: 'fixture-branch', name: 'Demo pharmacy · RX intake' },
+  upload_notice: 'Malware scanning is deferred. Uploaded sources are recorded as not malware scanned and require pharmacist review.',
   capabilities: { receive: true, upload: true, read_documents: true, validate: true, review: true, verify: true, open_episode: true },
   patients: [{ id: 'fixture-patient', name: 'Demo Patient · PAT-DEMO' }],
   practitioners: [{ id: 'fixture-prescriber', name: 'Demo Prescriber · REG-DEMO' }],

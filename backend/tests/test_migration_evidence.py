@@ -51,8 +51,6 @@ RELEASE_MIGRATIONS = [
     "backend/apps/integrations/migrations/0004_financial_provider_templates.py",
     "backend/apps/integrations/migrations/0005_activation_request_state_choices.py",
     "backend/apps/integrations/migrations/__init__.py",
-    "backend/apps/taxation/migrations/0001_initial.py",
-    "backend/apps/taxation/migrations/__init__.py",
     "backend/apps/inventory/recalls/migrations/0001_initial.py",
     "backend/apps/inventory/recalls/migrations/__init__.py",
     "backend/apps/inventory/migrations/0005_recall_ledger_events.py",
@@ -90,6 +88,8 @@ RELEASE_MIGRATIONS = [
     "backend/apps/pos_transactions/migrations/0005_original_method_refunds.py",
     "backend/apps/prescription/migrations/0017_checkout_payments.py",
     "backend/apps/prescription/migrations/0018_fiscal_print_documents.py",
+    "backend/apps/prescription/migrations/0019_expand_payment_provider_codes.py",
+    "backend/apps/prescription/migrations/0020_prescription_intake_evidence.py",
 ]
 
 

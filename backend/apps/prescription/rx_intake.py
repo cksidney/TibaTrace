@@ -4,6 +4,7 @@ import hashlib
 import json
 from pathlib import PurePath
 
+from django.conf import settings
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 
@@ -22,6 +23,12 @@ MAX_FILE_BYTES = 5 * 1024 * 1024
 MAX_TOTAL_BYTES = 8 * 1024 * 1024
 MAX_FILES = 5
 READ_CAPABILITIES = ("prescriptions.intake", "prescriptions.legal_validate", "prescriptions.clinical_review", "prescriptions.pharmacist_verify", "dispensing.reserve")
+
+
+def source_uploads_available():
+    return bool(settings.DAWATRACE_RX_SOURCE_UPLOADS_ENABLED and
+                (settings.DAWATRACE_ENV != "production" or not settings.DAWATRACE_DOCUMENT_MALWARE_SCAN_REQUIRED
+                 or settings.DAWATRACE_MALWARE_SCANNER_HOST))
 
 
 def device_branch(*, tenant, actor, device_id):
@@ -75,6 +82,8 @@ class PosPrescriptionIntakeService:
         files = decode_attachments(command.get("attachments", []))
         if files:
             _require_capability(actor, tenant.pk, "documents.write")
+            if not source_uploads_available():
+                raise ValidationError("Photo/PDF intake is temporarily unavailable. Enter the prescription directly and retain the original for pharmacist review.")
         if not files and not command.get("original_available"):
             raise ValidationError("Attach the original prescription or confirm the genuine original is available for review.")
         fingerprint = {key: value for key, value in command.items() if key not in {"attachments", "idempotency_key", "device_id"}}
@@ -143,4 +152,4 @@ def source_documents(rx):
     if rx.original_document_id and rx.original_document.patient_id == rx.patient_id and all(row.pk != rx.original_document_id for row in documents):
         documents.append(rx.original_document)
     return [{"id": str(row.pk), "name": row.original_name, "content_type": row.content_type,
-             "size_bytes": row.size_bytes, "sha256": row.hash_sha256} for row in documents]
+             "size_bytes": row.size_bytes, "sha256": row.hash_sha256, "malware_scan_status": row.malware_scan_status} for row in documents]

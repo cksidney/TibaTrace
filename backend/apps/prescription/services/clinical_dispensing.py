@@ -293,15 +293,15 @@ def _store_clinical_document(
     ).first()
     if existing:
         return existing
-    document = LocalClinicalObjectStorage.store(
+    document = LocalClinicalObjectStorage.store_generated_json(
         tenant_id=prescription.tenant_id,
         patient=prescription.patient,
         original_name=original_name,
-        content_type="text/plain",
-        content=encoded,
+        payload=payload,
         actor=actor,
     )
     document.metadata = {
+        **document.metadata,
         "document_type": document_type,
         "document_number": document_number,
         "revision": revision,
@@ -2249,15 +2249,15 @@ class DispensingLabelService:
             barcode_payload=f"DWT:{line.episode_id}:{line.id}:R{revision}",
             generated_by=actor,
         )
-        document = LocalClinicalObjectStorage.store(
+        document = LocalClinicalObjectStorage.store_generated_json(
             tenant_id=line.tenant_id,
             patient=line.episode.patient,
             original_name=f"{label.document_number}.txt",
-            content_type="text/plain",
-            content=json.dumps(content, sort_keys=True, indent=2).encode(),
+            payload=content,
             actor=actor,
         )
         document.metadata = {
+            **document.metadata,
             "document_type": "DISPENSING_LABEL",
             "document_number": label.document_number,
             "revision": label.revision,

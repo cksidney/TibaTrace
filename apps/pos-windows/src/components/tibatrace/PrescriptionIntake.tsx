@@ -9,13 +9,14 @@ interface IntakeOptions {
   orders: { id: string; order_number: string; total: string }[];
   feeds: { code: string; available: boolean; message: string }[];
   max_file_bytes: number; max_total_bytes: number; max_files: number;
+  upload_notice?: string;
 }
 interface RxRecord {
   id: string; reference: string; patient_name: string; patient_number: string; prescriber_name: string;
   prescription_date: string; source_channel: string; status: string;
   legal_state: string; clinical_state: string; verification_state: string;
   items?: { medicine: string; quantity: string; unit: string; directions: string }[];
-  documents?: { id: string; name: string; content_type: string; size_bytes: number }[];
+  documents?: { id: string; name: string; content_type: string; size_bytes: number; malware_scan_status?: string }[];
   legal_findings?: { code: string; message: string }[];
   clinical_findings?: { id: string; severity: string; explanation: string; resolution_status: string }[];
 }
@@ -190,6 +191,7 @@ export function PrescriptionIntake({ apiFetch, deviceId, active = true, disabled
             <label className="pos-rx-wide">Intake notes<textarea value={values['notes'] ?? ''} onChange={event => field('notes', event.target.value)} maxLength={4000} /></label>
           </>}
           <section className="pos-rx-upload pos-rx-wide"><h3>Original prescription evidence</h3><p>Attach a readable scan, photo or PDF. Transcribe and check the prescribed lines; no automatic OCR approval is performed.</p>
+            {options.upload_notice && <p className="pos-payment-notice" role="status">{options.upload_notice}</p>}
             <label>Upload scan / photo / PDF<input type="file" accept="image/jpeg,image/png,application/pdf" multiple disabled={!cap['upload']} onChange={event => { addFiles([...event.target.files ?? []]); event.target.value = ''; }} /></label>
             <button type="button" className="pos-button" disabled={!cap['upload']} onClick={() => setCamera(true)}>Take prescription photo</button>
             {camera && <div className="pos-rx-camera"><video ref={video} muted playsInline autoPlay aria-label="Prescription camera preview" /><button type="button" className="pos-button" onClick={capture}>Capture photo</button><button type="button" className="pos-button" onClick={() => setCamera(false)}>Stop camera</button></div>}
@@ -207,7 +209,7 @@ export function PrescriptionIntake({ apiFetch, deviceId, active = true, disabled
         {selected ? <section className="pos-rx-review"><button className="pos-button" disabled={busy} onClick={() => { setSelected(null); setPreview(null); }}>Back to inbox</button><h3>{selected.reference}</h3><p><b>{selected.patient_name}</b> · {selected.patient_number} · {selected.prescriber_name}</p>
           <div className="pos-rx-states"><span>Legal: {selected.legal_state}</span><span>Clinical: {selected.clinical_state}</span><span>Pharmacist: {selected.verification_state}</span></div>
           {selected.items?.map((item, index) => <article key={index}><b>{item.medicine} · {item.quantity} {item.unit}</b><p>{item.directions}</p></article>)}
-          <h4>Source documents</h4>{selected.documents?.length ? selected.documents.map(doc => <button key={doc.id} type="button" className="pos-button" disabled={busy || !cap['read_documents']} onClick={() => openDocument(doc.id)}>{doc.name}</button>) : <p>The original is held for physical review; no attachment was uploaded.</p>}
+          <h4>Source documents</h4>{selected.documents?.length ? selected.documents.map(doc => <button key={doc.id} type="button" className="pos-button" disabled={busy || !cap['read_documents']} onClick={() => openDocument(doc.id)}>{doc.name}{doc.malware_scan_status === 'NOT_SCANNED' ? ' · Not malware scanned' : ''}</button>) : <p>The original is held for physical review; no attachment was uploaded.</p>}
           {sourcePreview}
           {selected.legal_findings?.map((finding, index) => <p className="pos-payment-notice" key={index}>{finding.code}: {finding.message}</p>)}
           {selected.clinical_findings?.map(finding => <p className="pos-payment-notice" key={finding.id}>{finding.severity} · {finding.explanation} · {finding.resolution_status}</p>)}

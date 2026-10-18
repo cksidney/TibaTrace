@@ -1,5 +1,12 @@
 # rc58 private scanner deployment handoff
 
+**Superseded by the operator's 18 October 2026 instruction to defer malware
+scanning and continue.** rc59 supports explicit deferred scanning: uploads are
+enabled and recorded as `NOT_SCANNED`, with POS disclosure and audit provenance.
+Encryption, validation and clinical review remain required. No ClamAV host is
+being provisioned for this deployment. The original rc58 handoff below records
+that candidate's prerequisites; use the rc59 release notes for current activation.
+
 18 October 2026. Candidate source: `db4528ef0b95c71fa2c13732ec189953c9ee932a`.
 Production remains rc57 (`71cb40917a053d5b2f9cae13f345e631e627624d`).
 

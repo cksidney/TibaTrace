@@ -5,14 +5,17 @@ price locking, clinical freeze, event sourcing replay, regulatory inspection, an
 """
 
 import io
+import sys
 from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
+from django.db import transaction
 from django.utils import timezone
 
 from apps.audit.models import AuditEvent
 from apps.cds.models import PosClinicalFinding, PosClinicalOverride
+from apps.cds.pos_screening_models import PosClinicalScreening
 from apps.identity.models import User
 from apps.inventory.models import InventoryBalance, InventoryReservation
 from apps.inventory.services import InventoryReservationService
@@ -55,8 +58,7 @@ def _context(tenant, run):
     )
 
 
-@pytest.fixture
-def hardening_ready(db):
+def _generate_hardening_scenario():
     """A tenant with Stage 2B, 2C, 2D.1, and Stage 2D.2 fully executed."""
     seed_catalogue()
     tenant = Tenant.objects.create(name="S2D2 Hardening Chemists", slug="s2d2hardeningtest", is_demo=True)
@@ -88,6 +90,39 @@ def hardening_ready(db):
     orchestrator = MasterDataOrchestrator(ctx_resume, stages=all_stages)
     orchestrator.run()
     return tenant, run, ctx_resume, orchestrator
+
+
+@pytest.fixture(scope="module")
+def _hardening_baseline(django_db_setup, django_db_blocker):
+    # Build the large scenario once. An outer rollback removes it after this
+    # module; each test's normal `db` fixture rolls back to this same baseline.
+    # Only identifiers cross test boundaries, never mutable model instances.
+    with django_db_blocker.unblock():
+        baseline = transaction.atomic()
+        baseline.__enter__()
+        try:
+            # The function-scoped demo clock has not started at module setup.
+            with pytest.MonkeyPatch.context() as clock_patch:
+                clock_patch.setattr(timezone, "localdate", lambda value=None, timezone=None: AS_OF)
+                tenant, run, *_ = _generate_hardening_scenario()
+        except BaseException:
+            baseline.__exit__(*sys.exc_info())
+            raise
+    try:
+        yield tenant.pk, run.pk
+    finally:
+        with django_db_blocker.unblock():
+            transaction.set_rollback(True)
+            baseline.__exit__(None, None, None)
+
+
+@pytest.fixture
+def hardening_ready(_hardening_baseline, db):
+    tenant_id, run_id = _hardening_baseline
+    tenant = Tenant.objects.get(pk=tenant_id)
+    run = DemoScenarioRun.all_objects.get(pk=run_id, tenant=tenant)
+    ctx = _context(tenant, run)
+    return tenant, run, ctx, MasterDataOrchestrator(ctx)
 
 
 # ============================================================================
@@ -183,7 +218,8 @@ def test_lifecycle_terminal_state_closed(hardening_ready):
 def test_lifecycle_audit_event_logged(hardening_ready):
     tenant, run, *_ = hardening_ready
     ep = DispensingEpisode.all_objects.filter(tenant=tenant).first()
-    initial_count = AuditEvent.objects.filter(tenant=tenant, object_id=ep.id).count()
+    events = AuditEvent.all_objects.filter(tenant=tenant, model_name="DispensingEpisode", object_id=str(ep.id))
+    initial_count = events.count()
 
     ep.lifecycle_state = DispensingLifecycleState.REQUEST_PLANNED.value
     ep.save()
@@ -192,7 +228,10 @@ def test_lifecycle_audit_event_logged(hardening_ready):
         target_state=DispensingLifecycleState.PRESCRIPTION_RECEIVED.value,
         actor=ep.pharmacist,
     )
-    assert AuditEvent.objects.filter(tenant=tenant, object_id=ep.id).count() > initial_count
+    assert events.count() == initial_count + 1
+    event = events.latest("created_at")
+    assert event.actor_id == ep.pharmacist_id
+    assert event.metadata["to_state"] == "PRESCRIPTION_RECEIVED"
 
 
 def test_lifecycle_actor_recorded(hardening_ready):
@@ -335,9 +374,14 @@ def test_concurrency_reservation_extension(hardening_ready):
 def test_concurrency_prescription_edit_during_review(hardening_ready):
     tenant, run, *_ = hardening_ready
     rx = Prescription.all_objects.filter(tenant=tenant).first()
-    rx.clinical_review_state = "UNDER_REVIEW"
+    rx.clinical_review_state = "IN_PROGRESS"
     rx.save()
-    assert rx.clinical_review_state == "UNDER_REVIEW"
+    # A material edit during review invalidates the previous clinical context.
+    rx.prescription_date = (rx.prescription_date or AS_OF) + timedelta(days=1)
+    rx.save()
+    rx.refresh_from_db()
+    assert rx.clinical_review_state == "NOT_STARTED"
+    assert rx.pharmacist_verification_state == "REVOKED"
 
 
 def test_concurrency_patient_cancellation_during_payment(hardening_ready):
@@ -542,22 +586,34 @@ def test_payment_cash_reversal(hardening_ready):
 # 7. CLINICAL OVERRIDE GOVERNANCE & EVENT REPLAY TESTS (5 tests)
 # ============================================================================
 
-def test_clinical_override_immutable_capture(hardening_ready):
+def test_clinical_override_captures_finding_and_review_context(hardening_ready):
     tenant, run, *_ = hardening_ready
     override = PosClinicalOverride.all_objects.filter(tenant=tenant).first()
     if not override:
         user = User.objects.filter(tenant=tenant).first()
-        finding = PosClinicalFinding.all_objects.filter(tenant=tenant).first()
+        screening = PosClinicalScreening.all_objects.create(
+            tenant=tenant, transaction_id="OVERRIDE-TEST-TX", device_id="OVERRIDE-TEST-DEVICE",
+            context_hash="a" * 64, status="COMPLETE", blocking_count=1, requires_pharmacist=True,
+        )
+        finding = PosClinicalFinding.all_objects.create(
+            tenant=tenant, screening=screening, category="DRUG_DRUG_INTERACTION", severity="HIGH",
+            title="Test interaction", summary="Review required", blocking=True, requires_pharmacist=True,
+        )
         override = PosClinicalOverride.all_objects.create(
             tenant=tenant,
             finding=finding,
             pharmacist=user,
             override_reason="CLINICALLY_JUSTIFIED",
             clinical_justification="Patient monitored on low dose regimen",
+            context_hash=screening.context_hash,
+            transaction_id=screening.transaction_id,
+            device_id=screening.device_id,
             idempotency_key="TEST-OVERRIDE-KEY-001",
         )
     assert override.pharmacist is not None
     assert len(override.override_reason) > 0
+    assert override.finding.screening.context_hash == override.context_hash
+    assert override.status == "REQUESTED"
 
 
 def test_clinical_override_cannot_be_deleted_or_altered(hardening_ready):

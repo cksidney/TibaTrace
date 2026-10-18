@@ -83,6 +83,23 @@ it('uploads the original photo through the bounded native JSON transport', async
   expect(command.attachments).toEqual([{ name: 'rx.jpg', content_type: 'image/jpeg', content_base64: btoa('source-photo') }]);
 });
 
+it('keeps uploads available with a visible deferred scanning notice and source verdict', async () => {
+  const notice = 'Malware scanning is deferred. Uploaded sources are recorded as not malware scanned and require pharmacist review.';
+  const api = vi.fn<typeof fetch>(async input => String(input).includes('/options/')
+    ? response({ ...options, upload_notice: notice })
+    : String(input).includes('/rx-1/') ? response({ ...rx, documents: [{ id: 'doc-1', name: 'source.pdf', content_type: 'application/pdf', size_bytes: 20, malware_scan_status: 'NOT_SCANNED' }] })
+    : response([rx]));
+  await mount(api);
+  expect(container.textContent).toContain(notice);
+  expect(field('Upload scan / photo / PDF').disabled).toBe(false);
+  act(() => button('Close').click());
+  await act(async () => button('Received prescriptions').click());
+  const open = [...container.querySelectorAll('button')].find(item => item.textContent?.includes('PAPER-001'));
+  expect(open).toBeTruthy();
+  await act(async () => open?.click());
+  expect(container.textContent).toContain('source.pdf · Not malware scanned');
+});
+
 it('reconciles an unknown intake result before allowing an unchanged retry', async () => {
   let writes = 0;
   const api = fetcher(async path => {

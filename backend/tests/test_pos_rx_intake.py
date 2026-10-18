@@ -28,6 +28,9 @@ PNG = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4
 @pytest.fixture
 def intake(world, settings, tmp_path, monkeypatch):  # noqa: F811
     settings.MEDIA_ROOT = str(tmp_path)
+    settings.DAWATRACE_RX_SOURCE_UPLOADS_ENABLED = True
+    settings.DAWATRACE_DOCUMENT_MALWARE_SCAN_REQUIRED = True
+    settings.DAWATRACE_MALWARE_SCANNER_HOST = "test-scanner"
     monkeypatch.setattr(MalwareScanner, "scan", lambda self, content: "CLEAN")
     world["client"].credentials(HTTP_X_TENANT_ID=str(world["tenant"].pk))
     patient = Patient.all_objects.create(tenant=world["tenant"], patient_number="RX-PAT-01", internal_reference_id="RX-PAT-01", first_name="Amina", last_name="Test")
@@ -203,6 +206,67 @@ def test_paper_intake_accepts_confirmed_physical_original_without_upload(intake)
     result = post(intake, command=command)
     assert result.status_code == 201, result.data
     assert result.data["documents"] == [] and result.data["verification_state"] == "NOT_VERIFIED"
+
+
+def test_production_manual_intake_works_with_uploads_deferred_and_no_scanner(intake, settings, monkeypatch):
+    settings.DAWATRACE_ENV = "production"
+    settings.DAWATRACE_RX_SOURCE_UPLOADS_ENABLED = False
+    settings.DAWATRACE_MALWARE_SCANNER_HOST = ""
+    settings.DAWATRACE_DOCUMENT_ENCRYPTION_KEYS = {"test-key": base64.urlsafe_b64encode(b"x" * 32).decode()}
+    settings.DAWATRACE_DOCUMENT_ENCRYPTION_ACTIVE_KEY_ID = "test-key"
+    def should_not_scan(self, content):
+        raise AssertionError("Generated structured records must not invoke the upload scanner")
+    monkeypatch.setattr(MalwareScanner, "scan", should_not_scan)
+    choices = intake["client"].get(f"{BASE}options/", {"device_id": "POS-RETAIL-01"})
+    assert choices.status_code == 200 and choices.data["capabilities"]["receive"] is True
+    assert choices.data["capabilities"]["upload"] is False and "temporarily unavailable" in choices.data["upload_notice"]
+    assert post(intake).status_code == 400
+    assert not StoredClinicalDocument.all_objects.exists()
+    command = copy.deepcopy(intake["command"])
+    command["attachments"] = []
+    result = post(intake, command=command)
+    assert result.status_code == 201, result.data
+    assert result.data["verification_state"] == "NOT_VERIFIED"
+    document = StoredClinicalDocument.all_objects.get()
+    assert document.malware_scan_status == "NOT_APPLICABLE"
+    assert document.metadata["content_origin"] == "SYSTEM_GENERATED_JSON"
+    assert document.metadata["malware_scanning_performed"] is False
+    assert document.metadata["at_rest_encryption"]["key_id"] == "test-key"
+
+
+def test_enabling_upload_flag_alone_does_not_enable_production_uploads(intake, settings):
+    settings.DAWATRACE_ENV = "production"
+    settings.DAWATRACE_MALWARE_SCANNER_HOST = ""
+    result = post(intake)
+    assert result.status_code == 400 and not Prescription.all_objects.exists()
+
+
+def test_explicit_scan_deferral_keeps_uploads_encrypted_unscanned_and_unverified(intake, settings, monkeypatch):
+    settings.DAWATRACE_ENV = "production"
+    settings.DAWATRACE_DOCUMENT_MALWARE_SCAN_REQUIRED = False
+    settings.DAWATRACE_MALWARE_SCANNER_HOST = ""
+    settings.DAWATRACE_DOCUMENT_ENCRYPTION_KEYS = {"test-key": base64.urlsafe_b64encode(b"x" * 32).decode()}
+    settings.DAWATRACE_DOCUMENT_ENCRYPTION_ACTIVE_KEY_ID = "test-key"
+    def should_not_scan(self, content):
+        raise AssertionError("Deferred scanning must not claim a scanner was called")
+    monkeypatch.setattr(MalwareScanner, "scan", should_not_scan)
+    choices = intake["client"].get(f"{BASE}options/", {"device_id": "POS-RETAIL-01"})
+    assert choices.status_code == 200 and choices.data["capabilities"]["upload"] is True
+    assert "not malware scanned" in choices.data["upload_notice"]
+    result = post(intake)
+    assert result.status_code == 201, result.data
+    rx = Prescription.all_objects.get(pk=result.data["id"])
+    document = rx.original_document
+    assert document.malware_scan_status == "NOT_SCANNED"
+    assert document.metadata["malware_scanning_policy"] == "DEFERRED_BY_OPERATOR"
+    assert document.metadata["malware_scanning_performed"] is False
+    assert document.metadata["at_rest_encryption"]["key_id"] == "test-key"
+    assert rx.legal_validation_state == "PENDING" and rx.pharmacist_verification_state == "NOT_VERIFIED"
+    assert not DispensingEpisode.all_objects.exists()
+    assert DocumentAccessEvent.all_objects.filter(document=document, action="UPLOAD", reason__contains="deferred").exists()
+    assert result.data["documents"][0]["malware_scan_status"] == "NOT_SCANNED"
+    viewed = post(intake, f"{BASE}{rx.pk}/source-document/", {"device_id": "POS-RETAIL-01", "document_id": str(document.pk)})
+    assert viewed.status_code == 200 and base64.b64decode(viewed.data["content_base64"]) == PNG
 
 
 def test_priced_order_must_match_prescribed_units_and_remaining_quantity(intake):

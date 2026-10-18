@@ -19,6 +19,9 @@ test('RX intake remains usable, scrollable and keyboard accessible', async ({ pa
   await page.getByLabel('Directions as prescribed').fill('Original source directions for pharmacist review.');
   await expect(page.getByRole('button', { name: 'Receive for review', exact: true })).toBeDisabled();
   await page.getByLabel('The genuine original is available for pharmacist review.').check();
+  await page.getByRole('status').filter({ hasText: 'Malware scanning is deferred.' }).scrollIntoViewIfNeeded();
+  await expect(page.getByRole('status').filter({ hasText: 'Malware scanning is deferred.' })).toBeVisible();
+  await expect(page.getByLabel('Upload scan / photo / PDF')).toBeEnabled();
   await expect(page.getByRole('button', { name: 'Receive for review', exact: true })).toBeEnabled();
   await page.getByRole('button', { name: 'Receive for review', exact: true }).scrollIntoViewIfNeeded();
   expect(await dialog.evaluate(node => node.scrollWidth - node.clientWidth)).toBeLessThanOrEqual(2);

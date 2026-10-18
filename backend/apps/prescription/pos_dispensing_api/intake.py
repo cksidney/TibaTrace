@@ -2,6 +2,7 @@ import base64
 import hashlib
 from decimal import Decimal
 
+from django.conf import settings
 from django.core.exceptions import ValidationError as DomainError
 from django.db import transaction
 from rest_framework import serializers, status, viewsets
@@ -35,6 +36,7 @@ from apps.prescription.rx_intake import (
     decode_attachments,
     device_branch,
     source_documents,
+    source_uploads_available,
 )
 from apps.prescription.rx_intake_models import PrescriptionIntakeReceipt
 from apps.prescription.services.clinical_dispensing import (
@@ -188,7 +190,15 @@ class PosPrescriptionIntakeViewSet(RequireAlignedPosClientMixin, viewsets.ViewSe
             "receive": "prescriptions.intake", "upload": "documents.write", "read_documents": "documents.read",
             "validate": "prescriptions.legal_validate", "review": "prescriptions.clinical_review",
             "verify": "prescriptions.pharmacist_verify", "open_episode": "dispensing.reserve"}.items()}
+        uploads_available = source_uploads_available()
+        capabilities["upload"] = capabilities["upload"] and uploads_available
+        upload_notice = ""
+        if not uploads_available:
+            upload_notice = "Photo/PDF intake is temporarily unavailable. Enter the prescription directly and retain the original for pharmacist review."
+        elif not settings.DAWATRACE_DOCUMENT_MALWARE_SCAN_REQUIRED:
+            upload_notice = "Malware scanning is deferred. Uploaded sources are recorded as not malware scanned and require pharmacist review."
         return Response({"branch": {"id": str(branch.pk), "name": branch.name}, "capabilities": capabilities,
+            "upload_notice": upload_notice,
             "patients": [{"id": str(row.pk), "name": f"{row.full_name} · {row.patient_number}"} for row in patients.order_by("patient_number")[:50]],
             "practitioners": [{"id": str(row.pk), "name": row.professional_name or f"{row.first_name} {row.last_name}"} for row in practitioners.order_by("registration_number")[:50]],
             "products": [{"id": str(row.pk), "name": row.display_name, "unit": row.package_definition.unit_of_measure} for row in products.select_related("package_definition").order_by("sku_code")[:50]],

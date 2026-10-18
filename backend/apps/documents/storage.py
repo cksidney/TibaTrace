@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import mimetypes
 import os
 import tempfile
@@ -30,8 +31,27 @@ class MalwareScanner:
         return "NOT_CONFIGURED"
 
 
+class _GeneratedJSONRecord:
+    """Internal provenance for serialized application records, never uploaded bytes."""
+
+    def __init__(self, content):
+        self.content = content
+
+    def scan(self, content):
+        return "NOT_APPLICABLE" if content == self.content else "ERROR"
+
+
 class LocalClinicalObjectStorage:
     capability = "documents.read"
+
+    @classmethod
+    def store_generated_json(cls, *, tenant_id, patient, original_name, payload, actor):
+        if not isinstance(payload, dict) or not original_name.endswith(".txt"):
+            raise ValidationError("Generated clinical records must be structured JSON text.")
+        content = json.dumps(payload, sort_keys=True, indent=2, default=str).encode()
+        return cls.store(tenant_id=tenant_id, patient=patient, original_name=original_name,
+                         content_type="text/plain", content=content, actor=actor,
+                         scanner=_GeneratedJSONRecord(content))
 
     @staticmethod
     def _root() -> Path:
@@ -110,10 +130,12 @@ class LocalClinicalObjectStorage:
         digest = hashlib.sha256(content).hexdigest()
         key = f"tenant/{tenant_id}/clinical/{patient.id}/{digest}/{Path(original_name).name}"
         path = cls._path(key)
-        scan_status = (scanner or MalwareScanner()).scan(content)
+        scan_deferred = scanner is None and not settings.DAWATRACE_DOCUMENT_MALWARE_SCAN_REQUIRED
+        scan_status = "NOT_SCANNED" if scan_deferred else (scanner or MalwareScanner()).scan(content)
+        generated_json = isinstance(scanner, _GeneratedJSONRecord) and content_type == "text/plain" and scan_status == "NOT_APPLICABLE"
         if scan_status in {"INFECTED", "ERROR"}:
             raise ValidationError("The document failed malware scanning or the scanner is unavailable.")
-        if settings.DAWATRACE_ENV == "production" and scan_status != "CLEAN":
+        if settings.DAWATRACE_ENV == "production" and scan_status != "CLEAN" and not generated_json and not scan_deferred:
             raise ValidationError("Clinical document upload requires a clean malware scan in production.")
         path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         stored_bytes, encryption_key_id = cls._stored_bytes(content, object_key=key)
@@ -125,7 +147,13 @@ class LocalClinicalObjectStorage:
                 cls._write_atomic(path, stored_bytes)
         else:
             cls._write_atomic(path, stored_bytes)
-        metadata = {}
+        metadata = {
+            "content_origin": "SYSTEM_GENERATED_JSON" if generated_json else "UPLOADED_SOURCE",
+            "malware_scanning_performed": scan_status == "CLEAN",
+            "malware_scanning_policy": (
+                "NOT_APPLICABLE" if generated_json else "DEFERRED_BY_OPERATOR" if scan_deferred else "REQUIRED"
+            ),
+        }
         if encryption_key_id:
             metadata["at_rest_encryption"] = {
                 "algorithm": "AES-256-GCM",
@@ -146,7 +174,8 @@ class LocalClinicalObjectStorage:
             document.metadata = {**document.metadata, **metadata}
             document.save(update_fields=["malware_scan_status", "metadata", "updated_at"])
         DocumentAccessEvent.all_objects.create(
-            tenant_id=tenant_id, document=document, actor=actor, action="UPLOAD", outcome="SUCCESS"
+            tenant_id=tenant_id, document=document, actor=actor, action="GENERATE" if generated_json else "UPLOAD", outcome="SUCCESS",
+            reason="Malware scanning deferred by server configuration." if scan_deferred else "",
         )
         return document
 
