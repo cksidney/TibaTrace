@@ -197,7 +197,7 @@ export function PrescriptionIntake({ apiFetch, deviceId, active = true, disabled
             {camera && <div className="pos-rx-camera"><video ref={video} muted playsInline autoPlay aria-label="Prescription camera preview" /><button type="button" className="pos-button" onClick={capture}>Capture photo</button><button type="button" className="pos-button" onClick={() => setCamera(false)}>Stop camera</button></div>}
             <ul>{files.map((file, index) => <li key={`${file.name}:${index}`}><span>{file.name} · {(file.size / 1024).toFixed(0)} KB</span><button type="button" className="pos-button" onClick={() => previewFile(file)}>Preview {file.name}</button><button type="button" className="pos-button" onClick={() => { setFiles(previous => previous.filter((_, i) => i !== index)); setPreview(null); }}>Remove {file.name}</button></li>)}</ul>
             {sourcePreview}
-            <small>Up to five files · 5 MB per file · 8 MB total. Files are scanned and stored under the patient’s tenant.</small>
+            <small>Up to five files · 5 MB per file · 8 MB total. Files are validated and stored under the patient’s tenant.</small>
           </section>
           {source === 'PAPER' && <label className="pos-rx-wide pos-rx-confirm"><input type="checkbox" checked={original} onChange={event => setOriginal(event.target.checked)} /> The genuine original is available for pharmacist review.</label>}
           <button type="submit" className="pos-start-sale pos-rx-wide" disabled={!navigator.onLine || (source === 'PAPER' && !original && files.length === 0)}>{busy ? 'Receiving…' : source === 'PAPER' ? 'Receive for review' : 'Import for review'}</button>

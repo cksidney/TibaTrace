@@ -91,6 +91,7 @@ it('keeps uploads available with a visible deferred scanning notice and source v
     : response([rx]));
   await mount(api);
   expect(container.textContent).toContain(notice);
+  expect(container.textContent).not.toContain('Files are scanned');
   expect(field('Upload scan / photo / PDF').disabled).toBe(false);
   act(() => button('Close').click());
   await act(async () => button('Received prescriptions').click());
