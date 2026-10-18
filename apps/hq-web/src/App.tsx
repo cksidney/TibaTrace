@@ -4325,6 +4325,22 @@ function PosDownloads({ csrfToken }: { readonly csrfToken: string }) {
         </p>
       ) : null}
 
+      {visibleReleases.some((release) =>
+        release.platform === 'WINDOWS' && release.download_filename.toLowerCase().endsWith('.zip'),
+      ) ? (
+        <aside className="pos-windows-install-note" role="note">
+          <div>
+            <strong>Windows installs use the managed package</strong>
+            <p>
+              Download and extract the ZIP, then run <code>Install-TibaTrace.ps1</code> from
+              Administrator PowerShell. It verifies and enrolls the TibaTrace signing
+              certificate before installing the POS. Do not open the embedded setup EXE
+              directly; if Windows reports an unknown publisher, cancel and use the script.
+            </p>
+          </div>
+        </aside>
+      ) : null}
+
       {catalogue.releases.length ? (
         <>
           <nav aria-label="Installer release filters" className="pos-release-filters segmented">
@@ -4407,7 +4423,7 @@ function PosDownloads({ csrfToken }: { readonly csrfToken: string }) {
         <div className="business-dialog-backdrop" role="presentation">
           <section aria-labelledby="pos-download-title" aria-modal="true" className="business-dialog" role="dialog">
             <header>
-              <div><p className="eyebrow">Verified point of sale release</p><h2 id="pos-download-title">Review installer</h2></div>
+              <div><p className="eyebrow">Verified point of sale release</p><h2 id="pos-download-title">Review package</h2></div>
               <button aria-label="Close dialog" disabled={pending === selectedRelease.id} onClick={() => setSelectedRelease(null)} type="button"><Icon name="close" /></button>
             </header>
             <div className="business-dialog-record"><div><code>{selectedRelease.platform} · {formatBytes(selectedRelease.size_bytes)}</code><strong>Version {selectedRelease.version}</strong><small>{selectedRelease.download_filename}</small></div></div>

@@ -1,6 +1,7 @@
 # TibaTrace POS — managed device installation
 
-For pharmacy terminals enrolled into a TibaTrace deployment. Version 1.0.0, x64.
+For pharmacy terminals enrolled into a TibaTrace deployment. Version and build
+are recorded in `release-manifest.json`; x64 Windows only.
 
 ---
 
@@ -55,6 +56,12 @@ verify a signature, and cannot create one.
 cd <extracted folder>
 powershell -ExecutionPolicy Bypass -File .\Install-TibaTrace.ps1
 ```
+
+Do not double-click the setup EXE from the extracted folder. On a new terminal,
+Windows has not enrolled TibaTrace's private fleet certificate yet, so opening
+that EXE directly can show an unverified-publisher warning. The managed script
+checks that the installer and packaged public certificate match, enrolls the
+certificate, verifies the signature, and then installs the application.
 
 The script will refuse to continue, and install nothing, if any of the following
 does not hold:
@@ -163,6 +170,12 @@ certificate in the package do not belong together. Do not enrol the certificate.
 **Signature still not `Valid` after enrolment** — usually the certificate expired,
 or Group Policy is managing the root store and reverted the import. Check the
 validity window shown in the script output.
+
+**Windows says it cannot verify the publisher when opening the setup EXE** —
+cancel the prompt and use `Install-TibaTrace.ps1` from the extracted managed
+package in an elevated PowerShell window. If the script completes but Windows
+still refuses to open TibaTrace POS, stop and send the script's final signature
+status to your HQ administrator; do not choose **Run anyway**.
 
 **SmartScreen still warns after enrolment** — enrolment establishes trust for
 signature validation; SmartScreen additionally weighs reputation, which a private
