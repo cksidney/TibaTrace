@@ -1,8 +1,10 @@
 # TibaTrace DHA Document Evidence Register
 
 **Framework Baseline**: Kenya Digital Health Agency Certification Framework 2025  
-**Assessment Date**: 2026-08-01  
+**Assessment Date**: 2026-08-01 (historical inventory; current review: 2026-10-17)
 **Status Key**: `AVAILABLE` | `MISSING` | `REQUIRES_ORGANISATIONAL_ACTION` | `EXPIRED` | `NOT_APPLICABLE`  
+
+> **Current-status correction (17 October 2026):** this register was prepared against older product documentation. Its earlier `AVAILABLE` labels describe referenced files, not current operational evidence, DPIA approval, or DHA certification. For the current system/provider DPIA use the [DPIA](../system/01_DATA_PROTECTION_IMPACT_ASSESSMENT.md), [evidence checklist](../system/19_TIBATRACE_SYSTEM_DPIA_EVIDENCE_CHECKLIST.md) and [gap closure register](../system/20_DPIA_GAP_CLOSURE_REGISTER.md). The current DPIA is **NOT APPROVED**. No official DHA certificate or applicability decision is attached to this repository snapshot; the owner must verify status with DHA.
 
 ---
 
@@ -10,11 +12,10 @@
 
 | Document / Certificate | Status | Source Location | Evidence Description / Action Required |
 |---|---|---|---|
-| **Company Registration Certificate** | `REQUIRES_ORGANISATIONAL_ACTION` | Legal Vault | Certificate of Incorporation (Kenya Companies Act) required for formal submission. |
-| **Data Controller Registration** | `REQUIRES_ORGANISATIONAL_ACTION` | Data Protection Office | Certificate from the Office of the Data Protection Commissioner (ODPC) Kenya. |
-| **Data Processor Registration** | `REQUIRES_ORGANISATIONAL_ACTION` | Data Protection Office | Certificate from ODPC Kenya for multi-tenant cloud processing. |
-| **Data Protection Impact Assessment (DPIA)** | `AVAILABLE` | `docs/fhir/KENYA_DATA_PROTECTION_ACT_2019.md` | Formal DPIA for cloud health data processing and clinical dispensing. |
-| **Pharmacy and Pois Board (PPB) License** | `REQUIRES_ORGANISATIONAL_ACTION` | Legal Vault | Premises license for digital health & tele-pharmacy operation. |
+| **Company Registration Certificate** | `NOT ATTACHED — OWNER TO VERIFY` | Legal vault (not reviewed) | Attach current certificate and verify exact registered legal name for this service. |
+| **ODPC registration(s)** | `NOT ATTACHED — OWNER TO VERIFY APPLICABILITY` | ODPC records (not reviewed) | Verify applicable controller/processor role registrations and attach current proof; do not infer status from this register. |
+| **Data Protection Impact Assessment (DPIA)** | `DRAFT — NOT APPROVED` | `docs/compliance/system/01_DATA_PROTECTION_IMPACT_ASSESSMENT.md` | Current TibaTrace system/provider assessment. See `docs/compliance/system/19_TIBATRACE_SYSTEM_DPIA_EVIDENCE_CHECKLIST.md` and `20_DPIA_GAP_CLOSURE_REGISTER.md` for open evidence and sign-off. |
+| **PPB / facility licence** | `APPLICABILITY AND EVIDENCE OWNER TO CONFIRM` | Legal vault (not reviewed) | Confirm whether a product-level licence is applicable; facility/operator licences belong to the relevant customer unless law assigns another role. |
 
 ---
 
@@ -35,10 +36,10 @@
 
 | Document / Policy | Status | Source Location | Evidence Description / Action Required |
 |---|---|---|---|
-| **Information Security Policy** | `AVAILABLE` | `docs/security/DAWATRACE_SECURITY_REPORT.md` | Core security controls, authentication, and RBAC policy. |
-| **Privacy & Confidentiality Policy** | `AVAILABLE` | `docs/domain/PATIENT_IDENTITY_AND_PRIVACY.md` | Patient PII/PHI handling and data minimisation guidelines. |
-| **Backup & Disaster Recovery Plan** | `AVAILABLE` | `docs/deployment/TIBATRACE_RELEASE_PACKAGING_WORKFLOW.md` | Append-only database snapshot & restore runbook. |
+| **Information Security Policy** | `DRAFT — OWNER APPROVAL AND OPERATING EVIDENCE OPEN` | `docs/compliance/system/06_INFORMATION_SECURITY_POLICY.md` | Current policy draft. Production configuration, recurring reviews, scanner operation, MFA, key custody and independent test evidence remain open. |
+| **Privacy & Confidentiality Policy** | `DRAFT — CONTROLLER/CONTACT DETAILS TO VERIFY` | `docs/compliance/system/02_PRIVACY_POLICY.md` | Current public-facing system policy draft; confirm provider identity, purposes, contact route and customer-facing responsibilities. |
+| **Backup & Disaster Recovery Plan** | `DRAFT — FULL RESTORE EVIDENCE OPEN` | `docs/compliance/system/10_BACKUP_AND_RECOVERY_POLICY.md` | Current policy draft. rc52 has release-specific PostgreSQL backup evidence; recurring schedule and coordinated database/object restore remain unproven. |
 | **Change & Recertification Policy** | `AVAILABLE` | `docs/compliance/dha/DHA_CHANGE_AND_RECERTIFICATION_POLICY.md` | Material change criteria and DHA re-audit triggers. |
 | **Vulnerability & Patch Management Policy** | `AVAILABLE` | `docs/security/DAWATRACE_DEPENDENCY_REPORT.md` | Dependency vulnerability scanning and patch lifecycle. |
-| **Penetration Testing Report** | `REQUIRES_ORGANISATIONAL_ACTION` | Security Audit Vault | Third-party CREST/OWASP penetration test report. |
+| **Independent penetration test** | `NOT FOUND IN REVIEWED SET — OWNER TO COMMISSION/ATTACH` | Security audit vault (not reviewed) | Internal CI, scans, and source review do not replace an independent authorized test of the exact release. |
 | **POS Hardware Certification Report** | `AVAILABLE` | `docs/POS_HARDWARE_CERTIFICATION.md` | Thermal printer, cash drawer, and barcode scanner evidence. |

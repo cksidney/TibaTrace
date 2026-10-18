@@ -10,7 +10,7 @@ from apps.pos_shift.cash_control import CashControlService
 from apps.pos_transactions.models import PosTransaction, RetailCashReceipt
 from apps.prescription.fiscal import FiscalService
 from apps.prescription.fiscal_models import FiscalSubmission
-from apps.prescription.payment_models import PaymentSettlement, PaymentTender
+from apps.prescription.payment_models import PaymentAttempt, PaymentSettlement, PaymentTender
 from apps.taxation.models import FiscalReceipt, TenantEtimsProfile
 
 pytestmark = pytest.mark.django_db
@@ -102,6 +102,227 @@ def test_mpesa_without_supplied_configuration_never_initiates_or_creates_a_settl
         format="json",
     )
     assert response.status_code == 400
+    assert not PaymentSettlement.all_objects.exists()
+
+
+@pytest.mark.parametrize("completion_path", ["QUERY", "CALLBACK", "EARLY_CALLBACK"])
+def test_tenant_card_adapter_initiates_and_reconciles_without_manual_card_data(world, monkeypatch, completion_path):  # noqa: F811
+    import json
+
+    from apps.prescription.payment_providers import ADAPTERS, InitiationResult, ProviderEvent
+
+    observed = {}
+
+    def callback(attempt, signature):
+        return world["client"].post(
+            "/api/pos/payments/providers/TEST_ACQUIRER/callback/",
+            {
+                "request_reference": attempt.request_reference,
+                "provider_reference": "ACQ-REFERENCE-01",
+                "status": "SUCCEEDED",
+                "amount": str(attempt.requested_amount),
+                "currency": "KES",
+                "event_id": "ACQ-CALLBACK-01",
+            },
+            format="json",
+            HTTP_X_TEST_SIGNATURE=signature,
+        )
+
+    class CardAdapter:
+        provider_code = "TEST_ACQUIRER"
+
+        def __init__(self, *, tenant, branch, config, credentials):  # noqa: ARG002
+            self.config = config
+            self.credentials = credentials
+
+        def validate_configuration(self, *, tenant, branch=None):  # noqa: ARG002
+            assert self.credentials["api_key"] == "tenant-card-secret"
+
+        def initiate(self, *, attempt, context):
+            observed["context"] = context
+            observed["calls"] = observed.get("calls", 0) + 1
+            if completion_path == "EARLY_CALLBACK":
+                assert callback(attempt, "valid").status_code == 202
+            return InitiationResult(
+                accepted=True,
+                provider_reference="ACQ-REFERENCE-01",
+                request_reference=attempt.request_reference,
+                provider_status="ACCEPTED",
+            )
+
+        def query_status(self, *, attempt):
+            return ProviderEvent(
+                provider_reference=attempt.provider_reference,
+                request_reference=attempt.request_reference,
+                event_type="PAYMENT",
+                status="SUCCEEDED",
+                amount=attempt.requested_amount,
+                currency="KES",
+                event_id="ACQ-EVENT-01",
+            )
+
+        def authenticate_event(self, *, headers, payload, raw_body=b""):  # noqa: ARG002
+            return headers.get("X-Test-Signature") == "valid" and b'"request_reference"' in raw_body
+
+        def parse_event(self, *, headers, payload):  # noqa: ARG002
+            return ProviderEvent(
+                provider_reference=payload["provider_reference"],
+                request_reference=payload["request_reference"],
+                event_type="PAYMENT",
+                status=payload["status"],
+                amount=Decimal(payload["amount"]),
+                currency=payload["currency"],
+                event_id=payload["event_id"],
+            )
+
+    monkeypatch.setitem(ADAPTERS, "TEST_ACQUIRER", lambda **kwargs: CardAdapter(**kwargs))
+    monkeypatch.setenv("TIBATRACE_TEST_CARD_KEY", "tenant-card-secret")
+    monkeypatch.setenv(
+        "TIBATRACE_CHECKOUT_CONNECTIONS",
+        json.dumps(
+            {
+                str(world["tenant"].pk): {
+                    "CARD": {
+                        "enabled": True,
+                        "validated": True,
+                        "provider_code": "TEST_ACQUIRER",
+                        "terminal_id": "CARD-TERM-01",
+                        "terminals": {"POS-RETAIL-01": "CARD-TERM-01"},
+                        "credentials_env": {"api_key": "TIBATRACE_TEST_CARD_KEY"},
+                    }
+                }
+            }
+        ),
+    )
+    draft = prepare_sale_for_payment(world)
+    path = f"/api/pos/retail/transactions/{draft['id']}/checkout/"
+
+    manual = world["client"].post(
+        path,
+        {
+            "operation": "collect",
+            "device_id": "POS-RETAIL-01",
+            "tender_type": "CARD",
+            "amount": "250",
+            "reference": "MANUAL-REF",
+            "idempotency_key": "card-manual-blocked",
+        },
+        format="json",
+    )
+    assert manual.status_code == 400
+    assert not PaymentTender.all_objects.exists()
+
+    initiated = world["client"].post(
+        path,
+        {
+            "operation": "initiate",
+            "device_id": "POS-RETAIL-01",
+            "tender_type": "CARD",
+            "amount": "250",
+            "idempotency_key": "card-provider-01",
+        },
+        format="json",
+    )
+    assert initiated.status_code == 200, initiated.data
+    assert initiated.data["intent"]["tenders"][0]["provider"] == "TEST_ACQUIRER"
+    assert initiated.data["intent"]["tenders"][0]["status"] == (
+        "SETTLED" if completion_path == "EARLY_CALLBACK" else "PENDING"
+    )
+    assert initiated.data["intent"]["amount_unallocated"] == "0.00"
+    assert observed["context"] == {
+        "currency": "KES",
+        "device_id": "POS-RETAIL-01",
+        "register_id": "RETAIL-01",
+        "terminal_id": "CARD-TERM-01",
+    }
+    assert "tenant-card-secret" not in str(initiated.data)
+
+    from apps.prescription.payment_services import PaymentSettlementService
+
+    with pytest.raises(ValidationError, match="authenticated provider"):
+        PaymentSettlementService.confirm_card(
+            tender=PaymentTender.all_objects.get(provider="TEST_ACQUIRER"), approval_reference="FORGED-MANUAL",
+            approved_amount=Decimal("250"), actor=world["operator"], idempotency_key="manual-bypass",
+        )
+
+    attempt = PaymentAttempt.all_objects.get(provider="TEST_ACQUIRER")
+    if completion_path == "CALLBACK":
+        assert callback(attempt, "forged").status_code == 202
+        assert not PaymentSettlement.all_objects.exists()
+        # An unauthenticated event must not reserve its event id and prevent
+        # the provider's authentic redelivery from settling the payment.
+        assert callback(attempt, "valid").status_code == 202
+        assert callback(attempt, "valid").status_code == 202
+
+    if completion_path == "CALLBACK":
+        from apps.prescription.tasks import reconcile_checkout_providers
+
+        reconcile_checkout_providers()
+        reconciled = world["client"].get(path)
+    else:
+        reconciled = world["client"].post(
+            path, {"operation": "query", "device_id": "POS-RETAIL-01"}, format="json"
+        )
+    assert reconciled.status_code == 200, reconciled.data
+    assert reconciled.data["intent"]["status"] == "SETTLED"
+    settlement = PaymentSettlement.all_objects.get(payment_tender__provider="TEST_ACQUIRER")
+    assert settlement.source == ("PROVIDER_QUERY" if completion_path == "QUERY" else "PROVIDER_EVENT")
+    assert reconciled.data["sale_state"] == "COMPLETED"
+    assert RetailCashReceipt.all_objects.count() == 1
+    replayed = world["client"].post(
+        path, {"operation": "initiate", "device_id": "POS-RETAIL-01", "tender_type": "CARD",
+               "amount": "250", "idempotency_key": "card-provider-01"}, format="json",
+    )
+    assert replayed.status_code == 200, replayed.data
+    monkeypatch.setenv("TIBATRACE_CHECKOUT_CONNECTIONS", "{}")
+    recovered = world["client"].post(
+        path, {"operation": "initiate", "device_id": "POS-RETAIL-01", "tender_type": "CARD",
+               "amount": "250", "idempotency_key": "card-provider-01"}, format="json",
+    )
+    assert recovered.status_code == 200, recovered.data
+    assert observed["calls"] == 1
+
+
+@pytest.mark.parametrize("outcome", ["TIMEOUT", "DECLINED", "UNKNOWN"])
+def test_integrated_card_retains_original_request_through_provider_failure(world, monkeypatch, outcome):  # noqa: F811
+    import json
+
+    from tests.test_pos_payment_connections import StubCardAdapter
+
+    from apps.prescription.payment_providers import ADAPTERS, InitiationResult
+
+    calls = []
+
+    class CardAdapter(StubCardAdapter):
+        def initiate(self, *, attempt, context):  # noqa: ARG002
+            calls.append(attempt.pk)
+            if outcome == "TIMEOUT":
+                raise TimeoutError("The remote outcome is unknown.")
+            return InitiationResult(
+                accepted=False, request_reference=attempt.request_reference,
+                failure_code="DECLINED" if outcome == "DECLINED" else "UNKNOWN_OUTCOME",
+            )
+
+    monkeypatch.setitem(ADAPTERS, "TEST_ACQUIRER", CardAdapter)
+    monkeypatch.setenv("TIBATRACE_CHECKOUT_CONNECTIONS", json.dumps({
+        str(world["tenant"].pk): {"CARD": {"enabled": True, "validated": True, "provider_code": "TEST_ACQUIRER"}}
+    }))
+    draft = prepare_sale_for_payment(world)
+    path = f"/api/pos/retail/transactions/{draft['id']}/checkout/"
+    command = {"operation": "initiate", "device_id": "POS-RETAIL-01", "tender_type": "CARD",
+               "amount": "250", "idempotency_key": "card-failure-01"}
+    if outcome == "TIMEOUT":
+        with pytest.raises(TimeoutError):
+            world["client"].post(path, command, format="json")
+    else:
+        assert world["client"].post(path, command, format="json").status_code == 200
+    attempt = PaymentAttempt.all_objects.get(provider="TEST_ACQUIRER")
+    assert attempt.status == ("FAILED" if outcome == "DECLINED" else "STARTED")
+    assert attempt.payment_tender.status == ("FAILED" if outcome == "DECLINED" else "PENDING")
+    replayed = world["client"].post(path, command, format="json")
+    assert replayed.status_code == 200, replayed.data
+    assert replayed.data["intent"]["amount_unallocated"] == ("250.00" if outcome == "DECLINED" else "0.00")
+    assert len(calls) == 1
     assert not PaymentSettlement.all_objects.exists()
 
 

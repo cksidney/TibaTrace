@@ -20,12 +20,22 @@ import { RegisterCentre } from '../src/components/tibatrace/RegisterCentre.js';
 import { SyncCentre } from '../src/components/tibatrace/SyncCentre.js';
 import { BlockingReason, StatusBadge } from '../src/components/tibatrace/StatusBadge.js';
 import { WorkflowRibbon } from '../src/components/tibatrace/WorkflowRibbon.js';
+import { PrescriptionIntake } from '../src/components/tibatrace/PrescriptionIntake.js';
 import type { ClinicalStatus } from '@dawatrace/shared/design-system/index.js';
 import type { StageView } from '@dawatrace/shared/design-system/index.js';
 import type { OfflineAction } from '@dawatrace/shared/dispensing/index.js';
 import type { ReactNode } from 'react';
 
 const visualFetch: typeof fetch = async () => new Response(null, { status: 503 });
+const intakeFetch: typeof fetch = async input => new Response(JSON.stringify(String(input).includes('/options/') ? {
+  branch: { id: 'fixture-branch', name: 'Demo pharmacy · RX intake' },
+  capabilities: { receive: true, upload: true, read_documents: true, validate: true, review: true, verify: true, open_episode: true },
+  patients: [{ id: 'fixture-patient', name: 'Demo Patient · PAT-DEMO' }],
+  practitioners: [{ id: 'fixture-prescriber', name: 'Demo Prescriber · REG-DEMO' }],
+  products: [{ id: 'fixture-sku', name: 'Demo medicine 500 mg', unit: 'tablet' }], stores: [], orders: [],
+  feeds: [{ code: 'DHA', available: false, message: 'Tenant connector, credentials and validation required' }],
+  max_files: 5, max_file_bytes: 5 * 1024 * 1024, max_total_bytes: 8 * 1024 * 1024,
+} : []), { status: 200 });
 const recoveryEntry: OfflineAction = {
   id: 'journal-action-1',
   type: 'PAYMENT',
@@ -41,6 +51,7 @@ const recoveryEntry: OfflineAction = {
 };
 
 export interface Scenario {
+  readonly layoutOnly?: boolean;
   readonly id: string;
   readonly title: string;
   /** Why this state is in the catalogue. Read during baseline review. */
@@ -124,6 +135,11 @@ function stages(active: string, overrides: Partial<Record<string, Partial<StageV
 }
 
 export const SCENARIOS: readonly Scenario[] = [
+  {
+    id: 'rx-intake', title: 'RX intake workspace', width: 1280, layoutOnly: true,
+    rationale: 'Interactive intake is checked with keyboard, scroll and responsive layout assertions, plus captured review artifacts.',
+    render: () => <PrescriptionIntake apiFetch={intakeFetch} deviceId="fixture-till" onEpisodeOpened={async () => {}} />,
+  },
   // ------------------------------------------------------------ status badges
   {
     id: 'status-badge-all',
@@ -736,5 +752,7 @@ export const SCENARIOS: readonly Scenario[] = [
     ),
   },
 ];
+
+
 
 export const SCENARIOS_BY_ID = new Map(SCENARIOS.map((scenario) => [scenario.id, scenario]));

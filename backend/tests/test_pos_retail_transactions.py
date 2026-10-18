@@ -20,6 +20,7 @@ from apps.medicines.models import (
     CommercialSKU,
     DoseForm,
     ManufacturedMedicinalProduct,
+    Manufacturer,
     PackageDefinition,
 )
 from apps.organizations.models import Location, Organization
@@ -69,13 +70,20 @@ def world(db):
         code="POS-CMP",
         canonical_name="Retail product",
         dose_form=dose_form,
+        prescription_classification="OTC",
         status=ClinicalMedicinalProduct.STATUS_ACTIVE,
+    )
+    manufacturer = Manufacturer.all_objects.create(
+        tenant=tenant,
+        code="POS-MFR",
+        legal_name="Retail Product Manufacturer",
     )
     manufactured = ManufacturedMedicinalProduct.objects.create(
         tenant=tenant,
         code="POS-MP",
         brand_name="Retail product",
         clinical_product=clinical,
+        manufacturer=manufacturer,
         status=ManufacturedMedicinalProduct.STATUS_ACTIVE,
     )
     package = PackageDefinition.objects.create(
@@ -189,6 +197,43 @@ def test_retail_draft_is_bound_to_authoritative_register_context(world):
     assert draft["state"] == "DRAFT"
 
 
+def test_retail_draft_rejects_active_but_non_sellable_inventory_location(world):
+    receiving = InventoryLocation.all_objects.create(
+        tenant=world["tenant"],
+        branch=world["branch"],
+        location_code="RETAIL-RECEIVING",
+        name="Receiving bay",
+        location_type=InventoryLocation.LocationType.RECEIVING,
+        status=InventoryLocation.Status.ACTIVE,
+    )
+
+    response = world["client"].post(
+        "/api/pos/retail/transactions/draft/",
+        {"device_id": "POS-RETAIL-01", "store_id": str(receiving.pk)},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert "sellable store" in str(response.json()).lower()
+    assert not PosTransaction.all_objects.filter(store=receiving).exists()
+
+
+def test_retail_basket_rechecks_store_type_after_draft_creation(world):
+    draft = create_draft(world)
+    world["store"].location_type = InventoryLocation.LocationType.RECEIVING
+    world["store"].save(update_fields=["location_type", "updated_at"])
+
+    response = world["client"].post(
+        f"/api/pos/retail/transactions/{draft['id']}/add-line/",
+        {"device_id": "POS-RETAIL-01", "sku_id": str(world["sku"].pk), "quantity": "1"},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert "sellable store" in str(response.json()).lower()
+    assert not PosTransactionLine.all_objects.filter(transaction_id=draft["id"]).exists()
+
+
 def test_barcode_scan_adds_then_increments_authoritative_line(world):
     draft = create_draft(world)
     payload = {"device_id": "POS-RETAIL-01", "barcode": "618000001", "quantity": "2.0000"}
@@ -226,6 +271,60 @@ def test_catalogue_hides_items_without_an_authoritative_price(world):
 
     assert response.status_code == 200
     assert response.json() == []
+
+
+def test_retail_checkout_blocks_prescription_and_controlled_products(world):
+    clinical = world["sku"].manufactured_product.clinical_product
+    clinical.prescription_classification = "PRESCRIPTION_ONLY"
+    clinical.save(update_fields=["prescription_classification", "updated_at"])
+    draft = create_draft(world)
+
+    search = world["client"].post(
+        "/api/pos/retail/catalogue/search/",
+        {
+            "device_id": "POS-RETAIL-01",
+            "store_id": str(world["store"].pk),
+            "query": "Retail product",
+        },
+        format="json",
+    )
+    add_line = world["client"].post(
+        f"/api/pos/retail/transactions/{draft['id']}/add-line/",
+        {"device_id": "POS-RETAIL-01", "sku_id": str(world["sku"].pk), "quantity": "1"},
+        format="json",
+    )
+
+    assert search.status_code == 200 and search.json() == []
+    assert add_line.status_code == 400
+    assert "clinical" in str(add_line.json()).lower()
+    assert not PosTransactionLine.all_objects.filter(transaction_id=draft["id"]).exists()
+
+    clinical.prescription_classification = "OTC"
+    clinical.controlled_classification = "CONTROLLED"
+    clinical.save(update_fields=["prescription_classification", "controlled_classification", "updated_at"])
+    controlled_add = world["client"].post(
+        f"/api/pos/retail/transactions/{draft['id']}/add-line/",
+        {"device_id": "POS-RETAIL-01", "sku_id": str(world["sku"].pk), "quantity": "1"},
+        format="json",
+    )
+    assert controlled_add.status_code == 400
+    assert "controlled" in str(controlled_add.json()).lower()
+
+
+def test_retail_checkout_rechecks_catalogue_fitness_at_sale_time(world):
+    world["sku"].manufactured_product.manufacturer.is_active = False
+    world["sku"].manufactured_product.manufacturer.save(update_fields=["is_active", "updated_at"])
+    draft = create_draft(world)
+
+    response = world["client"].post(
+        f"/api/pos/retail/transactions/{draft['id']}/add-line/",
+        {"device_id": "POS-RETAIL-01", "sku_id": str(world["sku"].pk), "quantity": "1"},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert "manufacturer" in str(response.json()).lower()
+    assert not PosTransactionLine.all_objects.filter(transaction_id=draft["id"]).exists()
 
 
 def test_catalogue_never_counts_expired_batch_stock_as_sellable(world):

@@ -27,7 +27,7 @@ from apps.prescription.payment_models import (
     PaymentSettlement,
     PaymentTender,
 )
-from apps.prescription.payment_providers import ProviderEvent, get_adapter
+from apps.prescription.payment_providers import ProviderEvent, get_adapter, normalize_provider_code
 from apps.prescription.payment_services import (
     PaymentSettlementService,
     PaymentStateProjectionService,
@@ -50,6 +50,7 @@ class PaymentAttemptService:
     def initiate(*, tender, actor, provider_code="FAKE", context=None, adapter=None):
         """Ask a provider to collect. Records that we asked -- nothing more."""
         _require_capability(actor, tender.tenant_id, "pos.payment.provider.initiate")
+        provider_code = normalize_provider_code(provider_code)
 
         tender = PaymentTender.all_objects.select_for_update().get(pk=tender.pk)
         adapter = adapter or get_adapter(provider_code)
@@ -102,7 +103,10 @@ class PaymentAttemptService:
 class PaymentEventService:
     @staticmethod
     @transaction.atomic
-    def apply(*, tenant, provider_code, event: ProviderEvent, raw_payload=None, authenticated=True):
+    def apply(
+        *, tenant, provider_code, event: ProviderEvent, raw_payload=None, authenticated=True,
+        settlement_source=PaymentSettlement.Source.PROVIDER_EVENT,
+    ):
         """Apply a provider event, exactly once.
 
         Returns (PaymentProviderEvent, PaymentSettlement | None). A duplicate,
@@ -110,6 +114,15 @@ class PaymentEventService:
         must leave a trace without moving money.
         """
         raw_payload = raw_payload or {}
+        if settlement_source not in {
+            PaymentSettlement.Source.PROVIDER_EVENT,
+            PaymentSettlement.Source.PROVIDER_QUERY,
+        }:
+            raise ValidationError("Provider settlement source is invalid.")
+        try:
+            provider_code = normalize_provider_code(provider_code)
+        except ValueError as exc:
+            raise ValidationError(str(exc)) from exc
         candidate = PaymentAttempt.all_objects.filter(tenant=tenant, provider=provider_code, request_reference=event.request_reference).first()
         if candidate is None and event.provider_reference:
             candidate = PaymentAttempt.all_objects.filter(tenant=tenant, provider=provider_code, provider_reference=event.provider_reference).first()
@@ -127,7 +140,9 @@ class PaymentEventService:
                     tenant=tenant,
                     provider=provider_code,
                     event_type=event.event_type,
-                    event_id=event.event_id,
+                    # The identifier on an unauthenticated payload is attacker
+                    # controlled; it must not reserve a legitimate event id.
+                    event_id="",
                     provider_reference=event.provider_reference,
                     request_reference=event.request_reference,
                     payload_hash=payload_hash(raw_payload),
@@ -184,27 +199,42 @@ class PaymentEventService:
             record.save(update_fields=["processing_status", "processing_error"])
             return record, None
 
+        if (
+            attempt.provider_reference
+            and event.provider_reference
+            and attempt.provider_reference != event.provider_reference
+        ):
+            record.processing_status = PaymentProviderEvent.ProcessingStatus.REJECTED
+            record.processing_error = "Provider reference does not match the payment attempt."
+            record.save(update_fields=["processing_status", "processing_error"])
+            return record, None
+
         if attempt.status == PaymentAttempt.Status.SUCCEEDED:
             record.processing_status = PaymentProviderEvent.ProcessingStatus.DUPLICATE
             record.save(update_fields=["processing_status"])
             return record, None
+        if not attempt.provider_reference and event.provider_reference:
+            attempt.provider_reference = event.provider_reference
+            attempt.save(update_fields=["provider_reference"])
         if event.status != "SUCCEEDED":
-            attempt.status = (
-                PaymentAttempt.Status.FAILED
-                if event.status == "FAILED"
-                else PaymentAttempt.Status.STARTED
-            )
-            attempt.completed_at = timezone.now() if event.status == "FAILED" else None
-            attempt.save(update_fields=["status", "completed_at"])
-            if event.status == "FAILED" and attempt.payment_tender.settled_amount == 0:
-                PaymentTender.all_objects.filter(tenant=tenant, pk=attempt.payment_tender_id).update(status="FAILED")
+            if event.status in {"FAILED", "CANCELLED"}:
+                attempt.status = event.status
+                attempt.completed_at = timezone.now()
+                attempt.save(update_fields=["status", "completed_at"])
+                if attempt.payment_tender.settled_amount == 0:
+                    PaymentTender.all_objects.filter(tenant=tenant, pk=attempt.payment_tender_id).update(status=event.status)
+            elif event.status != "PENDING":
+                record.processing_status = PaymentProviderEvent.ProcessingStatus.REJECTED
+                record.processing_error = "Unknown provider event status."
+                record.save(update_fields=["processing_status", "processing_error"])
+                return record, None
             record.processing_status = PaymentProviderEvent.ProcessingStatus.PROCESSED
             record.save(update_fields=["processing_status"])
             return record, None
 
         # A success for the wrong amount is not settled silently. Absorbing it
         # would leave the ledger disagreeing with the provider.
-        if event.amount is None or abs(event.amount - attempt.requested_amount) > AMOUNT_TOLERANCE:
+        if event.amount is None or not event.amount.is_finite() or abs(event.amount - attempt.requested_amount) > AMOUNT_TOLERANCE:
             record.processing_status = PaymentProviderEvent.ProcessingStatus.REJECTED
             record.processing_error = (
                 f"Amount mismatch: provider reported {event.amount}, "
@@ -213,7 +243,9 @@ class PaymentEventService:
             record.save(update_fields=["processing_status", "processing_error"])
             return record, None
 
-        if event.currency and event.currency != attempt.payment_tender.payment_intent.currency:
+        if (provider_code != "FAKE" and not event.currency) or (
+            event.currency and event.currency != attempt.payment_tender.payment_intent.currency
+        ):
             record.processing_status = PaymentProviderEvent.ProcessingStatus.REJECTED
             record.processing_error = "Provider currency does not match the payment intent."
             record.save(update_fields=["processing_status", "processing_error"])
@@ -221,7 +253,7 @@ class PaymentEventService:
         settlement = PaymentSettlementService.record(
             tender=attempt.payment_tender,
             amount=event.amount,
-            source=PaymentSettlement.Source.PROVIDER_EVENT,
+            source=settlement_source,
             # Keyed on the provider's own event id, so a redelivery that somehow
             # reaches here still collapses onto one settlement.
             idempotency_key=f"provider-event:{provider_code}:{event.event_id or event.provider_reference}",

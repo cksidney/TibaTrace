@@ -35,6 +35,7 @@ async function openScenario(page: import('@playwright/test').Page, id: string) {
 for (const scenario of SCENARIOS) {
   test.describe(scenario.title, () => {
     test(`renders as approved — ${scenario.id}`, async ({ page }) => {
+      test.skip(scenario.layoutOnly === true, 'This interactive scenario has dedicated workflow and layout checks.');
       test.skip(
         !process.env.CI,
         'Approved pixel baselines are captured and reviewed only by the CI visual job.',

@@ -1,5 +1,6 @@
 from rest_framework.routers import DefaultRouter
 
+from apps.prescription.pos_dispensing_api.intake import PosPrescriptionIntakeViewSet
 from apps.prescription.pos_dispensing_api.views import (
     PosDeviceHealthViewSet,
     PosDispensingViewSet,
@@ -8,6 +9,7 @@ from apps.prescription.pos_dispensing_api.views import (
 )
 
 router = DefaultRouter()
+router.register("intake", PosPrescriptionIntakeViewSet, basename="pos-prescription-intake")
 router.register("episodes", PosDispensingViewSet, basename="pos-dispensing-episodes")
 router.register("shifts", PosShiftViewSet, basename="pos-dispensing-shifts")
 router.register("devices", PosDeviceHealthViewSet, basename="pos-dispensing-devices")

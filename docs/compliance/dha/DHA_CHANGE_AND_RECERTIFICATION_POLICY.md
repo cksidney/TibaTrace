@@ -4,6 +4,8 @@
 **Framework Version**: 2025 Certification Framework  
 **Baseline Release**: `tibatrace-v0.2.0-rc5` (`f365e778f9f30ab590bc0481c1ea006bb2664cef`)  
 
+> **Historical template; approval and current regulatory mapping are open.** This draft is scoped to an old release baseline and is not evidence of an adopted company policy or DHA decision. The system owner must approve it and verify the current DHA change/recertification requirements before use. The current TibaTrace system DPIA remains **NOT APPROVED**.
+
 ---
 
 ## 1. Purpose and Scope

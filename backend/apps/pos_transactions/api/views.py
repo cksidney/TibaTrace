@@ -12,7 +12,7 @@ from apps.patients.models import Patient
 from apps.pos_shift.models import PosRegister
 from apps.pos_transactions.models import PosTransaction
 from apps.pos_transactions.refunds import RetailRefundService
-from apps.pos_transactions.services import PosRetailService
+from apps.pos_transactions.services import SELLABLE_RETAIL_LOCATION_TYPES, PosRetailService
 from apps.prescription.pos_permissions import scope_to_actor_branches
 from apps.tenancy.models import Tenant
 
@@ -330,6 +330,22 @@ class RetailCatalogueViewSet(viewsets.ViewSet):
         branch = _branch_for_device(tenant=tenant, device_id=device_id)
         rows = scope_to_actor_branches(InventoryLocation.all_objects.filter(
             tenant=tenant, branch=branch, status="ACTIVE",
+            location_type__in=SELLABLE_RETAIL_LOCATION_TYPES,
+        ), request).values("id", "branch", "name", "location_type", "status", "quarantine_capability")
+        return Response(list(rows))
+
+    @action(detail=False, methods=["get"], url_path="return-locations")
+    def return_locations(self, request):
+        from apps.inventory.models import InventoryLocation
+        tenant = _tenant(request)
+        device_id = request.headers.get("X-POS-Device-ID") or request.query_params.get("device_id", "")
+        branch = _branch_for_device(tenant=tenant, device_id=device_id)
+        rows = scope_to_actor_branches(InventoryLocation.all_objects.filter(
+            tenant=tenant,
+            branch=branch,
+            status=InventoryLocation.Status.ACTIVE,
+            location_type=InventoryLocation.LocationType.QUARANTINE,
+            quarantine_capability=True,
         ), request).values("id", "branch", "name", "location_type", "status", "quarantine_capability")
         return Response(list(rows))
 

@@ -27,6 +27,7 @@ from apps.prescription.payment_models import (
     PaymentSettlement,
     PaymentTender,
 )
+from apps.prescription.payment_providers import ADAPTERS, get_adapter, normalize_provider_code
 from apps.prescription.services.clinical_dispensing import _require_capability
 from apps.workflows.service import emit_event
 
@@ -264,8 +265,27 @@ class PaymentTenderService:
         operator_shift=None,
     ):
         """Allocate part of the intent to a payment method."""
+        try:
+            provider = normalize_provider_code(provider)
+        except ValueError as exc:
+            raise ValidationError(str(exc)) from exc
+        if tender_type not in {"CASH", "CARD", "MPESA"}:
+            raise ValidationError("Unsupported payment tender type.")
+        if tender_type == "CASH" and provider != "MANUAL":
+            raise ValidationError("Cash tenders must use the manual cash settlement path.")
+        if tender_type == "MPESA" and provider not in {"MPESA", "FAKE"}:
+            raise ValidationError("M-PESA tenders must use the configured Daraja provider.")
+        if tender_type == "CARD" and provider not in {"MANUAL", "FAKE"} and provider not in ADAPTERS:
+            raise ValidationError("The selected card provider adapter is not installed.")
+        if provider == "FAKE":
+            get_adapter("FAKE").validate_configuration(tenant=intent.tenant, branch=intent.branch)
         if intent.retail_transaction_id:
-            _require_capability(actor, intent.tenant_id, {"CASH": "pos.payment.cash.accept", "CARD": "pos.payment.card.confirm", "MPESA": "pos.payment.provider.initiate"}.get(tender_type, "pos.payment.tender.allocate"))
+            capability = (
+                "pos.payment.provider.initiate"
+                if tender_type == "MPESA" or (tender_type == "CARD" and provider not in {"MANUAL", "FAKE"})
+                else {"CASH": "pos.payment.cash.accept", "CARD": "pos.payment.card.confirm"}.get(tender_type, "pos.payment.tender.allocate")
+            )
+            _require_capability(actor, intent.tenant_id, capability)
         else:
             _require_capability(actor, intent.tenant_id, "pos.payment.tender.allocate")
         idempotency_key = str(idempotency_key or "").strip()
@@ -479,6 +499,14 @@ class PaymentSettlementService:
         _require_capability(actor, tender.tenant_id, "pos.payment.card.confirm")
         if tender.tender_type != "CARD":
             raise ValidationError("confirm_card requires a CARD tender.")
+        if tender.provider != "MANUAL":
+            raise ValidationError("Integrated card tenders require authenticated provider confirmation.")
+        from apps.prescription.payment_connections import card_manual_fallback_allowed, connection
+
+        if connection(tenant=tender.tenant, branch=tender.payment_intent.branch, provider="CARD").get("enabled") and not card_manual_fallback_allowed(
+            tenant=tender.tenant, branch=tender.payment_intent.branch
+        ):
+            raise ValidationError("Manual card confirmation is disabled for this tenant's integrated card terminal.")
         if not approval_reference:
             raise ValidationError("A card approval reference is required.")
         if PaymentTender.all_objects.filter(tenant_id=tender.tenant_id, provider=tender.provider,
@@ -555,6 +583,8 @@ class PaymentReversalService:
         reversal = PaymentReversal.all_objects.select_for_update().get(pk=reversal.pk)
         if reversal.status == PaymentReversal.Status.COMPLETED:
             return reversal
+        if reversal.settlement.payment_tender.provider not in {"MANUAL", "FAKE"}:
+            raise ValidationError("Integrated payments require their original provider's verified reversal workflow.")
         if actor is not None and reversal.requested_by_id == actor.id:
             raise ValidationError(
                 "A reversal must be approved by someone other than the requester."

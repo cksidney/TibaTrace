@@ -43,9 +43,16 @@ it('filters the real print queue without mutating or losing jobs', async () => {
 it('starts a scoped sale once even when clicked twice before the response', async () => {
   let resolveDraft!: (value: Response) => void;
   const draft = new Promise<Response>(resolve => { resolveDraft = resolve; });
-  const fetcher = vi.fn<typeof fetch>(async (input) => String(input).includes('/stores/')
-    ? response([{ id: 'store-1', name: 'Main pharmacy', status: 'ACTIVE', location_type: 'PHARMACY' }]) : draft);
+  const fetcher = vi.fn<typeof fetch>(async (input) => {
+    const path = String(input);
+    if (path.includes('/catalogue/stores/')) {
+      return response([{ id: 'store-1', name: 'Main pharmacy', status: 'ACTIVE', location_type: 'PHARMACY' }]);
+    }
+    if (path.includes('/catalogue/return-locations/')) return response([]);
+    return draft;
+  });
   await act(async () => root.render(<RetailWorkspace apiFetch={fetcher} deviceId="till-1" />));
+  expect(fetcher.mock.calls.some(([input]) => String(input).includes('/catalogue/return-locations/'))).toBe(true);
   const start = button('Start new sale');
   expect(container.querySelector('.pos-retail-search')?.contains(start)).toBe(true);
   await act(async () => { start.click(); start.click(); });

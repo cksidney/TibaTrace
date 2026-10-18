@@ -15,7 +15,7 @@ export function RetailReturns({ client, deviceId }: { client: PosRetailClient; d
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
   const key = useRef('');
-  useEffect(() => { void client.stores(deviceId).then(setStores).catch(() => setStores([])); }, [client, deviceId]);
+  useEffect(() => { void client.returnLocations(deviceId).then(setStores).catch(() => setStores([])); }, [client, deviceId]);
   const run = async (work: () => Promise<void>) => {
     setBusy(true); setNotice('');
     try { await work(); } catch (cause) { setNotice(cause instanceof Error ? cause.message : String(cause)); }

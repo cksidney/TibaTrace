@@ -37,9 +37,8 @@ TENDER_TYPES = (
     ("MPESA", "M-PESA"),
 )
 
-#: Providers. MANUAL covers tenders settled by a person at the till (cash, and
-#: card approval references keyed in from a standalone terminal) rather than by
-#: a provider API.
+#: Built-in provider values. Installed card adapters use their registered
+#: provider code in the ledger; these are defaults and known built-ins only.
 PROVIDER_CODES = (
     ("MANUAL", "Manual"),
     ("FAKE", "Fake provider (test/demo)"),
@@ -159,7 +158,7 @@ class PaymentTender(TenantConsistencyMixin, TimestampedModel):
         PaymentIntent, on_delete=models.PROTECT, related_name="tenders"
     )
     tender_type = models.CharField(max_length=20, choices=TENDER_TYPES)
-    provider = models.CharField(max_length=20, choices=PROVIDER_CODES, default="MANUAL")
+    provider = models.CharField(max_length=64, default="MANUAL")
 
     #: Which till session and operator this tender belongs to.
     #:
@@ -258,7 +257,7 @@ class PaymentAttempt(TenantConsistencyMixin, TimestampedModel):
     payment_tender = models.ForeignKey(
         PaymentTender, on_delete=models.PROTECT, related_name="attempts"
     )
-    provider = models.CharField(max_length=20, choices=PROVIDER_CODES)
+    provider = models.CharField(max_length=64)
     attempt_number = models.PositiveIntegerField(default=1)
 
     #: Our reference, generated before we call out, so a callback that arrives
@@ -378,7 +377,7 @@ class PaymentProviderEvent(TenantConsistencyMixin, TimestampedModel):
 
     tenant_relation_fields = ()
     tenant = models.ForeignKey("tenancy.Tenant", on_delete=models.CASCADE, related_name="+")
-    provider = models.CharField(max_length=20, choices=PROVIDER_CODES)
+    provider = models.CharField(max_length=64)
     event_type = models.CharField(max_length=64)
     #: Provider-assigned id for this notification, when the provider supplies
     #: one. This is what makes duplicate delivery detectable.

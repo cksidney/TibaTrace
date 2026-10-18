@@ -1,8 +1,18 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { PosRetailClient } from './client.js';
 
 describe('PosRetailClient', () => {
+  it('loads return custody locations from their dedicated endpoint', async () => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify([]), { status: 200 }));
+    const client = new PosRetailClient('/api/pos/retail', { fetcher: fetcher as typeof fetch });
+    await client.returnLocations('POS-01');
+    expect(fetcher).toHaveBeenCalledWith(
+      '/api/pos/retail/catalogue/return-locations/?device_id=POS-01',
+      expect.objectContaining({ method: 'GET' }),
+    );
+  });
+
   it('loads device-branch stores through the native POS allowlist', async () => {
     const fetcher = async (input: string | URL | Request) => {
       expect(String(input)).toBe('/api/pos/retail/catalogue/stores/?device_id=POS-01');

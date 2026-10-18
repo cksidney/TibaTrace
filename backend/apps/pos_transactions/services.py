@@ -19,6 +19,7 @@ from apps.inventory.models import (
 )
 from apps.inventory.services import FEFOAllocationService, InventoryLedgerService
 from apps.medicines.models import BranchAssortment, CommercialSKU, ProductIdentifier
+from apps.medicines.provisioning import CatalogueFitnessService
 from apps.pos_shift.authority import RegisterAuthority, RegisterAuthorityService
 from apps.pricing.catalogue import PriceCatalogue
 from apps.pricing.resolution import PricingContext, PricingError, money
@@ -27,6 +28,12 @@ from apps.workflows.service import emit_event
 from .models import PosTransaction, PosTransactionInventoryContext, PosTransactionLine, RetailCashReceipt
 
 logger = logging.getLogger(__name__)
+
+SELLABLE_RETAIL_LOCATION_TYPES = (
+    InventoryLocation.LocationType.STORE,
+    InventoryLocation.LocationType.PHARMACY,
+    InventoryLocation.LocationType.DISPENSARY,
+)
 
 
 def _require(actor, tenant_id, capability: str) -> None:
@@ -59,13 +66,17 @@ class PosRetailService:
             branch=branch,
             pk=store_id,
             status=InventoryLocation.Status.ACTIVE,
+            location_type__in=SELLABLE_RETAIL_LOCATION_TYPES,
         ).first()
         if store is None:
-            raise ValidationError("An active store for this branch is required.")
+            raise ValidationError("An active sellable store for this branch is required.")
         return store
 
     @staticmethod
     def _catalogue_item(*, tenant, branch, store, sku, quantity, customer=None) -> RetailCatalogueItem:
+        # Revalidate the location on every basket/payment transition. A store
+        # can be deactivated or reclassified after a draft was opened.
+        store = PosRetailService._store(tenant=tenant, branch=branch, store_id=store.pk)
         assortment = BranchAssortment.all_objects.filter(
             tenant=tenant,
             location=branch,
@@ -76,6 +87,23 @@ class PosRetailService:
             raise ValidationError("This item is not in the sellable branch assortment.")
         if sku.status != CommercialSKU.STATUS_ACTIVE or not sku.is_saleable:
             raise ValidationError("This item is not saleable.")
+
+        # Retail has no prescription screening or clinical verification step.
+        # Fail closed here even when a SKU was incorrectly marked saleable in
+        # the assortment, so the API cannot bypass the UI warning.
+        CatalogueFitnessService.assert_assortable(sku)
+        clinical = sku.manufactured_product.clinical_product
+        prescription_classification = (clinical.prescription_classification or "").strip().upper()
+        if prescription_classification != "OTC":
+            raise ValidationError(
+                "Retail checkout is limited to products classified OTC. "
+                "Process prescription and restricted medicines in Clinical."
+            )
+        controlled_classification = (clinical.controlled_classification or "").strip().upper()
+        if controlled_classification not in {"", "NONE"}:
+            raise ValidationError(
+                "Controlled medicines must be dispensed through Clinical."
+            )
 
         quantity = Decimal(str(quantity))
         context = PricingContext(

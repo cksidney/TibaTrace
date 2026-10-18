@@ -146,6 +146,18 @@ def test_accepted_push_returns_the_checkout_id():
     assert "accepted" in result.customer_message.lower()
 
 
+def test_success_response_without_checkout_id_is_unknown_and_not_retryable():
+    adapter = MpesaAdapter(
+        config=config(),
+        transport=transport_returning(200, {"ResponseCode": "0", "CustomerMessage": "Success"}),
+    )
+    result = adapter.initiate(attempt=FakeAttempt(), context={"phone_number": "0712345678"})
+    assert result.accepted is False
+    assert result.failure_code == "UNKNOWN_OUTCOME"
+    assert result.retryable is False
+    assert "reconcile" in result.failure_reason.lower()
+
+
 def test_acceptance_is_not_settlement():
     """The customer has been asked. Nothing says they paid."""
     adapter = MpesaAdapter(

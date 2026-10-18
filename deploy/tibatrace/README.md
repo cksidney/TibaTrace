@@ -13,7 +13,13 @@ TLS terminate at the dedicated subdomain instead.
    namespace with another application.
 3. Build, scan, sign, and publish immutable backend and HQ web images. Do not
    use a mutable tag such as `latest`.
-4. Create a host-encrypted backup policy for the `clinical-objects` volume.
+4. Provision the versioned clinical-object encryption keyring in the protected
+   production secret file. The backend requires an active AES-256-GCM key before
+   it starts in production and encrypts clinical object files in the application.
+   Add the two keyring settings shown in `.env.production.example` to the server
+   secret file; never commit the key material.
+   Docker named volumes are not encrypted by Compose: also use an encrypted host
+   volume and an encrypted backup policy for the `clinical-objects` volume.
    Production document uploads fail closed until a malware scanner returns a
    `CLEAN` result; configure that scanner before enabling document uploads.
 5. Store the real `.env.production` in the host secret manager or deployment
@@ -91,6 +97,24 @@ Before provisioning, verify that `28110`, `28111`, and `6382` are unused. Add
 `caddy validate` inside `farmtrust-caddy-1`, and reload only after the API and HQ
 container health checks pass.
 
+Before turning on clinical-document uploads or submitting encryption evidence,
+take a protected database and object-volume backup. Review the migration's
+integrity-checked dry-run count, then apply it during the approved maintenance
+window. Keep old key IDs until all required backups expire and verify document
+readback and hashes. The command is idempotent; it does not delete objects.
+Keep host-volume and backup encryption independently enabled as defense in
+depth. From the deployment directory, run it inside the live API container:
+
+```bash
+export TIBATRACE_ENV_FILE=/opt/tibatrace/secrets/.env.production
+docker compose --env-file "$TIBATRACE_ENV_FILE" \
+  -f docker-compose.yml -f docker-compose.server.yml \
+  exec api python manage.py migrate_clinical_objects_encryption
+docker compose --env-file "$TIBATRACE_ENV_FILE" \
+  -f docker-compose.yml -f docker-compose.server.yml \
+  exec api python manage.py migrate_clinical_objects_encryption --apply
+```
+
 The host PostgreSQL backup policy must include the dedicated TibaTrace database,
 and the `tibatrace_redis-data` and `tibatrace_clinical-objects` volumes require
 encrypted backups. Redis is not the system of record, but its persistence
@@ -103,3 +127,12 @@ the migration command first, retain the previous image reference, and roll back
 application containers only after confirming the migration is reversible. Restore
 from the managed database and clinical-object backup when a data rollback is
 required; do not rely on Docker volumes as the sole recovery mechanism.
+
+## Prescription source intake
+
+RX source upload requires the private malware scanner and document encryption
+settings in `.env.production.example`. Apply prescription migration `0020` and
+build the updated Windows client. See
+[`POS_RX_INTAKE_GUIDE.md`](../../docs/POS_RX_INTAKE_GUIDE.md) for limits, camera
+validation and tenant EMR/DHA commissioning. Missing scanner configuration blocks
+production uploads; tenant feeds remain disabled until explicitly commissioned.

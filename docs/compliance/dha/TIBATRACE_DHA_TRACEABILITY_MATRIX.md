@@ -5,6 +5,8 @@
 **Integration Branch**: `integration/national-health-regulatory-foundation`  
 **Assessment Date**: 2026-08-02  
 
+> **Historical internal traceability draft.** Its `COMPLIANT_EVIDENCED` and count fields are internal labels from the rc10 baseline, not DHA findings or present-day proof. Several referenced paths/claims may no longer match the current repository. Rebuild the matrix from the exact release and attach source/test artifacts before submission. The current TibaTrace system DPIA remains **NOT APPROVED**.
+
 ---
 
 ## 1. Traceability Summary

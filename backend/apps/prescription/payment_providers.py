@@ -18,6 +18,7 @@ the ledger:
 from __future__ import annotations
 
 import hmac
+import re
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any, Protocol
@@ -67,7 +68,7 @@ class PaymentProviderAdapter(Protocol):
 
     def query_status(self, *, attempt) -> ProviderEvent | None: ...
 
-    def authenticate_event(self, *, headers: dict[str, str], payload: dict[str, Any]) -> bool: ...
+    def authenticate_event(self, *, headers: dict[str, str], payload: dict[str, Any], raw_body: bytes = b"") -> bool: ...
 
     def parse_event(self, *, headers: dict[str, str], payload: dict[str, Any]) -> ProviderEvent: ...
 
@@ -176,7 +177,7 @@ class FakeProviderAdapter:
             return self._event(attempt, status="FAILED")
         return self._event(attempt, status="SUCCEEDED")
 
-    def authenticate_event(self, *, headers: dict[str, str], payload: dict[str, Any]) -> bool:
+    def authenticate_event(self, *, headers: dict[str, str], payload: dict[str, Any], raw_body: bytes = b"") -> bool:
         """Constant-time comparison of a shared-secret signature.
 
         An unsigned or wrongly-signed event is refused outright: an inbound
@@ -227,18 +228,40 @@ class FakeProviderAdapter:
         )
 
 
-#: Registry. A provider becomes usable only once it is listed here, so an
-#: unimplemented adapter cannot be selected by configuration alone.
-ADAPTERS: dict[str, type] = {
-    FakeProviderAdapter.provider_code: FakeProviderAdapter,
-}
+#: Registry. A provider becomes usable only once an adapter is installed here,
+#: so tenant configuration alone cannot activate an unimplemented connector.
+ADAPTERS: dict[str, type] = {FakeProviderAdapter.provider_code: FakeProviderAdapter}
+
+
+def normalize_provider_code(provider_code: str) -> str:
+    code = str(provider_code or "").strip().upper()
+    if not re.fullmatch(r"[A-Z][A-Z0-9_]{1,63}", code):
+        raise ValueError("Provider codes must be stable uppercase identifiers.")
+    return code
+
+
+def register_adapter(provider_code: str, adapter_factory, *, replace: bool = False) -> None:
+    """Register an installed provider connector by stable server-side code.
+
+    Tenant configuration selects a registered code; it cannot import a Python
+    path or provide executable configuration. Factories for tenant configured
+    card providers receive ``tenant``, ``branch``, sanitized ``config`` and a
+    resolved ``credentials`` mapping.
+    """
+    code = normalize_provider_code(provider_code)
+    if code in ADAPTERS and not replace:
+        raise ValueError(f"Payment adapter {code!r} is already registered.")
+    if not callable(adapter_factory):
+        raise TypeError("Payment adapter factories must be callable.")
+    ADAPTERS[code] = adapter_factory
 
 
 def get_adapter(provider_code: str, **kwargs):
-    adapter = ADAPTERS.get(provider_code)
-    if adapter is None:
+    code = normalize_provider_code(provider_code)
+    adapter_factory = ADAPTERS.get(code)
+    if adapter_factory is None:
         raise ValueError(
-            f"No payment adapter is registered for {provider_code!r}. "
+            f"No payment adapter is registered for {code!r}. "
             "A tender cannot be settled through an unimplemented provider."
         )
-    return adapter(**kwargs)
+    return adapter_factory(**kwargs)

@@ -4,6 +4,8 @@
 **System Evaluated**: TibaTrace Enterprise Platform  
 **Target Release**: `tibatrace-v0.2.0-rc5`  
 
+> **Planned demonstration script only.** No DHA audit, certification test, or pass result is evidenced by this script. Its target release is historical; revalidate every step and fixture against the exact current release before use. The current TibaTrace system DPIA remains **NOT APPROVED**.
+
 ---
 
 ## Demonstration Flow & Verification Protocol

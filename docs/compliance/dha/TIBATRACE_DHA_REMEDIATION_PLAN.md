@@ -4,6 +4,8 @@
 **Assessment Date**: 2026-08-01  
 **Target Release for Full Compliance**: `tibatrace-v0.2.0-rc2` / `v0.3.0`  
 
+> **Historical remediation draft; targets and gap states are stale.** This plan was prepared in August 2026 for old release targets and is not the current TibaTrace compliance status. Use the [current system DPIA gap closure register](../system/20_DPIA_GAP_CLOSURE_REGISTER.md) and verify all remaining DHA criteria against the current build. The current TibaTrace system DPIA remains **NOT APPROVED**.
+
 ---
 
 ## 1. Remediation Priority Framework

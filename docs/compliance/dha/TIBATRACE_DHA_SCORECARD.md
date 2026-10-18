@@ -4,9 +4,12 @@
 **Framework Version**: 2025 Certification Framework  
 **Baseline Release**: `tibatrace-v0.2.0-rc5` (`f365e778f9f30ab590bc0481c1ea006bb2664cef`)  
 **Evaluation Type**: INTERNAL EVIDENCE-BASED READINESS ASSESSMENT  
+**Assessment date**: 1 August 2026 — historical; it does not cover the current production release or the 17 October system DPIA review.
 
 > [!IMPORTANT]
-> This scorecard represents an internal evidence-backed assessment of TibaTrace software readiness. It does NOT constitute official certification by the Digital Health Agency.
+> **Historical and superseded for current decisions.** This scorecard's `CERTIFICATION READY` conclusion is not supported by current release evidence and must not be used as a current certification/readiness claim. The TibaTrace system/provider DPIA dated 17 October 2026 is **NOT APPROVED** pending owner evidence, control verification and sign-off. This scorecard is an internal historical estimate, not official DHA certification or a substitute for current DHA assessment.
+
+The DHA's current public certification guidance says evidence must include a completed system DPIA and encryption at rest/in transit; the guidance describes certification as applying to digital health systems used in healthcare facilities. TibaTrace must attach the current authority decision/certificate and release-specific evidence before claiming readiness. See the [DHA certification guidance](https://certification.dha.go.ke/) and [system categories](https://certification.dha.go.ke/systems).
 
 ---
 
@@ -25,7 +28,7 @@
 | 5. Stakeholder Meeting Features    | 70.0%               | PARTIAL / IN PROGRESS|
 | 6. Documentation Readiness Score   | 82.0%               | READINESS HIGH     |
 +------------------------------------+---------------------+--------------------+
-| OVERALL INTERNAL READINESS SCORE   | 81.5%               | CERTIFICATION READY|
+| OVERALL HISTORICAL INTERNAL SCORE  | 81.5%               | REASSESS — NOT CURRENT |
 +------------------------------------+---------------------+--------------------+
 ```
 
@@ -70,8 +73,8 @@
 
 ---
 
-## 3. Official Result Declaration
+## 3. Historical internal declaration — not a current or official result
 
-**Evaluation State**: `TIBATRACE_CERTIFICATION_READY`
+**Historical evaluation state**: `TIBATRACE_CERTIFICATION_READY` (recorded against the rc5 baseline on 1 August 2026; superseded for current decisions)
 
-TibaTrace possesses robust architectural compliance and core clinical dispensing safeguards. Remaining gaps are designated as P1/P2 remediation items in the accompanying Remediation Plan.
+This was an internal, version-specific readiness opinion. The current DHA applicability/classification, application status, certificate, conditions and permitted production scope are **not established by this scorecard**. Consult the Digital Health Agency and attach current authority evidence before representing TibaTrace as certified or ready for regulated clinical use.

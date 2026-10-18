@@ -187,9 +187,19 @@ class MpesaAdapter:
                 failure_code="PROVIDER_UNAVAILABLE", failure_reason="Daraja outcome is unknown. Reconcile before another request.", retryable=False)
         response_code = str(body.get("ResponseCode", ""))
         if status == 200 and response_code == "0":
+            checkout_request_id = str(body.get("CheckoutRequestID", "")).strip()
+            if not checkout_request_id:
+                return InitiationResult(
+                    accepted=False,
+                    request_reference=attempt.request_reference,
+                    provider_status="UNKNOWN",
+                    failure_code="UNKNOWN_OUTCOME",
+                    failure_reason="Daraja accepted the request without a checkout reference. Reconcile with the provider before retrying.",
+                    retryable=False,
+                )
             return InitiationResult(
                 accepted=True,
-                provider_reference=str(body.get("CheckoutRequestID", "")),
+                provider_reference=checkout_request_id,
                 request_reference=attempt.request_reference,
                 provider_status="ACCEPTED",
                 customer_message=str(body.get("CustomerMessage", "")),
@@ -209,6 +219,8 @@ class MpesaAdapter:
 
     def query_status(self, *, attempt) -> ProviderEvent | None:
         """Poll Daraja. Used when a callback never arrives."""
+        if not attempt.provider_reference:
+            return None
         timestamp = daraja_timestamp()
         payload = {
             "BusinessShortCode": self.config.short_code,
@@ -230,13 +242,14 @@ class MpesaAdapter:
             event_type="PAYMENT",
             status="SUCCEEDED" if result_code == "0" else "PENDING" if result_code in {"", "1037", "4999"} else "FAILED",
             amount=Decimal(str(attempt.requested_amount)) if result_code == "0" else None,
+            currency="KES",
             event_id=f"QUERY-{attempt.provider_reference}-{result_code or 'PENDING'}",
             raw_status=result_code,
         )
 
     # ------------------------------------------------------------------ events
 
-    def authenticate_event(self, *, headers: dict[str, str], payload: dict[str, Any]) -> bool:
+    def authenticate_event(self, *, headers: dict[str, str], payload: dict[str, Any], raw_body: bytes = b"") -> bool:
         """Authenticate an inbound callback.
 
         Daraja does not sign its callbacks, so authenticity rests on the

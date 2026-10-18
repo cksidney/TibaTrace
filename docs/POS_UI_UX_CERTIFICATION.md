@@ -122,9 +122,9 @@ repository requires the Django 5.1 API. The repository `.venv` runs Django
 | 44 | Independent final check | Partial | Windows components exist; separation-of-duties flow is incomplete. |
 | 45 | Payment amount and status | Implemented | Server-authoritative due and settled amounts are displayed; Android payment retains the current clinical summary. |
 | 46 | Cash payment | Implemented | Existing dispensing payment path is guarded and idempotent. |
-| 47 | Card payment | Partial | Manual approval tender only; terminal integration is absent. |
-| 48 | M-PESA payment | Blocked | Tender is disabled; no settlement integration exists. |
-| 49 | Split tender | Blocked | Shared helper exists but backend settlement rejects split tender. |
+| 47 | Card payment | Adapter-ready on server/Windows | Tenant/branch connector selection, initiation, authenticated callbacks and status recovery exist; actual acquirer adapters and terminal validation are tenant onboarding work. Manual approval has explicit fallback controls. |
+| 48 | M-PESA payment | Adapter-ready; tenant activation pending | Daraja STK and authenticated status querying exist. Credentials and provider validation are required before enabling a tenant. |
+| 49 | Split tender | Implemented on Windows checkout | One server ledger allocates cash, card and configured M-PESA parts. Pending provider allocations cannot be collected again; Android retains its legacy payment surface. |
 | 50 | Unknown-payment recovery | Implemented | Durable journal and server refresh prevent unsafe retries. |
 | 51 | Supply and collection separation | Implemented | Collection remains a separate idempotent server action. |
 | 52 | Receipt printing | Partial | Settlement creates one immutable receipt snapshot and branch/device queue job. Windows and Android provide retry, cancellation and permissioned reprint in deterministic simulator mode; no physical adapter is certified. |
@@ -355,3 +355,71 @@ checks pass at both till profiles. This remains software evidence only:
 physical cash drawer behaviour, report printing, scanner operation, complete
 retail medicine screening, device restart and screen-reader evidence remain
 outstanding. The decision remains exactly `POS_UI_UX_BLOCKED`.
+
+## Retail checkout safety and return custody increment (2026-10-18)
+
+The retail transaction service now fails closed unless a product is classified
+OTC, has no controlled classification, and its SKU, manufactured product,
+clinical product, package and manufacturer remain fit for sale. The same gate
+runs during search, add/scan, quantity changes, payment preparation and final
+settlement, so an assortment flag or stale basket cannot bypass the Clinical
+workflow. Retail drafts and basket transitions also revalidate that the chosen
+location is active and sellable. Sale locations and active quarantine return
+locations now have separate, tenant/branch-scoped API queries; physical returns
+must enter a quarantine location.
+
+This closes the retail checkout's Rx/control bypass and inventory-location
+confusion. It is a fail-closed OTC boundary, not retail clinical screening.
+Card collection remains an external-terminal reference workflow, Daraja still
+needs configured credentials and provider confirmation, VSCU and physical
+printer behaviour need live integration evidence, and retail visual/device
+certification remains outstanding. The decision remains exactly
+`POS_UI_UX_BLOCKED`.
+
+## Tenant payment integration readiness increment (2026-10-18)
+
+The server and Windows checkout now resolve card/Daraja settings per tenant,
+with explicit branch and device-to-terminal overrides. Credentials remain
+server-side environment references. Only installed card connector factories
+can be selected; enablement requires explicit validation. The till receives
+readiness metadata and distinguishes integrated requests from manual terminal
+approval. Integrated tenders cannot use the manual settlement endpoint.
+
+Provider initiation is persisted before external I/O. Timeouts remain pending,
+original command retries cannot initiate again, and credential/config changes
+do not hide a recorded command. Signed card callbacks receive the exact wire
+body, verify through the tenant's adapter, and cannot overwrite or duplicate a
+settlement. Invalid signatures cannot reserve legitimate event IDs. Scheduled
+reconciliation covers card and Daraja attempts, finishes callback-settled sales,
+and rotates unresolved requests through the bounded queue. Pending allocations
+are excluded from the amount available for a new collection. Integrated returns
+require the approved original-provider procedure; manual ledger reversals do
+not stand in for a provider refund.
+
+Validation on 2026-10-18:
+
+- Payment, provider, retail and refund regressions: **139 passed** using
+  `pytest --no-migrations`; the provider-field migration was also exercised by
+  the migration-enabled payment run.
+- Full Windows POS suite: **123 passed** across 13 files.
+- Windows TypeScript check and production renderer build: passed.
+- Django system check, migration drift check, Ruff and diff whitespace check:
+  passed.
+
+Tenant-specific acquirer connectors, credentials, provider sandbox validation
+and physical terminal evidence are onboarding prerequisites. Automated provider
+refund/reversal support must be verified before its activation. This increment
+does not certify Android, physical devices or the complete POS UI/UX; the overall
+decision remains `POS_UI_UX_BLOCKED`.
+
+## RX intake implementation evidence — 18 October 2026
+
+Windows Clinical now includes direct prescription intake, JPEG/PNG/PDF upload,
+camera capture, a branch RX inbox, protected source-document retrieval and the
+existing governed legal/review/verification actions. Tenant EMR/DHA import is
+disabled until a registered adapter, explicit identity/product mappings and
+commissioned configuration are supplied. Source approval claims do not bypass
+clinical gates. See [RX intake setup and limits](POS_RX_INTAKE_GUIDE.md).
+
+This increment does not certify physical cameras, scanner drivers, live external
+feeds or Android intake. Existing overall release/certification gates still apply.

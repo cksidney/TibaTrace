@@ -24,14 +24,35 @@ def process_fiscal_outbox():
 def reconcile_checkout_providers():
     import logging
 
+    from django.db.models import Q
+    from django.utils import timezone
+
     from apps.prescription.checkout import CheckoutService
     from apps.prescription.payment_models import PaymentAttempt
-    pending = PaymentAttempt.all_objects.filter(provider="MPESA", status__in=["STARTED", "ACCEPTED"]).select_related(
-        "payment_tender__payment_intent__dispensing_episode", "payment_tender__payment_intent__retail_transaction", "payment_tender__created_by")
-    for attempt in pending.order_by("created_at")[:50]:
+    pending = PaymentAttempt.all_objects.filter(
+        Q(status__in=["STARTED", "ACCEPTED"])
+        | Q(status="SUCCEEDED", payment_tender__payment_intent__status="SETTLED",
+            payment_tender__payment_intent__retail_transaction__state="PAYMENT_IN_PROGRESS")
+        | Q(status="SUCCEEDED", payment_tender__payment_intent__status="SETTLED",
+            payment_tender__payment_intent__dispensing_episode__status="READY_FOR_PAYMENT"),
+    ).exclude(provider__in=["MANUAL", "FAKE"]).select_related(
+        "payment_tender__payment_intent__branch",
+        "payment_tender__payment_intent__dispensing_episode",
+        "payment_tender__payment_intent__retail_transaction",
+        "payment_tender__created_by",
+    )
+    seen = set()
+    for attempt in pending.order_by("updated_at", "pk")[:50]:
         intent = attempt.payment_tender.payment_intent
+        if intent.pk in seen:
+            continue
+        seen.add(intent.pk)
         source = intent.retail_transaction if intent.retail_transaction_id else intent.dispensing_episode
         try:
             CheckoutService.query_provider(source=source, actor=attempt.payment_tender.created_by)
         except Exception:
             logging.getLogger(__name__).warning("Checkout provider reconciliation requires review", extra={"attempt_id": str(attempt.pk)})
+        finally:
+            # Unresolved old requests must not permanently occupy every slot in
+            # the bounded batch and starve newer payments of reconciliation.
+            PaymentAttempt.all_objects.filter(payment_tender__payment_intent=intent).update(updated_at=timezone.now())

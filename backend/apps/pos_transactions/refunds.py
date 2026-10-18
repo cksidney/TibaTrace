@@ -60,7 +60,9 @@ class RetailRefundService:
                 raise ValidationError("A return location is only valid when physical stock is received.")
             return None
         location = InventoryLocation.all_objects.filter(tenant=tenant, branch=sale.branch, pk=location_id,
-                                                        status="ACTIVE", quarantine_capability=True).first()
+                                                        status=InventoryLocation.Status.ACTIVE,
+                                                        location_type=InventoryLocation.LocationType.QUARANTINE,
+                                                        quarantine_capability=True).first()
         if location is None:
             raise ValidationError("Physical returns require an active same-branch quarantine holding location.")
         return location
@@ -138,7 +140,7 @@ class RetailRefundService:
             available = tender.effective_settled - used_by_tender.get(str(tender.pk), Decimal(0))
             amount = min(outstanding, available)
             if amount > 0:
-                payment_plan.append({"tender_id": str(tender.pk), "tender_type": tender.tender_type, "amount": str(amount)})
+                payment_plan.append({"tender_id": str(tender.pk), "tender_type": tender.tender_type, "provider": tender.provider, "amount": str(amount)})
                 outstanding -= amount
         if tenders and outstanding > 0:
             raise ValidationError("The refund exceeds unrefunded original payment value.")
@@ -213,6 +215,15 @@ class RetailRefundService:
             if part["tender_type"] == "MPESA":
                 raise ValidationError("M-PESA refunds require a verified Daraja reversal integration; cash cannot substitute for a mobile payment reversal.")
             if part["tender_type"] == "CARD":
+                from apps.prescription.payment_connections import require_external_card_refund
+                from apps.prescription.payment_models import PaymentTender
+
+                original_tender = PaymentTender.all_objects.filter(
+                    tenant=tenant, pk=part["tender_id"], payment_intent__retail_transaction=sale
+                ).first()
+                if original_tender is None:
+                    raise ValidationError("The original card payment evidence is unavailable.")
+                require_external_card_refund(tenant=tenant, branch=sale.branch, provider_code=original_tender.provider)
                 if not reference or len(reference) > 128:
                     raise ValidationError("Record the external terminal refund approval reference for each card portion.")
                 if reference in used_references:

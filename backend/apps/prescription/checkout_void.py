@@ -57,6 +57,12 @@ class CheckoutVoidService:
                 if method == 'MPESA':
                     raise ValidationError('Verified Daraja reversal setup is required to return M-PESA payments.')
                 if method == 'CARD':
+                    from apps.prescription.payment_connections import require_external_card_refund
+
+                    require_external_card_refund(
+                        tenant=source.tenant, branch=source.branch,
+                        provider_code=item.settlement.payment_tender.provider,
+                    )
                     if not reference or len(reference) > 128 or reference in seen or PaymentReversal.all_objects.filter(tenant=source.tenant, provider_reference=reference, status='COMPLETED').exists():
                         raise ValidationError('Each card return needs its distinct terminal refund approval reference.')
                     seen.add(reference)

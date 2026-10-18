@@ -3,11 +3,13 @@
 **Governing Framework**: Kenya Digital Health Certification Framework 2025  
 **Baseline Release**: `tibatrace-v0.2.0-rc5` (`f365e778f9f30ab590bc0481c1ea006bb2664cef`)  
 
+> **Historical internal test plan; no execution or certification evidence.** The scenarios below were drafted against the rc5 baseline and are not a report of tests run by DHA or an independent laboratory. Their example identities are test fixtures, not verified real people. Re-map and execute an authorized test plan against the exact current release before submitting results. The current TibaTrace system DPIA remains **NOT APPROVED**.
+
 ---
 
 ## 1. Certification Test Strategy
 
-This document details the 20 mandatory end-to-end certification scenarios executed to validate TibaTrace against the Digital Health Agency (DHA) framework and Stakeholder Meeting Requirements.
+This document proposes 20 end-to-end certification scenarios for internal test planning against a historical DHA framework baseline. It does not establish that any scenario was executed or passed.
 
 Each scenario defines:
 - **Preconditions**: Required tenant, branch, operator role, and initial database state.

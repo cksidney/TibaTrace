@@ -13,6 +13,7 @@ import { PrintCentre } from './components/tibatrace/PrintCentre.js';
 import { RegisterCentre } from './components/tibatrace/RegisterCentre.js';
 import { PrescriptionWorkspace } from './components/tibatrace/PrescriptionWorkspace.js';
 import { ClinicalPreparation } from './components/tibatrace/ClinicalPreparation.js';
+import { PrescriptionIntake } from './components/tibatrace/PrescriptionIntake.js';
 import { EpisodeTimeline } from './components/tibatrace/EpisodeTimeline.js';
 import { TaskQueue } from './components/tibatrace/TaskQueue.js';
 import { RetailWorkspace } from './components/tibatrace/RetailWorkspace.js';
@@ -114,6 +115,7 @@ export function OperationsConsole({
   readonly onActivationRefresh: () => Promise<void>;
 }) {
   const [checkoutBusy, setCheckoutBusy] = useState(false);
+  const [intakeBusy, setIntakeBusy] = useState(false);
   const [workspace, setWorkspace] = useState<
     'clinical' | 'retail' | 'register' | 'print' | 'sync' | 'activation'
   >(session.activationValid ? 'clinical' : 'activation');
@@ -126,7 +128,7 @@ export function OperationsConsole({
     deviceId: session.deviceId,
     fetcher: apiFetch,
   });
-  const consoleBusy = state.busy || checkoutBusy;
+  const consoleBusy = state.busy || checkoutBusy || intakeBusy;
   const [reviewFindingId, setReviewFindingId] = useState('');
   const [clinicalReviewBusy, setClinicalReviewBusy] = useState(false);
   const [clinicalReviewError, setClinicalReviewError] = useState('');
@@ -473,6 +475,10 @@ export function OperationsConsole({
             minWidth: 0,
           }}
         >
+          {(authority?.owner || authority?.capabilities.some(capability => ['prescriptions.intake', 'prescriptions.legal_validate', 'prescriptions.clinical_review', 'prescriptions.pharmacist_verify', 'dispensing.reserve'].includes(capability))) &&
+            <PrescriptionIntake apiFetch={apiFetch} deviceId={session.deviceId} active={!locked}
+              disabled={state.busy || checkoutBusy} onBusyChange={setIntakeBusy}
+              onEpisodeOpened={async id => { await refreshQueue(); await select(id); }} />}
           {state.notice ? (
             <div style={{ marginBottom: spacing.lg }}>
               <BlockingReason

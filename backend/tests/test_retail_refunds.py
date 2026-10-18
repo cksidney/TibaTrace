@@ -54,10 +54,47 @@ def test_receipt_lookup_uses_the_same_authority_and_branch_scope_as_transactions
 
 def test_native_store_options_require_read_authority_and_device_branch(world):
     path = "/api/pos/retail/catalogue/stores/"
+    pharmacy = InventoryLocation.all_objects.create(
+        tenant=world["tenant"], branch=world["branch"], location_code="RETAIL-PHARMACY",
+        name="Pharmacy counter", location_type=InventoryLocation.LocationType.PHARMACY,
+    )
+    dispensary = InventoryLocation.all_objects.create(
+        tenant=world["tenant"], branch=world["branch"], location_code="RETAIL-DISPENSARY",
+        name="Dispensary counter", location_type=InventoryLocation.LocationType.DISPENSARY,
+    )
+    restricted_types = (
+        InventoryLocation.LocationType.RECEIVING,
+        InventoryLocation.LocationType.QUARANTINE,
+        InventoryLocation.LocationType.RETURNS,
+        InventoryLocation.LocationType.DAMAGED,
+        InventoryLocation.LocationType.EXPIRED,
+        InventoryLocation.LocationType.CONTROLLED_VAULT,
+        InventoryLocation.LocationType.COLD_ROOM,
+        InventoryLocation.LocationType.TRANSIT,
+    )
+    for index, location_type in enumerate(restricted_types):
+        InventoryLocation.all_objects.create(
+            tenant=world["tenant"], branch=world["branch"],
+            location_code=f"RESTRICTED-{index}", name=location_type.label,
+            location_type=location_type,
+        )
+    quarantine = InventoryLocation.all_objects.create(
+        tenant=world["tenant"], branch=world["branch"], location_code="RETURN-QUARANTINE",
+        name="Returned goods quarantine", location_type=InventoryLocation.LocationType.QUARANTINE,
+        quarantine_capability=True,
+    )
+
     response = world["client"].get(path, {"device_id": "POS-RETAIL-01"})
     assert response.status_code == 200, response.data
-    assert str(world["store"].pk) in {row["id"] for row in response.json()}
+    assert {row["id"] for row in response.json()} == {
+        str(world["store"].pk), str(pharmacy.pk), str(dispensary.pk),
+    }
     assert all(row["branch"] == str(world["branch"].pk) for row in response.json())
+    return_locations = world["client"].get(
+        "/api/pos/retail/catalogue/return-locations/", {"device_id": "POS-RETAIL-01"}
+    )
+    assert return_locations.status_code == 200
+    assert [row["id"] for row in return_locations.json()] == [str(quarantine.pk)]
     assert world["client"].get(path, {"device_id": "UNKNOWN"}).status_code == 400
     restricted = user(world["tenant"], "stores-restricted", ["pos.payment.cash.accept"])
     restricted.metadata = {"branch_ids": []}
@@ -66,6 +103,17 @@ def test_native_store_options_require_read_authority_and_device_branch(world):
     assert world["client"].get(path, {"device_id": "POS-RETAIL-01"}).json() == []
     world["client"].force_authenticate(user(world["tenant"], "stores-no-role", []))
     assert world["client"].get(path, {"device_id": "POS-RETAIL-01"}).status_code == 403
+
+
+def test_physical_return_cannot_use_a_sellable_location_as_quarantine(world):
+    sale = paid(world)
+    world["store"].quarantine_capability = True
+    world["store"].save(update_fields=["quarantine_capability", "updated_at"])
+
+    response, _ = refund_request(world, sale, physical=True, return_location_id=str(world["store"].pk))
+
+    assert response.status_code == 400
+    assert "quarantine holding location" in str(response.json()).lower()
 
 
 def refund_request(world, sale, physical=False, quantity="1", key="request-key", **extra):

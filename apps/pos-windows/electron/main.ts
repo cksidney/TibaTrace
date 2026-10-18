@@ -12,13 +12,13 @@ import { EncryptedOfflineStore } from './offlineStore.js';
 import { EncryptedActivationStore, type DeviceActivation } from './activationStore.js';
 import { renderPrintDocument } from './printDocument.js';
 import { installedClientMetadata } from './clientMetadata.js';
+import { allowsRxCamera, rxRequestLimit } from './rxPolicy.js';
 
 const currentDirectory = dirname(fileURLToPath(import.meta.url));
 const DEV_SERVER = process.env['VITE_DEV_SERVER_URL'];
 const API_BASE_URL = normaliseApiBaseUrl(
   process.env['TIBATRACE_API_BASE_URL'] ?? 'https://tibatrace.esenai.co.ke',
 );
-const MAX_REQUEST_BYTES = 1024 * 1024;
 const MAX_RESPONSE_BYTES = 10 * 1024 * 1024;
 const ALLOWED_API_PREFIXES = ['/api/pos/', '/api/identity/me/', '/api/health/', '/api/v1/tenant/pos-activations/', '/api/v1/platform/pos-activations/'];
 const ALLOWED_RENDERER_HEADERS = new Set([
@@ -74,6 +74,7 @@ function createWindow(): void {
       nodeIntegration: false,
       sandbox: true,
       webSecurity: true,
+      plugins: true, // Chromium's built-in PDF viewer for validated RX sources.
       spellcheck: false,
     },
   });
@@ -103,13 +104,22 @@ app.whenReady().then(async () => {
   deviceId = await readDeviceId();
   registerIpc();
 
+  const packagedPage = pathToFileURL(join(currentDirectory, '../renderer/index.html')).toString();
+  session.defaultSession.setPermissionCheckHandler((contents, permission, _origin, details) => allowsRxCamera({
+    page: contents?.getURL() ?? '', requestingUrl: details.requestingUrl ?? '', packagedPage, devServer: DEV_SERVER,
+    focused: contents?.isFocused() ?? false, isMainFrame: details.isMainFrame, permission, mediaTypes: [details.mediaType ?? 'unknown'],
+  }));
   session.defaultSession.setPermissionRequestHandler(
-    (_webContents, _permission, callback) => callback(false),
+    (contents, permission, callback, details) => {
+      const mediaTypes = 'mediaTypes' in details ? details.mediaTypes : undefined;
+      callback(allowsRxCamera({ page: contents.getURL(), requestingUrl: details.requestingUrl, packagedPage, devServer: DEV_SERVER,
+        focused: contents.isFocused(), isMainFrame: details.isMainFrame, permission, mediaTypes: mediaTypes ?? [] }));
+    },
   );
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     const policy = DEV_SERVER
-      ? "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-eval'; connect-src 'self' ws:; object-src 'none'; frame-src 'none'; base-uri 'none'"
-      : "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'";
+      ? "default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-eval'; connect-src 'self' ws:; object-src 'none'; frame-src blob:; base-uri 'none'"
+      : "default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'none'; object-src 'none'; frame-src blob:; base-uri 'none'; form-action 'none'";
     callback({
       responseHeaders: {
         ...details.responseHeaders,
@@ -326,7 +336,8 @@ function validateRequest(request: ApiRequest): void {
   if (!['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
     throw new Error('The requested API method is not allowed.');
   }
-  if (request.body && Buffer.byteLength(request.body, 'utf8') > MAX_REQUEST_BYTES) {
+  const requestLimit = rxRequestLimit(request.path, method);
+  if (request.body && Buffer.byteLength(request.body, 'utf8') > requestLimit) {
     throw new Error('The API request exceeded the POS safety limit.');
   }
 }

@@ -4,11 +4,13 @@
 **Governing Framework**: Kenya Digital Health Certification Framework 2025 (Digital Health Agency, Kenya)  
 **Baseline Release**: `tibatrace-v0.2.0-rc5` (`f365e778f9f30ab590bc0481c1ea006bb2664cef`)  
 
+> **Provisional internal classification draft; not an Agency determination.** This inventory is based on the rc5 product description. Verify the features and intended uses against the current release and obtain DHA's official classification before submitting or claiming category coverage. The current TibaTrace system DPIA remains **NOT APPROVED**.
+
 ---
 
 ## 1. System Scope & Classification Overview
 
-TibaTrace is classified as a **Mixed Digital Health Platform** under the Kenya Digital Health Agency (DHA) 2025 Framework. It combines healthcare-worker-facing clinical dispensing, pharmacy information management, commercial supply chain, multi-branch point of sale, clinical decision support (CDS), electronic claims submission, patient-facing handover education, and national health information exchange (HIE) interoperability.
+For internal planning only, TibaTrace appears to be a pharmacy system with clinical dispensing and health-information exchange functions that should be discussed with DHA. This document does not establish its official DHA category. The product owner must verify each listed function and interface against the current build and get an Agency determination.
 
 ```
 +-----------------------------------------------------------------------------------+

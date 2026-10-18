@@ -22,6 +22,10 @@ export class PosRetailClient {
     return this.request(`/catalogue/stores/?device_id=${encodeURIComponent(deviceId)}`, 'GET');
   }
 
+  async returnLocations(deviceId = ''): Promise<readonly RetailStoreDTO[]> {
+    return this.request(`/catalogue/return-locations/?device_id=${encodeURIComponent(deviceId)}`, 'GET');
+  }
+
   lookupReceipt(receiptNumber: string): Promise<RetailTransactionDTO> {
     return this.request(`/transactions/lookup-receipt/?receipt_number=${encodeURIComponent(receiptNumber)}`, 'GET');
   }

@@ -60,6 +60,7 @@ class PaymentTenderSerializer(serializers.ModelSerializer):
 class PaymentIntentSerializer(serializers.ModelSerializer):
     tenders = serializers.SerializerMethodField()
     amount_remaining = serializers.SerializerMethodField()
+    amount_unallocated = serializers.SerializerMethodField()
     effective_settled = serializers.SerializerMethodField()
     amount_due = serializers.SerializerMethodField()
     amount_settled = serializers.SerializerMethodField()
@@ -76,6 +77,7 @@ class PaymentIntentSerializer(serializers.ModelSerializer):
             "amount_reversed",
             "effective_settled",
             "amount_remaining",
+            "amount_unallocated",
             "status",
             "version",
             "tenders",
@@ -100,6 +102,14 @@ class PaymentIntentSerializer(serializers.ModelSerializer):
     def get_amount_remaining(self, intent):
         return format_money(intent.amount_remaining)
 
+    def get_amount_unallocated(self, intent):
+        from django.db.models import Sum
+
+        allocated = PaymentTender.all_objects.filter(
+            payment_intent=intent, status__in=PaymentTender.LIVE_STATUSES
+        ).aggregate(total=Sum("allocated_amount"))["total"] or Decimal("0")
+        return format_money(max(Decimal("0"), intent.amount_due - allocated))
+
     def get_effective_settled(self, intent):
         return format_money(intent.effective_settled)
 
@@ -116,7 +126,10 @@ class CreateIntentSerializer(serializers.Serializer):
 class AllocateTenderSerializer(serializers.Serializer):
     tender_type = serializers.ChoiceField(choices=[code for code, _ in TENDER_TYPES])
     allocated_amount = serializers.DecimalField(max_digits=15, decimal_places=2)
-    provider = serializers.CharField(max_length=20, required=False, default="MANUAL")
+    # Provider selection is server-side and tenant-configured. This legacy
+    # allocation endpoint may only make manual tenders; integrated providers
+    # must use the scoped checkout initiate command.
+    provider = serializers.ChoiceField(choices=["MANUAL"], required=False, default="MANUAL")
     idempotency_key = serializers.CharField(max_length=255)
 
 
@@ -162,7 +175,7 @@ class CheckoutCommandSerializer(serializers.Serializer):
     reason = serializers.CharField(max_length=1000, allow_blank=True, default="")
     payment_references = serializers.DictField(child=serializers.CharField(max_length=128), default=dict)
     device_id = serializers.CharField(max_length=128)
-    tender_type = serializers.ChoiceField(choices=["CASH", "CARD", "MPESA"], default="CASH")
+    tender_type = serializers.ChoiceField(choices=["CASH", "CARD", "MPESA"], required=False)
     amount = serializers.DecimalField(max_digits=15, decimal_places=2, min_value=Decimal("0.01"), required=False)
     cash_received = serializers.DecimalField(max_digits=15, decimal_places=2, min_value=Decimal("0"), default=Decimal("0"))
     reference = serializers.CharField(max_length=128, allow_blank=True, default="")
@@ -170,6 +183,7 @@ class CheckoutCommandSerializer(serializers.Serializer):
     idempotency_key = serializers.CharField(max_length=180, required=False, trim_whitespace=True, allow_blank=False)
 
     def validate(self, data):
+        data.setdefault("tender_type", "MPESA" if data["operation"] == "initiate" else "CASH")
         if data["operation"] in {"collect", "initiate"} and ("amount" not in data or "idempotency_key" not in data):
             raise serializers.ValidationError("An amount and stable command key are required.")
         return data

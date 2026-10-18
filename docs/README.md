@@ -27,6 +27,7 @@ Deeper than the guide, and still current.
 | Architecture decision records | [`adr/`](adr/) |
 | FHIR and Kenya conformance | [`fhir/`](fhir/) |
 | DHA compliance | [`compliance/dha/`](compliance/dha/) |
+| System privacy, security, recovery and regulatory documentation | [`compliance/system/00_DOCUMENT_REGISTER.md`](compliance/system/00_DOCUMENT_REGISTER.md) |
 | National integrations | [`integrations/`](integrations/) |
 | Clinical decision support | [`cds/`](cds/) |
 | Security | [`security/`](security/) |
@@ -73,3 +74,7 @@ If the system has moved on, add a new record. Do not edit an old one.
 
 Corrections go in the guide. If the guide and the system disagree, the guide is
 wrong until proven otherwise — fix it, in the same change that fixes the system.
+
+## POS RX intake
+
+See [POS RX intake and per-tenant EMR/DHA setup](POS_RX_INTAKE_GUIDE.md).

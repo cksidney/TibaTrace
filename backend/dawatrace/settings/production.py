@@ -1,5 +1,7 @@
 from django.core.exceptions import ImproperlyConfigured
 
+from apps.documents.encryption import DocumentEncryptionError, validate_document_keyring
+
 from .base import *
 
 DEBUG = False
@@ -10,6 +12,15 @@ if SECRET_KEY in {"", "unsafe-development-key"}:
     raise ImproperlyConfigured("DAWATRACE_SECRET_KEY is required in production.")
 if not DAWATRACE_OBJECT_SIGNING_KEY:
     raise ImproperlyConfigured("DAWATRACE_OBJECT_SIGNING_KEY is required in production.")
+try:
+    validate_document_keyring(
+        DAWATRACE_DOCUMENT_ENCRYPTION_KEYS,
+        DAWATRACE_DOCUMENT_ENCRYPTION_ACTIVE_KEY_ID,
+    )
+except DocumentEncryptionError as exc:
+    raise ImproperlyConfigured(
+        "A valid active clinical-document encryption keyring is required in production settings."
+    ) from exc
 
 if DAWATRACE_ENV == "production":
     if not ALLOWED_HOSTS:

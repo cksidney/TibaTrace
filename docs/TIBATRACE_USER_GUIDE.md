@@ -279,6 +279,14 @@ terminals follow the same journey.
 
 ### 4.2 Dispensing a prescription
 
+**Receive the RX first.** In the Windows Clinical workspace, select **Receive
+prescription** to enter prescribed lines directly, attach a scan/photo/PDF, or
+capture a camera photo. Select an existing patient and prescriber and retain the
+original RX reference. **Received prescriptions** opens the intake inbox for
+source review, legal validation, clinical review and pharmacist verification.
+Tenant EMR/DHA sources become selectable only after their connector and identity
+maps are commissioned. See [RX intake and tenant feed setup](POS_RX_INTAKE_GUIDE.md).
+
 An episode moves through these states, and the workflow ribbon shows where you
 are:
 

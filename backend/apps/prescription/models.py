@@ -2019,3 +2019,4 @@ from apps.prescription.payment_models import (  # noqa: E402,F401
     PaymentTender,
 )
 from apps.prescription.pos_printing_models import PosPrintDocument, PosPrintJob  # noqa: E402,F401
+from apps.prescription.rx_intake_models import PrescriptionIntakeReceipt, PrescriptionSourceDocument  # noqa: E402,F401

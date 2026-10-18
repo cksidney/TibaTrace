@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 from urllib.parse import unquote, urlparse
@@ -310,7 +311,16 @@ DAWATRACE_VENDOR = "Esenai Group Ltd"
 DAWATRACE_CDS_SERVICE_NAME = "DawaTrace Clinical Decision Support"
 DAWATRACE_OBJECT_STORAGE_BACKEND = env("DAWATRACE_OBJECT_STORAGE_BACKEND", "local")
 DAWATRACE_OBJECT_SIGNING_KEY = env("DAWATRACE_OBJECT_SIGNING_KEY", "")
+try:
+    DAWATRACE_DOCUMENT_ENCRYPTION_KEYS = json.loads(env("DAWATRACE_DOCUMENT_ENCRYPTION_KEYS", "{}"))
+except (json.JSONDecodeError, TypeError) as exc:
+    raise RuntimeError("DAWATRACE_DOCUMENT_ENCRYPTION_KEYS must be a JSON object.") from exc
+DAWATRACE_DOCUMENT_ENCRYPTION_ACTIVE_KEY_ID = env("DAWATRACE_DOCUMENT_ENCRYPTION_ACTIVE_KEY_ID", "")
 DAWATRACE_DOCUMENT_MAX_BYTES = int(env("DAWATRACE_DOCUMENT_MAX_BYTES", str(20 * 1024 * 1024)))
+DAWATRACE_MALWARE_SCANNER_HOST = env("DAWATRACE_MALWARE_SCANNER_HOST", "")
+DAWATRACE_MALWARE_SCANNER_PORT = int(env("DAWATRACE_MALWARE_SCANNER_PORT", "3310"))
+# Native RX uploads use bounded base64 JSON across the authenticated Electron bridge.
+DATA_UPLOAD_MAX_MEMORY_SIZE = 12 * 1024 * 1024
 DAWATRACE_DOCUMENT_ALLOWED_CONTENT_TYPES = env_list(
     "DAWATRACE_DOCUMENT_ALLOWED_CONTENT_TYPES",
     "application/pdf,image/jpeg,image/png,text/plain",
