@@ -98,6 +98,10 @@ def test_recount_replay_is_idempotent_and_rejects_conflicting_or_stale_request(c
 @pytest.mark.django_db
 def test_recount_supports_an_unbatched_zero_count_without_locking_a_null_join(count_world):
     world = count_world
+    # Exercise the nullable-batch join with a SKU whose policy permits stock
+    # without manufacturer batch tracking.
+    world["sku"].batch_tracking_required = False
+    world["sku"].save(update_fields=["batch_tracking_required", "updated_at"])
     count = StocktakeService.record_count(
         session=world["session"], location=world["location"], sku=world["sku"], batch=None,
         counted_quantity=0, counter=world["opener"],

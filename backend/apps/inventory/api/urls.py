@@ -1,6 +1,7 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
+from .operations import InventoryChangeViewSet
 from .views import (
     InventoryBalanceViewSet,
     InventoryBatchViewSet,
@@ -12,6 +13,7 @@ from .views import (
 )
 
 router = DefaultRouter()
+router.register(r"changes", InventoryChangeViewSet, basename="inventory-change")
 router.register(r"locations", InventoryLocationViewSet, basename="inventory-location")
 router.register(r"batches", InventoryBatchViewSet, basename="inventory-batch")
 router.register(r"ledger", InventoryLedgerEntryViewSet, basename="inventory-ledger")

@@ -287,6 +287,7 @@ def test_procurement_workspace_runs_procure_to_stock_lifecycle(client, django_us
         "/api/procurement/supplier-returns/",
         {
             "return_number": "RET-PROC-001",
+            "return_category": "RECALL",
             "goods_receipt": receipt_id,
             "reason": "Supplier recall",
             "lines": [{"sku": str(sku.pk), "quantity": 1}],

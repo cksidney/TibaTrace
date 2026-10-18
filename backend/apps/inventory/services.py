@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import F, Sum
+from django.db.models import F, Q, Sum
 from django.utils import timezone
 
 from apps.audit.service import log_audit
@@ -52,6 +52,16 @@ class InventoryLedgerService:
         notes="",
         reversal_reference=None,
     ):
+        quantity_delta = Decimal(str(quantity_delta))
+        base_quantity_delta = Decimal(str(base_quantity_delta))
+        if not quantity_delta.is_finite() or not base_quantity_delta.is_finite():
+            raise ValidationError("Stock deltas must be finite.")
+        for value in (quantity_delta, base_quantity_delta):
+            normalized = value.normalize() if value else Decimal(0)
+            if normalized.as_tuple().exponent < -4 or abs(value) >= Decimal("100000000000"):
+                raise ValidationError("Stock deltas must fit the ledger's 11 integer and 4 decimal places.")
+        if location.branch_id != branch.pk or location.tenant_id != tenant.pk or sku.tenant_id != tenant.pk or (inventory_batch and (inventory_batch.tenant_id != tenant.pk or inventory_batch.sku_id != sku.pk)):
+            raise ValidationError("Stock entry identities must match this tenant, branch, location and SKU batch.")
         zero_recall_event = (
             quantity_delta == 0
             and base_quantity_delta == 0
@@ -66,10 +76,14 @@ class InventoryLedgerService:
         # Idempotency check handled partially by DB unique constraint, but we check here too
         existing = InventoryLedgerEntry.all_objects.filter(tenant=tenant, idempotency_key=idempotency_key).first()
         if existing:
+            identity = (branch.pk, location.pk, sku.pk, inventory_batch.pk if inventory_batch else None, entry_type, quantity_delta, base_quantity_delta, source_document_type, str(source_document_id))
+            previous = (existing.branch_id, existing.location_id, existing.sku_id, existing.inventory_batch_id, existing.entry_type, existing.quantity_delta, existing.base_quantity_delta, existing.source_document_type, existing.source_document_id)
+            if identity != previous:
+                raise ValidationError("The ledger retry key belongs to a different stock movement.")
             return existing
 
         # Check location capabilities
-        if inventory_batch:
+        if inventory_batch and base_quantity_delta > 0:
             if inventory_batch.quality_status == InventoryBatch.QualityStatus.QUARANTINED and not location.quarantine_capability:
                 raise ValidationError(f"Location {location.location_code} cannot hold quarantined stock.")
             if inventory_batch.quality_status == InventoryBatch.QualityStatus.DAMAGED and not location.damaged_goods_capability:
@@ -113,6 +127,15 @@ class InventoryLedgerService:
             reversal_reference=reversal_reference,
         )
 
+        # Freeze the acquisition basis used at this physical movement. Unknown
+        # historical costs remain explicitly unknown after later declarations.
+        from apps.inventory.models import InventoryBatchCost, InventoryMovementCost
+        physical = entry_type in {"RECEIPT", "TRANSFER_IN", "TRANSFER_OUT", "ISSUE", "RETURN_IN", "RETURN_OUT", "ADJUSTMENT_INCREASE", "ADJUSTMENT_DECREASE", "STOCKTAKE_GAIN", "STOCKTAKE_LOSS", "WRITE_OFF", "DESTRUCTION"}
+        if physical:
+            cost = InventoryBatchCost.all_objects.filter(tenant=tenant, batch=inventory_batch).first() if inventory_batch else None
+            InventoryMovementCost.all_objects.create(tenant=tenant, entry=entry, unit_cost=cost.unit_cost if cost else None,
+                value_delta=(Decimal(str(base_quantity_delta)) * cost.unit_cost).quantize(Decimal(".0001")) if cost else None)
+
         # Update the realtime projection
         InventoryBalanceService.apply_ledger_entry(entry)
 
@@ -129,6 +152,16 @@ class InventoryBalanceService:
         quality_status = inventory_batch.quality_status if inventory_batch else InventoryBatch.QualityStatus.RELEASED
         expiry_status = "NORMAL"
         
+        candidates = InventoryBalance.all_objects.select_for_update().filter(tenant=tenant, branch=branch, location=location, sku=sku, inventory_batch=inventory_batch)
+        exact = candidates.filter(quality_status=quality_status, expiry_status=expiry_status).first()
+        if exact:
+            return exact
+        existing = candidates.filter(on_hand__gt=0).first()
+        if existing:
+            existing.quality_status = quality_status
+            existing.save(update_fields=["quality_status", "updated_at"])
+            return existing
+
         balance, _ = InventoryBalance.all_objects.select_for_update().get_or_create(
             tenant=tenant,
             branch=branch,
@@ -245,74 +278,8 @@ class InventoryReceiptService:
     @staticmethod
     @transaction.atomic
     def post_receipt(*, tenant, received_batch, receiving_location, actor=None):
-        if received_batch.quality_status not in ("RELEASED", "PARTIALLY_RELEASED"):
-            raise ValidationError("Only RELEASED or PARTIALLY_RELEASED batches can be posted to inventory.")
-
-        qty = received_batch.accepted_quantity or 0
-        if qty <= 0:
-            raise ValidationError(f"Batch {received_batch.manufacturer_batch_number} has zero accepted quantity.")
-
-        # Location capability checks
-        from apps.medicines.provisioning import _is_cold_chain, _is_controlled
-        sku = received_batch.sku
-        if _is_controlled(sku) and not receiving_location.controlled_drug_capability:
-            raise ValidationError(f"Controlled SKU {sku.sku_code} requires a controlled vault location.")
-        if _is_cold_chain(sku) and not receiving_location.cold_chain_capability:
-            raise ValidationError(f"Cold-chain SKU {sku.sku_code} requires a cold room location.")
-
-        # Ensure we haven't already posted this batch to avoid duplicates
-        existing = InventoryBatch.all_objects.filter(tenant=tenant, source_received_batch=received_batch).first()
-        idempotency_key = f"receipt-post-{received_batch.pk}"
-        existing_ledger = InventoryLedgerEntry.all_objects.filter(tenant=tenant, idempotency_key=idempotency_key).first()
-
-        if existing and existing_ledger:
-            return existing
-
-        receipt_line = received_batch.grn_line
-        if existing:
-            inv_batch = existing
-        else:
-            inv_batch = InventoryBatch.all_objects.create(
-                tenant=tenant,
-                sku=receipt_line.sku,
-                manufactured_product=receipt_line.sku.manufactured_product,
-                source_received_batch=received_batch,
-                manufacturer_batch_number=received_batch.manufacturer_batch_number,
-                manufacture_date=received_batch.manufacture_date,
-                expiry_date=received_batch.expiry_date,
-                quality_status=InventoryBatch.QualityStatus.RELEASED,
-            )
-
-        unit = receipt_line.sku.package_definition.unit_of_measure
-
-        if not existing_ledger:
-            InventoryLedgerService.post_entry(
-                tenant=tenant,
-                branch=receiving_location.branch,
-                location=receiving_location,
-                sku=inv_batch.sku,
-                inventory_batch=inv_batch,
-                entry_type=InventoryLedgerEntry.EntryType.RECEIPT,
-                quantity_delta=qty,
-                unit=unit,
-                base_quantity_delta=qty,
-                effective_timestamp=received_batch.created_at,
-                source_document_type="RECEIVED_BATCH",
-                source_document_id=str(received_batch.pk),
-                idempotency_key=idempotency_key,
-                actor=actor,
-                reason_code="PROCUREMENT_RECEIPT",
-            )
-
-        emit_event(
-            tenant_id=str(tenant.pk),
-            aggregate_type="InventoryBatch",
-            aggregate_id=str(inv_batch.pk),
-            event_type="InventoryReceiptPosted",
-            payload={"sku_id": str(inv_batch.sku.pk), "quantity": str(qty)},
-        )
-
-        return inv_batch
+        from apps.inventory.receiving import release_received_stock
+        return release_received_stock(tenant=tenant, received_batch=received_batch, receiving_location=receiving_location, actor=actor)
 
 
 class FEFOAllocationService:
@@ -345,8 +312,7 @@ class FEFOAllocationService:
             available__gt=0,
             inventory_batch__quality_status=InventoryBatch.QualityStatus.RELEASED,
             inventory_batch__recall_status=InventoryBatch.RecallStatus.NONE,
-            inventory_batch__expiry_date__gte=minimum_expiry_date or timezone.localdate(),
-        ).exclude(
+        ).filter(Q(inventory_batch__expiry_date__gte=minimum_expiry_date or timezone.localdate()) | Q(sku__expiry_tracking_required=False, inventory_batch__expiry_date__isnull=True)).exclude(
             inventory_batch__in=exclude_batches
         )
         if include_batches is not None:
@@ -675,8 +641,14 @@ class StockTransferService:
             if item["sku"].tenant_id != tenant.pk:
                 raise ValidationError("Transfer SKUs must belong to this tenant.")
             quantity = Decimal(str(item["quantity"]))
-            if not quantity.is_finite() or quantity <= 0:
-                raise ValidationError("Transfer quantities must be finite and positive.")
+            normalized = quantity.normalize() if quantity else Decimal(0)
+            if (
+                not quantity.is_finite()
+                or quantity <= 0
+                or normalized.as_tuple().exponent < -4
+                or quantity >= Decimal("100000000000")
+            ):
+                raise ValidationError("Transfer quantities must be positive and fit 11 integer and 4 decimal places.")
             if item["sku"].pk in seen_skus:
                 raise ValidationError("Choose each transfer SKU only once.")
             seen_skus.add(item["sku"].pk)
@@ -1062,6 +1034,8 @@ class StockTransferService:
         )
         if transfer.status != StockTransfer.Status.SUBMITTED:
             raise ValidationError("Only submitted transfers can be rejected.")
+        if actor.pk == transfer.requested_by_id:
+            raise ValidationError("A separate authorized operator must reject this transfer.")
         transfer.status = StockTransfer.Status.REJECTED
         transfer.reason = reason or transfer.reason
         transfer.save(update_fields=["status", "reason", "updated_at"])
@@ -1102,66 +1076,21 @@ class StockTransferService:
 
 class InventoryAdjustmentService:
     @staticmethod
-    @transaction.atomic
     def request_adjustment(*, tenant, branch, location, sku, batch, delta, reason, actor, idempotency_key):
-        StockTransferService._require_authority(tenant.pk, actor)
-        delta = Decimal(str(delta))
-        if not delta.is_finite() or delta == 0 or not str(reason or "").strip():
-            raise ValidationError("A non-zero finite adjustment and investigation reason are required.")
-        entry_type = InventoryLedgerEntry.EntryType.ADJUSTMENT_INCREASE if delta > 0 else InventoryLedgerEntry.EntryType.ADJUSTMENT_DECREASE
-        
-        entry = InventoryLedgerService.post_entry(
-            tenant=tenant,
-            branch=branch,
-            location=location,
-            sku=sku,
-            inventory_batch=batch,
-            entry_type=entry_type,
-            quantity_delta=delta,
-            unit=sku.package_definition.unit_of_measure,
-            base_quantity_delta=delta,
-            effective_timestamp=timezone.now(),
-            source_document_type="MANUAL_ADJUSTMENT",
-            source_document_id=idempotency_key, # Using idempotency key as ID for simple adjustments
-            idempotency_key=idempotency_key,
-            actor=actor,
-            reason_code=reason,
-        )
-        
-        emit_event(tenant_id=str(tenant.pk), aggregate_type="InventoryAdjustment", aggregate_id=str(entry.pk), event_type="InventoryAdjustmentPosted", payload={"delta": str(delta)})
-        return entry
+        from apps.inventory.operations import request_change
+        if branch.pk != location.branch_id:
+            raise ValidationError("Branch does not match custody location.")
+        return request_change(tenant=tenant, actor=actor, kind="ADJUSTMENT", payload={"location_id": str(location.pk), "sku_id": str(sku.pk), "batch_id": str(batch.pk), "quantity": str(delta)}, reason=reason, idempotency_key=idempotency_key)
+
 
 class InventoryWriteOffService:
     @staticmethod
-    @transaction.atomic
     def write_off_stock(*, tenant, branch, location, sku, batch, quantity, reason, actor, idempotency_key):
-        StockTransferService._require_authority(tenant.pk, actor)
-        quantity = Decimal(str(quantity))
-        if not quantity.is_finite() or not str(reason or "").strip():
-            raise ValidationError("A finite write-off quantity and reason are required.")
-        if quantity <= 0:
-            raise ValidationError("Write-off quantity must be positive.")
-            
-        entry = InventoryLedgerService.post_entry(
-            tenant=tenant,
-            branch=branch,
-            location=location,
-            sku=sku,
-            inventory_batch=batch,
-            entry_type=InventoryLedgerEntry.EntryType.WRITE_OFF,
-            quantity_delta=-quantity,
-            unit=sku.package_definition.unit_of_measure,
-            base_quantity_delta=-quantity,
-            effective_timestamp=timezone.now(),
-            source_document_type="WRITE_OFF",
-            source_document_id=idempotency_key,
-            idempotency_key=idempotency_key,
-            actor=actor,
-            reason_code=reason,
-        )
-        
-        emit_event(tenant_id=str(tenant.pk), aggregate_type="InventoryWriteOff", aggregate_id=str(entry.pk), event_type="InventoryWriteOffPosted", payload={"quantity": str(quantity)})
-        return entry
+        from apps.inventory.operations import request_change
+        if branch.pk != location.branch_id:
+            raise ValidationError("Branch does not match custody location.")
+        return request_change(tenant=tenant, actor=actor, kind="WRITE_OFF", payload={"location_id": str(location.pk), "sku_id": str(sku.pk), "batch_id": str(batch.pk), "quantity": str(quantity)}, reason=reason, idempotency_key=idempotency_key)
+
 
 class StocktakeService:
     @staticmethod
@@ -1283,11 +1212,19 @@ class StocktakeService:
             raise ValidationError("The count location was not included when this stocktake opened.")
         if sku.tenant_id != session.tenant_id:
             raise ValidationError("The selected SKU belongs to another tenant.")
+        if sku.batch_tracking_required and batch is None:
+            raise ValidationError("A tracked medicine count requires its actual batch.")
         if batch is not None and (batch.tenant_id != session.tenant_id or batch.sku_id != sku.pk):
             raise ValidationError("The selected batch does not belong to this tenant and SKU.")
         counted_quantity = Decimal(str(counted_quantity))
-        if not counted_quantity.is_finite() or counted_quantity < 0:
-            raise ValidationError("A physical count must be finite and non-negative.")
+        normalized = counted_quantity.normalize() if counted_quantity else Decimal(0)
+        if (
+            not counted_quantity.is_finite()
+            or counted_quantity < 0
+            or normalized.as_tuple().exponent < -4
+            or counted_quantity >= Decimal("100000000000")
+        ):
+            raise ValidationError("A physical count must be nonnegative and fit 11 integer and 4 decimal places.")
         existing = StocktakeCount.all_objects.select_for_update().filter(
             tenant_id=session.tenant_id,
             session=session,
@@ -1466,6 +1403,11 @@ class StocktakeService:
             raise ValidationError("Count every opening-scope SKU/batch and verify empty locations before posting a FULL stocktake. Pre-snapshot sessions must be cancelled and reopened.")
 
         for count in counts:
+            current = InventoryBalanceService.get_balance(tenant=session.tenant, branch=session.branch, location=count.location, sku=count.sku, inventory_batch=count.batch)
+            if current.on_hand != count.expected_quantity:
+                raise ValidationError("Stock moved after this observation. Record a fresh audited recount before posting variances.")
+            if count.counted_quantity < current.reserved:
+                raise ValidationError("The physical count is below reserved demand. Reconcile reservations before posting.")
             count.final_approved_count = count.counted_quantity
             count.save(update_fields=["final_approved_count", "updated_at"])
             if count.variance != 0:

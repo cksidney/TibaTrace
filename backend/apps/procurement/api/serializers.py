@@ -310,6 +310,11 @@ class SupplierReturnSerializer(serializers.ModelSerializer):
             "supplier",
             "status",
             "reason",
+            "return_category",
+            "expected_credit",
+            "credit_amount",
+            "credit_reference",
+            "credit_variance_reason",
             "lines",
             "created_at",
         ]
@@ -322,6 +327,8 @@ class SupplierReturnSerializer(serializers.ModelSerializer):
                 "sku": str(line.sku_id),
                 "sku_code": line.sku.sku_code,
                 "quantity": line.quantity,
+                "batch": str(line.batch_id) if line.batch_id else None,
+                "source_location": str(line.source_location_id) if line.source_location_id else None,
             }
             for line in SupplierReturnLine.all_objects.filter(
                 tenant_id=supplier_return.tenant_id,
@@ -348,6 +355,8 @@ class ThreeWayMatchSerializer(serializers.ModelSerializer):
 
 class ProcurementLineInputSerializer(serializers.Serializer):
     sku = serializers.UUIDField(required=False)
+    batch = serializers.UUIDField(required=False)
+    source_location = serializers.UUIDField(required=False)
     requisition_line = serializers.UUIDField(required=False)
     requested_quantity = serializers.IntegerField(min_value=1, required=False)
     quantity = serializers.IntegerField(min_value=1, required=False)
@@ -439,6 +448,8 @@ class BatchReleaseSerializer(serializers.Serializer):
 
 
 class SupplierReturnCreateSerializer(serializers.Serializer):
+    return_category = serializers.ChoiceField(choices=["QUALITY_REJECTION", "RECALL", "COMMERCIAL"], default="QUALITY_REJECTION")
+    expected_credit = serializers.DecimalField(max_digits=18, decimal_places=4, min_value=0, required=False)
     return_number = serializers.CharField(max_length=64)
     goods_receipt = serializers.UUIDField()
     reason = serializers.CharField(max_length=2000)

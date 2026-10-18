@@ -197,6 +197,7 @@ export interface HQCustomer {
 }
 
 export interface HQSku {
+  readonly product_kind?: "MEDICINE" | "SUPPLY" | "SERVICE";
   readonly sales_unit?: string;
   readonly package_description?: string;
   readonly tax_category?: string;
@@ -788,6 +789,9 @@ export interface LegacySetupItem {
     readonly destination_location_id?: string;
   };
   readonly id: string;
+  readonly import_id?: string;
+  readonly import_code?: string;
+  readonly source_date?: string;
   readonly source_key: string;
   readonly source_row: number;
   readonly legacy_code: string;
@@ -797,8 +801,16 @@ export interface LegacySetupItem {
   readonly source_cost: string;
   readonly source_price: string;
   readonly source_quantity: string;
-  readonly source_product: { readonly page: number };
-  readonly source_stock: { readonly page: number };
+  readonly source_product: {
+    readonly page?: number;
+    readonly file?: string;
+    readonly filename?: string;
+    readonly source_row?: number;
+    readonly format?: string;
+    readonly raw?: Readonly<Record<string, unknown>>;
+    readonly upload_canonical?: Readonly<Record<string, string | null>>;
+  };
+  readonly source_stock: { readonly page?: number; readonly file?: string; readonly raw?: Readonly<Record<string, unknown>> };
   readonly source_issues: readonly string[];
   readonly review: LegacySetupReview;
   readonly status: string;
@@ -814,27 +826,76 @@ export interface LegacySetupPage {
   readonly pages: number;
   readonly source_date: string | null;
   readonly can_edit: boolean;
+  readonly imports?: readonly {
+    readonly id: string;
+    readonly code: string;
+    readonly source_date: string;
+    readonly source_filename: string;
+    readonly item_count: number;
+  }[];
   readonly results: readonly LegacySetupItem[];
 }
 
-export async function loadLegacySetup(q: string, stock: string, page: number, signal?: AbortSignal): Promise<LegacySetupPage> {
+export async function loadLegacySetup(q: string, stock: string, page: number, signal?: AbortSignal, tenantId = ''): Promise<LegacySetupPage> {
   const params = new URLSearchParams({ q, stock, page: String(page) });
   const response = await fetch(`/api/medicines/initial-setup/?${params}`, {
-    credentials: 'include', headers: { Accept: 'application/json', ...tenantHeaders() }, ...(signal ? { signal } : {}),
+    credentials: 'include', headers: { Accept: 'application/json', ...tenantHeaders(tenantId) }, ...(signal ? { signal } : {}),
   });
   if (!response.ok) throw new HQApiError(response.status, `Initial item setup could not be loaded (${response.status}).`);
   return await response.json() as LegacySetupPage;
 }
 
-export const saveLegacySetupReview = (item: LegacySetupItem, review: LegacySetupReview, csrfToken: string) =>
+export interface TenantItemImportResult {
+  readonly dry_run: boolean;
+  readonly received: number;
+  readonly valid: boolean;
+  readonly errors: readonly { readonly row: number; readonly field: string; readonly value: string; readonly message: string }[];
+  readonly ready_to_stage: number;
+  readonly created: number;
+  readonly existing: number;
+  readonly import_id: string | null;
+  readonly import_code: string | null;
+}
+
+export const importTenantItemList = (
+  rows: readonly Readonly<Record<string, string | number>>[],
+  sourceDate: string,
+  sourceFilename: string,
+  dryRun: boolean,
+  csrfToken: string,
+  tenantId = '',
+) => mutateJson<TenantItemImportResult>('/api/medicines/initial-setup/import/', 'POST', {
+  rows, source_date: sourceDate, source_filename: sourceFilename, dry_run: dryRun,
+}, csrfToken, tenantId);
+
+export async function downloadOpeningStocktakeTemplate(tenantId = '', importId = ''): Promise<void> {
+  const params = new URLSearchParams();
+  if (importId) params.set('import_id', importId);
+  const response = await fetch(`/api/medicines/initial-setup/stocktake-template/${params.size ? `?${params}` : ''}`, {
+    credentials: 'include', headers: { Accept: 'text/csv', ...tenantHeaders(tenantId) },
+  });
+  if (!response.ok) throw new HQApiError(response.status,
+    apiErrorMessage(await response.json().catch(() => null)) ?? 'The opening stock-take sheet could not be downloaded.');
+  const blob = await response.blob();
+  const disposition = response.headers.get('Content-Disposition') || '';
+  const filename = /filename="([^"]+)"/.exec(disposition)?.[1] || 'tibatrace-opening-stocktake.csv';
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = objectUrl;
+  link.download = filename;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+}
+
+export const saveLegacySetupReview = (item: LegacySetupItem, review: LegacySetupReview, csrfToken: string, tenantId = '') =>
   mutateJson<LegacySetupItem>(`/api/medicines/initial-setup/${encodeURIComponent(item.id)}/review/`, 'POST',
-    { review, expected_updated_at: item.updated_at }, csrfToken);
+    { review, expected_updated_at: item.updated_at }, csrfToken, tenantId);
 
-export const stageLegacySetup = (item: LegacySetupItem, values: { readonly sku_id: string; readonly branch_id: string; readonly quarantine_location_id: string; readonly product_match_confirmed: boolean; readonly unit_match_confirmed: boolean; readonly storage_requirement: string; readonly tax_inclusive: boolean; readonly reason: string }, csrfToken: string) =>
-  mutateJson<LegacySetupItem>(`/api/medicines/initial-setup/${encodeURIComponent(item.id)}/stage/`, 'POST', { ...values, expected_updated_at: item.updated_at }, csrfToken);
+export const stageLegacySetup = (item: LegacySetupItem, values: { readonly sku_id?: string | null; readonly branch_id: string; readonly quarantine_location_id: string; readonly product_match_confirmed: boolean; readonly unit_match_confirmed: boolean; readonly storage_requirement: string; readonly tax_inclusive: boolean; readonly reason: string }, csrfToken: string, tenantId = '') =>
+  mutateJson<LegacySetupItem>(`/api/medicines/initial-setup/${encodeURIComponent(item.id)}/stage/`, 'POST', { ...values, expected_updated_at: item.updated_at }, csrfToken, tenantId);
 
-export const releaseLegacySetup = (item: LegacySetupItem, destination_location_id: string, reason: string, csrfToken: string) =>
-  mutateJson<LegacySetupItem>(`/api/medicines/initial-setup/${encodeURIComponent(item.id)}/release/`, 'POST', { destination_location_id, reason, expected_updated_at: item.updated_at }, csrfToken);
+export const releaseLegacySetup = (item: LegacySetupItem, destination_location_id: string, reason: string, csrfToken: string, tenantId = '') =>
+  mutateJson<LegacySetupItem>(`/api/medicines/initial-setup/${encodeURIComponent(item.id)}/release/`, 'POST', { destination_location_id, reason, expected_updated_at: item.updated_at }, csrfToken, tenantId);
 
 /* ── tenant management ────────────────────────────────────────────────────── */
 
@@ -1125,6 +1186,10 @@ export interface ProcurementInspection {
 }
 
 export interface ProcurementReturn {
+  readonly expected_credit?: string | null;
+  readonly credit_amount?: string | null;
+  readonly credit_reference?: string;
+  readonly credit_variance_reason?: string;
   readonly id: string;
   readonly return_number: string;
   readonly goods_receipt: string;
@@ -3306,6 +3371,7 @@ export interface HQStockTransferAllocation {
   readonly dispatched_quantity: string;
   readonly received_quantity: string;
   readonly damaged_quantity: string;
+  readonly lost_quantity?: string;
   readonly remaining_quantity: string;
 }
 
@@ -3323,6 +3389,7 @@ export interface HQStockTransferLine {
   readonly received_quantity: string;
   readonly rejected_quantity: string;
   readonly damaged_quantity: string;
+  readonly lost_quantity?: string;
   readonly unit: string;
   readonly discrepancy_reason: string;
   readonly dispatch_allocations: readonly HQStockTransferAllocation[];
@@ -3732,3 +3799,27 @@ export const closeRegulatoryImpact = (
   csrfToken: string,
   tenantId: string,
 ) => mutateJson<unknown>(`${tenantRecallImpactPath}${encodeURIComponent(impactId)}/close/`, 'POST', payload, csrfToken, tenantId);
+
+export interface InventoryChange {
+  readonly id: string; readonly kind: string; readonly status: string;
+  readonly payload: Readonly<Record<string, string>>; readonly reason: string;
+  readonly requested_by: number; readonly requested_by_name: string;
+  readonly decided_by_name: string | null; readonly decision_reason: string;
+}
+export interface InventoryValuation {
+  readonly method: string; readonly currency: string; readonly known_value: string;
+  readonly complete: boolean; readonly unvalued_lines: number; readonly note: string;
+  readonly rows: readonly { readonly balance_id: string; readonly sku_id: string; readonly sku_code: string; readonly sku_name: string;
+    readonly location_id: string; readonly location: string; readonly batch_id: string; readonly batch_number: string;
+    readonly quality_status: string; readonly quantity: string; readonly unit_cost: string | null; readonly value: string | null }[];
+}
+export const loadInventoryChanges = (tenantId: string, signal?: AbortSignal) => getTenantCollection<InventoryChange>('/api/inventory/changes/', tenantId, signal);
+export const loadInventoryValuation = (tenantId: string, signal?: AbortSignal) => getTenantJson<InventoryValuation>('/api/inventory/changes/valuation/', tenantId, signal);
+export const inventoryCommand = <T>(path: string, payload: unknown, csrfToken: string, tenantId: string) => mutateJson<T>(path, 'POST', payload, csrfToken, tenantId);
+export async function downloadInventoryCountTemplate(sessionId: string, tenantId: string): Promise<void> {
+  const response = await fetch(`/api/inventory/stocktakes/${encodeURIComponent(sessionId)}/count-template/`, { credentials: 'include', headers: { Accept: 'application/json', ...tenantHeaders(tenantId) } });
+  if (!response.ok) throw new HQApiError(response.status, apiErrorMessage(await response.json().catch(() => null)) ?? 'Could not download the physical count sheet.');
+  const url = URL.createObjectURL(await response.blob());
+  const link = document.createElement('a'); link.href = url; link.download = `stocktake-${sessionId}.csv`; link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}

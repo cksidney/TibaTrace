@@ -16,7 +16,7 @@ from .operator_source_queries import OPERATOR_REPORTS, OPERATOR_SNAPSHOTS, query
 from .source_queries import SOURCE_REPORTS, SOURCE_SNAPSHOTS, query_source_report
 
 MAX_ROWS = 5000
-SNAPSHOTS = {"exec-dashboard", "inv-balance", "inv-batch", "inv-expiry", "qa-quarantine", "qa-released"} | SOURCE_SNAPSHOTS | OPERATOR_SNAPSHOTS | MODULE_SNAPSHOTS
+SNAPSHOTS = {"exec-dashboard", "inv-balance", "inv-batch", "inv-expiry", "qa-quarantine", "qa-released", "inv-valuation", "exec-inventory-value"} | SOURCE_SNAPSHOTS | OPERATOR_SNAPSHOTS | MODULE_SNAPSHOTS
 COLLECTIONS = {"sales-period", "sales-by-branch", "sales-refunds"}
 AUDITS = {"audit-user", "audit-financial", "audit-clinical", "audit-config", "sec-audit-trail", "sec-permission-changes"}
 MOVEMENTS = {"inv-movements", "audit-inventory"}
@@ -87,6 +87,15 @@ def query_report(report_id, tenant_id, actor, window):
     _authority(actor, tenant_id, ["reports.view"])
     if report_id in SNAPSHOTS and window:
         raise ValueError("This is a current-state snapshot; remove the reporting-window filters.")
+    if report_id in {"inv-valuation", "exec-inventory-value"}:
+        from apps.inventory.operations import valuation
+        _authority(actor, tenant_id, ["inventory.read", "inventory.manage"])
+        data = valuation(tenant_id)
+        if len(data["rows"]) > MAX_ROWS:
+            raise ValueError("Valuation exceeds 5,000 rows; use the inventory valuation workspace.")
+        return ReportData(basis=f"Specific identification, approved acquisition cost, KES. Known total stock value {data['known_value']}; {data['unvalued_lines']} unvalued lines. No selling prices or inferred costs. Includes outstanding dispatched stock once; physical custody and transit are distinguished by location.",
+            columns=["SKU", "Location", "Batch", "Quality", "Quantity", "Unit cost (KES)", "Value (KES)"],
+            rows=[[row['sku_code'], row['location'], row['batch_number'], row['quality_status'], row['quantity'], row['unit_cost'] or 'UNVALUED', row['value'] or 'UNVALUED'] for row in data['rows']])
     if report_id == "exec-dashboard":
         return None
     if report_id in MODULE_REPORTS:

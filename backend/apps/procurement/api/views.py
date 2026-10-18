@@ -2,6 +2,7 @@ import uuid
 
 from django.core.exceptions import PermissionDenied as DjangoPermissionDenied
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import transaction
 from django.db.models import Exists, OuterRef
 from django.utils import timezone
 from rest_framework import permissions, status, viewsets
@@ -61,6 +62,7 @@ from apps.procurement.models import (
     SupplierQualification,
     SupplierQuotation,
     SupplierReturn,
+    SupplierReturnLine,
     ThreeWayMatch,
 )
 from apps.procurement.services import (
@@ -587,31 +589,46 @@ class ReceivedBatchViewSet(BaseProcurementViewSet):
     model = ReceivedBatch
     serializer_class = ReceivedBatchSerializer
 
+    @action(detail=True, methods=["post"], url_path="quarantine-stock")
+    def quarantine_stock(self, request, pk=None):
+        from apps.inventory.receiving import stage_quarantine
+        serializer = BatchReleaseSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        if not serializer.validated_data.get("inventory_location"):
+            raise ValidationError("Choose quarantine custody.")
+        try:
+            stage_quarantine(tenant=self.current_tenant(), batch=self.get_object(), actor=request.user,
+                location=self.tenant_object(InventoryLocation, serializer.validated_data["inventory_location"], "inventory_location"), reason=serializer.validated_data["reason"])
+        except (DjangoValidationError, DjangoPermissionDenied) as exc:
+            return _service_error(exc)
+        return Response(self.get_serializer(self.get_object()).data)
+
     @action(detail=True, methods=["post"], url_path="release")
     def release(self, request, pk=None):
         serializer = BatchReleaseSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         batch = self.get_object()
         try:
-            updated = BatchReceivingService.release_batch(
-                batch=batch,
-                actor=request.user,
-                reason=serializer.validated_data["reason"],
-                quantity=serializer.validated_data.get("quantity"),
-            )
-            inventory_location_id = serializer.validated_data.get("inventory_location")
-            if inventory_location_id and updated.quality_status == ReceivedBatch.QualityStatus.RELEASED:
-                inventory_location = self.tenant_object(
-                    InventoryLocation,
-                    inventory_location_id,
-                    "inventory_location",
-                )
-                InventoryReceiptService.post_receipt(
-                    tenant=self.current_tenant(),
-                    received_batch=updated,
-                    receiving_location=inventory_location,
+            with transaction.atomic():
+                updated = BatchReceivingService.release_batch(
+                    batch=batch,
                     actor=request.user,
+                    reason=serializer.validated_data["reason"],
+                    quantity=serializer.validated_data.get("quantity"),
                 )
+                inventory_location_id = serializer.validated_data.get("inventory_location")
+                if inventory_location_id and updated.quality_status in {ReceivedBatch.QualityStatus.RELEASED, ReceivedBatch.QualityStatus.PARTIALLY_RELEASED}:
+                    inventory_location = self.tenant_object(
+                        InventoryLocation,
+                        inventory_location_id,
+                        "inventory_location",
+                    )
+                    InventoryReceiptService.post_receipt(
+                        tenant=self.current_tenant(),
+                        received_batch=updated,
+                        receiving_location=inventory_location,
+                        actor=request.user,
+                    )
         except (DjangoValidationError, DjangoPermissionDenied) as exc:
             return _service_error(exc)
         return Response(ReceivedBatchSerializer(updated).data, status=status.HTTP_200_OK)
@@ -636,20 +653,32 @@ class SupplierReturnViewSet(BaseProcurementViewSet):
             "goods_receipt",
         )
         try:
-            supplier_return = SupplierReturnService.request_return(
-                tenant=tenant,
-                return_number=serializer.validated_data["return_number"],
-                goods_receipt=receipt,
-                reason=serializer.validated_data["reason"],
-                requested_by=request.user,
-            )
-            for item in serializer.validated_data["lines"]:
-                SupplierReturnService.add_line(
-                    supplier_return=supplier_return,
-                    sku=self.tenant_object(CommercialSKU, item["sku"], "sku"),
-                    quantity=item["quantity"],
+            with transaction.atomic():
+                supplier_return = SupplierReturnService.request_return(
+                    tenant=tenant,
+                    return_number=serializer.validated_data["return_number"],
+                    goods_receipt=receipt,
                     reason=serializer.validated_data["reason"],
+                    requested_by=request.user,
+                    expected_credit=serializer.validated_data.get("expected_credit"),
+                    return_category=serializer.validated_data["return_category"],
                 )
+                existing_lines = list(SupplierReturnLine.all_objects.filter(tenant=tenant, supplier_return=supplier_return))
+                if existing_lines:
+                    expected = sorted((str(line["sku"]), line["quantity"], str(line.get("batch") or ""), str(line.get("source_location") or "")) for line in serializer.validated_data["lines"])
+                    actual = sorted((str(line.sku_id), line.quantity, str(line.batch_id or ""), str(line.source_location_id or "")) for line in existing_lines)
+                    if expected != actual or supplier_return.expected_credit != serializer.validated_data.get("expected_credit"):
+                        raise DjangoValidationError("Return number already has different lines or credit expectations.")
+                else:
+                    for item in serializer.validated_data["lines"]:
+                        SupplierReturnService.add_line(
+                            supplier_return=supplier_return,
+                            sku=self.tenant_object(CommercialSKU, item["sku"], "sku"),
+                            quantity=item["quantity"],
+                            reason=serializer.validated_data["reason"],
+                            batch=self.tenant_object(ReceivedBatch, item["batch"], "batch") if item.get("batch") else None,
+                            source_location=self.tenant_object(InventoryLocation, item["source_location"], "source_location") if item.get("source_location") else None,
+                        )
         except (DjangoValidationError, DjangoPermissionDenied) as exc:
             return _service_error(exc)
         return Response(self.get_serializer(supplier_return).data, status=status.HTTP_201_CREATED)
@@ -669,11 +698,48 @@ class SupplierReturnViewSet(BaseProcurementViewSet):
     def dispatch_return(self, request, pk=None):
         try:
             supplier_return = SupplierReturnService.dispatch(
-                supplier_return=self.get_object()
+                supplier_return=self.get_object(), actor=request.user
             )
         except (DjangoValidationError, DjangoPermissionDenied) as exc:
             return _service_error(exc)
         return Response(self.get_serializer(supplier_return).data)
+
+
+    @action(detail=True, methods=["post"])
+    def reject(self, request, pk=None):
+        from rest_framework import serializers
+        class Input(serializers.Serializer):
+            reason = serializers.CharField(max_length=2000)
+        payload = Input(data=request.data)
+        payload.is_valid(raise_exception=True)
+        try:
+            item = SupplierReturnService.reject(supplier_return=self.get_object(), actor=request.user, reason=payload.validated_data["reason"])
+        except (DjangoValidationError, DjangoPermissionDenied) as exc:
+            return _service_error(exc)
+        return Response(self.get_serializer(item).data)
+
+    @action(detail=True, methods=["post"], url_path="record-credit")
+    def record_credit(self, request, pk=None):
+        from rest_framework import serializers
+        class Input(serializers.Serializer):
+            amount = serializers.DecimalField(max_digits=18, decimal_places=4, min_value=0)
+            reference = serializers.CharField(max_length=128)
+            variance_reason = serializers.CharField(max_length=2000, default="", allow_blank=True)
+        payload = Input(data=request.data)
+        payload.is_valid(raise_exception=True)
+        try:
+            item = SupplierReturnService.record_credit(supplier_return=self.get_object(), actor=request.user, **payload.validated_data)
+        except (DjangoValidationError, DjangoPermissionDenied) as exc:
+            return _service_error(exc)
+        return Response(self.get_serializer(item).data)
+
+    @action(detail=True, methods=["post"], url_path="close-credit")
+    def close_credit(self, request, pk=None):
+        try:
+            item = SupplierReturnService.close_credit(supplier_return=self.get_object(), actor=request.user)
+        except (DjangoValidationError, DjangoPermissionDenied) as exc:
+            return _service_error(exc)
+        return Response(self.get_serializer(item).data)
 
 
 class ThreeWayMatchViewSet(BaseProcurementViewSet):

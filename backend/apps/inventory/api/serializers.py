@@ -138,6 +138,7 @@ class InventoryBatchSerializer(serializers.ModelSerializer):
             "sku",
             "sku_code",
             "manufacturer_batch_number",
+            "lot_kind",
             "manufacture_date",
             "expiry_date",
             "quality_status",
@@ -302,6 +303,7 @@ class StockTransferLineSerializer(serializers.ModelSerializer):
                 total=Sum("base_quantity_delta")
             )["total"] or Decimal("0")
             dispatched = -allocation["total"]
+            lost = dispatched - accepted - damaged if line.transfer.status == "CLOSED" and line.lost_quantity > 0 else Decimal("0")
             result.append(
                 {
                     "batch_id": str(batch_id),
@@ -309,7 +311,8 @@ class StockTransferLineSerializer(serializers.ModelSerializer):
                     "dispatched_quantity": str(dispatched),
                     "received_quantity": str(accepted),
                     "damaged_quantity": str(damaged),
-                    "remaining_quantity": str(dispatched - accepted - damaged),
+                    "lost_quantity": str(lost),
+                    "remaining_quantity": str(dispatched - accepted - damaged - lost),
                 }
             )
         return result
@@ -330,6 +333,7 @@ class StockTransferLineSerializer(serializers.ModelSerializer):
             "received_quantity",
             "rejected_quantity",
             "damaged_quantity",
+            "lost_quantity",
             "unit",
             "discrepancy_reason",
             "dispatch_allocations",

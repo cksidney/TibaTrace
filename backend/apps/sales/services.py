@@ -705,8 +705,8 @@ class SalesApprovalService:
         for line in sales_order.lines.select_related("sku__manufactured_product__clinical_product"):
             if line.approved_quantity > line.requested_quantity:
                 raise ValidationError("Approved quantity cannot exceed requested quantity.")
-            clinical_product = line.sku.manufactured_product.clinical_product
-            controlled = clinical_product.controlled_classification != "NONE"
+            clinical_product = line.sku.manufactured_product.clinical_product if line.sku.manufactured_product_id else None
+            controlled = clinical_product is not None and clinical_product.controlled_classification != "NONE"
             if controlled and not sales_order.customer.controlled_medicine_eligible:
                 raise ValidationError("Customer is not eligible for controlled medicines.")
             if controlled and (
@@ -1025,6 +1025,8 @@ class SubstitutionProposalService:
             raise ValidationError("The sales order does not permit substitution.")
         if str(proposed_sku.tenant_id) != str(sales_order_line.tenant_id):
             raise ValidationError("Proposed SKU belongs to a different tenant.")
+        if not sales_order_line.sku.manufactured_product_id or proposed_sku.product_kind != "MEDICINE":
+            raise ValidationError("Clinical substitution is only available for medicine SKUs.")
         clinical_product = sales_order_line.sku.manufactured_product.clinical_product
         if clinical_product.controlled_classification != "NONE":
             raise ValidationError("Controlled products require a later clinical authorization workflow.")

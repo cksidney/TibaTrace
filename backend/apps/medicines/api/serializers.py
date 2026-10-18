@@ -183,6 +183,7 @@ class CommercialSKUSerializer(serializers.ModelSerializer):
             "tenant",
             "sku_code",
             "display_name",
+            "product_kind",
             "manufactured_product",
             "brand_name",
             "canonical_medicine_name",

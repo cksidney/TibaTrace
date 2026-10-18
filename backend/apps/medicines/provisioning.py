@@ -126,13 +126,13 @@ class CatalogueFilters:
 
 
 def _is_cold_chain(sku: CommercialSKU) -> bool:
-    dose_form = getattr(sku.manufactured_product.clinical_product, "dose_form", None)
+    dose_form = getattr(getattr(sku.manufactured_product, "clinical_product", None), "dose_form", None)
     code = (getattr(dose_form, "code", "") or "").upper()
     return code in COLD_CHAIN_FORMS
 
 
 def _is_controlled(sku: CommercialSKU) -> bool:
-    classification = sku.manufactured_product.clinical_product.controlled_classification
+    classification = getattr(getattr(sku.manufactured_product, "clinical_product", None), "controlled_classification", "NONE")
     return bool(classification) and classification.upper() != "NONE"
 
 
@@ -242,6 +242,14 @@ class CatalogueFitnessService:
     def assert_assortable(sku: CommercialSKU) -> None:
         """Raise unless every link in the chain is fit to stock."""
         manufactured = sku.manufactured_product
+        if sku.product_kind != "MEDICINE":
+            if manufactured is not None or sku.is_dispensable or sku.status != "ACTIVE" or not sku.package_definition.is_active:
+                raise CatalogueFitnessError(sku.sku_code, "nonmedicine SKU", "Requires an active pack, no clinical identity and dispensing disabled.")
+            if sku.product_kind == "SERVICE" and sku.stock_tracking_required:
+                raise CatalogueFitnessError(sku.sku_code, "service", "Services cannot hold physical stock.")
+            return
+        if manufactured is None:
+            raise CatalogueFitnessError(sku.sku_code, "manufactured product", "Medicine identity is required.")
         clinical = manufactured.clinical_product
 
         if sku.status not in ASSORTABLE_SKU_STATUSES:

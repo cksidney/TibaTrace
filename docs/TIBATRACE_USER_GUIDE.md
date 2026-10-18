@@ -235,6 +235,16 @@ catalogue entry, not to work around it.
 
 ### Bulk tenant catalogue and retail prices
 
+To start with your own item list, use **Medicine catalogue → Upload items &
+prepare stock take → Upload item list**. Download the CSV template, fill the
+required item code, name and sales unit, then preview and import it into the
+setup queue. The confirmation offers a populated **Download stock-take sheet**
+with blank count, batch and expiry fields. You can download the sheet later
+for one source or all imported items from the same panel. Enter the verified
+worksheet counts through **Complete details**; catalogue mapping, price
+publication and opening-stock release follow review. See the
+[initial setup guide](operations/LEGACY_ITEM_INITIAL_SETUP.md) for columns and limits.
+
 For a large tenant setup, use the **Bulk add to tenant** action in the Kenya
 eTCD catalogue. Download its CSV template, add one exact
 `master_catalogue_code` per row, then run **Preview import**. The preview lists

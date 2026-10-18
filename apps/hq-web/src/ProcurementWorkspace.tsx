@@ -1,3 +1,5 @@
+import { IntakeModal } from './IntakeModal.js';
+import { createPortal } from 'react-dom';
 import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 
@@ -12,6 +14,7 @@ import type {
   ProcurementBatch,
   ProcurementData,
   ProcurementReceipt,
+  ProcurementReturn,
   ProcurementSupplier,
 } from './api.js';
 import { Icon } from './icons.js';
@@ -49,7 +52,10 @@ type DialogMode =
   | { readonly kind: 'receive-batch'; readonly receipt: ProcurementReceipt }
   | { readonly kind: 'inspection'; readonly receipt: ProcurementReceipt }
   | { readonly kind: 'release'; readonly batch: ProcurementBatch }
+  | { readonly kind: 'quarantine'; readonly batch: ProcurementBatch }
   | { readonly kind: 'return' }
+  | { readonly kind: 'return-credit'; readonly item: ProcurementReturn }
+  | { readonly kind: 'reject-return'; readonly item: ProcurementReturn }
   | { readonly kind: 'match' }
   | null;
 
@@ -577,7 +583,7 @@ function QualityTab({
                   <td>{batch.accepted_quantity}</td>
                   <td>{batch.quarantined_quantity}</td>
                   <td><ProcurementStatus value={batch.quality_status} /></td>
-                  <td>{batch.quality_status !== 'RELEASED' ? <button className="business-action" onClick={() => onDialog({ kind: 'release', batch })} type="button">Release to stock</button> : <span className="muted-cell">Posted</span>}</td>
+                  <td>{batch.accepted_quantity === 0 && <button type="button" onClick={() => onDialog({ kind: 'quarantine', batch })}>Record quarantine custody</button>}{batch.quality_status !== 'RELEASED' ? <button className="business-action" onClick={() => onDialog({ kind: 'release', batch })} type="button">Release to stock</button> : <span className="muted-cell">Posted</span>}</td>
                 </tr>
               ))}
             </tbody>
@@ -606,7 +612,7 @@ function ReconciliationTab({
           <h3>Supplier returns</h3>
           {data.returns.length ? data.returns.map((item) => (
             <div className="reconciliation-row" key={item.id}>
-              <div><code>{item.return_number}</code><strong>{item.reason}</strong><small>{item.lines.length} line(s)</small></div>
+              <div><code>{item.return_number}</code><strong>{item.reason}</strong><small>{item.lines.length} line(s) · Expected credit KES {item.expected_credit ?? "Not supplied"}{item.credit_reference ? ` · ${item.credit_reference}: KES ${item.credit_amount}` : ""}</small></div>
               <ProcurementStatus value={item.status} />
               <div className="tenant-row-actions">
                 {item.status === 'REQUESTED' ? <button onClick={() => onDialog(confirmationDialog({
@@ -618,6 +624,11 @@ function ReconciliationTab({
                   submitLabel: 'Approve return',
                   title: 'Approve supplier return',
                 }))} type="button">Approve</button> : null}
+                {item.status === 'REQUESTED' ? <button type="button" onClick={() => onDialog({ kind: 'reject-return', item })}>Reject request</button> : null}
+                {item.status === 'DISPATCHED' ? <button type="button" onClick={() => onDialog({ kind: 'return-credit', item })}>Record supplier credit</button> : null}
+                {item.status === 'CREDIT_PENDING' ? <button type="button" onClick={() => onDialog(confirmationDialog({ title: 'Reconcile supplier credit', record: item.return_number,
+                  confirmation: `Confirm supplier credit ${item.credit_reference} of KES ${item.credit_amount} against expected KES ${item.expected_credit}. ${item.credit_variance_reason || ''} A different authorized person must reconcile this note. This closes the return; it does not post a general-ledger journal.`,
+                  path: `/api/procurement/supplier-returns/${item.id}/close-credit/`, payload: {}, submitLabel: 'Confirm reconciliation', message: 'Supplier return credit reconciled.' }))}>Reconcile credit</button> : null}
                 {item.status === 'APPROVED' ? <button onClick={() => onDialog(confirmationDialog({
                   confirmation: 'Dispatch records that the controlled return has left the receiving location.',
                   message: `${item.return_number} dispatched.`,
@@ -752,21 +763,7 @@ function ProcurementDialog({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [busy, onClose]);
 
-  return (
-    <div
-      className="business-dialog-backdrop"
-      onClick={(e) => {
-        if (e.target === e.currentTarget && !busy) {
-          onClose();
-        }
-      }}
-      role="presentation"
-    >
-      <section aria-modal="true" className="business-dialog procurement-dialog" role="dialog">
-        <header>
-          <div><p className="eyebrow">Procurement workflow</p><h2>{dialogTitle(dialog)}</h2></div>
-          <button aria-label="Close dialog" onClick={onClose} type="button"><Icon name="close" /></button>
-        </header>
+  return createPortal(<IntakeModal title={dialogTitle(dialog)} busy={busy} onClose={onClose}>
         <form onSubmit={(event) => void submit(event)}>
           {dialog.kind === 'confirm' ? (
             <>
@@ -810,9 +807,7 @@ function ProcurementDialog({
             <button className="primary-button" disabled={busy} type="submit">{busy ? 'Saving…' : dialogSubmitLabel(dialog)}</button>
           </footer>
         </form>
-      </section>
-    </div>
-  );
+  </IntakeModal>, document.body);
 }
 
 function DialogFields({
@@ -908,6 +903,12 @@ function DialogFields({
     <label className="business-checkbox"><input checked={values.temperature_excursion === 'true'} onChange={(event) => setValue('temperature_excursion', String(event.target.checked))} type="checkbox" /> Temperature excursion observed</label>
   </>;
 
+  if (dialog.kind === 'quarantine') return <>
+    <p>Record the actual received quantity in tracked quarantine before quality release or supplier return.</p>
+    {field('inventory_location', 'Quarantine custody', data.inventoryLocations.filter((item) => item.status === 'ACTIVE' && item.quarantine_capability).map((item) => ({ id: item.id, label: item.name })))}
+    {field('reason', 'Physical custody evidence')}
+  </>;
+
   if (dialog.kind === 'release') return <>
     <div className="business-dialog-record"><div><code>{dialog.batch.sku_code}</code><strong>{dialog.batch.manufacturer_batch_number}</strong></div><ProcurementStatus value={dialog.batch.quality_status} /></div>
     {field('inventory_location', 'Destination inventory location', data.inventoryLocations.filter((item) => item.status === 'ACTIVE').map((item) => ({ id: item.id, label: `${item.name} · ${titleCase(item.location_type)}` })))}
@@ -915,11 +916,22 @@ function DialogFields({
     <label className="business-field"><span>Release rationale <b>Required</b></span><textarea onChange={(event) => setValue('reason', event.target.value)} required value={values.reason ?? ''} /></label>
   </>;
 
+  if (dialog.kind === 'reject-return') return <><p>Reject {dialog.item.return_number} before dispatch. Original evidence remains auditable. Corrected receipt/custody details can then be submitted as a new request.</p>{field('reason', 'Rejection reason')}</>;
+  if (dialog.kind === 'return-credit') return <>
+    <p>Return {dialog.item.return_number} · expected KES {dialog.item.expected_credit ?? 'Not supplied'}. Record the supplier's actual credit note; independent reconciliation follows.</p>
+    {field('amount', 'Actual supplier credit (KES)', undefined, 'number')}
+    {field('reference', 'Supplier credit-note reference')}
+    <label className="business-field">Variance reason / evidence<textarea value={values.variance_reason ?? ''} onChange={(event) => setValue('variance_reason', event.target.value)} /></label>
+  </>;
   if (dialog.kind === 'return') return <>
     {field('goods_receipt', 'Goods receipt', data.receipts.map((item) => ({ id: item.id, label: `${item.grn_number} · ${item.delivery_note_number}` })))}
     {field('return_number', 'Return reference')}
+    {field('return_category', 'Return category', [{ id: 'QUALITY_REJECTION', label: 'Quality rejection / held stock' }, { id: 'RECALL', label: 'Supplier recall' }, { id: 'COMMERCIAL', label: 'Agreed commercial return' }])}
     {field('sku', 'SKU', skuOptions(data))}
     {field('quantity', 'Return quantity', undefined, 'number')}
+    {field('expected_credit', 'Expected supplier credit (KES)', undefined, 'number')}
+    {field('batch', 'Actual received batch', data.batches.filter((batch) => batch.sku === values.sku && Boolean(data.receipts.find((receipt) => receipt.id === values.goods_receipt)?.lines.some((line) => line.id === batch.grn_line))).map((batch) => ({ id: batch.id, label: batch.manufacturer_batch_number })))}
+    {field('source_location', 'Physical source custody', data.inventoryLocations.filter((location) => location.status === 'ACTIVE' && location.branch === data.receipts.find((receipt) => receipt.id === values.goods_receipt)?.receiving_branch).map((location) => ({ id: location.id, label: location.name })))}
     <label className="business-field"><span>Return reason <b>Required</b></span><textarea onChange={(event) => setValue('reason', event.target.value)} required value={values.reason ?? ''} /></label>
   </>;
 
@@ -1001,17 +1013,22 @@ function dialogRequest(
     path: `/api/procurement/goods-receipts/${dialog.receipt.id}/inspect/`,
     payload: { ...values, temperature_excursion: values.temperature_excursion === 'true' },
   };
+  if (dialog.kind === 'quarantine') return { message: 'Physical receipt recorded in quarantine custody.', path: `/api/procurement/received-batches/${dialog.batch.id}/quarantine-stock/`, payload: values };
   if (dialog.kind === 'release') return {
     message: `Batch ${dialog.batch.manufacturer_batch_number} released and posted to inventory.`,
     path: `/api/procurement/received-batches/${dialog.batch.id}/release/`,
     payload: { ...values, quantity: Number(values.quantity) },
   };
+  if (dialog.kind === 'reject-return') return { message: 'Supplier return request rejected.', path: `/api/procurement/supplier-returns/${dialog.item.id}/reject/`, payload: values };
+  if (dialog.kind === 'return-credit') return { message: 'Supplier credit recorded for independent reconciliation.', path: `/api/procurement/supplier-returns/${dialog.item.id}/record-credit/`, payload: values };
   if (dialog.kind === 'return') return {
     message: `Supplier return ${values.return_number} requested.`,
     path: '/api/procurement/supplier-returns/',
     payload: {
       goods_receipt: values.goods_receipt,
-      lines: [{ quantity: Number(values.quantity), sku: values.sku }],
+      expected_credit: values.expected_credit,
+      return_category: values.return_category,
+      lines: [{ quantity: Number(values.quantity), sku: values.sku, batch: values.batch, source_location: values.source_location }],
       reason: values.reason,
       return_number: values.return_number,
     },
@@ -1039,8 +1056,11 @@ function dialogDefaults(dialog: Exclude<DialogMode, null>, data: ProcurementData
   if (dialog.kind === 'receipt') return { delivery_note_number: '', purchase_order: data.orders.find((item) => ['SENT', 'PARTIALLY_RECEIVED'].includes(item.status))?.id ?? '', receiving_branch: data.locations[0]?.id ?? '' };
   if (dialog.kind === 'receive-batch') return { expiry_date: '', manufacture_date: '', manufacturer_batch_number: '', po_line: data.orders.find((item) => item.id === dialog.receipt.purchase_order)?.lines[0]?.id ?? '', received_quantity: '' };
   if (dialog.kind === 'inspection') return { decision: 'QUARANTINE', reason: '', temperature_excursion: 'false' };
+  if (dialog.kind === 'quarantine') return { inventory_location: '', reason: '' };
   if (dialog.kind === 'release') return { inventory_location: data.inventoryLocations.find((item) => item.status === 'ACTIVE')?.id ?? '', quantity: String(dialog.batch.quarantined_quantity || dialog.batch.received_quantity), reason: '' };
-  if (dialog.kind === 'return') return { goods_receipt: data.receipts[0]?.id ?? '', quantity: '', reason: '', return_number: `RET-${Date.now().toString().slice(-8)}`, sku: data.skus[0]?.id ?? '' };
+  if (dialog.kind === 'reject-return') return { reason: '' };
+  if (dialog.kind === 'return-credit') return { amount: '', reference: '', variance_reason: '' };
+  if (dialog.kind === 'return') return { return_category: 'QUALITY_REJECTION', expected_credit: '', batch: '', source_location: '', goods_receipt: data.receipts[0]?.id ?? '', quantity: '', reason: '', return_number: `RET-${Date.now().toString().slice(-8)}`, sku: data.skus[0]?.id ?? '' };
   return { goods_receipt: data.receipts[0]?.id ?? '', invoice_amount: '', invoice_reference: '', purchase_order: data.receipts[0]?.purchase_order ?? data.orders[0]?.id ?? '' };
 }
 
@@ -1054,8 +1074,11 @@ function dialogTitle(dialog: Exclude<DialogMode, null>): string {
     receipt: 'Open goods receipt',
     reconciliation: 'Reconcile procurement',
     release: 'Release batch to inventory',
+    quarantine: 'Record quarantine custody',
     requisition: 'Create purchase requisition',
     return: 'Request supplier return',
+    'return-credit': 'Record supplier credit',
+    'reject-return': 'Reject supplier return',
     'receive-batch': 'Receive batch and expiry',
     supplier: 'Register supplier',
     'suspend-supplier': 'Suspend supplier',

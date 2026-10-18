@@ -471,13 +471,24 @@ class SupplierReturn(TimestampedModel):
     supplier = models.ForeignKey(Supplier, on_delete=models.PROTECT, related_name="supplier_returns")
     status = models.CharField(max_length=32, choices=Status.choices, default=Status.DRAFT, db_index=True)
     reason = models.TextField()
+    return_category = models.CharField(max_length=24, default="QUALITY_REJECTION", choices=[("QUALITY_REJECTION", "Quality rejection"), ("RECALL", "Recall"), ("COMMERCIAL", "Commercial agreement")])
+    requested_by = models.ForeignKey("identity.User", on_delete=models.PROTECT, related_name="+", null=True)
+    approved_by = models.ForeignKey("identity.User", on_delete=models.PROTECT, related_name="+", null=True)
+    dispatched_by = models.ForeignKey("identity.User", on_delete=models.PROTECT, related_name="+", null=True)
+    credit_recorded_by = models.ForeignKey("identity.User", on_delete=models.PROTECT, related_name="+", null=True)
+    credit_closed_by = models.ForeignKey("identity.User", on_delete=models.PROTECT, related_name="+", null=True)
+    expected_credit = models.DecimalField(max_digits=18, decimal_places=4, null=True)
+    credit_amount = models.DecimalField(max_digits=18, decimal_places=4, null=True)
+    credit_reference = models.CharField(max_length=128, blank=True)
+    credit_variance_reason = models.TextField(blank=True)
 
     objects = StrictTenantManager()
     all_objects = models.Manager()
 
     class Meta:
         constraints = [
-            models.UniqueConstraint(fields=["tenant", "return_number"], name="unique_tenant_return_number")
+            models.UniqueConstraint(fields=["tenant", "return_number"], name="unique_tenant_return_number"),
+            models.UniqueConstraint(fields=["tenant", "supplier", "credit_reference"], condition=~models.Q(credit_reference=""), name="uq_supplier_return_credit_reference"),
         ]
 
     def __str__(self):
@@ -490,6 +501,8 @@ class SupplierReturnLine(TimestampedModel):
     sku = models.ForeignKey(CommercialSKU, on_delete=models.PROTECT)
     batch = models.ForeignKey(ReceivedBatch, null=True, blank=True, on_delete=models.SET_NULL)
     quantity = models.PositiveIntegerField()
+    source_location = models.ForeignKey("inventory.InventoryLocation", on_delete=models.PROTECT, null=True)
+    inventory_batch = models.ForeignKey("inventory.InventoryBatch", on_delete=models.PROTECT, null=True)
 
     objects = StrictTenantManager()
     all_objects = models.Manager()

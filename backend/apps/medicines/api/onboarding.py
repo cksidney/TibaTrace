@@ -2,17 +2,23 @@ from decimal import Decimal
 
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
-from django.db.models import Q
+from django.db.models import Count, Q
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
+from django.utils.text import slugify
 from rest_framework import serializers
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.renderers import JSONRenderer
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.core.tenant_context import get_current_tenant_id
 from apps.medicines.onboarding import StaleSetupReview, assert_setup_access, missing_details, save_review, setup_status
 from apps.medicines.onboarding_completion import release_opening_setup, stage_opening_setup
-from apps.medicines.onboarding_models import LegacyCatalogueItem
+from apps.medicines.onboarding_models import LegacyCatalogueImport, LegacyCatalogueItem
+from apps.medicines.onboarding_upload import import_item_upload, opening_stocktake_csv
+from apps.tenancy.models import Tenant
 
 
 class BatchInput(serializers.Serializer):
@@ -49,6 +55,8 @@ class ReviewInput(serializers.Serializer):
 
 def serialise(item):
     return {"id":str(item.pk), "source_key":item.source_key, "source_row":item.source_row,
+            "import_id":str(item.import_batch_id), "import_code":item.import_batch.code,
+            "source_date":item.import_batch.source_date.isoformat(),
             "legacy_code":item.legacy_code, "proposed_sku_code":item.proposed_sku_code,
             "source_name":item.source_name, "source_uom":item.source_uom,
             "source_cost":str(item.source_cost), "source_price":str(item.source_price),
@@ -93,11 +101,83 @@ class LegacyItemList(SetupScope):
         qs = qs.order_by("-source_quantity", "source_row")
         page = Paginator(qs, 25).get_page(request.query_params.get("page", 1))
         first = summary_items[0] if summary_items else None
+        imports = LegacyCatalogueImport.all_objects.filter(tenant_id=self.tenant_id(request)).annotate(item_count=Count("items")).order_by("-created_at", "id")
         return Response({"summary":summary, "count":page.paginator.count, "page":page.number,
                          "pages":page.paginator.num_pages, "can_edit":bool(self.tenant_id(request) and
                           request.user.has_capability("inventory.manage", tenant_id=self.tenant_id(request))),
                          "source_date":first.import_batch.source_date.isoformat() if first else None,
+                         "imports":[{"id":str(batch.pk), "code":batch.code, "source_date":batch.source_date.isoformat(),
+                                     "source_filename":batch.provenance.get("source_filename", ""), "item_count":batch.item_count} for batch in imports],
                          "results":[serialise(i) for i in page]})
+
+
+class ItemUploadInput(serializers.Serializer):
+    rows = serializers.ListField(child=serializers.JSONField())
+    source_date = serializers.DateField()
+    source_filename = serializers.CharField(max_length=255)
+    dry_run = serializers.BooleanField(default=True)
+
+    def validate_source_date(self, value):
+        if value > timezone.localdate():
+            raise serializers.ValidationError("The source-data date cannot be in the future.")
+        return value
+
+    def validate_source_filename(self, value):
+        if "\x00" in value:
+            raise serializers.ValidationError("Remove null characters from the filename.")
+        return value
+
+
+class LegacyItemUpload(SetupScope):
+    def post(self, request):
+        tenant_id = self.tenant_id(request)
+        if tenant_id is None:
+            return Response({"detail":"Select an explicit tenant workspace before uploading item data."}, status=403)
+        try:
+            assert_setup_access(request.user, tenant_id)
+        except PermissionDenied as exc:
+            return Response({"detail":str(exc)}, status=403)
+        payload = ItemUploadInput(data=request.data)
+        payload.is_valid(raise_exception=True)
+        tenant = get_object_or_404(Tenant, pk=tenant_id)
+        try:
+            result = import_item_upload(tenant=tenant, actor=request.user, **payload.validated_data)
+        except ValidationError as exc:
+            return Response({"detail":" ".join(exc.messages)}, status=400)
+        return Response(result, headers={"Cache-Control":"no-store"})
+
+
+class LegacyOpeningStocktakeTemplate(SetupScope):
+    renderer_classes = [JSONRenderer]
+
+    def perform_content_negotiation(self, request, force=False):
+        # The successful HttpResponse supplies its CSV content type. Accept a
+        # CSV attachment request while retaining JSON for permission/API errors.
+        return super().perform_content_negotiation(request, force=True)
+
+    def get(self, request):
+        tenant_id = self.tenant_id(request)
+        if tenant_id is None:
+            return Response({"detail":"Select an explicit tenant workspace before downloading a count sheet."}, status=403)
+        try:
+            assert_setup_access(request.user, tenant_id)
+        except PermissionDenied as exc:
+            return Response({"detail":str(exc)}, status=403)
+        tenant = get_object_or_404(Tenant, pk=tenant_id)
+        items = self.scoped(request)
+        import_id = request.query_params.get("import_id")
+        if import_id:
+            try:
+                batch = get_object_or_404(LegacyCatalogueImport.all_objects, tenant=tenant, pk=import_id)
+            except (ValidationError, ValueError):
+                return Response({"detail":"Import not found."}, status=404)
+            items = items.filter(import_batch=batch)
+        content = opening_stocktake_csv(items.order_by("import_batch__created_at", "source_row", "id").iterator())
+        response = HttpResponse(content, content_type="text/csv; charset=utf-8")
+        filename = f"tibatrace-opening-stocktake-{slugify(tenant.slug) or 'tenant'}.csv"
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        response["Cache-Control"] = "no-store"
+        return response
 
 
 class LegacyItemReview(SetupScope):
@@ -123,7 +203,7 @@ class LegacyItemReview(SetupScope):
 
 class StageSetupInput(serializers.Serializer):
     expected_updated_at = serializers.CharField()
-    sku_id = serializers.UUIDField()
+    sku_id = serializers.UUIDField(required=False, allow_null=True)
     branch_id = serializers.UUIDField()
     quarantine_location_id = serializers.UUIDField()
     product_match_confirmed = serializers.BooleanField()
@@ -171,3 +251,22 @@ class LegacyItemRelease(SetupScope):
         except ValidationError as exc:
             return Response({"detail":" ".join(exc.messages)}, status=400)
         return Response(serialise(item))
+
+
+class LegacyOpeningCountUpload(SetupScope):
+    def post(self, request):
+        from apps.medicines.onboarding_counts import import_opening_counts
+        class CountsInput(serializers.Serializer):
+            rows = serializers.ListField(child=serializers.DictField(), min_length=1, max_length=5000)
+            dry_run = serializers.BooleanField(default=True)
+        payload = CountsInput(data=request.data)
+        payload.is_valid(raise_exception=True)
+        try:
+            result = import_opening_counts(tenant_id=self.tenant_id(request), actor=request.user, **payload.validated_data)
+        except PermissionDenied as exc:
+            return Response({'detail': str(exc)}, status=403)
+        except StaleSetupReview as exc:
+            return Response({'detail': str(exc)}, status=409)
+        except ValidationError as exc:
+            return Response({'detail': ' '.join(exc.messages)}, status=400)
+        return Response(result)

@@ -1,7 +1,14 @@
 from django.urls import path
 from rest_framework.routers import DefaultRouter
 
-from apps.medicines.api.onboarding import LegacyItemList, LegacyItemRelease, LegacyItemReview, LegacyItemStage
+from apps.medicines.api.onboarding import (
+    LegacyItemList,
+    LegacyItemRelease,
+    LegacyItemReview,
+    LegacyItemStage,
+    LegacyItemUpload,
+    LegacyOpeningStocktakeTemplate,
+)
 from apps.medicines.api.views import (
     ActiveSubstanceViewSet,
     AdministrationRouteViewSet,
@@ -23,6 +30,8 @@ from apps.medicines.api.views import (
     TherapeuticClassificationViewSet,
 )
 
+from .onboarding import LegacyOpeningCountUpload
+
 router = DefaultRouter()
 router.register("dose-forms", DoseFormViewSet, basename="dose-forms")
 router.register("routes", AdministrationRouteViewSet, basename="routes")
@@ -40,8 +49,12 @@ router.register("substitution-policies", SubstitutionPolicyViewSet, basename="su
 router.register("branch-assortments", BranchAssortmentViewSet, basename="branch-assortments")
 router.register("catalog", MedicineViewSet, basename="catalog")
 
+
 urlpatterns = [
+    path("initial-setup/stocktake-upload/", LegacyOpeningCountUpload.as_view(), name="legacy-opening-count-upload"),
     path("initial-setup/", LegacyItemList.as_view(), name="legacy-item-setup"),
+    path("initial-setup/import/", LegacyItemUpload.as_view(), name="legacy-item-upload"),
+    path("initial-setup/stocktake-template/", LegacyOpeningStocktakeTemplate.as_view(), name="legacy-opening-stocktake-template"),
     path("initial-setup/<uuid:pk>/review/", LegacyItemReview.as_view(), name="legacy-item-review"),
     path("initial-setup/<uuid:pk>/stage/", LegacyItemStage.as_view(), name="legacy-item-stage"),
     path("initial-setup/<uuid:pk>/release/", LegacyItemRelease.as_view(), name="legacy-item-release"),

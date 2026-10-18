@@ -336,6 +336,8 @@ def _snapshot_item(item_data):
     sku = data.get("prescribed_sku")
     if not sku:
         return data
+    if sku.product_kind != "MEDICINE" or not sku.is_dispensable or not sku.manufactured_product_id:
+        raise ValidationError("Prescription intake requires a dispensable medicine SKU. Supplies and services belong in retail.")
     manufactured_product = sku.manufactured_product
     clinical_product = manufactured_product.clinical_product
     data.setdefault("prescribed_brand", manufactured_product)

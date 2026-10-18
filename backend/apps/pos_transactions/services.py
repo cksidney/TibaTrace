@@ -92,18 +92,19 @@ class PosRetailService:
         # Fail closed here even when a SKU was incorrectly marked saleable in
         # the assortment, so the API cannot bypass the UI warning.
         CatalogueFitnessService.assert_assortable(sku)
-        clinical = sku.manufactured_product.clinical_product
-        prescription_classification = (clinical.prescription_classification or "").strip().upper()
-        if prescription_classification != "OTC":
-            raise ValidationError(
-                "Retail checkout is limited to products classified OTC. "
-                "Process prescription and restricted medicines in Clinical."
-            )
-        controlled_classification = (clinical.controlled_classification or "").strip().upper()
-        if controlled_classification not in {"", "NONE"}:
-            raise ValidationError(
-                "Controlled medicines must be dispensed through Clinical."
-            )
+        if sku.product_kind == "MEDICINE":
+            clinical = sku.manufactured_product.clinical_product
+            prescription_classification = (clinical.prescription_classification or "").strip().upper()
+            if prescription_classification != "OTC":
+                raise ValidationError(
+                    "Retail checkout is limited to products classified OTC. "
+                    "Process prescription and restricted medicines in Clinical."
+                )
+            controlled_classification = (clinical.controlled_classification or "").strip().upper()
+            if controlled_classification not in {"", "NONE"}:
+                raise ValidationError(
+                    "Controlled medicines must be dispensed through Clinical."
+                )
 
         quantity = Decimal(str(quantity))
         context = PricingContext(
@@ -133,8 +134,8 @@ class PosRetailService:
             .filter(
                 inventory_batch__quality_status=InventoryBatch.QualityStatus.RELEASED,
                 inventory_batch__recall_status=InventoryBatch.RecallStatus.NONE,
-                inventory_batch__expiry_date__gt=timezone.localdate(),
             )
+            .filter(Q(inventory_batch__expiry_date__gt=timezone.localdate()) | Q(sku__expiry_tracking_required=False, inventory_batch__expiry_date__isnull=True))
             .aggregate(total=Sum("available"))["total"]
             or Decimal("0.0000")
         )

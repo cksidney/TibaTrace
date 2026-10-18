@@ -33,9 +33,9 @@ it('keeps imported stock separate and allows an auditable partial manager save',
   expect(container.textContent).toContain('not saleable stock');
   const button = [...container.querySelectorAll('button')].find((b) => b.textContent === 'Complete details');
   act(() => button?.click());
-  expect(container.textContent).toContain('Actual opening-stock batches');
-  expect(container.querySelectorAll('.legacy-batch').length).toBe(0);
-  await act(async () => { container.querySelector('form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); });
+  expect(document.body.textContent).toContain('Actual opening-stock batches');
+  expect(document.body.querySelectorAll('.legacy-batch').length).toBe(0);
+  await act(async () => { document.body.querySelector('form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); });
   const [url, options] = fetchMock.mock.calls[1] as [string, RequestInit];
   expect(url).toContain('/item-1/review/');
   expect(options.headers).toMatchObject({ 'X-CSRFToken': 'csrf-test' });
@@ -52,4 +52,36 @@ it('does not expose edit controls to a reader', async () => {
   const button = [...container.querySelectorAll('button')].find((b) => b.textContent === 'Complete details');
   expect(button?.disabled).toBe(true);
   expect(container.textContent).toContain('Read-only');
+  expect([...container.querySelectorAll('button')].find((b) => b.textContent === 'Upload item list')?.disabled).toBe(true);
+});
+
+it('provides onboarding for a tenant with no imported items', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ ...page,
+    summary: { total: 0, positive_stock: 0, negative_stock: 0, details_complete: 0, excluded: 0 },
+    count: 0, results: [], imports: [],
+  }), { status: 200 })));
+  await act(async () => { root.render(<LegacyItemSetup csrfToken="csrf-test" tenantId="tenant-a" />); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+  expect(container.textContent).toContain('No item list has been imported');
+  const upload = [...container.querySelectorAll('button')].find((b) => b.textContent === 'Upload item list');
+  expect(upload?.disabled).toBe(false);
+  act(() => upload?.click());
+  expect(document.body.querySelector('[role=dialog]')?.textContent).toContain('Download item template');
+});
+
+it('does not turn blank uploaded values into confirmed zeroes', async () => {
+  const item = { ...page.results[0]!, source_cost: '0', source_price: '0', source_quantity: '0',
+    source_product: { format: 'TENANT_ITEM_CSV_V1', filename: 'opening-items.csv', source_row: 7,
+      upload_canonical: { cost_price: null, selling_price: null, source_quantity: null, item_kind: 'SUPPLY', pack_description: 'Each' } },
+    source_stock: {},
+  };
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ ...page, results: [item] }), { status: 200 })));
+  await act(async () => { root.render(<LegacyItemSetup csrfToken="csrf-test" tenantId="tenant-a" />); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+  expect(container.textContent).toContain('Not supplied / Not supplied');
+  act(() => [...container.querySelectorAll('button')].find((b) => b.textContent === 'Complete details')?.click());
+  expect(document.body.textContent).toContain('opening-items.csv · row 7');
+  expect(document.body.textContent).not.toContain('Products.pdf');
+  const confirm = [...document.body.querySelectorAll('button')].find((b) => b.textContent === 'Confirm source cost and price');
+  expect(confirm?.disabled).toBe(true);
 });

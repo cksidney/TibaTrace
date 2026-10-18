@@ -33,12 +33,12 @@ def missing_details(item):
         missing.append("Current physical count and count date")
     elif date.fromisoformat(review["counted_on"]) != timezone.localdate():
         missing.append("Reconfirm physical count today")
-    if review.get("item_kind") == "MEDICINE":
-        if not review.get("master_catalogue_code"):
+    if review.get("item_kind") in {"MEDICINE", "SUPPLY"}:
+        if review.get("item_kind") == "MEDICINE" and not review.get("master_catalogue_code"):
             missing.append("Reviewed national medicine reference")
         if quantity is not None:
             batches = review.get("batches", [])
-            if Decimal(str(quantity)) > 0 and not batches:
+            if review.get("item_kind") == "MEDICINE" and Decimal(str(quantity)) > 0 and not batches:
                 missing.append("Actual batches and expiry dates")
             elif batches and sum((Decimal(str(b["quantity"])) for b in batches), Decimal(0)) != Decimal(str(quantity)):
                 missing.append("Batch quantities must equal physical count")

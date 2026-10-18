@@ -1,3 +1,7 @@
+import { createPortal } from 'react-dom';
+import { InventoryOperations } from './InventoryOperations.js';
+import { CountSheetUpload } from './CountSheetUpload.js';
+import { downloadInventoryCountTemplate } from './api.js';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, FormEvent } from 'react';
 
@@ -1354,7 +1358,7 @@ function HeartbeatsTelemetryPanel() {
   );
 }
 
-type InventoryTab = 'balances' | 'ledger' | 'batches' | 'locations' | 'reservations' | 'transfers' | 'stocktakes';
+type InventoryTab = 'balances' | 'ledger' | 'batches' | 'locations' | 'reservations' | 'transfers' | 'stocktakes' | 'operations';
 
 type StockTransferDialogMode =
   | { readonly kind: 'create' }
@@ -1567,9 +1571,11 @@ function InventoryView({
           >
             Stocktakes ({stocktakes?.length ?? 0})
           </button>
+          <button type="button" className={tab === 'operations' ? 'segmented-option is-active' : 'segmented-option'} onClick={() => setTab('operations')}>Exceptions & valuation</button>
           </div>
         </div>
 
+      {tab === 'operations' && <InventoryOperations key={tenantId} tenantId={tenantId} csrfToken={csrfToken} batches={batches ?? []} locations={locations ?? []} transfers={transfers ?? []} onChanged={() => reload()} />}
       {tab === 'balances' && (
         <>
           <p className="panel-note">
@@ -1995,6 +2001,7 @@ function StocktakeRegister({
   readonly tenantId: string;
 }) {
   const [dialog, setDialog] = useState<{ readonly kind: 'open' } | { readonly kind: 'count'; readonly session: HQStocktakeSession } | null>(null);
+  const [uploadSession, setUploadSession] = useState<HQStocktakeSession | null>(null);
   const [busySession, setBusySession] = useState('');
   const [error, setError] = useState('');
   const postVariances = async (session: HQStocktakeSession) => {
@@ -2086,8 +2093,10 @@ function StocktakeRegister({
                   {session.completeness?.missing_lines.length ? <details><summary>Outstanding physical count lines</summary><ul>{session.completeness.missing_lines.map((line) => <li key={`${line.location_id}-${line.sku_id}-${line.batch_id}`}>{line.location_name} · {line.sku_code} {line.sku_name} · {line.batch_number || 'No tracked batch'}</li>)}</ul></details> : null}
                   {session.completeness?.unconfirmed_empty_location_ids.map((id) => <button className="secondary-button" type="button" key={id} onClick={() => { setException({ session, action: 'confirm-empty-location', locationId: id }); setExceptionReason(''); }}>Confirm physically empty: {locations.find((location) => location.id === id)?.name ?? id}</button>)}
                   <button className="secondary-button" onClick={() => { setError(''); setDialog({ kind: 'count', session }); }} type="button">Record physical count</button>
+                  <button className="secondary-button" type="button" onClick={() => { void downloadInventoryCountTemplate(session.id, tenantId).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Could not download count sheet.')); }}>Download blind count sheet</button>
+                  <button className="secondary-button" type="button" onClick={() => setUploadSession(session)}>Upload completed counts</button>
                   <button className="secondary-button" type="button" onClick={() => { setException({ session, action: 'cancel' }); setExceptionReason(''); }}>Cancel session</button>
-                  <button className="primary-button" disabled={!session.counts.length || Boolean(busySession) || session.scope === 'FULL' && !session.completeness?.complete} onClick={() => void postVariances(session)} type="button">
+                  <button className="primary-button" disabled={(!session.counts.some((count) => !count.voided) && !(session.scope === 'FULL' && session.completeness?.complete)) || Boolean(busySession) || session.scope === 'FULL' && !session.completeness?.complete} onClick={() => void postVariances(session)} type="button">
                     {busySession === session.id ? 'Posting…' : 'Post variances'}
                   </button>
                 </footer>
@@ -2096,11 +2105,12 @@ function StocktakeRegister({
           ))}
         </div>
       )}
-      {exception && <div className="business-dialog-backdrop" role="presentation"><section className="business-dialog" role="dialog" aria-modal="true" aria-labelledby="stocktake-exception-title"><h2 id="stocktake-exception-title">{titleCase(exception.action.replace('-', ' '))}</h2><p className="panel-note">Original counts remain auditable. Recounts require a fresh physical observation; voiding does not complete a full count.</p><form onSubmit={(event) => void saveException(event)}><fieldset disabled={Boolean(busySession)} style={{ border: 0 }}>
+      {uploadSession && <CountSheetUpload path={`/api/inventory/stocktakes/${uploadSession.id}/upload-counts/`} csrfToken={csrfToken} tenantId={tenantId} onClose={() => setUploadSession(null)} onSaved={() => { setUploadSession(null); void onChanged('Physical counts recorded. Independent approval is required to post variances.'); }} />}
+      {exception && createPortal(<IntakeModal title={titleCase(exception.action.replaceAll('-', ' '))} busy={Boolean(busySession)} onClose={() => setException(null)}><p className="panel-note">Original observations remain auditable. Recounts require a fresh physical observation.</p><form onSubmit={(event) => void saveException(event)}><fieldset disabled={Boolean(busySession)} style={{ border: 0 }}>
         {exception.action === 'recount' && <label className="business-field">New physical count<input required type="number" min="0" step="0.0001" value={recountQuantity} onChange={(event) => setRecountQuantity(event.target.value)} /></label>}
         <label className="business-field">Required reason / evidence<textarea required maxLength={1000} value={exceptionReason} onChange={(event) => setExceptionReason(event.target.value)} /></label>
         {error && <p className="business-dialog-error" role="alert">{error}</p>}<footer><button className="secondary-button" type="button" onClick={() => setException(null)}>Close</button><button className="primary-button" type="submit">Record audited exception</button></footer>
-      </fieldset></form></section></div>}
+      </fieldset></form></IntakeModal>, document.body)}
       {dialog?.kind === 'open' ? (
         <OpenStocktakeDialog
           csrfToken={csrfToken}
@@ -2177,10 +2187,7 @@ function OpenStocktakeDialog({
     }
   };
 
-  return (
-    <div className="business-dialog-backdrop" onClick={(event) => { if (event.target === event.currentTarget && !busy) onClose(); }} role="presentation">
-      <section aria-labelledby="open-stocktake-title" aria-modal="true" className="business-dialog stocktake-dialog" role="dialog">
-        <header><div><p className="eyebrow">Inventory control</p><h2 id="open-stocktake-title">Open stocktake</h2></div><button aria-label="Close dialog" disabled={busy} onClick={onClose} type="button"><Icon name="close" /></button></header>
+  return createPortal(<IntakeModal title="Open stocktake" busy={busy} onClose={onClose}>
         <form onSubmit={(event) => void submit(event)}>
           {error ? <p className="business-dialog-error" role="alert"><Icon name="alert" /> {error}</p> : null}
           {!branches.length ? <p className="inline-alert" role="status">Create an active inventory location before opening a stocktake.</p> : null}
@@ -2195,9 +2202,7 @@ function OpenStocktakeDialog({
           </fieldset>
           <footer><button className="secondary-button" disabled={busy} onClick={onClose} type="button">Cancel</button><button className="primary-button" disabled={busy || !branchId || !locationIds.length} type="submit">{busy ? 'Opening…' : 'Open stocktake'}</button></footer>
         </form>
-      </section>
-    </div>
-  );
+  </IntakeModal>, document.body);
 }
 
 function RecordStocktakeCountDialog({
@@ -2246,10 +2251,7 @@ function RecordStocktakeCountDialog({
     }
   };
 
-  return (
-    <div className="business-dialog-backdrop" onClick={(event) => { if (event.target === event.currentTarget && !busy) onClose(); }} role="presentation">
-      <section aria-labelledby="stocktake-count-title" aria-modal="true" className="business-dialog stocktake-dialog" role="dialog">
-        <header><div><p className="eyebrow">{session.document_number || session.branch_name}</p><h2 id="stocktake-count-title">Record physical count</h2></div><button aria-label="Close dialog" disabled={busy} onClick={onClose} type="button"><Icon name="close" /></button></header>
+  return createPortal(<IntakeModal title="Record physical count" busy={busy} onClose={onClose}>
         <form onSubmit={(event) => void submit(event)}>
           {error ? <p className="business-dialog-error" role="alert"><Icon name="alert" /> {error}</p> : null}
           <div className="stocktake-form-grid">
@@ -2262,9 +2264,7 @@ function RecordStocktakeCountDialog({
           {alreadyCounted ? <p className="inline-alert" role="status">This SKU and batch already have a count at this location. Select another item or batch.</p> : <p className="business-dialog-confirm"><Icon name="shield" /> Record each SKU and batch separately at every selected location. Posting requires a different authorized user from the opener and counters.</p>}
           <footer><button className="secondary-button" disabled={busy} onClick={onClose} type="button">Cancel</button><button className="primary-button" disabled={busy || !locationId || !skuId || !quantity || alreadyCounted} type="submit">{busy ? 'Saving…' : 'Save physical count'}</button></footer>
         </form>
-      </section>
-    </div>
-  );
+  </IntakeModal>, document.body);
 }
 
 function stockTransferCreateBlockers(
@@ -7607,9 +7607,9 @@ function CatalogueView({
         <SummaryCard icon="alert" label="Inactive SKUs" value={Math.max(counts.skus - counts.active_skus, 0)} detail="Draft, inactive or recalled" tone={counts.skus === counts.active_skus ? 'teal' : 'amber'} onActivate={() => scrollCatalogue('catalogue-skus')} />
       </section>
 
-      <GovernmentCatalogue csrfToken={csrfToken} overview={overview} />
-
       <LegacyItemSetup key={overview.tenant_id} csrfToken={csrfToken} tenantId={overview.tenant_id} />
+
+      <GovernmentCatalogue csrfToken={csrfToken} overview={overview} />
 
       <BusinessWorkbench csrfToken={csrfToken} data={data} domain="catalogue" onChanged={onWorkspaceChanged} />
 

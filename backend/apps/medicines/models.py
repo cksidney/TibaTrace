@@ -256,8 +256,9 @@ class CommercialSKU(TimestampedModel):
     tenant = models.ForeignKey("tenancy.Tenant", on_delete=models.CASCADE, related_name="skus")
     sku_code = models.CharField(max_length=100)
     display_name = models.CharField(max_length=255)
+    product_kind = models.CharField(max_length=16, default="MEDICINE", choices=[("MEDICINE", "Medicine"), ("SUPPLY", "Supply"), ("SERVICE", "Service")])
     manufactured_product = models.ForeignKey(
-        ManufacturedMedicinalProduct, on_delete=models.PROTECT, related_name="skus"
+        ManufacturedMedicinalProduct, on_delete=models.PROTECT, related_name="skus", null=True, blank=True
     )
     package_definition = models.ForeignKey(
         PackageDefinition, on_delete=models.PROTECT, related_name="skus"
@@ -277,7 +278,8 @@ class CommercialSKU(TimestampedModel):
 
     class Meta:
         constraints = [
-            models.UniqueConstraint(fields=["tenant", "sku_code"], name="uq_sku_tenant_code")
+            models.UniqueConstraint(fields=["tenant", "sku_code"], name="uq_sku_tenant_code"),
+            models.CheckConstraint(condition=(models.Q(product_kind="MEDICINE", manufactured_product__isnull=False) | models.Q(product_kind__in=["SUPPLY", "SERVICE"], manufactured_product__isnull=True, is_dispensable=False)), name="chk_sku_product_kind"),
         ]
 
     def __str__(self):

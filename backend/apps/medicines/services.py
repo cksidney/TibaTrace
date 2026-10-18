@@ -637,7 +637,7 @@ class BranchAssortmentService:
             tenant=tenant,
             location=location,
             sku=sku,
-            defaults={"is_sellable": True, "is_purchasable": True, "is_dispensable": True, "is_stocked": True},
+            defaults={"is_sellable": sku.is_saleable, "is_purchasable": sku.is_purchasable, "is_dispensable": sku.is_dispensable, "is_stocked": sku.stock_tracking_required},
         )
         _emit_medicine_event(
             event_type="BranchAssortmentEnabled",

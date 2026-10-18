@@ -431,9 +431,10 @@ def build_hq_workspace_context(tenant_id, actor=None, business_query=None):
                     "id": str(sku.id),
                     "sku_code": sku.sku_code,
                     "display_name": sku.display_name,
-                    "brand_name": sku.manufactured_product.brand_name,
+                    "brand_name": sku.manufactured_product.brand_name if sku.manufactured_product_id else "",
+                    "product_kind": sku.product_kind,
                     "canonical_medicine_name": (
-                        sku.manufactured_product.clinical_product.canonical_name
+                        sku.manufactured_product.clinical_product.canonical_name if sku.manufactured_product_id else ""
                     ),
                     "default_barcode": sku.default_barcode,
                     "status": sku.status,

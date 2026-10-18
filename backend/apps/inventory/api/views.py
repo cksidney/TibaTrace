@@ -303,6 +303,20 @@ class StockTransferViewSet(TenantScopedQuerysetMixin, viewsets.ReadOnlyModelView
         )
 
     @action(detail=True, methods=["post"])
+    def reject(self, request, pk=None):
+        reason = str(request.data.get("reason", "")).strip()
+        if not reason:
+            raise ValidationError("A rejection reason is required.")
+        return self.service_response(lambda: StockTransferService.reject_transfer(transfer=self.get_object(), actor=request.user, reason=reason))
+
+    @action(detail=True, methods=["post"])
+    def cancel(self, request, pk=None):
+        reason = str(request.data.get("reason", "")).strip()
+        if not reason:
+            raise ValidationError("A cancellation reason is required.")
+        return self.service_response(lambda: StockTransferService.cancel_transfer(transfer=self.get_object(), actor=request.user, reason=reason))
+
+    @action(detail=True, methods=["post"])
     def approve(self, request, pk=None):
         transfer = self.get_object()
         return self.service_response(
@@ -341,6 +355,37 @@ class StocktakeViewSet(mixins.CreateModelMixin, TenantScopedQuerysetMixin, views
     model = StocktakeSession
     serializer_class = StocktakeSessionSerializer
     permission_classes = [permissions.IsAuthenticated, InventoryCapabilityPermission]
+
+    @action(detail=True, methods=["get"], url_path="count-template")
+    def count_template(self, request, pk=None):
+        from django.http import HttpResponse
+
+        from apps.inventory.count_upload import stocktake_template
+        session = self.get_object()
+        try:
+            content = stocktake_template(session)
+        except DjangoValidationError as exc:
+            raise ValidationError(exc.messages) from exc
+        response = HttpResponse(content, content_type="text/csv; charset=utf-8")
+        response["Content-Disposition"] = f'attachment; filename="stocktake-{session.pk}.csv"'
+        response["Cache-Control"] = "no-store"
+        return response
+
+    @action(detail=True, methods=["post"], url_path="upload-counts")
+    def upload_counts(self, request, pk=None):
+        from rest_framework import serializers
+
+        from apps.inventory.count_upload import upload_counts
+        class Input(serializers.Serializer):
+            rows = serializers.ListField(child=serializers.DictField(), min_length=1, max_length=5000)
+            dry_run = serializers.BooleanField(default=True)
+        payload = Input(data=request.data)
+        payload.is_valid(raise_exception=True)
+        try:
+            result = upload_counts(session=self.get_object(), actor=request.user, **payload.validated_data)
+        except DjangoValidationError as exc:
+            raise ValidationError(exc.messages) from exc
+        return Response(result)
 
     def initial(self, request, *args, **kwargs):
         super().initial(request, *args, **kwargs)

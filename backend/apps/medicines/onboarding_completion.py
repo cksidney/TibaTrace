@@ -18,7 +18,7 @@ from django.utils.dateparse import parse_datetime
 from apps.audit.service import log_audit
 from apps.inventory.models import InventoryBatch, InventoryLedgerEntry, InventoryLocation
 from apps.inventory.services import InventoryLedgerService
-from apps.medicines.models import CommercialSKU
+from apps.medicines.models import CommercialSKU, PackageDefinition
 from apps.medicines.onboarding import StaleSetupReview, missing_details
 from apps.medicines.onboarding_models import LegacyCatalogueItem
 from apps.medicines.services import BranchAssortmentService
@@ -42,8 +42,10 @@ def _lock(item, expected):
 
 def _sku(tenant_id, sku_id):
     sku = CommercialSKU.all_objects.select_related("package_definition", "manufactured_product__clinical_product").filter(tenant_id=tenant_id, pk=sku_id).first()
-    if sku is None or sku.status != "ACTIVE" or not sku.is_saleable or not sku.package_definition.is_active or sku.manufactured_product.clinical_product.status != "ACTIVE":
+    if sku is None or sku.status != "ACTIVE" or not sku.is_saleable or not sku.package_definition.is_active or (sku.product_kind == "MEDICINE" and (not sku.manufactured_product_id or sku.manufactured_product.clinical_product.status != "ACTIVE")):
         raise ValidationError("Select an active, governed tenant SKU. Create and activate its reviewed product/pack in the catalogue first.")
+    from apps.medicines.provisioning import CatalogueFitnessService
+    CatalogueFitnessService.assert_assortable(sku)
     return sku
 
 
@@ -57,7 +59,7 @@ def _storage(tenant_id, branch_id, location_id, *, quarantine):
 def _check_storage(sku, location, storage_requirement):
     if storage_requirement == "COLD_CHAIN" and not location.cold_chain_capability:
         raise ValidationError("This SKU requires cold-chain capable storage.")
-    if sku.manufactured_product.clinical_product.controlled_classification not in ("", "NONE") and not location.controlled_drug_capability:
+    if sku.manufactured_product_id and sku.manufactured_product.clinical_product.controlled_classification not in ("", "NONE") and not location.controlled_drug_capability:
         raise ValidationError("This controlled medicine requires controlled-drug storage.")
 
 
@@ -75,11 +77,22 @@ def stage_opening_setup(*, item, actor, expected_updated_at, values):
     if blockers:
         raise ValidationError("Manager details are incomplete: " + "; ".join(blockers))
     review = locked.review
-    if review.get("item_kind") != "MEDICINE":
-        raise ValidationError("This governed medicine workflow requires an actual medicine. Supplies/services need their appropriate product model; do not relabel them as medicines.")
     if not values.get("product_match_confirmed") or not values.get("unit_match_confirmed"):
         raise ValidationError("Explicit product and one-to-one sales-unit confirmation is required.")
-    sku = _sku(locked.tenant_id, values["sku_id"])
+    if not values.get("sku_id") and review["item_kind"] in {"SUPPLY", "SERVICE"}:
+        if len(review["sales_unit"]) > 50 or len(locked.proposed_sku_code) > 100:
+            raise ValidationError("The confirmed sales unit must fit 50 characters and SKU code 100 characters. Correct manager details before staging.")
+        if review.get("barcode") and CommercialSKU.all_objects.filter(tenant_id=locked.tenant_id, default_barcode=review["barcode"]).exists():
+            raise ValidationError("This barcode already identifies a tenant SKU. Verify and select the existing SKU instead.")
+        package, _ = PackageDefinition.objects.get_or_create(code="UNIT-" + hashlib.sha256((review["sales_unit"] + "|" + review["pack_description"]).encode()).hexdigest()[:24], defaults={"description": review["pack_description"], "unit_of_measure": review["sales_unit"]})
+        sku, created = CommercialSKU.all_objects.get_or_create(tenant_id=locked.tenant_id, sku_code=locked.proposed_sku_code, defaults={"display_name": locked.source_name, "product_kind": review["item_kind"], "package_definition": package,
+            "default_barcode": review.get("barcode", ""), "tax_category": review["tax_category"], "stock_tracking_required": review["item_kind"] == "SUPPLY", "batch_tracking_required": False, "expiry_tracking_required": False, "is_dispensable": False, "status": "ACTIVE"})
+        if not created:
+            raise ValidationError("That SKU code already exists. Select and verify the existing product instead.")
+    else:
+        sku = _sku(locked.tenant_id, values.get("sku_id"))
+    if sku.product_kind != review["item_kind"]:
+        raise ValidationError("The reviewed item type must match the governed SKU type.")
     if review["sales_unit"].strip().casefold() != sku.package_definition.unit_of_measure.strip().casefold():
         raise ValidationError("Confirmed sales unit does not match the SKU unit. Govern the correct package; do not invent a conversion.")
     if review["tax_category"] != sku.tax_category:
@@ -88,11 +101,14 @@ def stage_opening_setup(*, item, actor, expected_updated_at, values):
     _check_storage(sku, location, values["storage_requirement"])
     quantity = Decimal(review["counted_quantity"])
     batches = []
-    for details in review.get("batches", []):
-        if InventoryBatch.all_objects.filter(tenant_id=locked.tenant_id, manufactured_product=sku.manufactured_product, manufacturer_batch_number=details["batch_number"]).exists():
+    batch_details = review.get("batches", [])
+    if sku.product_kind == "SUPPLY" and quantity > 0 and not batch_details:
+        batch_details = [{"batch_number": f"OPEN-{locked.pk}", "expiry_date": None, "quantity": str(quantity)}]
+    for details in batch_details:
+        if InventoryBatch.all_objects.filter(tenant_id=locked.tenant_id, sku=sku, manufacturer_batch_number=details["batch_number"]).exists():
             raise ValidationError("A confirmed batch already exists. Reconcile it with stocktake/receiving rather than posting duplicate opening stock.")
         batch = InventoryBatch(tenant_id=locked.tenant_id, sku=sku, manufactured_product=sku.manufactured_product,
-            manufacturer_batch_number=details["batch_number"], expiry_date=date.fromisoformat(details["expiry_date"]), quality_status=InventoryBatch.QualityStatus.QUARANTINED)
+            manufacturer_batch_number=details["batch_number"], expiry_date=date.fromisoformat(details["expiry_date"]) if details["expiry_date"] else None, lot_kind="MANUFACTURER" if sku.product_kind == "MEDICINE" else "INTERNAL", quality_status=InventoryBatch.QualityStatus.QUARANTINED)
         batch.full_clean()
         batches.append((batch, Decimal(details["quantity"])))
     assortment = BranchAssortmentService.enable_sku_for_branch(tenant=locked.tenant, location=location.branch, sku=sku, actor=actor)
@@ -107,7 +123,7 @@ def stage_opening_setup(*, item, actor, expected_updated_at, values):
             source_document_type="LEGACY_OPENING_SETUP", source_document_id=str(locked.pk), source_line_id=str(batch.pk),
             idempotency_key=f"legacy-opening:{locked.pk}:{batch.pk}", actor=actor, reason_code="CONFIRMED_OPENING_COUNT", notes=values["reason"])
         lineage.append({"batch_id": str(batch.pk), "quantity": str(batch_quantity), "entry_id": str(entry.pk)})
-    locked.completion = {"phase": "QUARANTINED" if quantity else "PRICE_REVIEW", "sku_id": str(sku.pk), "sku_code": sku.sku_code,
+    locked.completion = {"confirmed_cost": review.get("confirmed_cost"), "phase": "QUARANTINED" if quantity else "PRICE_REVIEW", "sku_id": str(sku.pk), "sku_code": sku.sku_code,
         "branch_id": str(location.branch_id), "quarantine_location_id": str(location.pk), "assortment_id": str(assortment.pk),
         "price_version_id": str(price_entry.version_id), "staged_by": str(actor.pk), "staged_at": timezone.now().isoformat(),
         "batches": lineage, "request_hash": fingerprint, "reason": values["reason"], "storage_requirement": values["storage_requirement"]}
@@ -140,8 +156,11 @@ def release_opening_setup(*, item, actor, expected_updated_at, destination_locat
     _check_storage(sku, destination, completion["storage_requirement"])
     for line in completion["batches"]:
         batch = InventoryBatch.all_objects.select_for_update().get(tenant_id=locked.tenant_id, pk=line["batch_id"], sku=sku)
-        if batch.expiry_date <= timezone.localdate() or batch.recall_status != InventoryBatch.RecallStatus.NONE or batch.quality_status != InventoryBatch.QualityStatus.QUARANTINED:
+        if (batch.expiry_date and batch.expiry_date <= timezone.localdate()) or batch.recall_status != InventoryBatch.RecallStatus.NONE or batch.quality_status != InventoryBatch.QualityStatus.QUARANTINED:
             raise ValidationError("An opening batch is expired, recalled or no longer quarantined; quality release is blocked.")
+        if completion.get("confirmed_cost") is not None:
+            from apps.inventory.models import InventoryBatchCost
+            InventoryBatchCost.all_objects.get_or_create(tenant_id=locked.tenant_id, batch=batch, defaults={"unit_cost": completion["confirmed_cost"], "evidence": f"Independently released opening count {locked.pk}; reviewer {actor.pk}: {reason}"})
         quantity = Decimal(line["quantity"])
         common = dict(tenant=locked.tenant, branch=source.branch, sku=sku, inventory_batch=batch, unit=locked.review["sales_unit"],
             effective_timestamp=timezone.now(), source_document_type="LEGACY_OPENING_RELEASE", source_document_id=str(locked.pk),

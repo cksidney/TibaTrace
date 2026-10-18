@@ -77,14 +77,15 @@ class InventoryBatch(TenantConsistencyMixin, TimestampedModel):
     tenant_relation_fields = ("sku", "manufactured_product", "source_received_batch")
     tenant = models.ForeignKey("tenancy.Tenant", on_delete=models.CASCADE, related_name="+")
     sku = models.ForeignKey("medicines.CommercialSKU", on_delete=models.PROTECT, related_name="inventory_batches")
-    manufactured_product = models.ForeignKey("medicines.ManufacturedMedicinalProduct", on_delete=models.PROTECT, related_name="+")
+    manufactured_product = models.ForeignKey("medicines.ManufacturedMedicinalProduct", on_delete=models.PROTECT, related_name="+", null=True, blank=True)
+    lot_kind = models.CharField(max_length=16, default="MANUFACTURER", choices=[("MANUFACTURER", "Manufacturer batch"), ("INTERNAL", "Internal custody lot")])
     
     # Not all inventory batches may have a procurement source (e.g. initial stocktake), but usually they do
     source_received_batch = models.ForeignKey("procurement.ReceivedBatch", on_delete=models.PROTECT, null=True, blank=True, related_name="inventory_batches")
     
     manufacturer_batch_number = models.CharField(max_length=100)
     manufacture_date = models.DateField(null=True, blank=True)
-    expiry_date = models.DateField()
+    expiry_date = models.DateField(null=True, blank=True)
     
     quality_status = models.CharField(max_length=20, choices=QualityStatus.choices, default=QualityStatus.RELEASED)
     recall_status = models.CharField(max_length=20, choices=RecallStatus.choices, default=RecallStatus.NONE)
@@ -95,7 +96,9 @@ class InventoryBatch(TenantConsistencyMixin, TimestampedModel):
     class Meta:
         constraints = [
             # In a real environment, manufacturer_batch_number is unique per manufactured product
-            models.UniqueConstraint(fields=["tenant", "manufactured_product", "manufacturer_batch_number"], name="uq_inventory_batch_number")
+            models.UniqueConstraint(fields=["tenant", "manufactured_product", "manufacturer_batch_number"], name="uq_inventory_batch_number"),
+            models.UniqueConstraint(fields=["tenant", "sku", "manufacturer_batch_number"], name="uq_inventory_sku_lot"),
+            models.CheckConstraint(condition=(Q(lot_kind="MANUFACTURER", manufactured_product__isnull=False, expiry_date__isnull=False) | Q(lot_kind="INTERNAL", manufactured_product__isnull=True)), name="chk_inventory_lot_kind"),
         ]
 
 
@@ -352,6 +355,7 @@ class StockTransferLine(TenantConsistencyMixin, TimestampedModel):
     received_quantity = models.DecimalField(max_digits=15, decimal_places=4, default=0)
     rejected_quantity = models.DecimalField(max_digits=15, decimal_places=4, default=0)
     damaged_quantity = models.DecimalField(max_digits=15, decimal_places=4, default=0)
+    lost_quantity = models.DecimalField(max_digits=15, decimal_places=4, default=0)
     
     unit = models.CharField(max_length=50)
     discrepancy_reason = models.TextField(blank=True)
@@ -547,3 +551,85 @@ class ReplenishmentRecommendation(TenantConsistencyMixin, TimestampedModel):
     objects = StrictTenantManager()
     all_objects = models.Manager()
 
+
+
+class InventoryChangeRequest(TenantConsistencyMixin, TimestampedModel):
+    """Proposed stock/cost change. Only the approval service posts its effect."""
+    tenant_relation_fields = ("ledger_entry",)
+    tenant = models.ForeignKey("tenancy.Tenant", on_delete=models.PROTECT)
+    kind = models.CharField(max_length=24, choices=[(k, k) for k in ("ADJUSTMENT", "WRITE_OFF", "DESTRUCTION", "COST", "TRANSFER_LOSS")])
+    status = models.CharField(max_length=16, default="PENDING", choices=[(s, s) for s in ("PENDING", "POSTED", "REJECTED")])
+    payload = models.JSONField()
+    reason = models.TextField()
+    idempotency_key = models.CharField(max_length=160)
+    requested_by = models.ForeignKey("identity.User", on_delete=models.PROTECT, related_name="+")
+    decided_by = models.ForeignKey("identity.User", on_delete=models.PROTECT, related_name="+", null=True, blank=True)
+    decision_reason = models.TextField(blank=True)
+    decided_at = models.DateTimeField(null=True, blank=True)
+    ledger_entry = models.OneToOneField(InventoryLedgerEntry, on_delete=models.PROTECT, null=True, blank=True)
+    objects = StrictTenantManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["tenant", "idempotency_key"], name="uq_inventory_change_key")]
+
+
+class ImmutableInventoryRecordQuerySet(StrictTenantQuerySet):
+    """Block bulk mutation paths around append-only inventory evidence."""
+
+    def update(self, **kwargs):
+        raise ValidationError("Inventory cost evidence is immutable.")
+
+    def delete(self):
+        raise ValidationError("Inventory cost evidence is immutable.")
+
+    def bulk_update(self, objs, fields, batch_size=None):
+        raise ValidationError("Inventory cost evidence is immutable.")
+
+
+class ImmutableInventoryRecordManager(StrictTenantManager):
+    def _base_queryset(self):
+        return ImmutableInventoryRecordQuerySet(self.model, using=self._db)
+
+
+class InventoryBatchCost(TenantConsistencyMixin, TimestampedModel):
+    """Approved acquisition cost per base selling unit, never a retail price."""
+    tenant_relation_fields = ("batch", "approved_request")
+    tenant = models.ForeignKey("tenancy.Tenant", on_delete=models.PROTECT)
+    batch = models.OneToOneField(InventoryBatch, on_delete=models.PROTECT, related_name="acquisition_cost")
+    unit_cost = models.DecimalField(max_digits=18, decimal_places=4)
+    currency = models.CharField(max_length=3, default="KES")
+    evidence = models.TextField()
+    approved_request = models.OneToOneField(InventoryChangeRequest, on_delete=models.PROTECT, null=True, blank=True)
+    objects = ImmutableInventoryRecordManager()
+    all_objects = models.Manager.from_queryset(ImmutableInventoryRecordQuerySet)()
+
+    class Meta:
+        constraints = [models.CheckConstraint(condition=Q(unit_cost__gte=0), name="chk_inventory_cost_nonnegative")]
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            raise ValidationError("Approved acquisition costs are immutable. Reconcile an incorrect cost with finance before replacing its valuation basis.")
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("Approved acquisition costs are immutable.")
+
+
+class InventoryMovementCost(TenantConsistencyMixin, TimestampedModel):
+    tenant_relation_fields = ("entry",)
+    tenant = models.ForeignKey("tenancy.Tenant", on_delete=models.PROTECT)
+    entry = models.OneToOneField(InventoryLedgerEntry, on_delete=models.PROTECT, related_name="cost_snapshot")
+    unit_cost = models.DecimalField(max_digits=18, decimal_places=4, null=True, blank=True)
+    value_delta = models.DecimalField(max_digits=29, decimal_places=4, null=True, blank=True)
+    currency = models.CharField(max_length=3, default="KES")
+    objects = ImmutableInventoryRecordManager()
+    all_objects = models.Manager.from_queryset(ImmutableInventoryRecordQuerySet)()
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            raise ValidationError("Movement cost snapshots are immutable.")
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("Movement cost snapshots are immutable.")

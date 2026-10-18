@@ -8,23 +8,45 @@
 .legacy-stats span { font-size: .82rem; color: var(--muted, #475569); }
 .legacy-tools { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; margin-bottom: 18px; }
 .legacy-tools label:first-child { flex: 1; min-width: 240px; }
-.legacy-setup label { display: flex; flex-direction: column; gap: 6px; font-size: .83rem; font-weight: 600; color: var(--ink, #334155); }
-.legacy-setup input:not([type=checkbox]), .legacy-setup select, .legacy-setup textarea { border: 1px solid var(--line, #cbd5e1); border-radius: 7px; padding: 10px; background-color: var(--panel, #fff); color: var(--ink, #0f172a); font: inherit; min-width: 0; width: 100%; box-sizing: border-box; }
-.legacy-setup select { padding-right: 34px; }
-.legacy-setup input:focus, .legacy-setup select:focus, .legacy-setup textarea:focus { outline: 2px solid #0d9488; outline-offset: 2px; }
+.legacy-setup label, .legacy-detail label { display: flex; flex-direction: column; gap: 6px; font-size: .83rem; font-weight: 600; color: var(--ink, #334155); }
+.legacy-setup input:not([type=checkbox]), .legacy-setup select, .legacy-setup textarea, .legacy-detail input:not([type=checkbox]), .legacy-detail select, .legacy-detail textarea { border: 1px solid var(--line, #cbd5e1); border-radius: 7px; padding: 10px; background-color: var(--panel, #fff); color: var(--ink, #0f172a); font: inherit; min-width: 0; width: 100%; box-sizing: border-box; }
+.legacy-setup select, .legacy-detail select { padding-right: 34px; }
+.legacy-setup input:focus, .legacy-setup select:focus, .legacy-setup textarea:focus, .legacy-detail input:focus, .legacy-detail select:focus, .legacy-detail textarea:focus { outline: 2px solid #0d9488; outline-offset: 2px; }
 .legacy-code { display: block; margin-top: 5px; color: var(--muted, #64748b); font-size: .75rem; }
 .legacy-pagination { display: flex; justify-content: space-between; gap: 16px; align-items: center; margin-top: 16px; font-size: .82rem; }
 .legacy-detail { margin-top: 24px; padding: 24px; background: color-mix(in srgb, var(--panel, #fff) 97%, var(--ink, #0f172a) 3%); border: 1px solid var(--line, #cbd5e1); border-radius: 12px; scroll-margin-top: 20px; }
 .legacy-detail p { font-size: .85rem; line-height: 1.6; color: var(--muted, #475569); }
 .legacy-detail fieldset { border: 0; padding: 0; margin: 0; }
 .legacy-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
-.legacy-setup label small { color: var(--muted, #64748b); font-weight: 400; line-height: 1.5; }
+.legacy-setup label small, .legacy-detail label small { color: var(--muted, #64748b); font-weight: 400; line-height: 1.5; }
 .legacy-issues { background: #fffbeb; border-radius: 8px; color: #92400e; padding: 14px 14px 14px 32px; font-size: .82rem; line-height: 1.6; }
 .legacy-batches { margin: 24px 0; padding-top: 12px; border-top: 1px solid var(--line, #cbd5e1); }
 .legacy-reference { margin-top: 24px; padding-top: 12px; border-top: 1px solid var(--line, #cbd5e1); }
 .legacy-batch { display: grid; grid-template-columns: 1.2fr 1fr 1fr auto; gap: 12px; margin: 14px 0; align-items: end; }
-.legacy-setup .legacy-exclude { flex-direction: row; align-items: center; margin-top: 16px; }
+.legacy-detail .legacy-exclude { flex-direction: row; align-items: center; margin-top: 16px; }
 .legacy-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px; }
 .legacy-error { background: #fef2f2; color: #991b1b; padding: 12px; border-radius: 8px; }
 .legacy-notice { background: #f0fdfa; color: #115e59; padding: 12px; border-radius: 8px; line-height: 1.6; }
+.item-onboarding-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding: 0; list-style: none; counter-reset: onboarding; margin: 12px 0; }
+.item-onboarding-steps li { counter-increment: onboarding; border: 1px solid var(--line, #cbd5e1); border-radius: 10px; padding: 12px 14px; }
+.item-onboarding-steps strong { display: block; font-size: .9rem; }
+.item-onboarding-steps strong::before { content: counter(onboarding) '. '; color: var(--teal-700, #0f766e); }
+.item-onboarding-steps span { display: block; margin-top: 5px; color: var(--muted, #64748b); font-size: .8rem; line-height: 1.5; }
+.item-onboarding-download { display: flex; flex-wrap: wrap; align-items: end; gap: 14px; margin: 20px 0 8px; padding: 16px; background: var(--panel, #fff); border: 1px solid var(--line, #cbd5e1); border-radius: 10px; }
+.item-onboarding-download > div { flex: 1; min-width: 220px; }
+.item-onboarding-download small { display: block; max-width: 440px; color: var(--muted, #64748b); font-size: .8rem; margin-top: 6px; line-height: 1.5; }
+.item-onboarding-download label { flex: 1; min-width: 200px; max-width: 400px; }
+.item-onboarding-download select { text-overflow: ellipsis; }
+.item-onboarding-empty { padding: 20px 0 4px; color: var(--muted, #64748b); }
+.item-upload-fields { display: grid; grid-template-columns: 1fr 2fr; gap: 16px; padding: 0; border: 0; margin: 18px 0; }
+.item-upload-help { border-bottom: 1px solid var(--line, #cbd5e1); padding: 10px 0 14px; color: var(--muted, #475569); font-size: .85rem; line-height: 1.6; }
+.item-upload-help summary { cursor: pointer; font-weight: 600; color: var(--ink, #334155); }
+.item-upload-preview { max-height: 190px; overflow: auto; }
+.item-upload-preview caption { text-align: left; color: var(--muted, #64748b); font-size: .8rem; margin-bottom: 8px; }
+.item-upload-errors { max-height: 230px; overflow-y: auto; padding-left: 22px; }
+.item-upload-errors li { margin-bottom: 8px; }
+.item-upload-errors code { display: block; white-space: pre-wrap; overflow-wrap: anywhere; }
+.item-upload-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line, #cbd5e1); }
+.item-upload-actions .primary-button:disabled, .legacy-heading > .primary-button:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
+@media (max-width: 600px) { .item-onboarding-steps, .item-upload-fields { grid-template-columns: 1fr; } .item-onboarding-download > div, .item-onboarding-download label, .item-onboarding-download > button { width: 100%; max-width: none; min-width: 0; } }
 @media (max-width: 800px) { .legacy-setup, .legacy-detail { padding: 16px; } .legacy-stats { grid-template-columns: repeat(2, 1fr); } .legacy-fields, .legacy-batch { grid-template-columns: 1fr; } .legacy-heading, .legacy-pagination { flex-direction: column; } }
