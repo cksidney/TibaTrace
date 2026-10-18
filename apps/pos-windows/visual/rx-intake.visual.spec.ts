@@ -1,5 +1,20 @@
 import { expect, test } from '@playwright/test';
 
+test('manual intake evidence opens as readable text without overflowing', async ({ page }, testInfo) => {
+  await page.goto('/?scenario=rx-intake-record');
+  await page.getByRole('button', { name: 'Received prescriptions', exact: true }).click();
+  await page.getByRole('button', { name: /Demo Patient.*DEMO-RX-RECORD/ }).click();
+  await page.getByRole('button', { name: 'INTAKE-DEMO.txt · Intake record', exact: true }).click();
+  const preview = page.locator('.pos-rx-preview');
+  await preview.scrollIntoViewIfNeeded();
+  await expect(preview.locator('pre')).toContainText('Physical original held for pharmacist review');
+  await expect(preview.locator('img,iframe')).toHaveCount(0);
+  const dialog = page.getByRole('dialog');
+  expect(await dialog.evaluate(node => node.scrollWidth - node.clientWidth)).toBeLessThanOrEqual(2);
+  expect(await preview.locator('pre').evaluate(node => node.scrollWidth - node.clientWidth)).toBeLessThanOrEqual(2);
+  await page.screenshot({ path: testInfo.outputPath('manual-intake-record.png') });
+});
+
 test('RX intake remains usable, scrollable and keyboard accessible', async ({ page }, testInfo) => {
   await page.goto('/?scenario=rx-intake');
   const trigger = page.getByRole('button', { name: 'Receive prescription', exact: true });

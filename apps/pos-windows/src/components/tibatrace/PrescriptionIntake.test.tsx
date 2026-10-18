@@ -119,6 +119,20 @@ it('reconciles an unknown intake result before allowing an unchanged retry', asy
   expect(commands[0]?.[1]?.body).toBe(commands[1]?.[1]?.body);
 });
 
+it('renders the generated manual intake record as escaped text for review', async () => {
+  Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: vi.fn(() => 'blob:intake-record') });
+  Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: vi.fn() });
+  const source = '{"notes":"<img src=x onerror=alert(1)>","original_available":true}';
+  const api = fetcher(async path => path.endsWith('/source-document/')
+    ? response({ name: 'intake.txt', content_type: 'text/plain', content_base64: btoa(source) })
+    : response({ ...rx, documents: [{ id: 'doc-1', name: 'intake.txt', content_type: 'text/plain', size_bytes: source.length, malware_scan_status: 'NOT_APPLICABLE' }] }, 201));
+  await mount(api); await prepare(); await submit();
+  await act(async () => button('intake.txt · Intake record').click());
+  expect(container.querySelector('.pos-rx-preview pre')?.textContent).toBe(source);
+  expect(container.querySelector('.pos-rx-preview img')).toBeNull();
+  expect(container.querySelector('.pos-rx-preview iframe')).toBeNull();
+});
+
 it('rejects oversized source files and leaves unconfigured tenant feeds disabled', async () => {
   const api = fetcher(async () => response(rx)); await mount(api);
   expect((container.querySelector('option[value="DHA"]') as HTMLOptionElement).disabled).toBe(true);

@@ -39,6 +39,17 @@ const intakeFetch: typeof fetch = async input => new Response(JSON.stringify(Str
   feeds: [{ code: 'DHA', available: false, message: 'Tenant connector, credentials and validation required' }],
   max_files: 5, max_file_bytes: 5 * 1024 * 1024, max_total_bytes: 8 * 1024 * 1024,
 } : []), { status: 200 });
+const intakeRecord = {
+  id: 'fixture-rx', reference: 'DEMO-RX-RECORD', patient_name: 'Demo Patient', patient_number: 'PAT-DEMO',
+  prescriber_name: 'Demo Prescriber', prescription_date: '2026-10-18', source_channel: 'PAPER', status: 'RECEIVED',
+  legal_state: 'PENDING', clinical_state: 'NOT_STARTED', verification_state: 'NOT_VERIFIED', items: [],
+  documents: [{ id: 'fixture-document', name: 'INTAKE-DEMO.txt', content_type: 'text/plain', size_bytes: 400, malware_scan_status: 'NOT_APPLICABLE' }],
+};
+const intakeRecordText = JSON.stringify({ original_source: 'Physical original held for pharmacist review', directions: '<img src=x> is displayed as text', reference: 'DEMO-RX-RECORD', long_reference: 'R'.repeat(240) }, null, 2);
+const intakeRecordFetch: typeof fetch = async (input, init) => String(input).includes('/options/') ? intakeFetch(input, init)
+  : new Response(JSON.stringify(String(input).includes('/source-document/')
+    ? { name: 'INTAKE-DEMO.txt', content_type: 'text/plain', content_base64: btoa(intakeRecordText) }
+    : String(input).includes('/fixture-rx/') ? intakeRecord : [intakeRecord]), { status: 200 });
 const recoveryEntry: OfflineAction = {
   id: 'journal-action-1',
   type: 'PAYMENT',
@@ -160,6 +171,11 @@ function stages(active: string, overrides: Partial<Record<string, Partial<StageV
 }
 
 export const SCENARIOS: readonly Scenario[] = [
+  {
+    id: 'rx-intake-record', title: 'Manual RX intake record preview', width: 1280, layoutOnly: true,
+    rationale: 'Generated records remain readable as escaped text at narrow till widths.',
+    render: () => <PrescriptionIntake apiFetch={intakeRecordFetch} deviceId="fixture-till" onEpisodeOpened={async () => {}} />,
+  },
   {
     id: 'rx-intake', title: 'RX intake workspace', width: 1280, layoutOnly: true,
     rationale: 'Interactive intake is checked with keyboard, scroll and responsive layout assertions, plus captured review artifacts.',

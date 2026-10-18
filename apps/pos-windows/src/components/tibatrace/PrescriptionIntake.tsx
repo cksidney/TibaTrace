@@ -49,7 +49,7 @@ export function PrescriptionIntake({ apiFetch, deviceId, active = true, disabled
   const inFlight = useRef(false); const dialog = useRef<HTMLElement>(null);
   const [camera, setCamera] = useState(false); const video = useRef<HTMLVideoElement>(null);
   const stream = useRef<MediaStream | null>(null);
-  const [preview, setPreview] = useState<{ url: string; type: string; name: string } | null>(null);
+  const [preview, setPreview] = useState<{ url: string; type: string; name: string; text?: string } | null>(null);
   const field = (name: string, value: string) => setValues(previous => ({ ...previous, [name]: value }));
 
   const read = async <T,>(path: string, body?: Record<string, unknown>): Promise<T> => {
@@ -155,12 +155,14 @@ export function PrescriptionIntake({ apiFetch, deviceId, active = true, disabled
   const openDocument = (id: string) => void run(async () => {
     if (!selected) return;
     const doc = await read<{ name: string; content_type: string; content_base64: string }>(`${BASE}${selected.id}/source-document/`, { device_id: deviceId, document_id: id });
+    if (!['image/jpeg', 'image/png', 'application/pdf', 'text/plain'].includes(doc.content_type)) throw Error('Unsupported source document type.');
     const bytes = Uint8Array.from(atob(doc.content_base64), character => character.charCodeAt(0));
-    setPreview({ url: URL.createObjectURL(new Blob([bytes], { type: doc.content_type })), name: doc.name, type: doc.content_type });
+    setPreview({ url: URL.createObjectURL(new Blob([bytes], { type: doc.content_type })), name: doc.name, type: doc.content_type,
+      ...(doc.content_type === 'text/plain' ? { text: new TextDecoder().decode(bytes) } : {}) });
   });
   const selectField = (label: string, name: string, choices: Choice[]) => <label>{label}<select required value={values[name] ?? ''} onChange={event => field(name, event.target.value)}><option value="">Select confirmed record</option>{choices.map(row => <option key={row.id} value={row.id}>{row.name}</option>)}</select></label>;
   const cap = options?.capabilities ?? {};
-  const sourcePreview = preview && <div className="pos-rx-preview"><strong>{preview.name}</strong>{preview.type === 'application/pdf' ? <iframe src={preview.url} title="Original prescription PDF" /> : <img src={preview.url} alt="Original prescription for clinical review" />}<a href={preview.url} download={preview.name}>Save a copy for authorised review</a><button type="button" className="pos-button" onClick={() => setPreview(null)}>Close document</button></div>;
+  const sourcePreview = preview && <div className="pos-rx-preview"><strong>{preview.name}</strong>{preview.text !== undefined ? <pre>{preview.text}</pre> : preview.type === 'application/pdf' ? <iframe src={preview.url} title="Original prescription PDF" /> : <img src={preview.url} alt="Original prescription for clinical review" />}<a href={preview.url} download={preview.name}>Save a copy for authorised review</a><button type="button" className="pos-button" onClick={() => setPreview(null)}>Close document</button></div>;
   return <section className="pos-rx-intake" aria-label="Prescription intake">
     <div><span className="pos-eyebrow">Receive & review</span><strong>Prescription intake</strong><p>Paper, photo, scanned PDF or a configured clinical feed.</p></div>
     <div className="pos-rx-actions"><button className="pos-start-sale" disabled={disabled || busy || !options || !cap['receive']} onClick={() => { setMode('receive'); setSelected(null); }}>Receive prescription</button><button className="pos-button" disabled={disabled || busy || !options} onClick={() => { setMode('inbox'); void run(() => refresh()); }}>Received prescriptions</button></div>
@@ -209,7 +211,7 @@ export function PrescriptionIntake({ apiFetch, deviceId, active = true, disabled
         {selected ? <section className="pos-rx-review"><button className="pos-button" disabled={busy} onClick={() => { setSelected(null); setPreview(null); }}>Back to inbox</button><h3>{selected.reference}</h3><p><b>{selected.patient_name}</b> · {selected.patient_number} · {selected.prescriber_name}</p>
           <div className="pos-rx-states"><span>Legal: {selected.legal_state}</span><span>Clinical: {selected.clinical_state}</span><span>Pharmacist: {selected.verification_state}</span></div>
           {selected.items?.map((item, index) => <article key={index}><b>{item.medicine} · {item.quantity} {item.unit}</b><p>{item.directions}</p></article>)}
-          <h4>Source documents</h4>{selected.documents?.length ? selected.documents.map(doc => <button key={doc.id} type="button" className="pos-button" disabled={busy || !cap['read_documents']} onClick={() => openDocument(doc.id)}>{doc.name}{doc.malware_scan_status === 'NOT_SCANNED' ? ' · Not malware scanned' : ''}</button>) : <p>The original is held for physical review; no attachment was uploaded.</p>}
+          <h4>Source documents</h4>{selected.documents?.length ? selected.documents.map(doc => <button key={doc.id} type="button" className="pos-button" disabled={busy || !cap['read_documents']} onClick={() => openDocument(doc.id)}>{doc.name}{doc.malware_scan_status === 'NOT_SCANNED' ? ' · Not malware scanned' : doc.malware_scan_status === 'NOT_APPLICABLE' ? ' · Intake record' : ''}</button>) : <p>The original is held for physical review; no attachment was uploaded.</p>}
           {sourcePreview}
           {selected.legal_findings?.map((finding, index) => <p className="pos-payment-notice" key={index}>{finding.code}: {finding.message}</p>)}
           {selected.clinical_findings?.map(finding => <p className="pos-payment-notice" key={finding.id}>{finding.severity} · {finding.explanation} · {finding.resolution_status}</p>)}
