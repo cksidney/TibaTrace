@@ -120,6 +120,9 @@ export function createAndroidPosRuntime(): AndroidPosRuntime {
   };
   const activationFetcher: typeof fetch = async (input, init) => {
     const url = String(input instanceof Request ? input.url : input);
+    if (url.startsWith(`${apiBaseUrl}/api/v1/tenant/pos-activations/requests/`) && url.endsWith('/enrol/') && !(await secureStore.isAvailable())) {
+      throw new Error('Restore Android secure storage before consuming an enrolment code.');
+    }
     const headers = new Headers(init?.headers);
     if (url.startsWith(`${apiBaseUrl}/api/pos/`)) {
       const stored = await activation();
@@ -133,7 +136,11 @@ export function createAndroidPosRuntime(): AndroidPosRuntime {
     if (response.ok && url.startsWith(`${apiBaseUrl}/api/v1/tenant/pos-activations/requests/`) && url.endsWith('/enrol/')) {
       const issued = await response.clone().json() as PosDeviceCredentialDTO;
       if (!session.current?.tenantId || issued.deviceFingerprint !== await fingerprint()) throw new Error('Activation is not for this installation.');
-      await new SecureActivationStore(secureStore, session.current.tenantId, await deviceId()).save(issued);
+      try {
+        await new SecureActivationStore(secureStore, session.current.tenantId, await deviceId()).save(issued);
+      } catch {
+        throw new Error('The server enrolled this installation, but secure storage failed. Restore Android secure storage and ask a different platform owner for a recovery code.');
+      }
     }
     return response;
   };

@@ -11,7 +11,7 @@ current data would restate history while the operator holds the printed copy.
 from __future__ import annotations
 
 from django.core.exceptions import ValidationError
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Prefetch
 from django.utils import timezone
 from rest_framework import permissions, status, viewsets
@@ -120,6 +120,13 @@ class TenantScopedViewSet(RequireAlignedPosClientMixin, viewsets.ReadOnlyModelVi
 
 
 class PosRegisterViewSet(TenantScopedViewSet):
+    def get_permissions(self):
+        if self.action == "create":
+            from apps.core.permissions import CapabilityPermission
+            self.required_capabilities = ("pos.device.manage", "identity.manage")
+            return [permissions.IsAuthenticated(), CapabilityPermission()]
+        return super().get_permissions()
+
     model = PosRegister
     serializer_class = PosRegisterSerializer
 
@@ -155,13 +162,17 @@ class PosRegisterViewSet(TenantScopedViewSet):
             raise DRFValidationError("No tenant context is available.")
         if not any(
             request.user.has_capability(cap, tenant_id=tenant_id)
-            for cap in ("pos.device.manage", "identity.manage", "pos.shift.manage")
+            for cap in ("pos.device.manage", "identity.manage")
         ):
             raise PermissionDenied("Capability pos.device.manage or identity.manage is required to configure a register.")
 
         serializer = PosRegisterCreateSerializer(data=request.data, context={"tenant_id": tenant_id})
         serializer.is_valid(raise_exception=True)
-        register = serializer.save(tenant_id=tenant_id)
+        try:
+            with transaction.atomic():
+                register = serializer.save(tenant_id=tenant_id)
+        except (IntegrityError, ValidationError):
+            raise DRFValidationError("Register creation was refused. Refresh the register directory and review the code and branch before retrying.") from None
 
         from apps.audit.service import log_audit
         log_audit(

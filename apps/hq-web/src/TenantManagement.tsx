@@ -7,6 +7,7 @@ import {
   HQApiError,
   loadPharmacies,
   loadPharmacyLifecycle,
+  repairPharmacyInitialSetup,
   registerPharmacy,
   reinstatePharmacy,
   suspendPharmacy,
@@ -38,6 +39,7 @@ interface TenantManagementProps {
 type Dialog =
   | { readonly mode: 'register' }
   | { readonly mode: 'onboard'; readonly pharmacy: Pharmacy }
+  | { readonly mode: 'repair'; readonly pharmacy: Pharmacy }
   | { readonly mode: 'activate'; readonly pharmacy: Pharmacy }
   | { readonly mode: 'suspend'; readonly pharmacy: Pharmacy }
   | { readonly mode: 'reinstate'; readonly pharmacy: Pharmacy }
@@ -261,6 +263,9 @@ function RowActions({
     <div className="tenant-row-actions">
       <button onClick={() => onOpen({ mode: 'history', pharmacy })} type="button">History</button>
       <button onClick={() => onOpen({ mode: 'licence', pharmacy })} type="button">Licence</button>
+      {pharmacy.status === 'ACTIVE' && pharmacy.branch_count === 0 ? (
+        <button onClick={() => onOpen({ mode: 'repair', pharmacy })} type="button">Complete setup</button>
+      ) : null}
       {can('ONBOARDING') ? (
         <button onClick={() => onOpen({ mode: 'onboard', pharmacy })} type="button">Provision</button>
       ) : null}
@@ -508,10 +513,21 @@ function initialFields(dialog: Exclude<Dialog, null>): Record<string, string> {
   if (dialog.mode === 'licence') {
     const profile = dialog.pharmacy.profile;
     return {
+      legal_name: profile?.legal_name ?? '',
+      business_registration_number: profile?.business_registration_number ?? '',
+      kra_pin: profile?.kra_pin ?? '',
       ppb_premises_licence_number: profile?.ppb_premises_licence_number ?? '',
       ppb_licence_expiry: profile?.ppb_licence_expiry ?? '',
       superintendent_name: profile?.superintendent_name ?? '',
       superintendent_ppb_number: profile?.superintendent_ppb_number ?? '',
+    };
+  }
+  if (dialog.mode === 'repair') {
+    return {
+      organization_name: dialog.pharmacy.profile?.legal_name ?? dialog.pharmacy.name,
+      organization_code: '',
+      branch_name: dialog.pharmacy.name,
+      branch_code: '',
     };
   }
   if (dialog.mode === 'register') return { country_code: 'KE', time_zone: 'Africa/Nairobi' };
@@ -541,10 +557,20 @@ function fieldsFor(dialog: Exclude<Dialog, null>): readonly Field[] {
       ];
     case 'licence':
       return [
+        { label: 'Registered legal entity', name: 'legal_name' },
+        { label: 'Business registration number', name: 'business_registration_number' },
+        { label: 'KRA PIN', name: 'kra_pin' },
         { label: 'PPB premises licence number', name: 'ppb_premises_licence_number' },
         { label: 'Licence expiry', name: 'ppb_licence_expiry', type: 'date' },
         { label: 'Superintendent pharmacist', name: 'superintendent_name' },
         { label: 'Superintendent PPB number', name: 'superintendent_ppb_number' },
+      ];
+    case 'repair':
+      return [
+        { label: 'Organisation name', name: 'organization_name' },
+        { label: 'Organisation code', name: 'organization_code', placeholder: 'TEAP' },
+        { label: 'First branch name', name: 'branch_name' },
+        { label: 'First branch code', name: 'branch_code', placeholder: 'TEAP-001' },
       ];
     default:
       return [{ label: 'Reason', name: 'reason', multiline: true }];
@@ -556,6 +582,7 @@ function titleFor(dialog: Exclude<Dialog, null>): string {
   const titles: Record<string, string> = {
     register: 'Register a pharmacy',
     onboard: 'Provision pharmacy',
+    repair: 'Complete initial setup',
     activate: 'Activate for trading',
     suspend: 'Suspend pharmacy',
     reinstate: 'Reinstate pharmacy',
@@ -571,6 +598,8 @@ function describeIntent(dialog: Exclude<Dialog, null>): string {
       return 'Registers the pharmacy as a prospect. It cannot trade until it is provisioned and its premises licence is recorded.';
     case 'onboard':
       return 'Creates the organisation and first branch. A pharmacy cannot dispense without at least one branch.';
+    case 'repair':
+      return 'For an active legacy pharmacy with no branch. First record a current premises licence and superintendent under Licence. This creates the organisation, branch and standard inventory areas, including the main store; it does not create stock or a register.';
     case 'activate':
       return 'Checks the premises licence and superintendent before the pharmacy may trade. Refused if either is missing or expired.';
     case 'suspend':
@@ -593,6 +622,7 @@ function submitLabel(dialog: Exclude<Dialog, null>): string {
     reinstate: 'Reinstate',
     terminate: 'Terminate',
     licence: 'Save licence',
+    repair: 'Create branch and store areas',
   };
   return labels[dialog.mode] ?? 'Save';
 }
@@ -633,6 +663,17 @@ async function runDialog(
         },
         csrfToken,
       );
+    case 'repair':
+      return repairPharmacyInitialSetup(
+        dialog.pharmacy.id,
+        {
+          organization_name: fields.organization_name ?? '',
+          organization_code: fields.organization_code ?? '',
+          branch_name: fields.branch_name ?? '',
+          branch_code: fields.branch_code ?? '',
+        },
+        csrfToken,
+      );
     case 'activate':
       return activatePharmacy(dialog.pharmacy.id, reason, csrfToken);
     case 'suspend':
@@ -645,6 +686,9 @@ async function runDialog(
       return updatePharmacyProfile(
         dialog.pharmacy.id,
         {
+          legal_name: fields.legal_name ?? '',
+          business_registration_number: fields.business_registration_number ?? '',
+          kra_pin: fields.kra_pin ?? '',
           ppb_premises_licence_number: fields.ppb_premises_licence_number ?? '',
           ppb_licence_expiry: fields.ppb_licence_expiry || null,
           superintendent_name: fields.superintendent_name ?? '',

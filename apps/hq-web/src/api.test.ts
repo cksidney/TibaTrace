@@ -24,6 +24,7 @@ import {
   loadPosRegisters,
   loadPosDeviceHealth,
   probeEndpointHeartbeat,
+  repairPharmacyInitialSetup,
   reactivateCustomer,
   receiveStockTransfer,
   setHQTenantContext,
@@ -80,6 +81,32 @@ describe('loadSystemHealth', () => {
     // somebody to check the network instead of the server.
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('not json', { status: 200 })));
     await expect(loadSystemHealth()).resolves.toBe('degraded');
+  });
+});
+
+describe('legacy pharmacy setup recovery', () => {
+  it('posts the first-branch setup to the selected pharmacy record', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ id: 'pharmacy-1', status: 'ACTIVE', branch_count: 1 }), { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const values = {
+      organization_name: 'TransElgon Apex Pharmacy',
+      organization_code: 'TEAP',
+      branch_name: 'TransElgon Apex',
+      branch_code: 'TEAP-001',
+    };
+
+    await repairPharmacyInitialSetup('pharmacy-1', values, 'csrf-token');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/pharmacy-network/pharmacies/pharmacy-1/repair-initial-setup/',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ 'X-CSRFToken': 'csrf-token' }),
+        body: JSON.stringify(values),
+      }),
+    );
   });
 });
 

@@ -141,35 +141,12 @@ class RetailCashReceiptSerializer(serializers.ModelSerializer):
 
     @staticmethod
     def get_fiscal_receipt(receipt):
-        from apps.taxation.models import FiscalReceipt
+        from apps.prescription.fiscal import FiscalService
 
-        fiscal = FiscalReceipt.all_objects.filter(
-            tenant_id=receipt.tenant_id,
-            retail_cash_receipt=receipt,
-        ).first()
-        if fiscal is None:
-            return None
-        return {
-            "invoice_number": fiscal.invoice_number,
-            "receipt_signature": fiscal.receipt_signature,
-            "internal_data": fiscal.internal_data,
-            "qr_code_url": fiscal.qr_code_url,
-            "qr_code_svg": fiscal.qr_code_image_data,
-            "submission_status": fiscal.submission_status,
-        }
+        return FiscalService.status(receipt.transaction)
 
     @staticmethod
-    def get_disclaimer(receipt):
-        from apps.taxation.models import FiscalReceipt
-
-        fiscal = FiscalReceipt.all_objects.filter(
-            tenant_id=receipt.tenant_id,
-            retail_cash_receipt=receipt,
-        ).first()
-        if fiscal and fiscal.submission_status in {"SUBMITTED", "OFFLINE_GENERATED"}:
-            return "KRA eTIMS FISCAL RECEIPT"
-        if fiscal and fiscal.submission_status in {"PENDING", "FAILED"}:
-            return "Internal sales receipt — pending eTIMS fiscalization."
+    def get_disclaimer(_receipt):
         return "Internal sales receipt — not a fiscal/eTIMS receipt."
 
     @staticmethod

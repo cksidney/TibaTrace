@@ -18,7 +18,6 @@ import { PrescriptionOrigination } from './PrescriptionOrigination.js';
 import { IntakeModal } from './IntakeModal.js';
 import { IngestionWorkspaceProvider, useIngestionWorkspace } from './IngestionWorkspace.js';
 import { PlatformOwnerConsole } from './PlatformOwnerConsole.js';
-import { PosActivationWorkspace } from './PosActivationWorkspace.js';
 import { RegulatoryWorkspace } from './RegulatoryWorkspace.js';
 import { ReportsWorkspace } from './ReportsWorkspace.js';
 import {
@@ -63,12 +62,9 @@ import {
   loadPosDeviceHealth,
   loadPosRegisters,
   createPosRegister,
-  updatePosRegisterExpectedFloat,
   loadCashMovements,
   loadCashDeclarations,
   loadBusinessDays,
-  openBusinessDay,
-  closeBusinessDay,
   loadOpenRegisterSessions,
   loadUnclosedRegisterSessions,
   loadClaims,
@@ -226,17 +222,6 @@ import type { IconName } from './icons.js';
 import { ProcurementWorkspace } from './ProcurementWorkspace.js';
 import { TenantManagement } from './TenantManagement.js';
 
-function nairobiDateInputValue(): string {
-  const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Africa/Nairobi',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(new Date());
-  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  return `${values.year}-${values.month}-${values.day}`;
-}
-
 type WorkspaceView =
   | 'overview'
   | 'executive'
@@ -256,7 +241,6 @@ type WorkspaceView =
   | 'governance'
   | 'integration'
   | 'platform_owner'
-  | 'activations'
   | 'access';
 
 interface NavigationItem {
@@ -285,7 +269,6 @@ const navigation: readonly NavigationItem[] = [
   { key: 'governance', label: 'System governance', caption: 'Audit, events and documents', icon: 'shield' },
   { key: 'integration', label: 'National Integrations', caption: 'DHA & PPB command centre', icon: 'network' },
   { key: 'platform_owner', label: 'Platform Owner Console', caption: 'Global governance & activations', icon: 'shield' },
-  { key: 'activations', label: 'POS Terminal Activations', caption: 'Device approvals & enrolment codes', icon: 'store' },
   { key: 'access', label: 'Administration & Users', caption: 'Roles and security', icon: 'users' },
 ];
 
@@ -295,7 +278,6 @@ function visibleNavigation(overview: HQOverview): readonly NavigationItem[] {
     if (overview.is_platform_owner === true) return item;
     if (item.key === 'governance') return { ...item, label: 'Tenant governance', caption: 'Tenant audit & documents' };
     if (item.key === 'access') return { ...item, label: 'Users & access', caption: 'Tenant users & permissions' };
-    if (item.key === 'activations') return { ...item, label: 'POS Terminal Activations', caption: 'Terminal status & requests' };
     return item;
   });
 }
@@ -326,7 +308,6 @@ const NAV_SECTION_MAP: Record<WorkspaceView, NavSection> = {
   governance: 'Platform & Security',
   integration: 'Platform & Security',
   platform_owner: 'Platform & Security',
-  activations: 'Platform & Security',
   access: 'Platform & Security',
 };
 
@@ -355,11 +336,6 @@ const viewMeta: Record<WorkspaceView, { readonly eyebrow: string; readonly title
     eyebrow: 'Platform Owner Console',
     title: 'Global System & Integration Governance',
     description: 'Restricted administrative surface for national provider activations, credentials and emergency kill switch controls.',
-  },
-  activations: {
-    eyebrow: 'Platform Device Governance',
-    title: 'POS Terminal Activations & Device Registry',
-    description: 'Review device requests, generate cryptographic enrolment challenge codes, and govern terminal register bindings.',
   },
   network: {
     eyebrow: 'Care network',
@@ -870,16 +846,8 @@ export function Dashboard({
           {activeView === 'gs1' ? <GS1Workspace overview={overview} /> : null}
           {activeView === 'reports' ? <ReportsWorkspace csrfToken={csrfToken} overview={overview} onNavigate={setActiveView} /> : null}
           {activeView === 'governance' ? <GovernanceView data={scopedWorkspace} failed={workspaceFailed} /> : null}
-          {activeView === 'integration' ? <IntegrationWorkspace csrfToken={csrfToken} /> : null}
+          {activeView === 'integration' ? <IntegrationWorkspace key={overview.tenant_id} csrfToken={csrfToken} /> : null}
           {activeView === 'platform_owner' ? <PlatformOwnerConsole csrfToken={csrfToken} /> : null}
-          {activeView === 'activations' ? (
-            <PosActivationWorkspace
-              csrfToken={csrfToken}
-              isPlatformOwner={overview.is_platform_owner === true}
-              overview={overview}
-              tenantId={overview.tenant_id}
-            />
-          ) : null}
           {activeView === 'access' ? <AccessView csrfToken={csrfToken} data={scopedWorkspace} failed={workspaceFailed} onWorkspaceChanged={reloadWorkspace} overview={overview} /> : null}
         </main>
       </div>
@@ -1100,7 +1068,6 @@ function OverviewView({ overview, onNavigate }: { readonly overview: HQOverview;
             {canOpen('/pos/') ? <CommandLink href="/pos/" title="Install / open POS till" detail="Signed Windows and Android till handoff" icon="store" /> : null}
             {canOpen('#reports') ? <CommandLink href="#reports" title="Reports catalogue" detail="Enterprise, audit and security packs" icon="docs" onNavigate={onNavigate} /> : null}
             {canOpen('#access') ? <CommandLink href="#access" title={overview.is_platform_owner ? 'System controls' : 'Users & access'} detail="Identity, security and governance" icon="settings" onNavigate={onNavigate} /> : null}
-            {canOpen('#activations') ? <CommandLink href="#activations" title="POS Terminal Activations" detail="Device enrolment, challenge codes & till bindings" icon="store" onNavigate={onNavigate} /> : null}
             {canOpen('/api/docs/') ? <CommandLink href="/api/docs/" title="API workspace" detail="Integration contracts and testing" icon="docs" /> : null}
           </div>
         </article>
@@ -4508,7 +4475,7 @@ function CashControlView({
           </label>
         </section>
       ) : null}
-      <TenantCashControlView csrfToken={csrfToken} tenantId={tenantId} />
+      <TenantCashControlView key={tenantId} csrfToken={csrfToken} tenantId={tenantId} />
     </>
   );
 }
@@ -4529,22 +4496,13 @@ function TenantCashControlView({
   const [declarations, setDeclarations] = useState<readonly CashDeclarationItem[] | null>(null);
   const [businessDays, setBusinessDays] = useState<readonly BusinessDayItem[] | null>(null);
   const [branches, setBranches] = useState<readonly HQInventoryBranch[]>([]);
-  const [showOpenBusinessDay, setShowOpenBusinessDay] = useState(false);
-  const [openDayBranchId, setOpenDayBranchId] = useState('');
-  const [openDayDate, setOpenDayDate] = useState(nairobiDateInputValue);
-  const [dayCloseTarget, setDayCloseTarget] = useState<BusinessDayItem | null>(null);
-  const [dayCloseReason, setDayCloseReason] = useState('');
-  const [floatEditTarget, setFloatEditTarget] = useState<PosRegisterItem | null>(null);
-  const [floatEditValue, setFloatEditValue] = useState('');
-  const [floatEditReason, setFloatEditReason] = useState('');
-  const [controlBusy, setControlBusy] = useState(false);
-  const [controlError, setControlError] = useState('');
   const [showAddRegister, setShowAddRegister] = useState(false);
   const [newRegBranchId, setNewRegBranchId] = useState('');
   const [newRegCode, setNewRegCode] = useState('');
   const [newRegName, setNewRegName] = useState('');
   const [newRegFloat, setNewRegFloat] = useState('0.00');
   const [newRegBusy, setNewRegBusy] = useState(false);
+  const newRegInFlight = useRef(false);
   const [newRegError, setNewRegError] = useState('');
   const [failed, setFailed] = useState(false);
   const [cashReload, setCashReload] = useState(0);
@@ -4585,7 +4543,6 @@ function TenantCashControlView({
         setBranches(br);
         const firstBranch = br[0];
         if (firstBranch && !newRegBranchId) setNewRegBranchId(firstBranch.id);
-        if (firstBranch && !openDayBranchId) setOpenDayBranchId(firstBranch.id);
         setFailed(false);
       })
       .catch(() => {
@@ -4600,6 +4557,8 @@ function TenantCashControlView({
       setNewRegError('Branch, register code, and register name are required.');
       return;
     }
+    if (newRegInFlight.current) return;
+    newRegInFlight.current = true;
     setNewRegBusy(true);
     setNewRegError('');
     try {
@@ -4618,71 +4577,8 @@ function TenantCashControlView({
     } catch (err) {
       setNewRegError(err instanceof Error ? err.message : 'Failed to register physical till.');
     } finally {
+      newRegInFlight.current = false;
       setNewRegBusy(false);
-    }
-  };
-
-  const handleOpenBusinessDay = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!openDayBranchId || !openDayDate) {
-      setControlError('Choose an active branch and business date.');
-      return;
-    }
-    setControlBusy(true);
-    setControlError('');
-    try {
-      const day = await openBusinessDay(tenantId, csrfToken, {
-        branch_id: openDayBranchId,
-        business_date: openDayDate,
-      });
-      setShowOpenBusinessDay(false);
-      setCashNotice(`${day.branch_code} business day ${day.business_date} is open.`);
-      setCashReload((prev) => prev + 1);
-    } catch (err) {
-      setControlError(err instanceof Error ? err.message : 'Could not open the business day.');
-    } finally {
-      setControlBusy(false);
-    }
-  };
-
-  const handleCloseBusinessDay = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!dayCloseTarget) return;
-    setControlBusy(true);
-    setControlError('');
-    try {
-      const day = await closeBusinessDay(tenantId, csrfToken, dayCloseTarget.id, dayCloseReason);
-      setDayCloseTarget(null);
-      setDayCloseReason('');
-      setCashNotice(`${day.branch_code} business day ${day.business_date} was closed.`);
-      setCashReload((prev) => prev + 1);
-    } catch (err) {
-      setControlError(err instanceof Error ? err.message : 'Could not close the business day.');
-    } finally {
-      setControlBusy(false);
-    }
-  };
-
-  const handleUpdateExpectedFloat = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!floatEditTarget) return;
-    setControlBusy(true);
-    setControlError('');
-    try {
-      const register = await updatePosRegisterExpectedFloat(
-        tenantId,
-        csrfToken,
-        floatEditTarget.id,
-        floatEditValue,
-        floatEditReason,
-      );
-      setFloatEditTarget(null);
-      setCashNotice(`${register.code} expected float updated to ${formatMoney(register.expected_float, register.currency)}.`);
-      setCashReload((prev) => prev + 1);
-    } catch (err) {
-      setControlError(err instanceof Error ? err.message : 'Could not update the expected float.');
-    } finally {
-      setControlBusy(false);
     }
   };
 
@@ -4692,7 +4588,6 @@ function TenantCashControlView({
   }
 
   const pendingMovements = movements.filter((movement) => movement.approved_at === null);
-  const currentBusinessDate = nairobiDateInputValue();
 
   return (
     <>
@@ -4830,12 +4725,10 @@ function TenantCashControlView({
               <thead>
                 <tr>
                   <th>Code & Name</th>
-                  <th>Branch</th>
                   <th>Device ID</th>
                   <th>Expected Float</th>
                   <th>Last Synchronised</th>
                   <th>State</th>
-                  <th>Controls</th>
                 </tr>
               </thead>
               <tbody>
@@ -4846,7 +4739,6 @@ function TenantCashControlView({
                       <br />
                       <strong>{till.name}</strong>
                     </td>
-                    <td><span className="muted-cell">{till.branch_code}</span></td>
                     <td><code>{till.device_id || 'Unbound'}</code></td>
                     <td>{formatMoney(till.expected_float, till.currency)}</td>
                     <td>
@@ -4859,75 +4751,22 @@ function TenantCashControlView({
                         <i /> {titleCase(till.state)}
                       </span>
                     </td>
-                    <td>
-                      {['AVAILABLE', 'CLOSED'].includes(till.state) ? (
-                        <button
-                          className="secondary-button"
-                          onClick={() => {
-                            setFloatEditTarget(till);
-                            setFloatEditValue(till.expected_float);
-                            setFloatEditReason('');
-                            setControlError('');
-                          }}
-                          type="button"
-                        >
-                          Set float
-                        </button>
-                      ) : <span className="muted-cell">Locked while active</span>}
-                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         )}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: 'var(--line-soft)', borderRadius: '8px', marginTop: '14px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <Icon name="shield" />
-            <span><strong>Device Activation:</strong> Physical tills must be cryptographically enrolled via a single-use 15-minute challenge code before trading.</span>
-          </div>
-          <a className="secondary-button" href="#activations" style={{ textDecoration: 'none', whiteSpace: 'nowrap' }}>
-            <Icon name="store" /> POS Activations Desk
-          </a>
-        </div>
       </article>
 
-      {showAddRegister && (
-        <div
-          className="business-dialog-backdrop"
-          onClick={(event) => {
-            if (event.target === event.currentTarget && !newRegBusy) setShowAddRegister(false);
-          }}
-          role="presentation"
-        >
-          <section
-            aria-labelledby="create-register-title"
-            aria-modal="true"
-            className="business-dialog"
-            role="dialog"
-            style={{ maxWidth: '560px' }}
-          >
-            <header>
-              <div>
-                <p className="eyebrow">Till Infrastructure</p>
-                <h2 id="create-register-title">Register Physical Till</h2>
-              </div>
-              <button
-                aria-label="Close dialog"
-                disabled={newRegBusy}
-                onClick={() => setShowAddRegister(false)}
-                type="button"
-              >
-                <Icon name="close" />
-              </button>
-            </header>
+      {showAddRegister && <IntakeModal title="Register Physical Till" busy={newRegBusy} onClose={() => setShowAddRegister(false)}>
             <form onSubmit={(event) => void handleCreateRegister(event)}>
               {newRegError ? (
                 <p className="business-dialog-error" role="alert">
                   <Icon name="alert" /> {newRegError}
                 </p>
               ) : null}
-              <div style={{ display: 'grid', gap: '16px' }}>
+              <fieldset disabled={newRegBusy} style={{ display: 'grid', gap: '16px' }}>
                 <label className="business-field">
                   <span>Branch / Dispensary Location</span>
                   <select
@@ -4977,7 +4816,7 @@ function TenantCashControlView({
                     onChange={(e) => setNewRegFloat(e.target.value)}
                   />
                 </label>
-              </div>
+              </fieldset>
               <footer style={{ marginTop: '24px', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
                 <button
                   className="secondary-button"
@@ -4996,9 +4835,7 @@ function TenantCashControlView({
                 </button>
               </footer>
             </form>
-          </section>
-        </div>
-      )}
+      </IntakeModal>}
 
       <section className="content-grid content-grid-primary">
         <article className="panel" id="cash-variances">
@@ -5237,169 +5074,34 @@ function TenantCashControlView({
       </section>
 
       {/* Business Day Accounting Calendar */}
-      <article className="panel" style={{ marginTop: '24px' }}>
-        <PanelHeader
-          actionLabel="Open business day"
-          eyebrow="Accounting Periods"
-          onAction={() => {
-            setControlError('');
-            setShowOpenBusinessDay(true);
-          }}
-          title="Business Days Calendar"
-        />
-        {branches.length === 0 ? (
-          <p className="inline-alert" role="status">
-            No active branches are available. Activate a branch in HQ before opening a business day or assigning a register.
-          </p>
-        ) : null}
-        {businessDays.length === 0 ? (
-          <EmptyState
-            detail="Open a business day for an active branch before a register can begin trading."
-            icon="activity"
-            title="No business day has been opened"
-          />
-        ) : (
+      {businessDays && businessDays.length > 0 ? (
+        <article className="panel" style={{ marginTop: '24px' }}>
+          <PanelHeader eyebrow="Accounting Periods" title="Business Days Calendar" />
           <div className="table-scroll">
             <table>
               <thead>
                 <tr>
-                  <th>Branch</th>
                   <th>Business Date</th>
                   <th>Opened At</th>
                   <th>Closed At</th>
                   <th>State</th>
                   <th>Reopen Reason</th>
-                  <th>Controls</th>
                 </tr>
               </thead>
               <tbody>
                 {businessDays.map((bd) => (
                   <tr key={bd.id}>
-                    <td><code>{bd.branch_code}</code></td>
                     <td><strong>{bd.business_date}</strong></td>
                     <td><small>{formatDate(bd.opened_at)}</small></td>
                     <td><small className="muted-cell">{bd.closed_at ? formatDate(bd.closed_at) : '—'}</small></td>
-                    <td><span className={`status-badge status-${bd.state === 'OPEN' || bd.state === 'REOPENED_BY_EXCEPTION' ? 'active' : 'suspended'}`}><i /> {titleCase(bd.state)}</span></td>
+                    <td><span className={`status-badge status-${bd.state === 'OPEN' ? 'active' : 'suspended'}`}><i /> {titleCase(bd.state)}</span></td>
                     <td><small className="muted-cell">{bd.reopen_reason || '—'}</small></td>
-                    <td>
-                      {bd.state === 'OPEN' || bd.state === 'REOPENED_BY_EXCEPTION' ? (
-                        <button
-                          className="secondary-button"
-                          onClick={() => {
-                            setDayCloseTarget(bd);
-                            setDayCloseReason('');
-                            setControlError('');
-                          }}
-                          type="button"
-                        >
-                          Close day
-                        </button>
-                      ) : <span className="muted-cell">—</span>}
-                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        )}
-      </article>
-      {showOpenBusinessDay ? (
-        <div className="business-dialog-backdrop" role="presentation">
-          <section aria-labelledby="open-business-day-title" aria-modal="true" className="business-dialog" role="dialog">
-            <header>
-              <div>
-                <p className="eyebrow">Accounting periods</p>
-                <h2 id="open-business-day-title">Open a business day</h2>
-              </div>
-              <button aria-label="Close dialog" disabled={controlBusy} onClick={() => setShowOpenBusinessDay(false)} type="button">
-                <Icon name="close" />
-              </button>
-            </header>
-            <form onSubmit={(event) => void handleOpenBusinessDay(event)}>
-              {controlError ? <p className="business-dialog-error" role="alert"><Icon name="alert" /> {controlError}</p> : null}
-              <p className="panel-note">
-                One branch can have one active accounting day. All register sessions must be closed before the next day can open.
-              </p>
-              <label className="business-field">
-                <span>Active branch</span>
-                <select required value={openDayBranchId} onChange={(event) => setOpenDayBranchId(event.target.value)}>
-                  <option value="">Select branch</option>
-                  {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name} ({branch.code})</option>)}
-                </select>
-              </label>
-              <label className="business-field">
-                <span>Business date</span>
-                <input max={currentBusinessDate} required type="date" value={openDayDate} onChange={(event) => setOpenDayDate(event.target.value)} />
-                <small className="panel-note">Date uses the tenant’s Africa/Nairobi calendar.</small>
-              </label>
-              <footer>
-                <button className="secondary-button" disabled={controlBusy} onClick={() => setShowOpenBusinessDay(false)} type="button">Cancel</button>
-                <button className="primary-button" disabled={controlBusy || !branches.length || !openDayBranchId || !openDayDate || openDayDate > currentBusinessDate} type="submit">
-                  {controlBusy ? 'Opening…' : 'Open business day'}
-                </button>
-              </footer>
-            </form>
-          </section>
-        </div>
-      ) : null}
-      {dayCloseTarget ? (
-        <div className="business-dialog-backdrop" role="presentation">
-          <section aria-labelledby="close-business-day-title" aria-modal="true" className="business-dialog" role="dialog">
-            <header>
-              <div>
-                <p className="eyebrow">Accounting periods</p>
-                <h2 id="close-business-day-title">Close business day</h2>
-              </div>
-              <button aria-label="Close dialog" disabled={controlBusy} onClick={() => setDayCloseTarget(null)} type="button">
-                <Icon name="close" />
-              </button>
-            </header>
-            <div className="business-dialog-record"><div><code>{dayCloseTarget.branch_code}</code><strong>{dayCloseTarget.business_date}</strong></div></div>
-            <p className="business-dialog-confirm"><Icon name="shield" /> Every register must be closed through POS with its final Z report recorded. HQ will refuse the close while a till is active or unreconciled.</p>
-            <form onSubmit={(event) => void handleCloseBusinessDay(event)}>
-              {controlError ? <p className="business-dialog-error" role="alert"><Icon name="alert" /> {controlError}</p> : null}
-              <label className="business-field">
-                <span>Close reason</span>
-                <textarea minLength={10} maxLength={500} required value={dayCloseReason} onChange={(event) => setDayCloseReason(event.target.value)} />
-              </label>
-              <footer>
-                <button className="secondary-button" disabled={controlBusy} onClick={() => setDayCloseTarget(null)} type="button">Cancel</button>
-                <button className="primary-button" disabled={controlBusy || dayCloseReason.trim().length < 10} type="submit">{controlBusy ? 'Closing…' : 'Close business day'}</button>
-              </footer>
-            </form>
-          </section>
-        </div>
-      ) : null}
-      {floatEditTarget ? (
-        <div className="business-dialog-backdrop" role="presentation">
-          <section aria-labelledby="expected-float-title" aria-modal="true" className="business-dialog" role="dialog">
-            <header>
-              <div>
-                <p className="eyebrow">Till infrastructure</p>
-                <h2 id="expected-float-title">Set expected opening float</h2>
-              </div>
-              <button aria-label="Close dialog" disabled={controlBusy} onClick={() => setFloatEditTarget(null)} type="button">
-                <Icon name="close" />
-              </button>
-            </header>
-            <div className="business-dialog-record"><div><code>{floatEditTarget.code}</code><strong>{floatEditTarget.name} · {floatEditTarget.branch_code}</strong></div></div>
-            <form onSubmit={(event) => void handleUpdateExpectedFloat(event)}>
-              {controlError ? <p className="business-dialog-error" role="alert"><Icon name="alert" /> {controlError}</p> : null}
-              <label className="business-field">
-                <span>Expected float ({floatEditTarget.currency})</span>
-                <input min="0" required step="0.01" type="number" value={floatEditValue} onChange={(event) => setFloatEditValue(event.target.value)} />
-              </label>
-              <label className="business-field">
-                <span>Reason for change</span>
-                <textarea minLength={10} maxLength={500} required value={floatEditReason} onChange={(event) => setFloatEditReason(event.target.value)} />
-              </label>
-              <footer>
-                <button className="secondary-button" disabled={controlBusy} onClick={() => setFloatEditTarget(null)} type="button">Cancel</button>
-                <button className="primary-button" disabled={controlBusy || !floatEditValue || floatEditReason.trim().length < 10} type="submit">{controlBusy ? 'Saving…' : 'Save expected float'}</button>
-              </footer>
-            </form>
-          </section>
-        </div>
+        </article>
       ) : null}
       {cashReviewAction ? (
         <div className="business-dialog-backdrop" role="presentation">
@@ -10127,6 +9829,8 @@ function AccessView({
 
       {tenantId ? (
         <AccessWorkspace
+          isPlatformOwner={overview.is_platform_owner === true}
+          currentUserName={overview.user_name}
           cashFailed={cashFailed}
           csrfToken={csrfToken}
           forcedClosures={forcedClosures}
@@ -10879,10 +10583,6 @@ function UserMenu({ overview, onClose, onSignOut }: {
         {overview.is_platform_owner === true ? <a href="#access" onClick={onClose}>
           <span className="user-menu-icon"><Icon name="settings" /></span>
           <span><strong>System controls</strong><small>Identity and governance</small></span>
-        </a> : null}
-        {overview.is_platform_owner === true ? <a href="#activations" onClick={onClose}>
-          <span className="user-menu-icon"><Icon name="store" /></span>
-          <span><strong>POS Activations Desk</strong><small>Device requests & challenge codes</small></span>
         </a> : null}
         {overview.is_platform_owner === true ? <a href="/api/docs/" target="_blank" rel="noreferrer" onClick={onClose}>
           <span className="user-menu-icon"><Icon name="docs" /></span>

@@ -41,8 +41,8 @@ for (const scenario of SCENARIOS) {
         'Approved pixel baselines are captured and reviewed only by the CI visual job.',
       );
       test.skip(
-        test.info().project.metadata.baselines !== true,
-        'This viewport is checked for layout only; it holds no pixel baseline.',
+        scenario.pixelBaseline === false || test.info().project.metadata.baselines !== true,
+        'This screen is checked for layout until its pixel baseline has been visually approved.',
       );
       // Recorded on the test, so the rationale is in front of whoever reviews
       // a baseline change rather than buried in the catalogue.
@@ -86,6 +86,20 @@ for (const scenario of SCENARIOS) {
     });
   });
 }
+
+test('retail store and scan controls stay inside the product panel', async ({ page }) => {
+  await openScenario(page, 'retail-empty-sale');
+  const overflow = await page.locator('.pos-retail-search').evaluate((panel) => {
+    const panelBox = panel.getBoundingClientRect();
+    return Array.from(panel.querySelectorAll('input, select, textarea'))
+      .filter((control) => {
+        const box = control.getBoundingClientRect();
+        return box.left < panelBox.left - 1 || box.right > panelBox.right + 1;
+      })
+      .map((control) => `${control.tagName.toLowerCase()} extends outside the find-and-add panel`);
+  });
+  expect(overflow).toEqual([]);
+});
 
 test('the catalogue covers every scenario it declares', async ({ page }) => {
   // Guards against a scenario being silently dropped from the index: a removed

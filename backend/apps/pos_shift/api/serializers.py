@@ -59,7 +59,7 @@ class PosRegisterSerializer(serializers.ModelSerializer):
 class PosRegisterCreateSerializer(serializers.ModelSerializer):
     branch_id = serializers.UUIDField(write_only=True)
     expected_float = serializers.DecimalField(
-        max_digits=12, decimal_places=2, required=False, default=Decimal("0.00")
+        max_digits=12, decimal_places=2, min_value=Decimal("0.00"), required=False, default=Decimal("0.00")
     )
 
     class Meta:
@@ -68,6 +68,11 @@ class PosRegisterCreateSerializer(serializers.ModelSerializer):
             "id", "code", "name", "branch_id", "currency", "state", "expected_float",
         ]
         read_only_fields = ["id", "state"]
+
+    def validate_currency(self, value):
+        if value != "KES":
+            raise serializers.ValidationError("Registers currently support KES only.")
+        return value
 
     def validate_code(self, value):
         code = str(value or "").strip().upper()

@@ -8,6 +8,7 @@ check a licence and record who decided.
 from __future__ import annotations
 
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import transaction
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
@@ -23,7 +24,7 @@ from apps.pharmacy_network.api.serializers import (
     RegisterPharmacySerializer,
     TenantLifecycleEventSerializer,
 )
-from apps.pharmacy_network.models import TenantLifecycleEvent
+from apps.pharmacy_network.models import PharmacyProfile, TenantLifecycleEvent
 from apps.pharmacy_network.services import (
     PharmacyOnboardingService,
     TenantLifecycleService,
@@ -88,6 +89,7 @@ class PharmacyViewSet(viewsets.ReadOnlyModelViewSet):
         )
 
     @action(detail=True, methods=["patch"], url_path="profile")
+    @transaction.atomic
     def profile(self, request, pk=None):
         """Update the regulatory and commercial record.
 
@@ -97,15 +99,17 @@ class PharmacyViewSet(viewsets.ReadOnlyModelViewSet):
         """
         self._require_platform_admin()
         tenant = self.get_object()
+        Tenant.objects.select_for_update().get(pk=tenant.pk)
         profile = getattr(tenant, "pharmacy_profile", None)
         if profile is None:
-            return Response(
-                {"detail": "This pharmacy has no profile record."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+            profile = PharmacyProfile(tenant=tenant)
         serializer = PharmacyProfileSerializer(profile, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        updated = serializer.save()
+        # Validate before writing so a missing legal name or mismatched licence
+        # number/date cannot leave behind a partial profile on a legacy tenant.
+        updated = serializer.instance
+        for field, value in serializer.validated_data.items():
+            setattr(updated, field, value)
         try:
             updated.full_clean()
         except DjangoValidationError as exc:
@@ -122,6 +126,19 @@ class PharmacyViewSet(viewsets.ReadOnlyModelViewSet):
         tenant = self.get_object()
         return self._run(
             lambda: PharmacyOnboardingService.begin_onboarding(
+                tenant=tenant, actor=request.user, **serializer.validated_data
+            )
+        )
+
+    @action(detail=True, methods=["post"], url_path="repair-initial-setup")
+    def repair_initial_setup(self, request, pk=None):
+        """Recover an active legacy pharmacy that has no organization or branch."""
+        self._require_platform_admin()
+        serializer = BeginOnboardingSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        tenant = self.get_object()
+        return self._run(
+            lambda: PharmacyOnboardingService.repair_active_initial_setup(
                 tenant=tenant, actor=request.user, **serializer.validated_data
             )
         )

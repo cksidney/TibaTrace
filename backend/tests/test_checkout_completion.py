@@ -11,7 +11,6 @@ from apps.pos_transactions.models import PosTransaction, RetailCashReceipt
 from apps.prescription.fiscal import FiscalService
 from apps.prescription.fiscal_models import FiscalSubmission
 from apps.prescription.payment_models import PaymentAttempt, PaymentSettlement, PaymentTender
-from apps.taxation.models import FiscalReceipt, TenantEtimsProfile
 
 pytestmark = pytest.mark.django_db
 
@@ -341,14 +340,6 @@ def test_fiscal_is_separate_and_unconfigured_does_not_erase_payment(world):  # n
 
 
 def test_retail_checkout_allocates_only_one_fiscal_record(world):  # noqa: F811
-    TenantEtimsProfile.all_objects.create(
-        tenant=world["tenant"],
-        is_enabled=True,
-        tin="P051234567Z",
-        bhf_id="00",
-        dvc_srl_no="VSCU-NRB-001",
-        auto_fiscalize_pos_sales=False,
-    )
     draft = prepare_sale_for_payment(world)
     response = collect(world, draft["id"], amount="250", received="250")
     assert response.status_code == 200, response.data
@@ -357,9 +348,10 @@ def test_retail_checkout_allocates_only_one_fiscal_record(world):  # noqa: F811
     assert FiscalSubmission.all_objects.filter(
         tenant=world["tenant"], source_kind="RETAIL", source_id=sale.pk
     ).count() == 1
-    assert not FiscalReceipt.all_objects.filter(
-        tenant=world["tenant"], retail_cash_receipt__transaction=sale
-    ).exists()
+    FiscalService.enqueue(source=sale)
+    assert FiscalSubmission.all_objects.filter(
+        tenant=world["tenant"], source_kind="RETAIL", source_id=sale.pk
+    ).count() == 1
 
 
 def test_fiscal_timeout_retains_invoice_and_never_automatically_resends(world, monkeypatch):  # noqa: F811

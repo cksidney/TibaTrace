@@ -17,12 +17,12 @@ def count_served_customers_for_shift(shift: OperatorShift) -> int:
     from apps.prescription.models import DispensingEpisode
 
     retail_count = PosTransaction.all_objects.filter(
-        operator_shift_id=shift.pk,
+        tenant_id=shift.tenant_id, operator_shift_id=shift.pk,
         state__in=[PosTransaction.State.PAID, PosTransaction.State.COMPLETED],
     ).count()
 
     dispensing_count = DispensingEpisode.all_objects.filter(
-        payment_operator_shift_id=shift.pk,
+        tenant_id=shift.tenant_id, payment_operator_shift_id=shift.pk,
         status__in=[
             "PAID",
             "READY_FOR_COLLECTION",
@@ -42,12 +42,12 @@ def count_served_customers_for_session(session: RegisterSession) -> int:
     from apps.prescription.models import DispensingEpisode
 
     retail_count = PosTransaction.all_objects.filter(
-        register_session_id=session.pk,
+        tenant_id=session.tenant_id, register_session_id=session.pk,
         state__in=[PosTransaction.State.PAID, PosTransaction.State.COMPLETED],
     ).count()
 
     dispensing_count = DispensingEpisode.all_objects.filter(
-        payment_register_session_id=session.pk,
+        tenant_id=session.tenant_id, payment_register_session_id=session.pk,
         status__in=[
             "PAID",
             "READY_FOR_COLLECTION",

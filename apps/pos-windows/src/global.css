@@ -49,6 +49,10 @@ body { background: #f3f6f8; }
 button, input, select, textarea { font: inherit; }
 button { transition: background 140ms ease, border-color 140ms ease, box-shadow 140ms ease; }
 button:disabled { cursor: not-allowed !important; opacity: .54; }
+/* The workflow ribbon communicates server state with colour and labels. Keep
+   unavailable future stages readable; the disabled cursor still communicates
+   that the operator cannot skip ahead. */
+nav[aria-label='Dispensing workflow'] button:disabled { opacity: 1; }
 button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px solid #35a99b; outline-offset: 3px; }
 .pos-console { font-size: 14px; }
 .pos-console :where(input:not([type='checkbox']), select, textarea) { border: 1px solid #ced9df; border-radius: 9px; min-height: 42px; padding: 9px 12px; color: #172b3a; background: #fff; max-width: 100%; }

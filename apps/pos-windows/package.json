@@ -1,7 +1,7 @@
 {
   "name": "@dawatrace/pos-windows",
-  "version": "1.0.11",
-  "tibatraceBuildNumber": 11,
+  "version": "1.0.13",
+  "tibatraceBuildNumber": 13,
   "private": true,
   "type": "module",
   "description": "TibaTrace POS (Electron) \u2014 clinical dispensing and pharmacy operations console",

@@ -1,3 +1,4 @@
+import { PosActivationsPanel } from './PosActivationsPanel.js';
 import { IntakeModal } from './IntakeModal.js';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 
@@ -14,7 +15,6 @@ import {
   type UserRoleGrant,
 } from './api.js';
 import { Icon } from './icons.js';
-import { PosActivationWorkspace } from './PosActivationWorkspace.js';
 
 type AccessTab = 'users' | 'roles' | 'matrix' | 'grants' | 'machines' | 'custody' | 'activations';
 
@@ -508,6 +508,8 @@ function RolePermissionsPanel({
 }
 
 export function AccessWorkspace({
+  isPlatformOwner = false,
+  currentUserName = '',
   cashFailed,
   csrfToken,
   forcedClosures,
@@ -522,6 +524,8 @@ export function AccessWorkspace({
   userRoles,
   variances,
 }: {
+  readonly isPlatformOwner?: boolean;
+  readonly currentUserName?: string;
   readonly cashFailed: boolean;
   readonly csrfToken: string;
   readonly forcedClosures: readonly ShiftReportSummary[] | null;
@@ -949,33 +953,16 @@ export function AccessWorkspace({
           <header className="panel-header access-panel-header">
             <div>
               <p className="eyebrow">Platform Governance</p>
-              <h2>POS Device Activations & Quotas</h2>
+              <h2>POS Device Activations</h2>
               <p className="muted-cell">
                 Only the TibaTrace Platform Owner may approve, activate, renew, suspend, or revoke POS device activations. Tenant Admins submit and track requests.
               </p>
             </div>
             <span className="panel-meta">Platform-governed</span>
           </header>
-          <PosActivationsPanel tenantId={tenantId} csrfToken={csrfToken} />
+          <PosActivationsPanel key={tenantId} tenantId={tenantId} csrfToken={csrfToken} isPlatformOwner={isPlatformOwner} currentUserName={currentUserName} />
         </article>
       ) : null}
     </section>
   );
 }
-
-function PosActivationsPanel({
-  tenantId,
-  csrfToken,
-}: {
-  readonly tenantId: string;
-  readonly csrfToken: string;
-}) {
-  return (
-    <PosActivationWorkspace
-      csrfToken={csrfToken}
-      isPlatformOwner={false}
-      tenantId={tenantId}
-    />
-  );
-}
-

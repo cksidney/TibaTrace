@@ -931,3 +931,29 @@ class TestPosRegisterCreation:
             HTTP_X_TENANT_ID=str(world["tenant"].id),
         )
         assert res.status_code == 403
+
+
+@pytest.mark.parametrize("invalid", [{"expected_float": "-1.00"}, {"currency": "USD"}])
+def test_register_configuration_rejects_invalid_cash_context(world, invalid):
+    role = Role.all_objects.create(tenant=world["tenant"], code="CONFIG_ADMIN", name="Config admin", capabilities=["pos.device.manage"])
+    UserRole.all_objects.create(tenant=world["tenant"], user=world["operator"], role=role)
+    response = world["client"].post("/api/pos/shift/registers/", {"code": "INVALID", "name": "Invalid", "branch_id": str(world["branch"].pk), **invalid}, format="json")
+    assert response.status_code == 400
+    assert not PosRegister.all_objects.filter(tenant=world["tenant"], code="INVALID").exists()
+
+
+def test_cashier_cannot_create_physical_register(world):
+    # Daily shift authority does not grant physical device setup authority.
+    response = world["client"].post("/api/pos/shift/registers/", {"code": "NO-CREATE", "name": "No create", "branch_id": str(world["branch"].pk)}, format="json")
+    assert response.status_code == 403
+
+
+def test_register_configuration_rejects_foreign_branch(world):
+    other = Tenant.objects.create(name="Foreign setup", slug="foreign-setup")
+    org = Organization.all_objects.create(tenant=other, code="FOREIGN", name="Foreign")
+    foreign = Location.all_objects.create(tenant=other, organization=org, code="FOREIGN", name="Foreign")
+    role = Role.all_objects.create(tenant=world["tenant"], code="CONFIG_ADMIN", name="Config admin", capabilities=["pos.device.manage"])
+    UserRole.all_objects.create(tenant=world["tenant"], user=world["operator"], role=role)
+    response = world["client"].post("/api/pos/shift/registers/", {"code": "FOREIGN", "name": "Foreign", "branch_id": str(foreign.pk)}, format="json")
+    assert response.status_code == 400
+    assert not PosRegister.all_objects.filter(tenant=world["tenant"], code="FOREIGN").exists()

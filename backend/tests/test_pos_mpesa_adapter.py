@@ -9,6 +9,7 @@ from decimal import Decimal
 import pytest
 
 from apps.prescription.payment_providers_mpesa import (
+    DarajaTransport,
     MpesaAdapter,
     MpesaConfig,
     daraja_timestamp,
@@ -42,6 +43,68 @@ def transport_returning(status, body):
         return status, body
 
     return _transport
+
+
+class FakeHttpResponse:
+    def __init__(self, status_code, body=b""):
+        self.status_code = status_code
+        self.body = body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return False
+
+    def iter_content(self, chunk_size):  # noqa: ARG002
+        if self.body:
+            yield self.body
+
+
+@pytest.mark.parametrize("redirect_at", ["oauth", "payment"])
+def test_daraja_redirect_is_never_followed_or_reported_as_a_safe_retry(monkeypatch, redirect_at):
+    import requests
+
+    calls = []
+
+    class FakeSession:
+        trust_env = True
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def get(self, url, **kwargs):
+            calls.append(("get", url, kwargs))
+            body = b'{"access_token":"token"}' if redirect_at == "payment" else b""
+            return FakeHttpResponse(302 if redirect_at == "oauth" else 200, body)
+
+        def request(self, method, url, **kwargs):
+            calls.append(("request", method, url, kwargs))
+            return FakeHttpResponse(302)
+
+    monkeypatch.setattr(requests, "Session", FakeSession)
+    settings = config()
+    transport = DarajaTransport(settings)
+
+    with pytest.raises(RuntimeError, match="outcome is unknown"):
+        transport("POST", settings.base_url + "/mpesa/stkpush/v1/processrequest", {}, {})
+
+    assert all(call[-1].get("allow_redirects") is False for call in calls)
+    payment_request_was_made = any(call[0] == "request" for call in calls)
+    assert payment_request_was_made is (redirect_at == "payment")
+
+
+def test_daraja_rejects_a_non_official_destination_before_opening_a_session(monkeypatch):
+    import requests
+
+    monkeypatch.setattr(requests, "Session", lambda: pytest.fail("unexpected network session"))
+    transport = DarajaTransport(config())
+
+    with pytest.raises(ValueError, match="destination is invalid"):
+        transport("POST", "https://sandbox.safaricom.co.ke.attacker.test/mpesa/pay", {}, {})
 
 
 # ------------------------------------------------------------------- config

@@ -241,6 +241,7 @@ export function RetailWorkspace({ apiFetch, deviceId, journal = null, onPaymentB
           Retail store
           <select
             value={storeId}
+            title={selectedStoreName(stores, storeId)}
             onChange={(event) => setStoreId(event.target.value)}
             disabled={busy || Boolean(transaction)}
             style={inputStyle}
@@ -608,6 +609,11 @@ const labelStyle = {
   fontWeight: 600,
 } as const;
 const inputStyle = {
+  width: '100%',
+  minWidth: 0,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
   minHeight: controlSize.desktopHeightLarge,
   border: `1px solid ${surface.borderStrong}`,
   borderRadius: 8,

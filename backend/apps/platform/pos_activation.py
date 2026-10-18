@@ -66,7 +66,7 @@ def verify_device_credential(*, tenant_id, credential, device_id, fingerprint):
             or str(record.branch_id) != claims.get("branch")
             or record.device_id != claims.get("device") or record.device_fingerprint != claims.get("fingerprint")
             or record.device_id != device_id or record.device_fingerprint != fingerprint
-            or record.register.device_id != record.device_id):
+            or record.register.device_id != record.device_id or record.register.location_id != record.branch_id):
         raise PermissionDenied("Device activation is revoked, expired or mismatched.")
     return record
 

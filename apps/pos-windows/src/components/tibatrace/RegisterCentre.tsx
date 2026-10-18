@@ -490,7 +490,7 @@ function ReportSnapshot({ report }: { readonly report: ShiftReportDTO }) {
         <Detail label="Cash out" value={`${report.snapshot.currency} ${report.snapshot.cash.cash_out}`} />
         <Detail label="Expected closing" value={`${report.snapshot.currency} ${report.snapshot.cash.expected_closing}`} />
         <Detail label="Grand total" value={`${report.snapshot.currency} ${report.snapshot.tenders.grand_total}`} />
-        <Detail label="Customers served" value={String(report.snapshot.served_customers ?? '0')} />
+        <Detail label="Customers served" value={String(report.snapshot.served_customers ?? 'Not recorded')} />
         {variance ? <Detail label="Declared cash" value={`${report.snapshot.currency} ${variance.declared}`} /> : null}
         {variance ? <Detail label="Variance" value={`${report.snapshot.currency} ${variance.difference} · ${variance.classification}`} /> : null}
       </dl>
