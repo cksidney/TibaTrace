@@ -46,7 +46,8 @@ COPY --chown=dawatrace:dawatrace backend /app
 # running application reports 0.0.0-unknown while the image label says otherwise.
 COPY --chown=dawatrace:dawatrace VERSION /VERSION
 
-RUN DAWATRACE_SECRET_KEY=build-only-staticfiles-not-a-secret \
+RUN DJANGO_SETTINGS_MODULE=dawatrace.settings.build \
+    DAWATRACE_SECRET_KEY=build-only-staticfiles-not-a-secret \
     DAWATRACE_OBJECT_SIGNING_KEY=build-only-staticfiles-not-a-secret \
     DAWATRACE_ALLOWED_HOSTS=build.invalid \
     python manage.py collectstatic --noinput
