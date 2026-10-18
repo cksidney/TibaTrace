@@ -10,7 +10,13 @@ $ElectronRoot = Join-Path $Root "node_modules/electron/dist"
 $ReleaseRoot = Join-Path $AppRoot "release"
 $StageRoot = Join-Path $ReleaseRoot "TibaTrace-POS-win-x64"
 $BrandRoot = Join-Path $AppRoot "public/brand"
-$Version = "0.1.0.1"
+$PosPackage = Get-Content (Join-Path $AppRoot "package.json") -Raw | ConvertFrom-Json
+$DisplayVersion = [string]$PosPackage.version
+if ($DisplayVersion -notmatch '^(0|[1-9][0-9]*)\.[0-9]\.[0-9]$' -or $PosPackage.tibatraceBuildNumber -lt 1) {
+    throw "POS packaging requires single-digit minor/patch version segments and a positive build number."
+}
+# MSIX requires four numeric fields; its revision is an internal build number.
+$Version = "$DisplayVersion.$($PosPackage.tibatraceBuildNumber)"
 
 if (-not (Test-Path (Join-Path $ElectronRoot "electron.exe"))) {
     throw "Electron runtime is missing. Run npm ci without --ignore-scripts on Windows."
@@ -28,7 +34,8 @@ New-Item $AppPackage -ItemType Directory -Force | Out-Null
 Copy-Item (Join-Path $AppRoot "dist") $AppPackage -Recurse -Force
 @{
     name = "tibatrace-pos"
-    version = "0.1.0-alpha.1"
+    version = $DisplayVersion
+    tibatraceBuildNumber = $PosPackage.tibatraceBuildNumber
     private = $true
     type = "module"
     main = "dist/main/main.js"
@@ -94,7 +101,7 @@ if (-not $MakeAppx) {
     throw "MakeAppx.exe was not found in the Windows SDK."
 }
 
-$Msix = Join-Path $ReleaseRoot "TibaTrace-POS-0.1.0-alpha.1-x64.msix"
+$Msix = Join-Path $ReleaseRoot "TibaTrace-POS-$DisplayVersion-x64.msix"
 if (Test-Path $Msix) {
     Remove-Item $Msix -Force
 }

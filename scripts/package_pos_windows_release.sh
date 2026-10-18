@@ -14,5 +14,6 @@ if [[ "${TIBATRACE_API_BASE_URL}" != https://* ]]; then
 fi
 
 cd "${ROOT}"
+python3 scripts/pos_version.py --platform windows
 npm run build --workspace @dawatrace/pos-windows
 pwsh -NoProfile -File scripts/package_pos_windows.ps1 -RequireSigning
