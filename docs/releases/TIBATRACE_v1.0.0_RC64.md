@@ -52,3 +52,11 @@ never create demonstration stock or financial transactions in a live tenant.
 Operational workflow: [Inventory operating workflow](../inventory/INVENTORY_WORKFLOW.md).
 Inventory acquisition valuation remains separate from statutory accounting,
 impairment/NRV policy and general-ledger posting.
+
+## Validation follow-up
+
+Legacy HQ sample journeys now record the same independent per-batch decision as
+live receiving. Mobility fixtures use aware future reservation deadlines and
+explicitly age only synthetic expiry cases. Returns of already rejected stock
+are excluded once from release eligibility, and dispatch reconciles the held
+receipt quantities. Reservation retries remain idempotent after their deadline.

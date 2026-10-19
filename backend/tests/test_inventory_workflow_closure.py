@@ -506,3 +506,63 @@ def test_planning_api_has_tenant_scope_and_no_generic_status_mutation(world, rec
     assert client.get("/api/inventory/replenishment-policies/").data == []
     client.force_authenticate(User.objects.create_user(username="no-planning-rights", tenant=world["tenant"]))
     assert client.post("/api/inventory/replenishment/refresh/", {}, format="json").status_code == 403
+
+
+def test_rejected_return_is_not_subtracted_twice_from_release_allowance(world, received_stock):
+    from apps.procurement.services.receiving_service import GoodsReceivingService
+
+    receipt, batch, location = received_stock
+    batch.rejected_quantity, batch.quarantined_quantity = 2, 3
+    batch.save()
+    line = batch.grn_line
+    line.rejected_quantity, line.quarantined_quantity = 2, 3
+    line.save()
+    other = reviewer(world)
+    qualify(receipt, other)
+    item = SupplierReturnService.request_return(
+        tenant=world["tenant"],
+        return_number="REJECTED-RETURN",
+        goods_receipt=receipt,
+        reason="Two rejected units",
+        requested_by=world["operator"],
+        expected_credit=40,
+    )
+    SupplierReturnService.add_return_line(
+        supplier_return=item, sku=world["sku"], quantity=2, batch=batch, source_location=location
+    )
+    SupplierReturnService.approve(supplier_return=item, approver=other)
+    SupplierReturnService.dispatch(supplier_return=item, actor=world["operator"])
+    BatchQualityDecisionService.record_decision(
+        batch=batch,
+        inspector=other,
+        decision_by=other,
+        outcome="APPROVE_FOR_RELEASE",
+        reason="Three remaining packs passed inspection",
+    )
+    updated = GoodsReceivingService.release_batch(
+        batch=batch, actor=other, quantity=3, reason="Independent inspection completed"
+    )
+    assert updated.accepted_quantity == 3 and updated.quarantined_quantity == 0
+
+
+def test_reservation_refuses_date_only_deadlines_and_retries_after_deadline(world, monkeypatch):
+    from datetime import date
+
+
+    args = dict(
+        tenant=world["tenant"],
+        branch=world["branch"],
+        source_location=world["store"],
+        sku=world["sku"],
+        requested_quantity=Decimal(2),
+        purpose="DEADLINE",
+        actor=world["operator"],
+        idempotency_key="deadline-key",
+    )
+    with pytest.raises(ValidationError, match="aware date and time"):
+        InventoryReservationService.reserve_stock(**args, expiry_time=date.today())
+    deadline = timezone.now() + timezone.timedelta(hours=1)
+    first = InventoryReservationService.reserve_stock(**args, expiry_time=deadline)
+    monkeypatch.setattr(timezone, "now", lambda: deadline + timezone.timedelta(hours=1))
+    again = InventoryReservationService.reserve_stock(**args, expiry_time=deadline)
+    assert again.pk == first.pk

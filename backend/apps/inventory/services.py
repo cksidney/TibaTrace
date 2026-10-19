@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError
@@ -340,8 +341,6 @@ class InventoryReservationService:
         requested_quantity = Decimal(str(requested_quantity))
         if not requested_quantity.is_finite() or requested_quantity <= 0:
             raise ValidationError("Reservation quantity must be finite and positive.")
-        if expiry_time and expiry_time <= timezone.now():
-            raise ValidationError("Reservation expiry must be in the future.")
         if source_location.tenant_id != tenant.pk or source_location.branch_id != branch.pk or sku.tenant_id != tenant.pk:
             raise ValidationError("Reservation identities must match the tenant and branch.")
         existing = InventoryReservation.all_objects.select_for_update().filter(tenant=tenant, idempotency_key=idempotency_key).first()
@@ -349,6 +348,10 @@ class InventoryReservationService:
             if (existing.branch_id, existing.source_location_id, existing.sku_id, existing.requested_quantity, existing.purpose, existing.expiry_time) != (branch.pk, source_location.pk, sku.pk, requested_quantity, purpose, expiry_time):
                 raise ValidationError("Reservation retry key belongs to a different request.")
             return existing
+        if expiry_time and (not isinstance(expiry_time, datetime) or timezone.is_naive(expiry_time)):
+            raise ValidationError("Reservation expiry must be an aware date and time.")
+        if expiry_time and expiry_time <= timezone.now():
+            raise ValidationError("Reservation expiry must be in the future.")
         # Serialize allocation against competing reservations at this custody.
         list(InventoryBalance.all_objects.select_for_update().filter(tenant=tenant, location=source_location, sku=sku).order_by("pk"))
             

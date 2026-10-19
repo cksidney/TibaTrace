@@ -50,7 +50,7 @@ class PosTransactionLineSerializer(serializers.ModelSerializer):
         fields = [
             "id", "sku", "sku_code", "description_snapshot", "unit", "quantity",
             "unit_price", "discount_amount", "tax_amount", "line_total", "currency",
-            "price_snapshot", "scan_source", "inventory_context", "refundable_quantity", "issued_batches",
+            "price_snapshot", "scan_source", "unit_evidence", "inventory_context", "refundable_quantity", "issued_batches",
         ]
 
     def get_refundable_quantity(self, line):

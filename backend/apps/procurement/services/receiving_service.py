@@ -567,7 +567,7 @@ class GoodsReceivingService:
         return_lines = SupplierReturnLine.all_objects.filter(tenant_id=batch.tenant_id, batch=batch, supplier_return__return_category="QUALITY_REJECTION").exclude(supplier_return__status="REJECTED")
         returned = return_lines.aggregate(total=models.Sum("quantity"))["total"] or 0
         dispatched_returns = return_lines.filter(supplier_return__status__in=["DISPATCHED", "CREDIT_PENDING", "CLOSED"]).aggregate(total=models.Sum("quantity"))["total"] or 0
-        outstanding = max(0, (batch.received_quantity or 0) - already_released - (batch.rejected_quantity or 0) - returned)
+        outstanding = max(0, (batch.received_quantity or 0) - already_released - max((batch.rejected_quantity or 0), returned))
         quantity = decimal.Decimal(str(outstanding if quantity is None else quantity))
         if not quantity.is_finite() or quantity != quantity.to_integral_value():
             raise ValidationError("Release a whole number of the confirmed base units.")
@@ -585,9 +585,9 @@ class GoodsReceivingService:
             )
 
         batch.accepted_quantity = already_released + quantity
-        batch.quarantined_quantity = max(0, (batch.quarantined_quantity or 0) - quantity)
+        batch.quarantined_quantity = max(0, batch.received_quantity - batch.accepted_quantity - max((batch.rejected_quantity or 0), dispatched_returns))
 
-        if batch.accepted_quantity + (batch.rejected_quantity or 0) + dispatched_returns >= batch.received_quantity:
+        if batch.accepted_quantity + max((batch.rejected_quantity or 0), dispatched_returns) >= batch.received_quantity:
             batch.quality_status = ReceivedBatch.QualityStatus.RELEASED
         elif batch.accepted_quantity > 0:
             batch.quality_status = ReceivedBatch.QualityStatus.PARTIALLY_RELEASED

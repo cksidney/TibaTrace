@@ -17,6 +17,7 @@ from decimal import Decimal
 
 from django.core.exceptions import ValidationError
 from django.db.models import Sum
+from django.utils import timezone
 
 from apps.inventory.models import (
     InventoryBalance,
@@ -356,11 +357,15 @@ class StageU2InventoryReservations(Stage):
                 purpose=item["purpose"],
                 actor=actor,
                 idempotency_key=key,
-                expiry_time=ctx.as_of,
+                expiry_time=timezone.now() + timezone.timedelta(days=1),
             )
 
             outcome = item["outcome"]
             if outcome == "EXPIRED":
+                # Synthetic elapsed deadline: reserve first under the same
+                # future-deadline rule used by live callers, then age the fixture.
+                res.expiry_time = timezone.now() - timezone.timedelta(seconds=1)
+                res.save(update_fields=["expiry_time", "updated_at"])
                 InventoryReservationService.expire_reservation(reservation=res, actor=actor)
             elif outcome == "RELEASED":
                 InventoryReservationService.release_reservation(reservation=res, actor=actor)

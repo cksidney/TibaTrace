@@ -201,6 +201,18 @@ class SupplierReturnService:
         item.status = "DISPATCHED"
         item.dispatched_by = actor
         item.save(update_fields=["status", "dispatched_by", "updated_at"])
+        for received in ReceivedBatch.all_objects.select_for_update().filter(tenant_id=item.tenant_id, pk__in=SupplierReturnLine.all_objects.filter(tenant_id=item.tenant_id, supplier_return=item).values("batch_id")).order_by("pk"):
+            if item.return_category != "QUALITY_REJECTION":
+                continue
+            returned = SupplierReturnLine.all_objects.filter(tenant_id=item.tenant_id, batch=received, supplier_return__return_category="QUALITY_REJECTION", supplier_return__status__in=["DISPATCHED", "CREDIT_PENDING", "CLOSED"]).aggregate(total=Sum("quantity"))["total"] or 0
+            previous_held = received.quarantined_quantity
+            received.quarantined_quantity = max(0, received.received_quantity - received.accepted_quantity - max(received.rejected_quantity, returned))
+            if received.accepted_quantity and not received.quarantined_quantity:
+                received.quality_status = "RELEASED"
+            received.save(update_fields=["quarantined_quantity", "quality_status", "updated_at"])
+            receipt_line = GoodsReceiptLine.all_objects.select_for_update().get(pk=received.grn_line_id, tenant_id=item.tenant_id)
+            receipt_line.quarantined_quantity = max(0, receipt_line.quarantined_quantity - previous_held + received.quarantined_quantity)
+            receipt_line.save(update_fields=["quarantined_quantity", "updated_at"])
         audit(item, actor, "DISPATCHED")
         return item
 

@@ -203,6 +203,7 @@ def test_procurement_workspace_runs_procure_to_stock_lifecycle(client, django_us
         **tenant_header,
     ).status_code == 200
 
+    client.force_login(requester)
     receipt_response = client.post(
         "/api/procurement/goods-receipts/",
         {
@@ -243,6 +244,15 @@ def test_procurement_workspace_runs_procure_to_stock_lifecycle(client, django_us
     )
     assert inspection_response.status_code == 201
 
+    # The receiver cannot approve their own stock. Sign in as the independent
+    # quality actor and record the per-batch decision before release.
+    client.force_login(approver)
+    decision_response = client.post(
+        f"/api/procurement/received-batches/{batch_id}/quality-decision/",
+        {"outcome": "APPROVE_FOR_RELEASE", "reason": "Independently checked physical delivery", "evidence_reference": "PROC-QUALITY-001"},
+        content_type="application/json", **tenant_header,
+    )
+    assert decision_response.status_code == 201, decision_response.data
     release_response = client.post(
         f"/api/procurement/received-batches/{batch_id}/release/",
         {

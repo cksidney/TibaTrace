@@ -93,7 +93,7 @@ def test_batch_validation_readiness_and_no_activation(setup_data):
     client.force_authenticate(user=actor)
     url = f"/api/medicines/initial-setup/{item.pk}/review/"
     review = {"item_kind":"MEDICINE", "sales_unit":"tablet", "pack_description":"100 tablets, sold per tablet",
-        "confirmed_price":"2", "counted_quantity":"30", "counted_on":timezone.localdate().isoformat(),
+        "confirmed_price":"2", "confirmed_cost":"1", "counted_quantity":"30", "counted_on":timezone.localdate().isoformat(),
         "tax_category":"EXEMPT", "master_catalogue_code":"PH100", "batches":[]}
     def post():
         item.refresh_from_db()

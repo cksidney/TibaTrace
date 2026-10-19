@@ -1121,6 +1121,10 @@ class Command(BaseCommand):
                 decision=ReceivingInspection.Decision.QUARANTINE,
                 reason="Awaiting quality release",
             )
+            from apps.procurement.services.batch_quality_service import BatchQualityDecisionService
+            BatchQualityDecisionService.record_decision(batch=received_batch, inspector=supervisor, decision_by=supervisor,
+                outcome="APPROVE_FOR_RELEASE", reason="Synthetic independent batch, expiry and packaging review",
+                evidence_reference="HQ-DEMO-QUALITY-COMPLETE")
             GoodsReceivingService.release_batch(
                 batch=received_batch,
                 actor=supervisor,
