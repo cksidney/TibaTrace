@@ -4,7 +4,7 @@ from decimal import ROUND_CEILING, Decimal
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import F, Sum
+from django.db.models import Sum
 from django.utils import timezone
 
 from apps.audit.service import log_audit
@@ -145,17 +145,15 @@ def position(policy):
     # Received quantities still in quality custody must not trigger duplicate buying.
     from apps.procurement.models import ReceivedBatch
 
-    held = ReceivedBatch.all_objects.filter(
+    held_batches = ReceivedBatch.all_objects.filter(
         tenant_id=policy.tenant_id,
         grn_line__goods_receipt__receiving_branch=policy.branch,
         sku=policy.sku,
         quality_status__in=["PENDING_INSPECTION", "QUARANTINED", "PARTIALLY_RELEASED"],
-    ).aggregate(total=Sum(F("received_quantity") - F("accepted_quantity") - F("rejected_quantity")))[
-        "total"
-    ] or Decimal(0)
+    )
     from apps.procurement.models import SupplierReturnLine
 
-    returned_hold = (
+    returned_hold = dict(
         SupplierReturnLine.all_objects.filter(
             tenant_id=policy.tenant_id,
             supplier_return__goods_receipt__receiving_branch=policy.branch,
@@ -164,10 +162,24 @@ def position(policy):
             batch__quality_status__in=["PENDING_INSPECTION", "QUARANTINED", "PARTIALLY_RELEASED"],
         )
         .exclude(supplier_return__status="REJECTED")
-        .aggregate(total=Sum("quantity"))["total"]
-        or 0
+        .values("batch_id")
+        .annotate(total=Sum("quantity"))
+        .values_list("batch_id", "total")
     )
-    held = max(0, held - returned_hold)
+    # Rejected units and return claims can describe the same units. Calculate
+    # each batch's usable remainder once, without consuming another lot's hold.
+    held = sum(
+        (
+            max(
+                0,
+                batch.received_quantity
+                - batch.accepted_quantity
+                - max(batch.rejected_quantity, returned_hold.get(batch.pk, 0)),
+            )
+            for batch in held_batches
+        ),
+        Decimal(0),
+    )
     effective = available + ordered + requested + incoming + held
     quantity = Decimal(0)
     if effective <= policy.reorder_point:

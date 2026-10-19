@@ -573,6 +573,46 @@ def test_reservation_refuses_date_only_deadlines_and_retries_after_deadline(worl
     assert again.pk == first.pk
 
 
+@pytest.mark.parametrize("returned_quantity,expected_hold", [(2, 3), (4, 1)])
+def test_replenishment_counts_rejected_return_units_once(world, received_stock, returned_quantity, expected_hold):
+    from apps.inventory import replenishment
+
+    receipt, batch, location = received_stock
+    batch.rejected_quantity, batch.quarantined_quantity = 2, 3
+    batch.save()
+    line = batch.grn_line
+    line.rejected_quantity, line.quarantined_quantity = 2, 3
+    line.save()
+    item = SupplierReturnService.request_return(
+        tenant=world["tenant"],
+        return_number="PLANNING-RETURN",
+        goods_receipt=receipt,
+        reason="Quality disposition awaiting supplier collection",
+        requested_by=world["operator"],
+        expected_credit=40,
+    )
+    SupplierReturnService.add_return_line(
+        supplier_return=item, sku=world["sku"], quantity=returned_quantity, batch=batch, source_location=location
+    )
+    policy = replenishment.configure(
+        tenant=world["tenant"],
+        actor=world["operator"],
+        branch=world["branch"],
+        sku=world["sku"],
+        destination=world["store"],
+        safety_stock=5,
+        reorder_point=20,
+        target_stock=30,
+        order_multiple=1,
+    )
+    quantity, snapshot = replenishment.position(policy)
+    assert Decimal(snapshot["quality_hold"]) == expected_hold
+    assert quantity == 30 - sum(
+        Decimal(snapshot[key])
+        for key in ("available", "pending_orders", "pending_requisitions", "inbound_transfers", "quality_hold")
+    )
+
+
 def test_partial_quality_release_api_retry_moves_quantity_once(world, received_stock):
     receipt, batch, quarantine = received_stock
     other = reviewer(world)
