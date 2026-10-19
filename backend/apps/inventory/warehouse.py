@@ -154,10 +154,12 @@ def transition(*, item, actor, action, evidence="", assignee=None):
         if branch_id != item.branch_id or not completed(item, obj):
             raise ValidationError("Complete the authoritative source workflow before closing this task.")
         item.status, item.completed_by, item.completed_at, item.evidence = "COMPLETED", actor, timezone.now(), evidence
-    else:
+    elif action == "cancel":
         if not str(evidence).strip():
             raise ValidationError("Task cancellation requires a reason. Source documents remain actionable.")
         item.status, item.evidence = "CANCELLED", evidence
+    else:
+        raise ValidationError("Only a cancelled warehouse task can reopen.")
     item.save()
     audit(item, actor, action.upper())
     return item

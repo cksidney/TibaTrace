@@ -369,6 +369,26 @@ def test_warehouse_completion_requires_underlying_document_and_tenant_assignment
         )
 
 
+@pytest.mark.parametrize("state", ["PENDING", "ASSIGNED", "IN_PROGRESS"])
+def test_warehouse_reopen_refuses_active_tasks_without_cancelling_them(world, received_stock, state):
+    from apps.inventory import warehouse
+
+    item = warehouse.create(
+        tenant=world["tenant"], actor=world["operator"], task_type="RECEIVE", source_id=received_stock[0].pk
+    )
+    if state != "PENDING":
+        warehouse.transition(item=item, actor=world["operator"], action="assign", assignee=world["operator"])
+    if state == "IN_PROGRESS":
+        warehouse.transition(item=item, actor=world["operator"], action="start")
+    with pytest.raises(ValidationError, match="Only a cancelled"):
+        warehouse.transition(item=item, actor=world["operator"], action="reopen", evidence="Invalid reopen request")
+    item.refresh_from_db()
+    assert item.status == state
+    warehouse.transition(item=item, actor=world["operator"], action="cancel", evidence="Physical work rescheduled")
+    reopened = warehouse.transition(item=item, actor=world["operator"], action="reopen", evidence="Ready to assign again")
+    assert reopened.status == "PENDING" and reopened.assigned_user_id is None
+
+
 def test_discard_preserves_source_and_demands_fresh_acquisition_evidence(world):  # noqa: F811
     from tests.test_hq_queue_completion import opening
 

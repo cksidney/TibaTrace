@@ -26,6 +26,10 @@ permissions:
 jobs:
   postgres-business:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
     services:
       postgres:
         # Production VPS is PostgreSQL 16; validate its major version directly.
@@ -46,6 +50,11 @@ jobs:
       DAWATRACE_REDIS_URL: locmem://
       DAWATRACE_CELERY_TASK_ALWAYS_EAGER: "true"
       EXPECTED_SOURCE_SHA: ${{ inputs.expected_sha }}
+      BUSINESS_SHARD_COUNT: "8"
+      BUSINESS_SHARD_INDEX: ${{ matrix.shard }}
+      BUSINESS_SHARD_DATABASE: postgresql
+      BUSINESS_SHARD_EVIDENCE: ../postgres-evidence/partition-selection.json
+      BUSINESS_SHARD_REPORT: backend-postgres.xml
     steps:
       - uses: actions/checkout@v4
         with:
@@ -85,9 +94,24 @@ jobs:
           python manage.py audit_clinical_lookup_safety
           python manage.py migrate --noinput
           python manage.py migrate --check
-          python -m pytest -q --tb=short --junitxml=../postgres-evidence/backend-postgres.xml
+          python -m pytest -p tests.business_shard_plugin -q --tb=short --junitxml=../postgres-evidence/backend-postgres.xml
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: postgres-release-business-evidence
+          name: postgres-release-business-evidence-${{ matrix.shard }}
           path: postgres-evidence
+  postgres-coverage:
+    needs: postgres-business
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref }}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: postgres-release-business-evidence-*
+          path: business-evidence
+      - name: Verify complete exact-source PostgreSQL coverage
+        env:
+          EXPECTED_SOURCE_SHA: ${{ inputs.expected_sha }}
+        run: python3 scripts/verify_business_shards.py business-evidence --database postgresql --shards 8 --expected-sha "$EXPECTED_SOURCE_SHA"
