@@ -33,7 +33,7 @@ def test_batch_capture_and_quality_release(monkeypatch):
     tenant = Tenant.objects.create(name="Batch Tenant", slug="batch-tenant")
     set_current_tenant_id(str(tenant.pk))
     user = User.objects.create_user(username="batchuser", email="batch@test.com", password="password123", tenant=tenant, is_platform_admin=True)  # nosec B106
-    approver = User.objects.create_user(username="batchuser-app", email="batchuser-app@test.com", password="password123", tenant=tenant)  # nosec B106
+    approver = User.objects.create_user(username="batchuser-app", email="batchuser-app@test.com", password="password123", tenant=tenant, is_superuser=True)  # nosec B106
 
     supplier = SupplierGovernanceService.create_supplier(tenant=tenant, supplier_code="SUP-BATCH", legal_name="Batch Supplier")
     SupplierGovernanceService.approve_supplier(supplier=supplier, approver=approver)
@@ -67,7 +67,7 @@ def test_batch_capture_and_quality_release(monkeypatch):
     PurchaseOrderService.send_po(purchase_order=po)
 
     grn = GoodsReceivingService.start_goods_receipt(tenant=tenant, grn_number="GRN-BAT", purchase_order=po, receiving_branch=branch, receiver=user, delivery_note_number="DN-BAT")
-    grn_line = GoodsReceivingService.receive_line(goods_receipt=grn, po_line=po.lines.first(), delivered_quantity=50, accepted_quantity=50)
+    grn_line = GoodsReceivingService.receive_line(goods_receipt=grn, po_line=po.lines.first(), delivered_quantity=50, quarantined_quantity=50)
 
     # 1. Capture batch
     batch = BatchReceivingService.capture_batch(
@@ -78,7 +78,9 @@ def test_batch_capture_and_quality_release(monkeypatch):
     )
     assert batch.quality_status == ReceivedBatch.QualityStatus.PENDING_INSPECTION
 
-    # 2. Release batch
-    released_batch = BatchReceivingService.release_batch(batch=batch, actor=user, reason="Lab analysis passed")
+    # 2. Record an independent quality decision before release.
+    from apps.procurement.services.batch_quality_service import BatchQualityDecisionService
+    BatchQualityDecisionService.record_decision(batch=batch, inspector=approver, decision_by=approver, outcome="APPROVE_FOR_RELEASE", reason="Independent physical inspection passed")
+    released_batch = BatchReceivingService.release_batch(batch=batch, actor=approver, reason="Lab analysis passed")
     assert released_batch.quality_status == ReceivedBatch.QualityStatus.RELEASED
     assert released_batch.accepted_quantity == 50

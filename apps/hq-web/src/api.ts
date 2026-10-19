@@ -1168,13 +1168,14 @@ export interface ProcurementBatch {
   readonly sku_code: string;
   readonly manufacturer_batch_number: string;
   readonly manufacture_date: string | null;
-  readonly expiry_date: string;
+  readonly expiry_date: string | null;
   readonly received_quantity: number;
   readonly accepted_quantity: number;
   readonly quarantined_quantity: number;
   readonly rejected_quantity: number;
   readonly quality_status: string;
   readonly temperature_excursion: boolean;
+  readonly quality_decision?: { readonly id?: string; readonly revision?: number; readonly outcome: string; readonly inspector: string; readonly reason: string; readonly evidence_reference: string } | null;
 }
 
 export interface ProcurementInspection {
@@ -1229,6 +1230,8 @@ export interface ProcurementSku {
   readonly sku_code: string;
   readonly display_name: string;
   readonly status: string;
+  readonly expiry_tracking_required?: boolean;
+  readonly unit?: string;
 }
 
 export interface ProcurementData {
@@ -3803,6 +3806,7 @@ export const closeRegulatoryImpact = (
 export interface InventoryChange {
   readonly id: string; readonly kind: string; readonly status: string;
   readonly payload: Readonly<Record<string, string>>; readonly reason: string;
+  readonly review_context?: Readonly<Record<string, unknown>>;
   readonly requested_by: number; readonly requested_by_name: string;
   readonly decided_by_name: string | null; readonly decision_reason: string;
 }
@@ -3823,3 +3827,26 @@ export async function downloadInventoryCountTemplate(sessionId: string, tenantId
   const link = document.createElement('a'); link.href = url; link.download = `stocktake-${sessionId}.csv`; link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+
+export interface ReplenishmentPolicy {
+  readonly id: string; readonly branch: string; readonly sku: string; readonly sku_code: string; readonly unit: string;
+  readonly destination: string; readonly destination_name: string; readonly safety_stock: string; readonly reorder_point: string;
+  readonly target_stock: string; readonly order_multiple: number; readonly lead_days: number; readonly enabled: boolean;
+}
+export interface ReplenishmentItem {
+  readonly id: string; readonly sku_code: string; readonly recommended_quantity: string; readonly snapshot: Readonly<Record<string, string>>;
+  readonly status: string; readonly reason: string; readonly requisition_number: string | null;
+}
+export interface WarehouseItem {
+  readonly id: string; readonly task_type: string; readonly status: string; readonly source_type: string; readonly source_id: string;
+  readonly assigned_user: string | null; readonly assigned_name: string | null; readonly evidence: string;
+}
+export interface InventoryPlanningContext {
+  readonly skus: readonly { readonly id: string; readonly code: string; readonly name: string; readonly unit: string }[];
+  readonly operators: readonly { readonly id: string; readonly name: string }[];
+  readonly sources: Readonly<Record<string, readonly { readonly id: string; readonly label: string; readonly status: string }[]>>;
+}
+export const loadReplenishmentPolicies = (tenantId: string, signal?: AbortSignal) => getTenantCollection<ReplenishmentPolicy>('/api/inventory/replenishment-policies/', tenantId, signal);
+export const loadReplenishment = (tenantId: string, signal?: AbortSignal) => getTenantCollection<ReplenishmentItem>('/api/inventory/replenishment/', tenantId, signal);
+export const loadWarehouseTasks = (tenantId: string, signal?: AbortSignal) => getTenantCollection<WarehouseItem>('/api/inventory/warehouse-tasks/', tenantId, signal);
+export const loadInventoryPlanningContext = (tenantId: string, signal?: AbortSignal) => getTenantJson<InventoryPlanningContext>('/api/inventory/warehouse-tasks/context/', tenantId, signal);

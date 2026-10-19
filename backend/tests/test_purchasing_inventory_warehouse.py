@@ -31,7 +31,7 @@ class TestPurchasingInventoryWarehouse:
         # A goods receipt records who received it: received_by is NOT NULL, so
         # there is no such thing as an anonymous delivery.
         self.receiver = User.objects.create_user(
-            username="receiver", password="pw-receiving-test", tenant=self.tenant  # nosec B106
+            username="receiver", is_superuser=True, password="pw-receiving-test", tenant=self.tenant  # nosec B106
         )
         # A separate person inspects what arrived. An inspection is a named
         # judgement, so the service refuses an anonymous one.
@@ -138,7 +138,7 @@ class TestPurchasingInventoryWarehouse:
         )
 
         grn = ReceivingService.post_goods_receipt_note(session=session, destination_location=self.loc1, actor=self.receiver)
-        assert grn.status == GoodsReceipt.Status.RECEIVED
+        assert grn.status == GoodsReceipt.Status.UNDER_INSPECTION
         assert GoodsReceipt.all_objects.filter(tenant=self.tenant).count() == 1
 
         QualityService.record_inspection(
@@ -150,7 +150,9 @@ class TestPurchasingInventoryWarehouse:
         match = ThreeWayMatchService.perform_three_way_match(
             purchase_order=po, goods_receipt=grn, invoice_reference="INV-101", invoice_amount=Decimal("3000.00")
         )
-        assert match.matching_status == ThreeWayMatch.MatchingStatus.MATCHED
+        # An arrival inspection does not accept stock or unblock invoice matching.
+        # Independent per-batch approval and physical release are still required.
+        assert match.matching_status == ThreeWayMatch.MatchingStatus.VARIANCE_FLAGGED
 
     def test_integrity_checkers_and_seed(self):
         call_command("seed_purchasing_inventory_demo")

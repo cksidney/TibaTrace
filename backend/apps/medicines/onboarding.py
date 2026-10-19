@@ -28,6 +28,8 @@ def missing_details(item):
             missing.append(label)
     if review.get("confirmed_price") is None:
         missing.append("Confirmed selling price")
+    if review.get("item_kind") in {"MEDICINE", "SUPPLY"} and review.get("confirmed_cost") is None:
+        missing.append("Verified acquisition cost per selling unit")
     quantity = review.get("counted_quantity")
     if quantity is None or not review.get("counted_on"):
         missing.append("Current physical count and count date")
@@ -65,6 +67,8 @@ class StaleSetupReview(Exception):
 def save_review(*, item, actor, review, expected_updated_at):
     assert_setup_access(actor, item.tenant_id)
     locked = LegacyCatalogueItem.all_objects.select_for_update().get(pk=item.pk, tenant_id=item.tenant_id)
+    if locked.review.get("discarded"):
+        raise ValidationError("This unverified source was discarded. Upload a corrected item list to restart setup.")
     expected = parse_datetime(expected_updated_at or "")
     if expected is None or expected != locked.updated_at:
         raise StaleSetupReview("This item changed since you opened it. Reload before saving.")

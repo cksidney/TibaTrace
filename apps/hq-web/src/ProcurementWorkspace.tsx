@@ -52,6 +52,7 @@ type DialogMode =
   | { readonly kind: 'receive-batch'; readonly receipt: ProcurementReceipt }
   | { readonly kind: 'inspection'; readonly receipt: ProcurementReceipt }
   | { readonly kind: 'release'; readonly batch: ProcurementBatch }
+  | { readonly kind: 'quality-decision'; readonly batch: ProcurementBatch }
   | { readonly kind: 'quarantine'; readonly batch: ProcurementBatch }
   | { readonly kind: 'return' }
   | { readonly kind: 'return-credit'; readonly item: ProcurementReturn }
@@ -578,12 +579,12 @@ function QualityTab({
                 <tr key={batch.id}>
                   <td><strong>{batch.manufacturer_batch_number}</strong></td>
                   <td><code>{batch.sku_code}</code></td>
-                  <td>{formatDate(batch.expiry_date)}</td>
+                  <td>{batch.expiry_date ? formatDate(batch.expiry_date) : 'No expiry required'}</td>
                   <td>{batch.received_quantity}</td>
                   <td>{batch.accepted_quantity}</td>
                   <td>{batch.quarantined_quantity}</td>
                   <td><ProcurementStatus value={batch.quality_status} /></td>
-                  <td>{batch.accepted_quantity === 0 && <button type="button" onClick={() => onDialog({ kind: 'quarantine', batch })}>Record quarantine custody</button>}{batch.quality_status !== 'RELEASED' ? <button className="business-action" onClick={() => onDialog({ kind: 'release', batch })} type="button">Release to stock</button> : <span className="muted-cell">Posted</span>}</td>
+                  <td>{batch.accepted_quantity === 0 && <button type="button" onClick={() => onDialog({ kind: 'quarantine', batch })}>Record quarantine custody</button>}{batch.quality_decision?.outcome !== 'REJECT' && ['PENDING_INSPECTION', 'QUARANTINED'].includes(batch.quality_status) && <button type="button" onClick={() => onDialog({ kind: 'quality-decision', batch })}>{batch.quality_decision ? 'Record reinspection' : 'Review quality'}</button>}{batch.quality_decision && <small>{titleCase(batch.quality_decision.outcome)} · {batch.quality_decision.reason}</small>}{batch.quality_status !== 'RELEASED' && batch.quality_decision?.outcome === 'APPROVE_FOR_RELEASE' ? <button className="business-action" onClick={() => onDialog({ kind: 'release', batch })} type="button">Release to stock</button> : <span className="muted-cell">{batch.quality_status === 'RELEASED' ? 'Posted' : 'Quality review required'}</span>}</td>
                 </tr>
               ))}
             </tbody>
@@ -773,7 +774,7 @@ function ProcurementDialog({
           ) : <DialogFields data={data} dialog={dialog} lines={lines} setValue={setValue} updateLine={updateLine} values={values} />}
           {supportsLines(dialog) ? (
             <div className="procurement-line-editor">
-              <div><strong>Document lines</strong>{dialog.kind === 'order' && values.originating_requisition ? <small>Approved requisition quantities</small> : null}</div>
+              <div><strong>Document lines · confirmed base units</strong><small>Enter quantities and costs per item selling / stock unit. Barcode packs are converted when scanned.</small>{dialog.kind === 'order' && values.originating_requisition ? <small>Approved requisition quantities</small> : null}</div>
               {lines.map((line, index) => (
                 <div className="procurement-line" key={line.id}>
                   <span>{index + 1}</span>
@@ -789,7 +790,7 @@ function ProcurementDialog({
                       : data.skus
                     ).map((item) => (
                       <option key={item.id} value={item.id}>
-                        {`${item.sku_code} · ${'display_name' in item ? item.display_name : ''}`}
+                        {`${item.sku_code} · ${'display_name' in item ? item.display_name : ''}${'unit' in item && item.unit ? ` · ${item.unit}` : ''}`}
                       </option>
                     ))}
                   </select>
@@ -891,9 +892,9 @@ function DialogFields({
     const order = data.orders.find((item) => item.id === dialog.receipt.purchase_order);
     return <>
       {field('po_line', 'Purchase-order line', order?.lines.map((line) => ({ id: line.id, label: `${line.sku_code} · ${line.received_quantity}/${line.ordered_quantity} received` })) ?? [])}
-      {field('manufacturer_batch_number', 'Manufacturer batch number')}
-      <div className="tenant-form-grid">{field('manufacture_date', 'Manufacture date', undefined, 'date', false)}{field('expiry_date', 'Expiry date', undefined, 'date')}</div>
-      {field('received_quantity', 'Quantity received', undefined, 'number')}
+      {field('manufacturer_batch_number', 'Manufacturer batch / internal custody lot')}
+      <div className="tenant-form-grid">{field('manufacture_date', 'Manufacture date', undefined, 'date', false)}{field('expiry_date', 'Expiry date', undefined, 'date', data.skus.find((sku) => sku.id === order?.lines.find((line) => line.id === values.po_line)?.sku)?.expiry_tracking_required !== false)}</div>
+      {field('received_quantity', 'Quantity received (base units)', undefined, 'number')}
     </>;
   }
 
@@ -909,9 +910,16 @@ function DialogFields({
     {field('reason', 'Physical custody evidence')}
   </>;
 
+  if (dialog.kind === 'quality-decision') return <>
+    <p>Inspect {dialog.batch.sku_code} · {dialog.batch.manufacturer_batch_number}. The reviewer must be independent of the receiver. Recording a decision does not move stock.</p>
+    {field('outcome', 'Quality outcome', ['APPROVE_FOR_RELEASE', 'HOLD_FOR_REVIEW', 'REJECT', 'DAMAGE_HOLD', 'TEMPERATURE_EXCURSION', 'DOCUMENTATION_HOLD', 'NEAR_EXPIRY_HOLD'].map((id) => ({ id, label: titleCase(id) })))}
+    {field('reason', 'Physical inspection and decision evidence')}
+    {field('evidence_reference', 'Document / inspection reference', undefined, 'text', Boolean(dialog.batch.quality_decision))}
+  </>;
+
   if (dialog.kind === 'release') return <>
     <div className="business-dialog-record"><div><code>{dialog.batch.sku_code}</code><strong>{dialog.batch.manufacturer_batch_number}</strong></div><ProcurementStatus value={dialog.batch.quality_status} /></div>
-    {field('inventory_location', 'Destination inventory location', data.inventoryLocations.filter((item) => item.status === 'ACTIVE').map((item) => ({ id: item.id, label: `${item.name} · ${titleCase(item.location_type)}` })))}
+    {field('inventory_location', 'Destination inventory location', data.inventoryLocations.filter((item) => item.status === 'ACTIVE' && !item.quarantine_capability && !['QUARANTINE', 'DAMAGED', 'EXPIRED', 'RETURNS'].includes(item.location_type)).map((item) => ({ id: item.id, label: `${item.name} · ${titleCase(item.location_type)}` })))}
     {field('quantity', 'Release quantity', undefined, 'number')}
     <label className="business-field"><span>Release rationale <b>Required</b></span><textarea onChange={(event) => setValue('reason', event.target.value)} required value={values.reason ?? ''} /></label>
   </>;
@@ -970,7 +978,7 @@ function dialogRequest(
     payload: {
       ...values,
       lines: lines.map((line) => ({
-        purchase_unit: 'pack',
+        purchase_unit: data.skus.find((item) => item.id === line.referenceId)?.unit ?? 'pack',
         requested_quantity: Number(line.quantity),
         sku: line.referenceId,
       })),
@@ -1006,7 +1014,7 @@ function dialogRequest(
   if (dialog.kind === 'receive-batch') return {
     message: `Batch ${values.manufacturer_batch_number} captured in quarantine.`,
     path: `/api/procurement/goods-receipts/${dialog.receipt.id}/receive-batch/`,
-    payload: { ...values, idempotency_key: crypto.randomUUID(), received_quantity: Number(values.received_quantity) },
+    payload: { ...values, manufacture_date: values.manufacture_date || null, expiry_date: values.expiry_date || null, received_quantity: Number(values.received_quantity) },
   };
   if (dialog.kind === 'inspection') return {
     message: `Inspection recorded for ${dialog.receipt.grn_number}.`,
@@ -1014,6 +1022,7 @@ function dialogRequest(
     payload: { ...values, temperature_excursion: values.temperature_excursion === 'true' },
   };
   if (dialog.kind === 'quarantine') return { message: 'Physical receipt recorded in quarantine custody.', path: `/api/procurement/received-batches/${dialog.batch.id}/quarantine-stock/`, payload: values };
+  if (dialog.kind === 'quality-decision') return { message: 'Independent quality decision recorded. Release is a separate step.', path: `/api/procurement/received-batches/${dialog.batch.id}/quality-decision/`, payload: { ...values, ...(dialog.batch.quality_decision?.id ? { supersedes_id: dialog.batch.quality_decision.id } : {}) } };
   if (dialog.kind === 'release') return {
     message: `Batch ${dialog.batch.manufacturer_batch_number} released and posted to inventory.`,
     path: `/api/procurement/received-batches/${dialog.batch.id}/release/`,
@@ -1054,10 +1063,11 @@ function dialogDefaults(dialog: Exclude<DialogMode, null>, data: ProcurementData
   if (dialog.kind === 'requisition') return { justification: '', priority: 'NORMAL', requested_delivery_date: future, requesting_branch: data.locations[0]?.id ?? '' };
   if (dialog.kind === 'order') return { expected_delivery_date: future, ordering_branch: data.locations[0]?.id ?? '', originating_requisition: '', supplier: data.suppliers.find((item) => ['APPROVED', 'ACTIVE'].includes(item.status))?.id ?? '' };
   if (dialog.kind === 'receipt') return { delivery_note_number: '', purchase_order: data.orders.find((item) => ['SENT', 'PARTIALLY_RECEIVED'].includes(item.status))?.id ?? '', receiving_branch: data.locations[0]?.id ?? '' };
-  if (dialog.kind === 'receive-batch') return { expiry_date: '', manufacture_date: '', manufacturer_batch_number: '', po_line: data.orders.find((item) => item.id === dialog.receipt.purchase_order)?.lines[0]?.id ?? '', received_quantity: '' };
+  if (dialog.kind === 'receive-batch') return { idempotency_key: crypto.randomUUID(), expiry_date: '', manufacture_date: '', manufacturer_batch_number: '', po_line: data.orders.find((item) => item.id === dialog.receipt.purchase_order)?.lines[0]?.id ?? '', received_quantity: '' };
   if (dialog.kind === 'inspection') return { decision: 'QUARANTINE', reason: '', temperature_excursion: 'false' };
   if (dialog.kind === 'quarantine') return { inventory_location: '', reason: '' };
-  if (dialog.kind === 'release') return { inventory_location: data.inventoryLocations.find((item) => item.status === 'ACTIVE')?.id ?? '', quantity: String(dialog.batch.quarantined_quantity || dialog.batch.received_quantity), reason: '' };
+  if (dialog.kind === 'quality-decision') return { outcome: 'HOLD_FOR_REVIEW', reason: '', evidence_reference: '' };
+  if (dialog.kind === 'release') return { idempotency_key: crypto.randomUUID(), inventory_location: data.inventoryLocations.find((item) => item.status === 'ACTIVE')?.id ?? '', quantity: String(dialog.batch.quarantined_quantity || dialog.batch.received_quantity), reason: '' };
   if (dialog.kind === 'reject-return') return { reason: '' };
   if (dialog.kind === 'return-credit') return { amount: '', reference: '', variance_reason: '' };
   if (dialog.kind === 'return') return { return_category: 'QUALITY_REJECTION', expected_credit: '', batch: '', source_location: '', goods_receipt: data.receipts[0]?.id ?? '', quantity: '', reason: '', return_number: `RET-${Date.now().toString().slice(-8)}`, sku: data.skus[0]?.id ?? '' };
@@ -1074,6 +1084,7 @@ function dialogTitle(dialog: Exclude<DialogMode, null>): string {
     receipt: 'Open goods receipt',
     reconciliation: 'Reconcile procurement',
     release: 'Release batch to inventory',
+    'quality-decision': 'Independent batch quality review',
     quarantine: 'Record quarantine custody',
     requisition: 'Create purchase requisition',
     return: 'Request supplier return',

@@ -65,12 +65,12 @@ class BatchQualityDecisionService:
         evidence_reference: str = "",
         as_of: date | None = None,
         requires_cold_chain: bool = False,
+        supersedes_id=None,
     ) -> QualityDecision:
         """Record a quality outcome against a batch, moving nothing.
 
-        Idempotent on (tenant, batch), matching the unique constraint: a batch
-        has one decision, because a second would make "what did quality decide?"
-        depend on which row was read first, and release keys off that answer.
+        The latest numbered revision controls release. An explicit reinspection
+        with new evidence supersedes a hold without overwriting its history.
         """
         if batch is None:
             raise ValidationError("A quality decision requires a batch.")
@@ -84,6 +84,10 @@ class BatchQualityDecisionService:
         if not str(reason or "").strip():
             raise ValidationError("A quality decision requires a reason.")
 
+        batch = ReceivedBatch.all_objects.select_for_update().get(pk=batch.pk, tenant_id=batch.tenant_id)
+        from apps.procurement.services.receiving_service import _may_release_quality
+        if not all(_may_release_quality(person, batch.tenant_id) for person in (inspector, decision_by)):
+            raise PermissionDenied("Quality review requires active quality.release authority in this tenant.")
         receipt = batch.grn_line.goods_receipt
 
         # The person who booked the goods in may not also pass them. Receiving
@@ -111,7 +115,7 @@ class BatchQualityDecisionService:
 
         # An expired batch cannot be approved. Approval is what a later release
         # keys off, so approving expired stock is how it reaches a shelf.
-        if outcome == Outcome.APPROVE_FOR_RELEASE and batch.expiry_date <= as_of:
+        if outcome == Outcome.APPROVE_FOR_RELEASE and ((batch.sku.expiry_tracking_required and not batch.expiry_date) or (batch.expiry_date and batch.expiry_date <= as_of)):
             raise ValidationError(
                 f"Batch {batch.manufacturer_batch_number} expired on "
                 f"{batch.expiry_date} and cannot be approved for release."
@@ -126,17 +130,19 @@ class BatchQualityDecisionService:
 
         existing = QualityDecision.all_objects.filter(
             tenant=batch.tenant, batch=batch
-        ).first()
+        ).order_by("-revision").first()
         if existing is not None:
-            if existing.decision != outcome:
-                # Not overwritten. A recorded decision is evidence, and changing
-                # it silently would rewrite what quality concluded.
-                raise ValidationError(
-                    f"Batch {batch.manufacturer_batch_number} already has a "
-                    f"{existing.decision} decision. Recording {outcome} would "
-                    "overwrite it; supersede it deliberately instead."
-                )
-            return existing
+            if supersedes_id:
+                if str(supersedes_id) != str(existing.pk) or not str(evidence_reference).strip():
+                    raise ValidationError("Supersede the current quality decision explicitly and record new evidence.")
+                if existing.decision == Outcome.REJECT:
+                    raise ValidationError("A rejected batch cannot be approved through routine reinspection.")
+            else:
+                if existing.decision != outcome:
+                    raise ValidationError(f"Batch already has a {existing.decision} decision; supersede it explicitly with new inspection evidence.")
+                return existing
+        elif supersedes_id:
+            raise ValidationError("There is no prior quality decision to supersede.")
 
         decision = QualityDecision.all_objects.create(
             tenant=batch.tenant,
@@ -148,6 +154,8 @@ class BatchQualityDecisionService:
             decision_notes=reason,
             evidence_reference=evidence_reference,
             evidence_basis=MANUAL_QUALITY_REVIEW,
+            revision=existing.revision + 1 if existing else 1,
+            supersedes=existing,
         )
 
         # Deliberately absent: no quantity change, no quality_status change, no
@@ -180,14 +188,14 @@ class BatchQualityDecisionService:
     def decision_for(*, batch: ReceivedBatch) -> QualityDecision | None:
         return QualityDecision.all_objects.filter(
             tenant=batch.tenant, batch=batch
-        ).first()
+        ).order_by("-revision").first()
 
     @staticmethod
     def is_releasable(*, batch: ReceivedBatch) -> bool:
         """Whether quality has cleared this batch for a later release.
 
-        The question `release_batch` should be asking. It does not ask it today,
-        which is why a batch can be released with no decision recorded at all.
+        Release checks the latest revision and independently validates custody,
+        supplier eligibility, expiry, recall and actor authority.
         """
         decision = BatchQualityDecisionService.decision_for(batch=batch)
         return (

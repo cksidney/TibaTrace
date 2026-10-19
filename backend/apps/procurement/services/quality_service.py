@@ -3,7 +3,6 @@ from __future__ import annotations
 from django.core.exceptions import ValidationError
 from django.db import transaction
 
-from apps.inventory.models import InventoryBatch
 from apps.procurement.models import GoodsReceipt, QualityDecision, ReceivedBatch, ReceivingInspection
 
 
@@ -81,32 +80,9 @@ class QualityService:
     @staticmethod
     @transaction.atomic
     def release_quarantined_batch(*, goods_receipt, batch, decision_by, decision_notes="") -> QualityDecision:
-        if batch.quality_status not in [
-            ReceivedBatch.QualityStatus.QUARANTINED,
-            ReceivedBatch.QualityStatus.PENDING_INSPECTION,
-        ]:
-            raise ValidationError(f"Batch {batch.manufacturer_batch_number} is not in quarantine status.")
-
-        decision = QualityDecision.all_objects.create(
-            tenant=goods_receipt.tenant,
-            goods_receipt=goods_receipt,
-            batch=batch,
-            decision="RELEASED",
-            decision_by=decision_by,
-            decision_notes=decision_notes,
-        )
-
-        batch.quality_status = ReceivedBatch.QualityStatus.RELEASED
-        batch.save()
-
-        inv_batch = InventoryBatch.all_objects.filter(
-            tenant=goods_receipt.tenant,
-            sku=batch.sku,
-            manufacturer_batch_number=batch.manufacturer_batch_number,
-        ).first()
-
-        if inv_batch:
-            inv_batch.quality_status = "RELEASED"
-            inv_batch.save()
-
-        return decision
+        # Compatibility entry point now records eligibility only. Custody and
+        # quantities are changed exclusively by the governed release command.
+        from apps.procurement.services.batch_quality_service import BatchQualityDecisionService
+        if batch.grn_line.goods_receipt_id != goods_receipt.pk:
+            raise ValidationError("Batch does not belong to this receipt.")
+        return BatchQualityDecisionService.record_decision(batch=batch, inspector=decision_by, decision_by=decision_by, outcome=QualityDecision.Outcome.APPROVE_FOR_RELEASE, reason=decision_notes)

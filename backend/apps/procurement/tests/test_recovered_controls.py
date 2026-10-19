@@ -237,12 +237,13 @@ class TestReturnsCannotExceedWhatWasRejected:
 
         po_line = PurchaseOrderLine.all_objects.filter(purchase_order=po).first()
         assert po_line is not None, "the requisition should have produced a PO line" 
-        GoodsReceivingService.receive_line(
-            goods_receipt=grn, po_line=po_line, delivered_quantity=100,
-            accepted_quantity=100 - rejected - quarantined,
+        # Unit fixture for a receipt whose independent quality stage already
+        # accepted the remainder. The receiving gate itself never autoaccepts.
+        from apps.procurement.models import GoodsReceiptLine
+        GoodsReceiptLine.all_objects.create(
+            tenant=tenant, goods_receipt=grn, po_line=po_line, sku=world["sku"],
+            delivered_quantity=100, accepted_quantity=100 - rejected - quarantined,
             rejected_quantity=rejected, quarantined_quantity=quarantined,
-            # Receiving requires a reason for anything not accepted -- the same
-            # discipline the return itself is held to.
             discrepancy_reason="Damaged in transit." if (rejected or quarantined) else "",
         )
         return SupplierReturnService.request_return(

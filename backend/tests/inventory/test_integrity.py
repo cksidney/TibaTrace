@@ -2,6 +2,7 @@ from decimal import Decimal
 
 import pytest
 from django.core.management import call_command
+from django.core.management.base import CommandError
 
 from apps.inventory.models import InventoryBalance
 
@@ -59,7 +60,7 @@ def test_check_inventory_integrity_mismatch_and_repair(
     InventoryBalance.all_objects.filter(tenant=tenant_a).update(on_hand=50, available=50)
 
     # Running check should fail
-    with pytest.raises(SystemExit):
+    with pytest.raises(CommandError):
         call_command("check_inventory_integrity", tenant_id=str(tenant_a.id))
 
     # Running with repair should fix it

@@ -3,13 +3,14 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { InventoryOperations } from './InventoryOperations.js';
-import { inventoryCommand, loadInventoryChanges, loadInventoryValuation } from './api.js';
-vi.mock('./api.js', () => ({ inventoryCommand: vi.fn(), loadInventoryChanges: vi.fn(), loadInventoryValuation: vi.fn() }));
+import { inventoryCommand, loadInventoryChanges, loadInventoryValuation, loadReplenishmentPolicies, loadReplenishment, loadWarehouseTasks, loadInventoryPlanningContext } from './api.js';
+vi.mock('./api.js', () => ({ inventoryCommand: vi.fn(), loadInventoryChanges: vi.fn(), loadInventoryValuation: vi.fn(), loadReplenishmentPolicies: vi.fn(), loadReplenishment: vi.fn(), loadWarehouseTasks: vi.fn(), loadInventoryPlanningContext: vi.fn() }));
 let container: HTMLDivElement; let root: Root;
 beforeEach(() => {
   (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   vi.clearAllMocks(); container = document.createElement('div'); document.body.append(container); root = createRoot(container);
-  vi.mocked(loadInventoryChanges).mockResolvedValue([{ id: 'change-1', kind: 'WRITE_OFF', status: 'PENDING', payload: { quantity: '2' }, reason: 'Damaged packaging evidence', requested_by: 1, requested_by_name: 'counter', decided_by_name: null, decision_reason: '' }]);
+  vi.mocked(loadReplenishmentPolicies).mockResolvedValue([]); vi.mocked(loadReplenishment).mockResolvedValue([]); vi.mocked(loadWarehouseTasks).mockResolvedValue([]); vi.mocked(loadInventoryPlanningContext).mockResolvedValue({ skus: [], operators: [], sources: {} });
+  vi.mocked(loadInventoryChanges).mockResolvedValue([{ id: 'change-1', kind: 'WRITE_OFF', status: 'PENDING', payload: { quantity: '2' }, review_context: { evidence: 'Invoice INV-TEST acquisition evidence', unit: 'pack', sku_code: 'SUP-1', current_balance: { on_hand: '8', reserved: '1' }, effect: 'Remove two confirmed base units' }, reason: 'Damaged packaging evidence', requested_by: 1, requested_by_name: 'counter', decided_by_name: null, decision_reason: '' }]);
   vi.mocked(loadInventoryValuation).mockResolvedValue({ method: 'SPECIFIC_IDENTIFICATION', currency: 'KES', known_value: '0.0000', unvalued_lines: 1, complete: false, note: 'Unknown costs remain unvalued.', rows: [{ balance_id: 'balance-1', sku_id: 'sku-1', sku_code: 'SUP-1', sku_name: 'Gauze', location_id: 'store-1', location: 'Store', batch_id: 'batch-1', batch_number: 'LOT-1', quality_status: 'RELEASED', quantity: '3', unit_cost: null, value: null }] });
 });
 afterEach(() => { act(() => root.unmount()); container.remove(); });
@@ -20,6 +21,8 @@ it('discloses unvalued stock and sends an explicit approval decision to the sele
   expect(container.textContent).toContain('Incomplete acquisition-cost coverage'); expect(container.textContent).toContain('Unvalued');
   await act(async () => button('Review & approve').click());
   expect(document.body.querySelector('[role=dialog]')?.textContent).toContain('Damaged packaging evidence');
+  expect(document.body.querySelector('[role=dialog]')?.textContent).toContain('Invoice INV-TEST acquisition evidence');
+  expect(document.body.querySelector('[role=dialog]')?.textContent).toContain('Remove two confirmed base units');
   const input = document.body.querySelector('textarea')!;
   act(() => { Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(input, 'Independently inspected physical damage'); input.dispatchEvent(new Event('input', { bubbles: true })); });
   await act(async () => document.body.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));

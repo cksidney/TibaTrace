@@ -516,9 +516,17 @@ class WarehouseTask(TenantConsistencyMixin, TimestampedModel):
     sku = models.ForeignKey("medicines.CommercialSKU", on_delete=models.PROTECT, null=True, blank=True, related_name="+")
     batch = models.ForeignKey(InventoryBatch, on_delete=models.PROTECT, null=True, blank=True, related_name="+")
     quantity = models.DecimalField(max_digits=15, decimal_places=4, default=0)
+    source_type = models.CharField(max_length=32, blank=True)
+    source_id = models.UUIDField(null=True, blank=True)
+    evidence = models.TextField(blank=True)
+    completed_by = models.ForeignKey("identity.User", on_delete=models.PROTECT, null=True, blank=True, related_name="+")
+    completed_at = models.DateTimeField(null=True, blank=True)
 
     objects = StrictTenantManager()
     all_objects = models.Manager()
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["tenant", "task_type", "source_type", "source_id"], name="uq_warehouse_task_source")]
 
 
 class BarcodeMaster(TenantConsistencyMixin, TimestampedModel):
@@ -539,11 +547,35 @@ class BarcodeMaster(TenantConsistencyMixin, TimestampedModel):
         ]
 
 
+class ReplenishmentPolicy(TenantConsistencyMixin, TimestampedModel):
+    tenant_relation_fields = ("branch", "sku", "destination")
+    tenant = models.ForeignKey("tenancy.Tenant", on_delete=models.PROTECT)
+    branch = models.ForeignKey("organizations.Location", on_delete=models.PROTECT)
+    sku = models.ForeignKey("medicines.CommercialSKU", on_delete=models.PROTECT)
+    destination = models.ForeignKey(InventoryLocation, on_delete=models.PROTECT)
+    safety_stock = models.DecimalField(max_digits=15, decimal_places=4)
+    reorder_point = models.DecimalField(max_digits=15, decimal_places=4)
+    target_stock = models.DecimalField(max_digits=15, decimal_places=4)
+    order_multiple = models.PositiveIntegerField(default=1)
+    lead_days = models.PositiveIntegerField(default=1)
+    enabled = models.BooleanField(default=True)
+    configured_by = models.ForeignKey("identity.User", on_delete=models.PROTECT)
+    objects = StrictTenantManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["tenant", "branch", "sku"], name="uq_replenishment_policy")]
+
+
 class ReplenishmentRecommendation(TenantConsistencyMixin, TimestampedModel):
     tenant_relation_fields = ("branch", "sku")
     tenant = models.ForeignKey("tenancy.Tenant", on_delete=models.CASCADE, related_name="+")
     branch = models.ForeignKey("organizations.Location", on_delete=models.PROTECT, related_name="+")
     sku = models.ForeignKey("medicines.CommercialSKU", on_delete=models.CASCADE, related_name="+")
+    policy = models.ForeignKey(ReplenishmentPolicy, on_delete=models.PROTECT, null=True, blank=True)
+    snapshot = models.JSONField(default=dict, blank=True)
+    requisition = models.OneToOneField("procurement.PurchaseRequisition", on_delete=models.PROTECT, null=True, blank=True)
+    decided_by = models.ForeignKey("identity.User", on_delete=models.PROTECT, null=True, blank=True)
     recommended_quantity = models.DecimalField(max_digits=15, decimal_places=4)
     reason = models.TextField(blank=True, default="")
     status = models.CharField(max_length=32, default="PENDING")

@@ -9163,3 +9163,11 @@ td, th, .tabular-nums, .metric-value, .stat-value, .count-badge, .executive-widg
 .etims-workspace { min-width: 0; }
 .etims-branches { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); gap: 16px; margin: 20px 0; }
 .etims-workspace dd { overflow-wrap: anywhere; }
+
+/* Keep evidence readable inside the existing compact, scrollable intake modal. */
+.inventory-review-context { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 8px; margin: 12px 0; }
+.inventory-review-context > div { min-width: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; }
+.inventory-review-context dt { color: var(--muted); font-size: 0.75rem; text-transform: capitalize; margin-bottom: 4px; }
+.inventory-review-context dd { margin: 0; overflow-wrap: anywhere; font-size: 0.875rem; }
+.inventory-review-detail { display: block; margin: 3px 0; }
+.inventory-planning { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line); }

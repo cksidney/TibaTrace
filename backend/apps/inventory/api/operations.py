@@ -12,6 +12,24 @@ from .views import InventoryCapabilityPermission, TenantScopedQuerysetMixin
 
 
 class ChangeSerializer(serializers.ModelSerializer):
+    review_context = serializers.SerializerMethodField()
+
+    def get_review_context(self, obj):
+        from apps.inventory.models import InventoryBalance, InventoryBatch, InventoryLocation, StockTransferLine
+        batch = InventoryBatch.all_objects.filter(tenant_id=obj.tenant_id, pk=obj.payload.get("batch_id")).select_related("sku__package_definition").first() if obj.payload.get("batch_id") else None
+        location = InventoryLocation.all_objects.filter(tenant_id=obj.tenant_id, pk=obj.payload.get("location_id")).first() if obj.payload.get("location_id") else None
+        result = {"currency": "KES", "evidence": obj.payload.get("evidence", ""), "proposed_quantity": obj.payload.get("quantity"), "proposed_unit_cost": obj.payload.get("unit_cost")}
+        if batch:
+            result.update(sku_code=batch.sku.sku_code, sku_name=batch.sku.display_name, unit=batch.sku.package_definition.unit_of_measure, lot=batch.manufacturer_batch_number, expiry=batch.expiry_date, quality=batch.quality_status, recall=batch.recall_status)
+        if location:
+            from django.db.models import Sum
+            balance = InventoryBalance.all_objects.filter(tenant_id=obj.tenant_id, inventory_batch=batch, location=location).aggregate(on_hand=Sum("on_hand"), reserved=Sum("reserved"), available=Sum("available"))
+            result.update(location=location.name, current_balance={key: str(value or 0) for key, value in balance.items()})
+        if obj.kind == "TRANSFER_LOSS":
+            result["transfer_lines"] = [{"sku": row.sku.sku_code, "unit": row.unit, "dispatched": str(row.dispatched_quantity), "received": str(row.received_quantity), "damaged": str(row.damaged_quantity), "already_lost": str(row.lost_quantity), "requested_loss": obj.payload.get("outstanding", {}).get(str(row.pk), "0")} for row in StockTransferLine.all_objects.filter(tenant_id=obj.tenant_id, transfer_id=obj.payload.get("transfer_id")).select_related("sku")]
+        result["effect"] = "Record acquisition evidence; physical quantity unchanged" if obj.kind == "COST" else "Close outstanding transfer loss; no second stock debit" if obj.kind == "TRANSFER_LOSS" else "Post the approved physical quantity change to the immutable stock ledger"
+        return result
+
     requested_by_name = serializers.CharField(source="requested_by.username", read_only=True)
     decided_by_name = serializers.CharField(source="decided_by.username", read_only=True, allow_null=True)
 
@@ -21,7 +39,7 @@ class ChangeSerializer(serializers.ModelSerializer):
             "id",
             "kind",
             "status",
-            "payload",
+            "payload", "review_context",
             "reason",
             "requested_by",
             "requested_by_name",

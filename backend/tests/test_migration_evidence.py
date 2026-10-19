@@ -43,6 +43,11 @@ RELEASE_MIGRATION = "backend/apps/platform/migrations/0002_posrelease_client_ali
 
 #: The full list of migrations this release introduces over the deployed baseline.
 RELEASE_MIGRATIONS = [
+    "backend/apps/procurement/migrations/0014_alter_qualitydecision_batch_and_more.py",
+    "backend/apps/procurement/migrations/0013_batchqualityrelease_and_more.py",
+    "backend/apps/inventory/migrations/0008_replenishmentpolicy_and_more.py",
+    "backend/apps/pos_transactions/migrations/0006_postransactionline_unit_evidence.py",
+    "backend/apps/procurement/migrations/0012_receivingscan_unit_evidence_and_more.py",
     "backend/apps/audit/migrations/0003_platformauditevent.py",
     "backend/apps/medicines/migrations/0004_legacy_catalogue_setup.py",
     "backend/apps/integrations/migrations/0001_initial.py",

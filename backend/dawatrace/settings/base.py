@@ -245,6 +245,7 @@ CELERY_RESULT_BACKEND = env("DAWATRACE_CELERY_RESULT_BACKEND", "redis://localhos
 CELERY_TASK_ALWAYS_EAGER = env_bool("DAWATRACE_CELERY_TASK_ALWAYS_EAGER", False)
 CELERY_TASK_EAGER_PROPAGATES = True
 CELERY_BEAT_SCHEDULE = {
+    "inventory-replenishment-hourly": {"task": "apps.inventory.tasks.dispatch_replenishment_planning", "schedule": 3600.0},
     "checkout-provider-reconciliation": {"task": "apps.prescription.tasks.reconcile_checkout_providers", "schedule": 60.0},
     "checkout-fiscal-outbox": {"task": "apps.prescription.tasks.process_fiscal_outbox", "schedule": 60.0},
     "inventory-expiry-maintenance-hourly": {

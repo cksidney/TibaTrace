@@ -71,7 +71,7 @@ class ProcurementIdempotencyTest(TestCase):
             goods_receipt=self.grn,
             po_line=self.po_line,
             delivered_quantity=20,
-            accepted_quantity=20,
+            quarantined_quantity=20,
             idempotency_key=idempotency_key
         )
         self.assertEqual(line1.delivered_quantity, 20)
@@ -84,7 +84,7 @@ class ProcurementIdempotencyTest(TestCase):
             goods_receipt=self.grn,
             po_line=self.po_line,
             delivered_quantity=20,
-            accepted_quantity=20,
+            quarantined_quantity=20,
             idempotency_key=idempotency_key
         )
         

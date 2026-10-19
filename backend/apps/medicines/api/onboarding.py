@@ -85,6 +85,8 @@ class LegacyItemList(SetupScope):
                    for cap in ("inventory.manage", "pricing.manage", "catalogue.manage")):
             return Response({"detail": "Catalogue setup authority is required."}, status=403)
         qs = self.scoped(request).select_related("import_batch")
+        if request.query_params.get("include_discarded") != "true":
+            qs = qs.filter(~Q(review__has_key="discarded") | Q(review__discarded=False))
         summary_items = list(qs)
         summary = {"total":len(summary_items), "positive_stock":sum(i.source_quantity > 0 for i in summary_items),
                    "negative_stock":sum(i.source_quantity < 0 for i in summary_items),
@@ -101,7 +103,7 @@ class LegacyItemList(SetupScope):
         qs = qs.order_by("-source_quantity", "source_row")
         page = Paginator(qs, 25).get_page(request.query_params.get("page", 1))
         first = summary_items[0] if summary_items else None
-        imports = LegacyCatalogueImport.all_objects.filter(tenant_id=self.tenant_id(request)).annotate(item_count=Count("items")).order_by("-created_at", "id")
+        imports = LegacyCatalogueImport.all_objects.filter(tenant_id=self.tenant_id(request)).annotate(item_count=Count("items", filter=~Q(items__review__discarded=True) | ~Q(items__review__has_key="discarded"))).filter(item_count__gt=0).order_by("-created_at", "id")
         return Response({"summary":summary, "count":page.paginator.count, "page":page.number,
                          "pages":page.paginator.num_pages, "can_edit":bool(self.tenant_id(request) and
                           request.user.has_capability("inventory.manage", tenant_id=self.tenant_id(request))),
@@ -269,4 +271,25 @@ class LegacyOpeningCountUpload(SetupScope):
             return Response({'detail': str(exc)}, status=409)
         except ValidationError as exc:
             return Response({'detail': ' '.join(exc.messages)}, status=400)
+        return Response(result)
+
+
+class LegacyImportDiscard(SetupScope):
+    def post(self, request, pk):
+        from django.db import transaction
+
+        from apps.medicines.onboarding_discard import discard_import
+        class Input(serializers.Serializer):
+            reason = serializers.CharField(max_length=2000)
+            expected_items = serializers.IntegerField(min_value=1)
+        data = Input(data=request.data)
+        data.is_valid(raise_exception=True)
+        try:
+            with transaction.atomic():
+                batch = get_object_or_404(LegacyCatalogueImport.all_objects, pk=pk, tenant_id=self.tenant_id(request))
+                result = discard_import(batch=batch, actor=request.user, **data.validated_data)
+        except PermissionDenied as exc:
+            return Response({"detail": str(exc)}, status=403)
+        except ValidationError as exc:
+            return Response({"detail": exc.messages}, status=400)
         return Response(result)

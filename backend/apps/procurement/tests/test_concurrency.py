@@ -100,7 +100,7 @@ class TestGoodsReceiptConcurrency(TransactionTestCase):
             goods_receipt=self.grn,
             po_line=self.po_line,
             delivered_quantity=90,
-            accepted_quantity=90,
+            quarantined_quantity=90,
         )
 
         # Attempting to receive 20 more should fail because 90 + 20 > 100
@@ -109,7 +109,7 @@ class TestGoodsReceiptConcurrency(TransactionTestCase):
                 goods_receipt=self.grn,
                 po_line=self.po_line,
                 delivered_quantity=20,
-                accepted_quantity=20,
+                quarantined_quantity=20,
             )
 
     @mock.patch("apps.procurement.services.PurchaseOrderLine.all_objects.select_for_update")
@@ -129,7 +129,7 @@ class TestGoodsReceiptConcurrency(TransactionTestCase):
             goods_receipt=self.grn,
             po_line=self.po_line,
             delivered_quantity=10,
-            accepted_quantity=10,
+            quarantined_quantity=10,
         )
 
         mock_select_for_update.assert_called_once()

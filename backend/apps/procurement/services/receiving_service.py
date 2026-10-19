@@ -6,8 +6,6 @@ from django.core.exceptions import ValidationError
 from django.db import models, transaction
 from django.utils import timezone
 
-from apps.inventory.models import InventoryBatch, InventoryLedgerEntry
-from apps.inventory.services import InventoryLedgerService
 from apps.procurement.models import (
     GoodsReceipt,
     GoodsReceiptLine,
@@ -59,6 +57,7 @@ class ReceivingService:
     @staticmethod
     @transaction.atomic
     def record_scan(*, session, sku, scanned_barcode, batch_number, expiry_date, scanned_quantity) -> ReceivingScan:
+        session = ReceivingSession.all_objects.select_for_update().get(pk=session.pk, tenant_id=session.tenant_id)
         if session.status != "ACTIVE":
             raise ValidationError("Cannot record scans on an inactive receiving session.")
 
@@ -73,9 +72,10 @@ class ReceivingService:
         if not po_lines.exists():
             raise ValidationError(f"Item {sku.sku_code} is not included in Purchase Order {session.purchase_order.po_number}.")
 
-        if expiry_date <= timezone.localdate():
-            raise ValidationError(f"Scanned batch {batch_number} has already expired.")
-
+        if (sku.expiry_tracking_required and not expiry_date) or (expiry_date and expiry_date <= timezone.localdate()):
+            raise ValidationError("Expiry-tracked goods need a current expiry date; this batch is missing expiry or has already expired.")
+        from apps.inventory.units import normalize_barcode_quantity
+        scanned_quantity, evidence = normalize_barcode_quantity(tenant=session.tenant, sku=sku, barcode=scanned_barcode, quantity=scanned_quantity, whole=True)
         scan = ReceivingScan.all_objects.create(
             tenant=session.tenant,
             session=session,
@@ -83,107 +83,29 @@ class ReceivingService:
             scanned_barcode=scanned_barcode,
             batch_number=batch_number,
             expiry_date=expiry_date,
-            scanned_quantity=scanned_quantity,
+            scanned_quantity=int(scanned_quantity),
+            unit_evidence=evidence,
         )
         return scan
 
     @staticmethod
     @transaction.atomic
     def post_goods_receipt_note(*, session, destination_location, actor) -> GoodsReceipt:
+        session = ReceivingSession.all_objects.select_for_update().get(pk=session.pk, tenant_id=session.tenant_id)
         if session.status != "ACTIVE":
             raise ValidationError("Receiving session has already been posted or closed.")
-
-        scans = ReceivingScan.all_objects.filter(
-            tenant_id=session.tenant_id, session=session
-        )
-        if not scans.exists():
+        scans = list(ReceivingScan.all_objects.filter(tenant_id=session.tenant_id, session=session).select_related("sku__package_definition"))
+        if not scans:
             raise ValidationError("Cannot post a GRN for a session with no scanned items.")
-
-        grn_number = f"GRN-{timezone.now().strftime('%Y%m%d')}-{GoodsReceipt.all_objects.filter(tenant=session.tenant).count() + 1:05d}"
-        goods_receipt = GoodsReceipt.all_objects.create(
-            tenant=session.tenant,
-            grn_number=grn_number,
-            purchase_order=session.purchase_order,
-            supplier=session.supplier,
-            receiving_branch=session.branch,
-            delivery_note_number=session.delivery_note_number,
-            received_by=actor,
-            arrival_time=timezone.now(),
-            # RECEIVED, not POSTED: there is no POSTED state on this model, so
-            # every GRN posting raised AttributeError here. The goods have
-            # arrived and are awaiting inspection, which is what RECEIVED means
-            # -- ACCEPTED comes later, from QualityService.
-            status=GoodsReceipt.Status.RECEIVED,
+        goods_receipt = GoodsReceivingService.start_goods_receipt(
+            tenant=session.tenant, grn_number=f"GRN-{session.session_number}", purchase_order=session.purchase_order,
+            receiving_branch=session.branch, receiver=actor, delivery_note_number=session.delivery_note_number,
         )
-
+        from apps.inventory.receiving import stage_quarantine
         for scan in scans:
-            po_line = PurchaseOrderLine.all_objects.get(
-                tenant_id=session.tenant_id,
-                purchase_order=session.purchase_order,
-                sku=scan.sku,
-            )
-            # The line first: a received batch hangs off the receipt line, not
-            # off the receipt.
-            grn_line = GoodsReceiptLine.all_objects.create(
-                tenant=session.tenant,
-                goods_receipt=goods_receipt,
-                po_line=po_line,
-                sku=scan.sku,
-                delivered_quantity=scan.scanned_quantity,
-                accepted_quantity=scan.scanned_quantity,
-            )
-
-            # No unit cost is copied onto the receipt. Receipt lines carry
-            # quantities and the purchase order carries the money, so the price
-            # cannot drift between the two and a receipt can never be valued at
-            # anything other than what was agreed.
-            ReceivedBatch.all_objects.create(
-                tenant=session.tenant,
-                grn_line=grn_line,
-                sku=scan.sku,
-                manufacturer_batch_number=scan.batch_number,
-                expiry_date=scan.expiry_date,
-                received_quantity=scan.scanned_quantity,
-                accepted_quantity=scan.scanned_quantity,
-                quality_status=ReceivedBatch.QualityStatus.QUARANTINED,
-            )
-
-            po_line.received_quantity += scan.scanned_quantity
-            po_line.save()
-
-            # Keyed on the batch's real identity, which is the unique
-            # constraint on the model: the same manufacturer batch number from
-            # the same manufactured product is the same physical batch, whichever
-            # SKU packs it. manufactured_product is required and was never set,
-            # so this get_or_create could not insert at all.
-            inv_batch, _ = InventoryBatch.all_objects.get_or_create(
-                tenant=session.tenant,
-                manufactured_product=scan.sku.manufactured_product,
-                manufacturer_batch_number=scan.batch_number,
-                defaults={
-                    "sku": scan.sku,
-                    "expiry_date": scan.expiry_date,
-                    "quality_status": "QUARANTINED",
-                },
-            )
-
-            InventoryLedgerService.post_entry(
-                tenant=session.tenant,
-                branch=session.branch,
-                location=destination_location,
-                sku=scan.sku,
-                entry_type=InventoryLedgerEntry.EntryType.RECEIPT,
-                quantity_delta=decimal.Decimal(scan.scanned_quantity),
-                unit="pack",
-                base_quantity_delta=decimal.Decimal(scan.scanned_quantity),
-                effective_timestamp=timezone.now(),
-                source_document_type="GOODS_RECEIPT",
-                source_document_id=str(goods_receipt.id),
-                idempotency_key=f"GRN-{goods_receipt.id}-{scan.id}",
-                actor=actor,
-                inventory_batch=inv_batch,
-                notes=f"GRN {grn_number} Receipt",
-            )
+            po_line = PurchaseOrderLine.all_objects.get(tenant_id=session.tenant_id, purchase_order=session.purchase_order, sku=scan.sku)
+            batch = GoodsReceivingService.receive_batch(goods_receipt=goods_receipt, po_line=po_line, manufacturer_batch_number=scan.batch_number, expiry_date=scan.expiry_date, received_quantity=scan.scanned_quantity)
+            stage_quarantine(tenant=session.tenant, batch=batch, location=destination_location, actor=actor, reason=f"Receiving scan {scan.pk}; units {scan.unit_evidence}")
 
         session.status = "COMPLETED"
         session.save()
@@ -211,13 +133,8 @@ class ReceivingService:
 QUALITY_RELEASE_CAPABILITY = "quality.release"
 
 
-def _may_release_quality(actor) -> bool:
-    if getattr(actor, "is_platform_admin", False) or getattr(actor, "is_superuser", False):
-        return True
-    checker = getattr(actor, "has_capability", None)
-    if callable(checker):
-        return bool(checker(QUALITY_RELEASE_CAPABILITY))
-    return False
+def _may_release_quality(actor, tenant_id=None) -> bool:
+    return bool(actor and actor.is_active and actor.tenant_id in (None, tenant_id) and actor.has_capability(QUALITY_RELEASE_CAPABILITY, tenant_id=tenant_id))
 
 
 class GoodsReceivingService:
@@ -239,8 +156,11 @@ class GoodsReceivingService:
         is the classic double-receipt, and it books stock that arrived once as
         stock that arrived twice.
         """
+        if purchase_order.tenant_id != tenant.pk or receiving_branch.tenant_id != tenant.pk or receiver is None or receiver.tenant_id not in (None, tenant.pk):
+            raise ValidationError("Goods receipt identities must belong to this tenant and a named receiver.")
         if purchase_order.status not in {
             PurchaseOrder.Status.SENT,
+            PurchaseOrder.Status.ACKNOWLEDGED,
             PurchaseOrder.Status.PARTIALLY_RECEIVED,
         }:
             raise ValidationError(
@@ -290,6 +210,8 @@ class GoodsReceivingService:
         Disposition adding to more than the delivery means stock has been
         conjured somewhere between the bay and the ledger.
         """
+        if goods_receipt.tenant_id != po_line.tenant_id or goods_receipt.purchase_order_id != po_line.purchase_order_id or (sku and sku.pk != po_line.sku_id):
+            raise ValidationError("Receipt, purchase-order line and SKU must describe the same tenant delivery.")
         if delivered_quantity is None or delivered_quantity < 0:
             raise ValidationError("A delivered quantity cannot be negative.")
 
@@ -308,6 +230,9 @@ class GoodsReceivingService:
                 f"{quarantined_quantity} quarantined plus {rejected_quantity} rejected "
                 f"is {disposed}, against {delivered_quantity} delivered."
             )
+        if accepted_quantity:
+            raise ValidationError("Receiving cannot accept stock before independent batch quality release.")
+        quarantined_quantity = delivered_quantity - rejected_quantity
         if rejected_quantity and not str(discrepancy_reason or "").strip():
             # Rejected stock is a claim against the supplier. Without a reason
             # it cannot be argued, credited, or learned from.
@@ -328,14 +253,6 @@ class GoodsReceivingService:
             .get(pk=po_line.pk, tenant_id=po_line.tenant_id)
         )
 
-        already_received = locked_po_line.received_quantity or 0
-        if already_received + delivered_quantity > locked_po_line.ordered_quantity:
-            raise ValidationError(
-                f"Total received quantity cannot exceed ordered quantity: "
-                f"{already_received} already received plus {delivered_quantity} "
-                f"exceeds the {locked_po_line.ordered_quantity} ordered."
-            )
-
         if idempotency_key:
             # A retry over poor connectivity must not receive the same goods
             # twice. The key is unique per tenant, so the second call returns
@@ -344,7 +261,17 @@ class GoodsReceivingService:
                 tenant=goods_receipt.tenant, idempotency_key=idempotency_key
             ).first()
             if existing is not None:
+                if existing.goods_receipt_id != goods_receipt.pk or existing.po_line_id != po_line.pk or existing.delivered_quantity != delivered_quantity:
+                    raise ValidationError("Receiving retry key belongs to a different receipt line.")
                 return existing
+
+        already_received = locked_po_line.received_quantity or 0
+        if already_received + delivered_quantity > locked_po_line.ordered_quantity:
+            raise ValidationError(
+                f"Total received quantity cannot exceed ordered quantity: "
+                f"{already_received} already received plus {delivered_quantity} "
+                f"exceeds the {locked_po_line.ordered_quantity} ordered."
+            )
 
         line, _ = GoodsReceiptLine.all_objects.get_or_create(
             tenant=goods_receipt.tenant,
@@ -391,27 +318,13 @@ class GoodsReceivingService:
         Received stock is quarantined rather than accepted. Quality release is
         a separate decision by a different person.
         """
-        if expiry_date is None:
-            raise ValidationError("A batch requires an expiry date.")
-        if manufacture_date and manufacture_date >= expiry_date:
-            # A typo, not stock to refuse -- the two need different corrections,
-            # so they get different messages.
-            raise ValidationError(
-                f"Manufacture date must precede expiry date; batch "
-                f"{manufacturer_batch_number} is dated {manufacture_date} "
-                f"expiring {expiry_date}."
-            )
-        if manufacture_date and manufacture_date >= expiry_date:
-            raise ValidationError(
-                f"Manufacture date must precede expiry date; batch "
-                f"{manufacturer_batch_number} is dated {manufacture_date} "
-                f"expiring {expiry_date}."
-            )
-        if expiry_date <= timezone.localdate():
-            raise ValidationError(
-                f"Cannot receive expired batch: {manufacturer_batch_number} "
-                f"expires on {expiry_date}."
-            )
+        sku = sku or (grn_line.sku if grn_line else po_line.sku if po_line else None)
+        if sku is None or (sku.expiry_tracking_required and expiry_date is None):
+            raise ValidationError("Expiry-tracked goods require a batch expiry date.")
+        if manufacture_date and expiry_date and manufacture_date >= expiry_date:
+            raise ValidationError("Manufacture date must precede expiry date.")
+        if expiry_date and expiry_date <= timezone.localdate():
+            raise ValidationError("Cannot receive expired batch.")
         if received_quantity <= 0:
             raise ValidationError("A received quantity must be positive.")
 
@@ -482,21 +395,32 @@ class GoodsReceivingService:
         discrepancy_reason="",
         idempotency_key="",
     ):
+        PurchaseOrderLine.all_objects.select_for_update().get(pk=po_line.pk, tenant_id=goods_receipt.tenant_id)
+        if idempotency_key:
+            prior = ReceivedBatch.all_objects.filter(tenant_id=goods_receipt.tenant_id, receipt_key=idempotency_key).first()
+            if prior:
+                if (prior.grn_line.goods_receipt_id, prior.grn_line.po_line_id, prior.manufacturer_batch_number, prior.expiry_date, prior.manufacture_date, prior.received_quantity) != (goods_receipt.pk, po_line.pk, manufacturer_batch_number, expiry_date, manufacture_date, received_quantity):
+                    raise ValidationError("Receiving retry key belongs to a different delivery.")
+                return prior
         line = GoodsReceivingService.receive_line(
             goods_receipt=goods_receipt,
             po_line=po_line,
             delivered_quantity=received_quantity,
             quarantined_quantity=received_quantity,
             discrepancy_reason=discrepancy_reason,
-            idempotency_key=idempotency_key,
         )
-        return GoodsReceivingService.capture_batch(
+        batch = GoodsReceivingService.capture_batch(
             grn_line=line,
             manufacturer_batch_number=manufacturer_batch_number,
             manufacture_date=manufacture_date,
             expiry_date=expiry_date,
             received_quantity=received_quantity,
         )
+
+        if idempotency_key:
+            batch.receipt_key = idempotency_key
+            batch.save(update_fields=["receipt_key", "updated_at"])
+        return batch
 
     @staticmethod
     @transaction.atomic
@@ -518,7 +442,8 @@ class GoodsReceivingService:
                 f"Goods receipt {goods_receipt.grn_number} is already {goods_receipt.status}."
             )
 
-        goods_receipt.status = GoodsReceipt.Status.ACCEPTED
+        held = GoodsReceiptLine.all_objects.filter(tenant_id=goods_receipt.tenant_id, goods_receipt=goods_receipt, quarantined_quantity__gt=0).exists()
+        goods_receipt.status = GoodsReceipt.Status.UNDER_INSPECTION if held else GoodsReceipt.Status.ACCEPTED
         goods_receipt.save(update_fields=["status", "updated_at"])
 
         purchase_order = goods_receipt.purchase_order
@@ -548,6 +473,7 @@ class GoodsReceivingService:
         quantity=None,
         as_of=None,
         receiving_location=None,
+        idempotency_key="",
     ) -> ReceivedBatch:
         """Move quarantined stock into accepted, released stock under strict quality gates.
 
@@ -566,11 +492,26 @@ class GoodsReceivingService:
         from apps.procurement.services.batch_quality_service import BatchQualityDecisionService
         from apps.procurement.services.supplier_governance_service import SupplierGovernanceService
 
+        type(batch.tenant).objects.select_for_update().get(pk=batch.tenant_id)
+        batch = ReceivedBatch.all_objects.select_for_update(of=("self",)).select_related("grn_line__goods_receipt__supplier", "sku__manufactured_product", "sku__package_definition").get(pk=batch.pk, tenant_id=batch.tenant_id)
         releaser = released_by or actor
+        command = {"quantity": str(quantity) if quantity is not None else None, "reason": str(reason).strip(), "location": str(receiving_location.pk) if receiving_location else None, "actor": str(releaser.pk) if releaser else None}
+        from apps.procurement.models import BatchQualityRelease
+        if idempotency_key:
+            type(batch.tenant).objects.select_for_update().get(pk=batch.tenant_id)
+            prior = BatchQualityRelease.all_objects.filter(tenant_id=batch.tenant_id, idempotency_key=idempotency_key).first()
+            if prior:
+                if prior.batch_id != batch.pk or prior.command != command:
+                    raise ValidationError("Quality release retry key belongs to a different command.")
+                return batch
+        if not str(reason or "").strip():
+            raise ValidationError("Quality release requires a recorded reason.")
+        if batch.quality_status not in {"PENDING_INSPECTION", "QUARANTINED", "PARTIALLY_RELEASED"}:
+            raise ValidationError("Only stock awaiting quality release can be released.")
         if releaser is None:
             raise ValidationError("Quality release requires a named releaser.")
 
-        if not _may_release_quality(releaser):
+        if not _may_release_quality(releaser, batch.tenant_id):
             log_audit(
                 tenant_id=batch.tenant_id,
                 action="BATCH_QUALITY_RELEASE_REFUSED",
@@ -587,45 +528,33 @@ class GoodsReceivingService:
 
         inspection = ReceivingInspection.all_objects.filter(
             tenant=batch.tenant, goods_receipt=receipt
-        ).first()
+        ).order_by("-inspected_at", "-pk").first()
 
         decision = QualityDecision.all_objects.filter(
             tenant=batch.tenant, batch=batch
-        ).first()
+        ).order_by("-revision").first()
 
-        if decision is not None:
-            if not BatchQualityDecisionService.is_releasable(batch=batch):
-                raise ValidationError(
-                    f"Batch {batch.manufacturer_batch_number} has decision {decision.decision} "
-                    "which is not releasable."
-                )
-        elif inspection is not None:
-            if inspection.decision in ("REJECT", "DESTROY"):
-                raise ValidationError(
-                    f"Batch {batch.manufacturer_batch_number} inspection decision {inspection.decision} "
-                    "is not releasable."
-                )
+        if decision is None or not BatchQualityDecisionService.is_releasable(batch=batch):
+            raise ValidationError("A recorded independent batch quality decision approving release is required.")
+        if not decision.inspector_id or not decision.decision_by_id or receipt.received_by_id in {decision.inspector_id, decision.decision_by_id, releaser.pk}:
+            raise ValidationError("Quality inspection, decision and release must be independent of the receiver.")
+        if inspection and inspection.decision in {"REJECT", "DESTROY", "HOLD_FOR_INVESTIGATION"}:
+            raise ValidationError("Resolve the receipt inspection hold before releasing this batch.")
 
         as_of_date = as_of or timezone.localdate()
-        if batch.expiry_date <= as_of_date:
+        if (batch.sku.expiry_tracking_required and not batch.expiry_date) or (batch.expiry_date and batch.expiry_date <= as_of_date):
             raise ValidationError(f"Batch {batch.manufacturer_batch_number} is expired ({batch.expiry_date}).")
 
         if getattr(batch, "recall_status", "NONE") != "NONE":
             raise ValidationError(f"Batch {batch.manufacturer_batch_number} is subject to a regulatory recall.")
 
-        arrival_dt = getattr(receipt, "arrival_time", None)
-        receipt_date = (
-            (timezone.localtime(arrival_dt) if timezone.is_aware(arrival_dt) else arrival_dt).date()
-            if arrival_dt else as_of_date
+        reasons = SupplierGovernanceService.ineligibility_reasons(
+            supplier=receipt.supplier, on_date=as_of_date,
+            controlled=_is_controlled(batch.sku), cold_chain=_is_cold_chain(batch.sku),
+            medicine=batch.sku.product_kind == "MEDICINE",
         )
-
-        from apps.procurement.models import SupplierQualification
-        if SupplierQualification.all_objects.filter(tenant=receipt.tenant, supplier=receipt.supplier).exists():
-            reasons = SupplierGovernanceService.ineligibility_reasons(
-                supplier=receipt.supplier, on_date=receipt_date
-            )
-            if reasons:
-                raise ValidationError(f"Supplier {receipt.supplier} is ineligible: {reasons[0]}")
+        if reasons:
+            raise ValidationError(f"Supplier {receipt.supplier} is ineligible: {reasons[0]}")
 
         if receiving_location is not None:
             if _is_controlled(batch.sku) and not receiving_location.controlled_drug_capability:
@@ -634,8 +563,15 @@ class GoodsReceivingService:
                 raise ValidationError(f"Cold-chain SKU {batch.sku.sku_code} requires a cold room location.")
 
         already_released = batch.accepted_quantity or 0
-        outstanding = (batch.received_quantity or 0) - already_released
-        quantity = outstanding if quantity is None else quantity
+        from apps.procurement.models import SupplierReturnLine
+        return_lines = SupplierReturnLine.all_objects.filter(tenant_id=batch.tenant_id, batch=batch, supplier_return__return_category="QUALITY_REJECTION").exclude(supplier_return__status="REJECTED")
+        returned = return_lines.aggregate(total=models.Sum("quantity"))["total"] or 0
+        dispatched_returns = return_lines.filter(supplier_return__status__in=["DISPATCHED", "CREDIT_PENDING", "CLOSED"]).aggregate(total=models.Sum("quantity"))["total"] or 0
+        outstanding = max(0, (batch.received_quantity or 0) - already_released - (batch.rejected_quantity or 0) - returned)
+        quantity = decimal.Decimal(str(outstanding if quantity is None else quantity))
+        if not quantity.is_finite() or quantity != quantity.to_integral_value():
+            raise ValidationError("Release a whole number of the confirmed base units.")
+        quantity = int(quantity)
 
         if quantity <= 0:
             raise ValidationError(
@@ -651,7 +587,7 @@ class GoodsReceivingService:
         batch.accepted_quantity = already_released + quantity
         batch.quarantined_quantity = max(0, (batch.quarantined_quantity or 0) - quantity)
 
-        if batch.accepted_quantity >= (batch.received_quantity or 0):
+        if batch.accepted_quantity + (batch.rejected_quantity or 0) + dispatched_returns >= batch.received_quantity:
             batch.quality_status = ReceivedBatch.QualityStatus.RELEASED
         elif batch.accepted_quantity > 0:
             batch.quality_status = ReceivedBatch.QualityStatus.PARTIALLY_RELEASED
@@ -667,6 +603,8 @@ class GoodsReceivingService:
         line.accepted_quantity = (line.accepted_quantity or 0) + quantity
         line.save(update_fields=["quarantined_quantity", "accepted_quantity", "updated_at"])
 
+        if idempotency_key:
+            BatchQualityRelease.all_objects.create(tenant_id=batch.tenant_id, batch=batch, released_by=releaser, quantity=quantity, command=command, idempotency_key=idempotency_key)
         log_audit(
             tenant_id=batch.tenant_id,
             action="BATCH_QUALITY_RELEASED",

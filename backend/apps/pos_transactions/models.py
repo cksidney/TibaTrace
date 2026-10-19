@@ -156,6 +156,7 @@ class PosTransactionLine(TenantConsistencyMixin, TimestampedModel):
     currency = models.CharField(max_length=3, default="KES")
     price_snapshot = models.JSONField(default=dict)
     scan_source = models.CharField(max_length=20, default="SEARCH")
+    unit_evidence = models.JSONField(default=list, blank=True)
 
     objects = PosTransactionLineManager()
     all_objects = models.Manager.from_queryset(PosTransactionLineQuerySet)()

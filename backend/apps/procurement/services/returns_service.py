@@ -10,7 +10,7 @@ from django.utils import timezone
 from apps.audit.service import log_audit
 from apps.inventory.models import InventoryBalance, InventoryBatch
 from apps.inventory.services import InventoryLedgerService, StockTransferService
-from apps.procurement.models import GoodsReceiptLine, Supplier, SupplierReturn, SupplierReturnLine
+from apps.procurement.models import GoodsReceiptLine, ReceivedBatch, Supplier, SupplierReturn, SupplierReturnLine
 
 
 def authority(item, actor, capability="procurement.write"):
@@ -96,6 +96,7 @@ class SupplierReturnService:
             raise ValidationError(f"Only {max(0, allowance - claimed)} remains eligible; the remaining receipt allowance is shared across all returns.")
         inventory_batch = None
         if batch is not None:
+            batch = ReceivedBatch.all_objects.select_for_update().get(pk=batch.pk, tenant_id=item.tenant_id)
             if (
                 batch.tenant_id != item.tenant_id
                 or batch.sku_id != sku.pk
@@ -103,7 +104,8 @@ class SupplierReturnService:
             ):
                 raise ValidationError("The returned batch must belong to this receipt and SKU.")
             batch_claims = SupplierReturnLine.all_objects.filter(tenant_id=item.tenant_id, batch=batch).exclude(supplier_return__status="REJECTED").aggregate(total=Sum("quantity"))["total"] or 0
-            if batch_claims + quantity > batch.received_quantity:
+            batch_allowance = batch.received_quantity - batch.accepted_quantity if item.return_category == "QUALITY_REJECTION" else batch.received_quantity
+            if batch_claims + quantity > batch_allowance:
                 raise ValidationError("This batch is already allocated to other supplier returns.")
             inventory_batch = InventoryBatch.all_objects.filter(
                 tenant_id=item.tenant_id, sku=sku, manufacturer_batch_number=batch.manufacturer_batch_number
@@ -165,6 +167,8 @@ class SupplierReturnService:
         if item.status != "APPROVED":
             raise ValidationError("Only an approved return can be dispatched.")
         for line in SupplierReturnLine.all_objects.filter(tenant_id=item.tenant_id, supplier_return=item).select_related("inventory_batch", "source_location", "sku__package_definition"):
+            if line.batch_id:
+                ReceivedBatch.all_objects.select_for_update().get(pk=line.batch_id, tenant_id=item.tenant_id)
             location, batch = line.source_location, line.inventory_batch
             if not location or not batch or location.status != "ACTIVE":
                 raise ValidationError("Every return line needs an active custody location and tracked batch.")

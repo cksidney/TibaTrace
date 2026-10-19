@@ -21,6 +21,7 @@ from apps.procurement.models import (
     PurchaseOrderLine,
     ReceivedBatch,
     Supplier,
+    SupplierQualification,
 )
 from apps.procurement.services import BatchReceivingService
 from apps.tenancy.models import Tenant
@@ -60,12 +61,19 @@ class QualityReleaseTest(TestCase):
             quality_status=ReceivedBatch.QualityStatus.QUARANTINED
         )
 
+        self.supplier.status = "ACTIVE"
+        self.supplier.save()
+        for kind in ("BUSINESS_REGISTRATION", "WHOLESALE_DEALER_LICENCE"):
+            SupplierQualification.all_objects.create(tenant=self.tenant, supplier=self.supplier, qualification_type=kind, licence_number="FIXTURE-" + kind, effective_date=timezone.localdate(), expiry_date=timezone.localdate() + datetime.timedelta(days=365), verification_status="VERIFIED", verified_by=self.authorized_user)
+        from apps.procurement.services.batch_quality_service import BatchQualityDecisionService
+        BatchQualityDecisionService.record_decision(batch=self.batch, inspector=self.authorized_user, decision_by=self.authorized_user, outcome="APPROVE_FOR_RELEASE", reason="Independent physical quality inspection")
+
     def test_unauthorized_user_cannot_release_batch(self):
         with self.assertRaises(ValidationError) as ctx:
-            BatchReceivingService.release_batch(batch=self.batch, actor=self.user)
+            BatchReceivingService.release_batch(batch=self.batch, actor=self.user, reason="Refusal probe")
         self.assertIn("Actor lacks quality-release authority", str(ctx.exception))
 
     def test_authorized_user_can_release_batch(self):
-        BatchReceivingService.release_batch(batch=self.batch, actor=self.authorized_user)
+        BatchReceivingService.release_batch(batch=self.batch, actor=self.authorized_user, reason="Verified independent quality evidence")
         self.batch.refresh_from_db()
         self.assertEqual(self.batch.quality_status, ReceivedBatch.QualityStatus.RELEASED)

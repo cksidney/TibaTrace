@@ -142,6 +142,8 @@ class ProcurementContextView(APIView):
                         "sku_code": sku.sku_code,
                         "display_name": sku.display_name,
                         "status": sku.status,
+                        "expiry_tracking_required": sku.expiry_tracking_required,
+                        "unit": sku.package_definition.unit_of_measure,
                     }
                     for sku in CommercialSKU.all_objects.filter(
                         tenant_id=tenant_id,
@@ -603,6 +605,25 @@ class ReceivedBatchViewSet(BaseProcurementViewSet):
             return _service_error(exc)
         return Response(self.get_serializer(self.get_object()).data)
 
+    @action(detail=True, methods=["post"], url_path="quality-decision")
+    def quality_decision(self, request, pk=None):
+        from rest_framework import serializers
+
+        from apps.procurement.models import QualityDecision
+        from apps.procurement.services.batch_quality_service import BatchQualityDecisionService
+        class Input(serializers.Serializer):
+            outcome = serializers.ChoiceField(choices=QualityDecision.Outcome.choices)
+            reason = serializers.CharField(max_length=2000)
+            evidence_reference = serializers.CharField(max_length=255, required=False, allow_blank=True)
+            supersedes_id = serializers.UUIDField(required=False, allow_null=True)
+        data = Input(data=request.data)
+        data.is_valid(raise_exception=True)
+        try:
+            decision = BatchQualityDecisionService.record_decision(batch=self.get_object(), inspector=request.user, decision_by=request.user, **data.validated_data)
+        except (DjangoValidationError, DjangoPermissionDenied) as exc:
+            return _service_error(exc)
+        return Response(QualityDecisionSerializer(decision).data, status=201)
+
     @action(detail=True, methods=["post"], url_path="release")
     def release(self, request, pk=None):
         serializer = BatchReleaseSerializer(data=request.data)
@@ -610,11 +631,17 @@ class ReceivedBatchViewSet(BaseProcurementViewSet):
         batch = self.get_object()
         try:
             with transaction.atomic():
+                inventory_location_id = serializer.validated_data.get("inventory_location")
+                if not inventory_location_id:
+                    raise DjangoValidationError("Select the saleable inventory destination for release.")
+                inventory_location = self.tenant_object(InventoryLocation, inventory_location_id, "inventory_location")
                 updated = BatchReceivingService.release_batch(
                     batch=batch,
                     actor=request.user,
                     reason=serializer.validated_data["reason"],
                     quantity=serializer.validated_data.get("quantity"),
+                    receiving_location=inventory_location,
+                    idempotency_key=serializer.validated_data.get("idempotency_key", ""),
                 )
                 inventory_location_id = serializer.validated_data.get("inventory_location")
                 if inventory_location_id and updated.quality_status in {ReceivedBatch.QualityStatus.RELEASED, ReceivedBatch.QualityStatus.PARTIALLY_RELEASED}:

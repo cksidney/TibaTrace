@@ -4,7 +4,7 @@ from decimal import Decimal
 from django.conf import settings
 from django.db import models
 
-from apps.core.models import StrictTenantManager, TimestampedModel
+from apps.core.models import StrictTenantManager, StrictTenantQuerySet, TimestampedModel
 from apps.medicines.models import CommercialSKU
 from apps.organizations.models import Location
 
@@ -411,8 +411,9 @@ class ReceivedBatch(TimestampedModel):
     grn_line = models.ForeignKey(GoodsReceiptLine, on_delete=models.CASCADE, related_name="batches")
     sku = models.ForeignKey(CommercialSKU, on_delete=models.PROTECT, related_name="received_batches")
     manufacturer_batch_number = models.CharField(max_length=128, db_index=True)
+    receipt_key = models.CharField(max_length=128, blank=True, default="")
     manufacture_date = models.DateField(null=True, blank=True)
-    expiry_date = models.DateField()
+    expiry_date = models.DateField(null=True, blank=True)
     received_quantity = models.PositiveIntegerField()
     accepted_quantity = models.PositiveIntegerField(default=0)
     quarantined_quantity = models.PositiveIntegerField(default=0)
@@ -424,6 +425,9 @@ class ReceivedBatch(TimestampedModel):
 
     objects = StrictTenantManager()
     all_objects = models.Manager()
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["tenant", "receipt_key"], condition=~models.Q(receipt_key=""), name="uq_received_batch_retry")]
 
     def __str__(self):
         return f"Batch {self.manufacturer_batch_number} ({self.sku.sku_code}) Exp: {self.expiry_date}"
@@ -629,14 +633,40 @@ class ReceivingScan(TimestampedModel):
     sku = models.ForeignKey(CommercialSKU, on_delete=models.PROTECT, related_name="+")
     scanned_barcode = models.CharField(max_length=128)
     batch_number = models.CharField(max_length=128)
-    expiry_date = models.DateField()
+    expiry_date = models.DateField(null=True, blank=True)
     scanned_quantity = models.PositiveIntegerField()
+    unit_evidence = models.JSONField(default=dict, blank=True)
 
     objects = StrictTenantManager()
     all_objects = models.Manager()
 
 
-class QualityDecision(TimestampedModel):
+class QualityEvidenceQuerySet(StrictTenantQuerySet):
+    def update(self, **kwargs):
+        from django.core.exceptions import ValidationError
+        raise ValidationError("Quality evidence is immutable; record an explicit reinspection.")
+
+    def delete(self):
+        from django.core.exceptions import ValidationError
+        raise ValidationError("Quality evidence is immutable.")
+
+
+class ImmutableQualityEvidence(TimestampedModel):
+    class Meta:
+        abstract = True
+
+    def save(self, *args, **kwargs):
+        from django.core.exceptions import ValidationError
+        if not self._state.adding:
+            raise ValidationError("Quality evidence is immutable; record an explicit reinspection.")
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        from django.core.exceptions import ValidationError
+        raise ValidationError("Quality evidence is immutable.")
+
+
+class QualityDecision(ImmutableQualityEvidence):
     """A quality outcome recorded against one received batch.
 
     Distinct from ReceivingInspection, which is per *receipt* and applies one
@@ -664,8 +694,8 @@ class QualityDecision(TimestampedModel):
     RELEASABLE_OUTCOMES = frozenset({Outcome.APPROVE_FOR_RELEASE})
 
     tenant = models.ForeignKey("tenancy.Tenant", on_delete=models.CASCADE, null=True, blank=True, related_name="+")
-    goods_receipt = models.ForeignKey(GoodsReceipt, on_delete=models.CASCADE, related_name="quality_decisions")
-    batch = models.ForeignKey(ReceivedBatch, on_delete=models.CASCADE, related_name="+")
+    goods_receipt = models.ForeignKey(GoodsReceipt, on_delete=models.PROTECT, related_name="quality_decisions")
+    batch = models.ForeignKey(ReceivedBatch, on_delete=models.PROTECT, related_name="+")
     decision = models.CharField(max_length=32, default="RELEASED")
     decision_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
     decision_notes = models.TextField(blank=True, default="")
@@ -684,17 +714,18 @@ class QualityDecision(TimestampedModel):
     #: records internal document review rather than implying a PPB lookup.
     evidence_reference = models.CharField(max_length=255, blank=True, default="")
     evidence_basis = models.CharField(max_length=64, blank=True, default="")
+    revision = models.PositiveIntegerField(default=1)
+    supersedes = models.OneToOneField("self", on_delete=models.PROTECT, null=True, blank=True, related_name="superseded_by")
 
-    objects = StrictTenantManager()
-    all_objects = models.Manager()
+    objects = StrictTenantManager.from_queryset(QualityEvidenceQuerySet)()
+    all_objects = models.Manager.from_queryset(QualityEvidenceQuerySet)()
 
     class Meta:
         constraints = [
-            # One decision per batch. A second would make "what did quality
-            # decide?" depend on which row was read first, and release keys off
-            # that answer.
+            # Explicit numbered reinspections preserve every prior decision;
+            # release always reads the latest revision under the batch lock.
             models.UniqueConstraint(
-                fields=["tenant", "batch"], name="uq_quality_decision_per_batch"
+                fields=["tenant", "batch", "revision"], name="uq_quality_decision_revision"
             )
         ]
 
@@ -756,3 +787,17 @@ class ProcurementPolicy(TimestampedModel):
         """
         existing = cls.all_objects.filter(tenant=tenant).first()
         return existing if existing is not None else cls(tenant=tenant)
+
+
+class BatchQualityRelease(ImmutableQualityEvidence):
+    tenant = models.ForeignKey("tenancy.Tenant", on_delete=models.PROTECT)
+    batch = models.ForeignKey(ReceivedBatch, on_delete=models.PROTECT)
+    released_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    quantity = models.PositiveIntegerField()
+    command = models.JSONField()
+    idempotency_key = models.CharField(max_length=128)
+    objects = StrictTenantManager.from_queryset(QualityEvidenceQuerySet)()
+    all_objects = models.Manager.from_queryset(QualityEvidenceQuerySet)()
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["tenant", "idempotency_key"], name="uq_batch_quality_release_key")]

@@ -220,58 +220,28 @@ class InventoryBalanceService:
         elif entry.entry_type == InventoryLedgerEntry.EntryType.RESERVATION_RELEASE:
             balance.reserved -= entry.base_quantity_delta
             
-        # For damage, expiry, quarantine we might have specific entries that move stock to those buckets 
-        # But DawaTrace directive says: "Move damaged stock through explicit ledger entries and custody locations. Do not silently reduce stock."
-        # This implies damaged stock is moved to a DAMAGED location using a TRANSFER_OUT and TRANSFER_IN.
-        # So the `damaged` or `quarantined` measures might just be the `on_hand` balance AT those specific locations!
-        # The prompt says: "Adjust where movements are represented as separate custody locations, but document the exact accounting equation."
-        
-        # We derive available
-        if balance.location.quarantine_capability:
-            balance.quarantined = balance.on_hand
-        elif balance.location.damaged_goods_capability:
-            balance.damaged = balance.on_hand
-        elif balance.location.expiry_hold_capability or balance.quality_status == InventoryBatch.QualityStatus.EXPIRED:
-            balance.expired = balance.on_hand
-            
-        balance.recalled = (
-            balance.on_hand
-            if balance.inventory_batch
-            and balance.inventory_batch.recall_status != InventoryBatch.RecallStatus.NONE
-            else 0
-        )
-        balance.available = (
-            balance.on_hand
-            - balance.reserved
-            - balance.quarantined
-            - balance.damaged
-            - balance.expired
-            - balance.recalled
-        )
-        
-        # If the location is a holding area, it's not available
-        if (
-            balance.location.quarantine_capability
-            or balance.location.damaged_goods_capability
-            or balance.location.expiry_hold_capability
-            or balance.quality_status == InventoryBatch.QualityStatus.EXPIRED
-            or balance.recalled > 0
-        ):
-            balance.available = 0
-            
+        InventoryBalanceService.derive_buckets(balance)
+        if balance.reserved < 0 or balance.on_hand < 0:
+            raise ValidationError("Stock and reservation projections cannot become negative.")
         balance.save()
+
+    @staticmethod
+    def derive_buckets(balance):
+        batch = balance.inventory_batch
+        location = balance.location
+        balance.quality_status = batch.quality_status if batch else "RELEASED"
+        balance.quarantined = balance.on_hand if location.quarantine_capability or balance.quality_status == "QUARANTINED" else 0
+        balance.damaged = balance.on_hand if location.damaged_goods_capability or balance.quality_status == "DAMAGED" else 0
+        balance.expired = balance.on_hand if location.expiry_hold_capability or balance.quality_status == "EXPIRED" or (batch and batch.expiry_date and batch.expiry_date < timezone.localdate()) else 0
+        balance.recalled = balance.on_hand if batch and batch.recall_status != "NONE" else 0
+        held = location.status != "ACTIVE" or location.returns_capability or balance.quality_status != "RELEASED" or any((balance.quarantined, balance.damaged, balance.expired, balance.recalled))
+        balance.available = 0 if held else max(Decimal(0), balance.on_hand - balance.reserved)
 
     @staticmethod
     @transaction.atomic
     def rebuild_all_balances(tenant):
-        """
-        Wipes the projection and rebuilds it purely from the immutable ledger.
-        """
-        InventoryBalance.all_objects.filter(tenant=tenant).delete()
-        
-        entries = InventoryLedgerEntry.all_objects.filter(tenant=tenant).order_by("transaction_timestamp")
-        for e in entries:
-            InventoryBalanceService.apply_ledger_entry(e)
+        from apps.inventory.reconciliation import reconcile
+        return reconcile(tenant, repair=True)
 
 
 class InventoryReceiptService:
@@ -310,6 +280,11 @@ class FEFOAllocationService:
             branch=branch,
             sku=sku,
             available__gt=0,
+            location__status="ACTIVE",
+            location__returns_capability=False,
+            location__quarantine_capability=False,
+            location__damaged_goods_capability=False,
+            location__expiry_hold_capability=False,
             inventory_batch__quality_status=InventoryBatch.QualityStatus.RELEASED,
             inventory_batch__recall_status=InventoryBatch.RecallStatus.NONE,
         ).filter(Q(inventory_batch__expiry_date__gte=minimum_expiry_date or timezone.localdate()) | Q(sku__expiry_tracking_required=False, inventory_batch__expiry_date__isnull=True)).exclude(
@@ -362,8 +337,20 @@ class InventoryReservationService:
         include_batches=None,
         minimum_expiry_date=None,
     ):
-        if InventoryReservation.all_objects.filter(tenant=tenant, idempotency_key=idempotency_key).exists():
-            return InventoryReservation.all_objects.get(tenant=tenant, idempotency_key=idempotency_key)
+        requested_quantity = Decimal(str(requested_quantity))
+        if not requested_quantity.is_finite() or requested_quantity <= 0:
+            raise ValidationError("Reservation quantity must be finite and positive.")
+        if expiry_time and expiry_time <= timezone.now():
+            raise ValidationError("Reservation expiry must be in the future.")
+        if source_location.tenant_id != tenant.pk or source_location.branch_id != branch.pk or sku.tenant_id != tenant.pk:
+            raise ValidationError("Reservation identities must match the tenant and branch.")
+        existing = InventoryReservation.all_objects.select_for_update().filter(tenant=tenant, idempotency_key=idempotency_key).first()
+        if existing:
+            if (existing.branch_id, existing.source_location_id, existing.sku_id, existing.requested_quantity, existing.purpose, existing.expiry_time) != (branch.pk, source_location.pk, sku.pk, requested_quantity, purpose, expiry_time):
+                raise ValidationError("Reservation retry key belongs to a different request.")
+            return existing
+        # Serialize allocation against competing reservations at this custody.
+        list(InventoryBalance.all_objects.select_for_update().filter(tenant=tenant, location=source_location, sku=sku).order_by("pk"))
             
         # First, try to allocate FEFO
         allocations = FEFOAllocationService.allocate_stock(
@@ -422,95 +409,43 @@ class InventoryReservationService:
         return reservation
 
     @staticmethod
-    @transaction.atomic
     def release_reservation(*, reservation, actor):
-        if reservation.status not in [InventoryReservation.Status.PENDING, InventoryReservation.Status.ALLOCATED]:
-            raise ValidationError("Only pending or allocated reservations can be released.")
-            
-        reservation.status = InventoryReservation.Status.RELEASED
-        reservation.save()
-        
-        # Find the ledger entries and reverse them via a RESERVATION_RELEASE entry
-        ledger_entries = InventoryLedgerEntry.all_objects.filter(
-            tenant=reservation.tenant,
-            source_document_type="RESERVATION",
-            source_document_id=str(reservation.pk),
-            entry_type=InventoryLedgerEntry.EntryType.RESERVATION
-        )
-        
-        for entry in ledger_entries:
-            InventoryLedgerService.post_entry(
-                tenant=entry.tenant,
-                branch=entry.branch,
-                location=entry.location,
-                sku=entry.sku,
-                inventory_batch=entry.inventory_batch,
-                entry_type=InventoryLedgerEntry.EntryType.RESERVATION_RELEASE,
-                quantity_delta=entry.quantity_delta,
-                unit=entry.unit,
-                base_quantity_delta=entry.base_quantity_delta,
-                effective_timestamp=reservation.updated_at,
-                source_document_type="RESERVATION_RELEASE",
-                source_document_id=str(reservation.pk),
-                idempotency_key=f"release-{entry.idempotency_key}",
-                actor=actor,
-                reason_code="RESERVATION_CANCELLED",
-            )
-            
-        emit_event(
-            tenant_id=str(reservation.tenant.pk),
-            aggregate_type="InventoryReservation",
-            aggregate_id=str(reservation.pk),
-            event_type="InventoryReservationReleased",
-            payload={"sku_id": str(reservation.sku.pk)},
-        )
-        
-        return reservation
+        return InventoryReservationService._close_remaining(reservation=reservation, actor=actor, expired=False)
+
+    @staticmethod
+    def expire_reservation(*, reservation, actor=None):
+        return InventoryReservationService._close_remaining(reservation=reservation, actor=actor, expired=True)
 
     @staticmethod
     @transaction.atomic
-    def expire_reservation(*, reservation, actor=None):
-        if reservation.status not in [InventoryReservation.Status.PENDING, InventoryReservation.Status.ALLOCATED]:
-            raise ValidationError("Only pending or allocated reservations can be expired.")
-
-        reservation.status = InventoryReservation.Status.EXPIRED
-        reservation.save()
-
-        ledger_entries = InventoryLedgerEntry.all_objects.filter(
-            tenant=reservation.tenant,
-            source_document_type="RESERVATION",
-            source_document_id=str(reservation.pk),
-            entry_type=InventoryLedgerEntry.EntryType.RESERVATION
-        )
-
-        for entry in ledger_entries:
-            InventoryLedgerService.post_entry(
-                tenant=entry.tenant,
-                branch=entry.branch,
-                location=entry.location,
-                sku=entry.sku,
-                inventory_batch=entry.inventory_batch,
-                entry_type=InventoryLedgerEntry.EntryType.RESERVATION_RELEASE,
-                quantity_delta=entry.quantity_delta,
-                unit=entry.unit,
-                base_quantity_delta=entry.base_quantity_delta,
-                effective_timestamp=reservation.updated_at,
-                source_document_type="RESERVATION_EXPIRED",
-                source_document_id=str(reservation.pk),
-                idempotency_key=f"expire-{entry.idempotency_key}",
-                actor=actor,
-                reason_code="RESERVATION_EXPIRED",
-            )
-
-        emit_event(
-            tenant_id=str(reservation.tenant.pk),
-            aggregate_type="InventoryReservation",
-            aggregate_id=str(reservation.pk),
-            event_type="InventoryReservationExpired",
-            payload={"sku_id": str(reservation.sku.pk)},
-        )
-
+    def _close_remaining(*, reservation, actor, expired):
+        reservation = InventoryReservation.all_objects.select_for_update().get(pk=reservation.pk, tenant_id=reservation.tenant_id)
+        target = "EXPIRED" if expired else "RELEASED"
+        if reservation.status in {"RELEASED", "EXPIRED", "CANCELLED", "FULFILLED"}:
+            return reservation
+        if expired and (not reservation.expiry_time or reservation.expiry_time > timezone.now()):
+            raise ValidationError("Only a reservation whose expiry time has elapsed can expire.")
+        allocations = InventoryLedgerEntry.all_objects.filter(tenant_id=reservation.tenant_id, source_document_type="RESERVATION", source_document_id=str(reservation.pk), entry_type="RESERVATION").select_related("inventory_batch", "location", "branch", "sku")
+        for entry in allocations:
+            released = InventoryLedgerEntry.all_objects.filter(tenant_id=reservation.tenant_id, source_document_id=str(reservation.pk), source_document_type__in=["RESERVATION_RELEASE", "RESERVATION_EXPIRED", "RESERVATION_FULFILMENT"], entry_type="RESERVATION_RELEASE", inventory_batch_id=entry.inventory_batch_id).aggregate(total=Sum("base_quantity_delta"))["total"] or Decimal(0)
+            remaining = entry.base_quantity_delta - released
+            if remaining < 0:
+                raise ValidationError("Reservation ledger contains an over-release; investigate before recovery.")
+            if remaining:
+                InventoryLedgerService.post_entry(tenant=entry.tenant, branch=entry.branch, location=entry.location, sku=entry.sku, inventory_batch=entry.inventory_batch, entry_type="RESERVATION_RELEASE", quantity_delta=remaining, base_quantity_delta=remaining, unit=entry.unit, effective_timestamp=timezone.now(), source_document_type="RESERVATION_EXPIRED" if expired else "RESERVATION_RELEASE", source_document_id=str(reservation.pk), idempotency_key=f"close-reservation:{reservation.pk}:{entry.inventory_batch_id}", actor=actor, reason_code=target)
+        reservation.status = target
+        reservation.save(update_fields=["status", "updated_at"])
+        emit_event(tenant_id=str(reservation.tenant_id), aggregate_type="InventoryReservation", aggregate_id=str(reservation.pk), event_type="InventoryReservationExpired" if expired else "InventoryReservationReleased", payload={"sku_id": str(reservation.sku_id)})
         return reservation
+
+    @staticmethod
+    def expire_due(tenant, *, as_of=None):
+        due = InventoryReservation.all_objects.filter(tenant=tenant, expiry_time__lte=as_of or timezone.now(), status__in=["PENDING", "ALLOCATED", "PARTIALLY_FULFILLED"]).order_by("pk")
+        count = 0
+        for reservation in due.iterator():
+            InventoryReservationService.expire_reservation(reservation=reservation)
+            count += 1
+        return count
 
     @staticmethod
     @transaction.atomic
@@ -527,8 +462,13 @@ class InventoryReservationService:
             tenant=reservation.tenant,
         )
         quantity = Decimal(str(quantity))
-        if quantity <= 0:
-            raise ValidationError("Reservation fulfilment quantity must be positive.")
+        if not quantity.is_finite() or quantity <= 0:
+            raise ValidationError("Reservation fulfilment quantity must be finite and positive.")
+        existing = InventoryLedgerEntry.all_objects.filter(tenant_id=reservation.tenant_id, idempotency_key=idempotency_key).first()
+        if existing:
+            if existing.source_document_type != "RESERVATION_FULFILMENT" or existing.source_document_id != str(reservation.pk) or existing.inventory_batch_id != inventory_batch.pk or existing.base_quantity_delta != quantity:
+                raise ValidationError("Fulfilment retry key belongs to a different request.")
+            return reservation
         if reservation.status in {
             InventoryReservation.Status.RELEASED,
             InventoryReservation.Status.EXPIRED,

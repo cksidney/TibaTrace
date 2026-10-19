@@ -303,7 +303,7 @@ class StageP2Decisions(Stage):
         # A different person signs the decision off. The service refuses the
         # receiver for either role; using a third actor also demonstrates the
         # inspector/approver split the domain supports.
-        approver = ctx.get("user:ops")
+        approver = ctx.get("user:superintendent")
         plan = ctx.get("quality:plan")
 
         for batch in ctx.get("quality:batches"):
@@ -484,6 +484,7 @@ class StageQ2BatchRelease(Stage):
             GoodsReceivingService.release_batch(
                 batch=batch,
                 released_by=releaser,
+                reason="Synthetic independent quality decision and release review",
                 quantity=release_qty,
                 as_of=ctx.as_of,
             )

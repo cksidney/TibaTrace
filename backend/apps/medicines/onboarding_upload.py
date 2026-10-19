@@ -11,6 +11,7 @@ import json
 from decimal import Decimal, InvalidOperation
 
 from django.db import transaction
+from django.db.models import Q
 
 from apps.medicines.models import Medicine
 from apps.medicines.onboarding import assert_setup_access
@@ -181,12 +182,15 @@ def import_item_upload(*, tenant, actor, rows, source_date, source_filename, dry
             tenant = Tenant.objects.select_for_update().get(pk=tenant.pk)
         prior = LegacyCatalogueImport.all_objects.filter(tenant=tenant, code=import_code).first()
         if prior:
+            if LegacyCatalogueItem.all_objects.filter(tenant=tenant, import_batch=prior, review__discarded=True).exists():
+                result["errors"] = [_error(0, "rows", None, "This source was discarded. Upload a corrected source file with verified details.")]
+                return result
             if not _retry_matches(prior, parsed, fingerprint):
                 result["errors"] = [_error(0, "rows", None, "The existing import has conflicting immutable source evidence. Contact support; nothing was changed.")]
                 return result
             result.update(valid=True, existing=len(rows), ready_to_stage=len(rows), import_id=str(prior.pk), import_code=prior.code)
             return result
-        used_codes = {str(code).casefold() for pair in LegacyCatalogueItem.all_objects.filter(tenant=tenant)
+        used_codes = {str(code).casefold() for pair in LegacyCatalogueItem.all_objects.filter(tenant=tenant).filter(~Q(review__has_key="discarded") | Q(review__discarded=False))
                       .values_list("legacy_code", "proposed_sku_code") for code in pair if code}
         for row in parsed:
             code = row["values"]["item_code"]

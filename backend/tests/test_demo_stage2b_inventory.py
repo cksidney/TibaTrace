@@ -99,7 +99,7 @@ def test_quality_release_gate_refusals(inventory_ready):
     if rejected_batch:
         with pytest.raises(ValidationError, match="not releasable|expired|decision"):
             GoodsReceivingService.release_batch(
-                batch=rejected_batch, released_by=releaser, as_of=AS_OF
+                batch=rejected_batch, released_by=releaser, as_of=AS_OF, reason="Synthetic refusal probe"
             )
 
 

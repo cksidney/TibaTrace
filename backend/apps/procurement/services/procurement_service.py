@@ -66,7 +66,7 @@ class ProcurementService:
                 requested_quantity=item["requested_quantity"],
                 estimated_unit_cost=item.get("estimated_unit_cost", decimal.Decimal("0.00")),
                 reason=item.get("reason", ""),
-                purchase_unit=item.get("purchase_unit", "pack"),
+                purchase_unit=item.get("purchase_unit") or item["sku"].package_definition.unit_of_measure,
             )
 
         return requisition
@@ -87,7 +87,7 @@ class ProcurementService:
     @transaction.atomic
     def add_line(*, requisition, sku, requested_quantity,
                  estimated_unit_cost=decimal.Decimal("0.00"), reason="",
-                 purchase_unit="pack") -> PurchaseRequisitionLine:
+                 purchase_unit=None) -> PurchaseRequisitionLine:
         """Add a demand line.
 
         Refused once the requisition has been approved: an approver signed off
@@ -101,6 +101,9 @@ class ProcurementService:
             raise ValidationError(
                 f"Lines cannot be added to a requisition in {requisition.status}."
             )
+        base_unit = sku.package_definition.unit_of_measure
+        if purchase_unit and purchase_unit != base_unit:
+            raise ValidationError("Requisition quantities and costs must use the confirmed SKU base unit.")
         return PurchaseRequisitionLine.all_objects.create(
             tenant=requisition.tenant,
             requisition=requisition,
@@ -110,7 +113,7 @@ class ProcurementService:
             # against this line yet, and a zero default would make the line look
             # already satisfied to any replenishment calculation reading it.
             outstanding_quantity=requested_quantity,
-            purchase_unit=purchase_unit,
+            purchase_unit=base_unit,
         )
 
     @staticmethod
@@ -229,6 +232,9 @@ class ProcurementService:
 
         total_gross = decimal.Decimal("0.00")
         for item in lines_data:
+            base_unit = item["sku"].package_definition.unit_of_measure
+            if item.get("purchase_unit") and item["purchase_unit"] != base_unit:
+                raise ValidationError("Purchase-order quantities and unit costs must use the confirmed SKU base unit.")
             qty = item["quantity"]
             unit_cost = item["unit_cost"]
             line_total = decimal.Decimal(qty) * decimal.Decimal(unit_cost)
@@ -241,7 +247,7 @@ class ProcurementService:
                 ordered_quantity=qty,
                 unit_price=unit_cost,
                 total_price=line_total,
-                purchase_unit=item.get("purchase_unit", "pack"),
+                purchase_unit=base_unit,
                 requires_cold_chain=item.get("requires_cold_chain", False),
             )
 

@@ -4,7 +4,7 @@ from decimal import Decimal
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-from apps.identity.models import User
+from apps.identity.models import Role, User, UserRole
 from apps.inventory.models import InventoryLocation
 from apps.medicines.models import (
     ActiveSubstance,
@@ -56,6 +56,9 @@ class Command(BaseCommand):
         inspector, _ = User.objects.get_or_create(
             username="demo-inspector", defaults={"tenant": tenant}
         )
+
+        role, _ = Role.all_objects.get_or_create(tenant=tenant, code="DEMO-RECEIVING", defaults={"name": "Demo receiving", "capabilities": ["inventory.manage", "procurement.write"]})
+        UserRole.all_objects.get_or_create(tenant=tenant, user=receiver, role=role)
 
         substance, _ = ActiveSubstance.all_objects.get_or_create(
             code="SUB-AMOX",

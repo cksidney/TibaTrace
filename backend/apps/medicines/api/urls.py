@@ -30,7 +30,7 @@ from apps.medicines.api.views import (
     TherapeuticClassificationViewSet,
 )
 
-from .onboarding import LegacyOpeningCountUpload
+from .onboarding import LegacyImportDiscard, LegacyOpeningCountUpload
 
 router = DefaultRouter()
 router.register("dose-forms", DoseFormViewSet, basename="dose-forms")
@@ -52,6 +52,7 @@ router.register("catalog", MedicineViewSet, basename="catalog")
 
 urlpatterns = [
     path("initial-setup/stocktake-upload/", LegacyOpeningCountUpload.as_view(), name="legacy-opening-count-upload"),
+    path("initial-setup/imports/<uuid:pk>/discard/", LegacyImportDiscard.as_view(), name="legacy-import-discard"),
     path("initial-setup/", LegacyItemList.as_view(), name="legacy-item-setup"),
     path("initial-setup/import/", LegacyItemUpload.as_view(), name="legacy-item-upload"),
     path("initial-setup/stocktake-template/", LegacyOpeningStocktakeTemplate.as_view(), name="legacy-opening-stocktake-template"),

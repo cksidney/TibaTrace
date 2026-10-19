@@ -187,7 +187,7 @@ class SupplierGovernanceService:
     @classmethod
     def ineligibility_reasons(cls, *, supplier: Supplier, on_date=None,
                               controlled: bool = False, cold_chain: bool = False,
-                              held_qualifications: set[str] | None = None) -> list[str]:
+                              held_qualifications: set[str] | None = None, medicine: bool = True) -> list[str]:
         """Every reason this supplier cannot be sent an order.
 
         All of them, not the first. A buyer told one problem at a time chases
@@ -202,7 +202,7 @@ class SupplierGovernanceService:
                 f"{' or '.join(sorted(PURCHASABLE_STATUSES))} may receive orders."
             )
 
-        required = set(BASELINE_QUALIFICATIONS)
+        required = set(BASELINE_QUALIFICATIONS) if medicine else {SupplierQualification.QualificationType.BUSINESS_REGISTRATION}
         if controlled:
             required |= CONTROLLED_QUALIFICATIONS
         if cold_chain:

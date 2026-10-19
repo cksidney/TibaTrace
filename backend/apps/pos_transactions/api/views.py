@@ -166,10 +166,12 @@ class PosTransactionViewSet(viewsets.ReadOnlyModelViewSet):
         data = serializer.validated_data
         tenant = _tenant(request)
         sku = _run(lambda: PosRetailService.resolve_barcode(tenant=tenant, barcode=data["barcode"]))
+        from apps.inventory.units import normalize_barcode_quantity
+        quantity, evidence = _run(lambda: normalize_barcode_quantity(tenant=tenant, sku=sku, barcode=data["barcode"], quantity=data["quantity"]))
         line = _run(
             lambda: PosRetailService.add_line(
                 tenant=tenant, transaction_id=pk, actor=request.user, device_id=data["device_id"],
-                sku_id=sku.pk, quantity=data["quantity"], scan_source="BARCODE",
+                sku_id=sku.pk, quantity=quantity, scan_source="BARCODE", unit_evidence=evidence,
             )
         )
         return Response(PosTransactionLineSerializer(line).data, status=status.HTTP_201_CREATED)

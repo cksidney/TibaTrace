@@ -69,9 +69,6 @@ def stage_quarantine(*, tenant, batch, location, actor, reason):
         raise ValidationError("Procurement write authority and physical custody evidence are required.")
     batch = ReceivedBatch.all_objects.select_for_update().get(tenant=tenant, pk=batch.pk)
     validate_location(tenant, batch, location, quarantine=True)
-    held_quantity = (batch.received_quantity or 0) - (batch.accepted_quantity or 0)
-    if held_quantity <= 0:
-        raise ValidationError("There is no unreleased physical quantity to stage in quarantine.")
     existing = InventoryLedgerEntry.all_objects.filter(
         tenant=tenant, idempotency_key=f"quarantine-receipt:{batch.pk}"
     ).first()
@@ -79,6 +76,9 @@ def stage_quarantine(*, tenant, batch, location, actor, reason):
         if existing.location_id != location.pk:
             raise ValidationError("This receipt was already staged in another custody location.")
         return existing.inventory_batch
+    held_quantity = (batch.received_quantity or 0) - (batch.accepted_quantity or 0)
+    if held_quantity <= 0:
+        raise ValidationError("There is no unreleased physical quantity to stage in quarantine.")
     item = resolve_batch(tenant, batch, "QUARANTINED")
     InventoryLedgerService.post_entry(
         tenant=tenant,
@@ -162,8 +162,8 @@ def release_received_stock(*, tenant, received_batch, receiving_location, actor=
             inventory_batch=item,
         )
         move_quantity = min(delta, Decimal(staged_quantity), source_balance.on_hand - source_balance.reserved)
-        if move_quantity < 0:
-            move_quantity = Decimal(0)
+        if move_quantity < delta:
+            raise ValidationError("Released quantity exceeds the remaining unreserved quarantine custody; reconcile returns and losses first.")
         if move_quantity:
             InventoryLedgerService.post_entry(
                 **common,

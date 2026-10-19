@@ -247,7 +247,7 @@ class PosRetailService:
 
     @classmethod
     @transaction.atomic
-    def add_line(cls, *, tenant, transaction_id, actor, device_id: str, sku_id, quantity, scan_source="SEARCH"):
+    def add_line(cls, *, tenant, transaction_id, actor, device_id: str, sku_id, quantity, scan_source="SEARCH", unit_evidence=None):
         # Guest sales have no customer row. Preserve the mandatory transaction,
         # branch and store locks without locking that nullable pricing join.
         transaction_record = (
@@ -308,6 +308,7 @@ class PosRetailService:
                 currency=transaction_record.currency,
                 price_snapshot=snapshot,
                 scan_source=scan_source,
+                unit_evidence=[unit_evidence] if unit_evidence else [],
             )
         else:
             existing.quantity = resulting_quantity
@@ -315,8 +316,9 @@ class PosRetailService:
             existing.line_total = line_total
             existing.price_snapshot = snapshot
             existing.scan_source = scan_source
+            existing.unit_evidence = [*existing.unit_evidence, unit_evidence] if unit_evidence else existing.unit_evidence
             existing.save(update_fields=[
-                "quantity", "unit_price", "line_total", "price_snapshot", "scan_source", "updated_at",
+                "quantity", "unit_price", "line_total", "price_snapshot", "scan_source", "unit_evidence", "updated_at",
             ])
             line = existing
         cls._update_inventory_context(line=line, item=item, store=transaction_record.store)

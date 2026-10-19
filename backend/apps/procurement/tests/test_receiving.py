@@ -102,15 +102,16 @@ def test_goods_receiving_workflow_and_tolerances():
         goods_receipt=grn,
         po_line=po_line,
         delivered_quantity=100,
-        accepted_quantity=90,
+        quarantined_quantity=90,
         rejected_quantity=10,
         discrepancy_reason="10 damaged boxes",
     )
     assert grn_line.delivered_quantity == 100
-    assert grn_line.accepted_quantity == 90
+    assert grn_line.accepted_quantity == 0
+    assert grn_line.quarantined_quantity == 90
 
     # 4. Close GRN
     closed_grn = GoodsReceivingService.close_goods_receipt(goods_receipt=grn)
-    assert closed_grn.status == GoodsReceipt.Status.ACCEPTED
+    assert closed_grn.status == GoodsReceipt.Status.UNDER_INSPECTION
     po.refresh_from_db()
     assert po.status == PurchaseOrder.Status.FULLY_RECEIVED

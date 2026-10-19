@@ -268,12 +268,18 @@ class GoodsReceiptSerializer(serializers.ModelSerializer):
 
 
 class ReceivedBatchSerializer(serializers.ModelSerializer):
+    quality_decision = serializers.SerializerMethodField()
+
+    def get_quality_decision(self, obj):
+        item = QualityDecision.all_objects.filter(tenant_id=obj.tenant_id, batch=obj).order_by("-revision").first()
+        return {"id": str(item.pk), "revision": item.revision, "outcome": item.decision, "inspector": str(item.inspector_id), "reason": item.decision_notes, "evidence_reference": item.evidence_reference} if item else None
+
     sku_code = serializers.CharField(source="sku.sku_code", read_only=True)
 
     class Meta:
         model = ReceivedBatch
         fields = [
-            "id",
+            "id", "quality_decision",
             "grn_line",
             "sku",
             "sku_code",
@@ -361,7 +367,7 @@ class ProcurementLineInputSerializer(serializers.Serializer):
     requested_quantity = serializers.IntegerField(min_value=1, required=False)
     quantity = serializers.IntegerField(min_value=1, required=False)
     unit_cost = serializers.DecimalField(max_digits=12, decimal_places=2, required=False)
-    purchase_unit = serializers.CharField(max_length=64, default="pack")
+    purchase_unit = serializers.CharField(max_length=64, required=False)
     requires_cold_chain = serializers.BooleanField(default=False)
 
 
@@ -417,7 +423,7 @@ class ReceiveBatchSerializer(serializers.Serializer):
     po_line = serializers.UUIDField()
     manufacturer_batch_number = serializers.CharField(max_length=128)
     manufacture_date = serializers.DateField(required=False, allow_null=True)
-    expiry_date = serializers.DateField()
+    expiry_date = serializers.DateField(required=False, allow_null=True, default=None)
     received_quantity = serializers.IntegerField(min_value=1)
     discrepancy_reason = serializers.CharField(
         max_length=1000,
@@ -442,6 +448,7 @@ class ReceivingInspectionCreateSerializer(serializers.Serializer):
 
 
 class BatchReleaseSerializer(serializers.Serializer):
+    idempotency_key = serializers.CharField(max_length=128, required=False, default="")
     reason = serializers.CharField(max_length=2000)
     quantity = serializers.IntegerField(min_value=1, required=False)
     inventory_location = serializers.UUIDField(required=False)
@@ -545,7 +552,7 @@ class ReceivingScanSerializer(serializers.ModelSerializer):
         model = ReceivingScan
         fields = (
             "id", "sku", "sku_code", "scanned_barcode", "batch_number",
-            "expiry_date", "scanned_quantity",
+            "expiry_date", "scanned_quantity", "unit_evidence",
         )
 
 
@@ -574,7 +581,7 @@ class ReceivingScanCreateSerializer(serializers.Serializer):
     scanned_barcode = serializers.CharField(max_length=120, allow_blank=True, default="")
     batch_number = serializers.CharField(max_length=120)
     #: Required. The service refuses a batch that has already expired.
-    expiry_date = serializers.DateField()
+    expiry_date = serializers.DateField(required=False, allow_null=True, default=None)
     scanned_quantity = serializers.DecimalField(max_digits=14, decimal_places=2)
 
 

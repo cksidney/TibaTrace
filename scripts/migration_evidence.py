@@ -139,6 +139,23 @@ def _reviewed_checkout_constraints(app_label, name, operations):
     )
 
 
+def _reviewed_quality_revision_constraint(app_label, name, operations):
+    """Retain all quality evidence while permitting explicit numbered reinspections.
+
+    Only the exact old uniqueness replacement is acknowledged. The new revision
+    key and one-to-one supersession preserve an unambiguous latest decision.
+    """
+    if (app_label, name) != ("procurement", "0013_batchqualityrelease_and_more"):
+        return False
+    if [type(op).__name__ for op in operations] != ["CreateModel", "RemoveConstraint", "AddField", "AddField", "AddField", "AddConstraint", "AddConstraint", "AddField", "AddField", "AddField", "AddConstraint"]:
+        return False
+    return (operations[1].model_name == "qualitydecision" and operations[1].name == "uq_quality_decision_per_batch"
+            and operations[2].model_name == "qualitydecision" and operations[2].name == "revision" and operations[2].field.default == 1
+            and operations[3].model_name == "qualitydecision" and operations[3].name == "supersedes" and operations[3].field.one_to_one
+            and operations[5].model_name == "qualitydecision" and operations[5].constraint.name == "uq_quality_decision_revision"
+            and tuple(operations[5].constraint.fields) == ("tenant", "batch", "revision") and operations[5].constraint.condition is None)
+
+
 def build_inventory(new_files: list[str]) -> list[dict]:
     import django
 
@@ -176,7 +193,8 @@ def build_inventory(new_files: list[str]) -> list[dict]:
                 "reviewed_constraint_replacement": _reviewed_recall_constraint_replacement(
                     app_label, name, migration.operations
                 ) or _reviewed_commercial_quantity_breaks(app_label, name, migration.operations)
-                or _reviewed_checkout_constraints(app_label, name, migration.operations),
+                or _reviewed_checkout_constraints(app_label, name, migration.operations)
+                or _reviewed_quality_revision_constraint(app_label, name, migration.operations),
                 "data_migration": bool(set(operation_types) & DATA_MIGRATION_OPERATIONS),
                 "sql_operation": bool(set(operation_types) & SQL_OPERATIONS),
                 "source_path": source_path,
