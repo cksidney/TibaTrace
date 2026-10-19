@@ -628,6 +628,8 @@ class ReceivedBatchViewSet(BaseProcurementViewSet):
     def release(self, request, pk=None):
         serializer = BatchReleaseSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        if not serializer.validated_data.get("idempotency_key"):
+            raise ValidationError({"idempotency_key": "Provide a stable retry key for this quality-release command."})
         batch = self.get_object()
         try:
             with transaction.atomic():

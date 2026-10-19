@@ -79,6 +79,7 @@ def test_quality_release_requires_independent_quality_decision(world, received_s
         f"/api/procurement/received-batches/{batch.pk}/release/",
         {
             "quantity": 5,
+            "idempotency_key": "MISSING-DECISION",
             "reason": "Audit release without quality decision",
             "inventory_location": str(world["store"].pk),
         },
@@ -112,7 +113,12 @@ def test_return_dispatch_and_release_cannot_invent_replacement_stock(world, rece
     )
     response = world["client"].post(
         f"/api/procurement/received-batches/{batch.pk}/release/",
-        {"quantity": 5, "reason": "Audit release after two left custody", "inventory_location": str(world["store"].pk)},
+        {
+            "quantity": 5,
+            "idempotency_key": "RETURNED-OVER-RELEASE",
+            "reason": "Audit release after two left custody",
+            "inventory_location": str(world["store"].pk),
+        },
         format="json",
     )
     if response.status_code not in (400, 403):
@@ -548,7 +554,6 @@ def test_rejected_return_is_not_subtracted_twice_from_release_allowance(world, r
 def test_reservation_refuses_date_only_deadlines_and_retries_after_deadline(world, monkeypatch):
     from datetime import date
 
-
     args = dict(
         tenant=world["tenant"],
         branch=world["branch"],
@@ -566,3 +571,43 @@ def test_reservation_refuses_date_only_deadlines_and_retries_after_deadline(worl
     monkeypatch.setattr(timezone, "now", lambda: deadline + timezone.timedelta(hours=1))
     again = InventoryReservationService.reserve_stock(**args, expiry_time=deadline)
     assert again.pk == first.pk
+
+
+def test_partial_quality_release_api_retry_moves_quantity_once(world, received_stock):
+    receipt, batch, quarantine = received_stock
+    other = reviewer(world)
+    qualify(receipt, other)
+    BatchQualityDecisionService.record_decision(
+        batch=batch,
+        inspector=other,
+        decision_by=other,
+        outcome="APPROVE_FOR_RELEASE",
+        reason="Independent inspection confirms five actual packs",
+    )
+    world["client"].force_authenticate(other)
+    path = f"/api/procurement/received-batches/{batch.pk}/release/"
+    values = {
+        "quantity": 2,
+        "reason": "Release two inspected packs",
+        "inventory_location": str(world["store"].pk),
+        "idempotency_key": "PARTIAL-API-RETRY",
+    }
+    for _ in range(2):
+        response = world["client"].post(path, values, format="json")
+        assert response.status_code == 200, response.data
+    batch.refresh_from_db()
+    assert batch.accepted_quantity == 2
+    assert InventoryBalance.all_objects.get(location=quarantine).on_hand == 3
+    assert (
+        InventoryBalance.all_objects.get(
+            location=world["store"], inventory_batch__manufacturer_batch_number=batch.manufacturer_batch_number
+        ).on_hand
+        == 2
+    )
+    assert world["client"].post(path, {**values, "quantity": 1}, format="json").status_code == 400
+    assert (
+        world["client"]
+        .post(path, {key: value for key, value in values.items() if key != "idempotency_key"}, format="json")
+        .status_code
+        == 400
+    )

@@ -256,6 +256,7 @@ def test_procurement_workspace_runs_procure_to_stock_lifecycle(client, django_us
     release_response = client.post(
         f"/api/procurement/received-batches/{batch_id}/release/",
         {
+            "idempotency_key": "PROC-QUALITY-RELEASE-001",
             "reason": "Packaging, batch and expiry verified",
             "quantity": 20,
             "inventory_location": str(inventory_location.pk),
