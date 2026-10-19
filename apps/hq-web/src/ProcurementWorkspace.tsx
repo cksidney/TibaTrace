@@ -906,7 +906,7 @@ function DialogFields({
 
   if (dialog.kind === 'quarantine') return <>
     <p>Record the actual received quantity in tracked quarantine before quality release or supplier return.</p>
-    {field('inventory_location', 'Quarantine custody', data.inventoryLocations.filter((item) => item.status === 'ACTIVE' && item.quarantine_capability).map((item) => ({ id: item.id, label: item.name })))}
+    {field('inventory_location', 'Quarantine custody', data.inventoryLocations.filter((item) => item.status === 'ACTIVE' && item.quarantine_capability && item.branch === data.receipts.find((receipt) => receipt.lines.some((line) => line.id === dialog.batch.grn_line))?.receiving_branch).map((item) => ({ id: item.id, label: item.name })))}
     {field('reason', 'Physical custody evidence')}
   </>;
 
@@ -919,7 +919,7 @@ function DialogFields({
 
   if (dialog.kind === 'release') return <>
     <div className="business-dialog-record"><div><code>{dialog.batch.sku_code}</code><strong>{dialog.batch.manufacturer_batch_number}</strong></div><ProcurementStatus value={dialog.batch.quality_status} /></div>
-    {field('inventory_location', 'Destination inventory location', data.inventoryLocations.filter((item) => item.status === 'ACTIVE' && !item.quarantine_capability && !['QUARANTINE', 'DAMAGED', 'EXPIRED', 'RETURNS'].includes(item.location_type)).map((item) => ({ id: item.id, label: `${item.name} · ${titleCase(item.location_type)}` })))}
+    {field('inventory_location', 'Destination inventory location', data.inventoryLocations.filter((item) => item.status === 'ACTIVE' && !item.quarantine_capability && !['QUARANTINE', 'DAMAGED', 'EXPIRED', 'RETURNS'].includes(item.location_type) && item.branch === data.receipts.find((receipt) => receipt.lines.some((line) => line.id === dialog.batch.grn_line))?.receiving_branch).map((item) => ({ id: item.id, label: `${item.name} · ${titleCase(item.location_type)}` })))}
     {field('quantity', 'Release quantity', undefined, 'number')}
     <label className="business-field"><span>Release rationale <b>Required</b></span><textarea onChange={(event) => setValue('reason', event.target.value)} required value={values.reason ?? ''} /></label>
   </>;
@@ -1067,7 +1067,7 @@ function dialogDefaults(dialog: Exclude<DialogMode, null>, data: ProcurementData
   if (dialog.kind === 'inspection') return { decision: 'QUARANTINE', reason: '', temperature_excursion: 'false' };
   if (dialog.kind === 'quarantine') return { inventory_location: '', reason: '' };
   if (dialog.kind === 'quality-decision') return { outcome: 'HOLD_FOR_REVIEW', reason: '', evidence_reference: '' };
-  if (dialog.kind === 'release') return { idempotency_key: crypto.randomUUID(), inventory_location: data.inventoryLocations.find((item) => item.status === 'ACTIVE')?.id ?? '', quantity: String(dialog.batch.quarantined_quantity || dialog.batch.received_quantity), reason: '' };
+  if (dialog.kind === 'release') return { idempotency_key: crypto.randomUUID(), inventory_location: '', quantity: String(dialog.batch.quarantined_quantity || dialog.batch.received_quantity), reason: '' };
   if (dialog.kind === 'reject-return') return { reason: '' };
   if (dialog.kind === 'return-credit') return { amount: '', reference: '', variance_reason: '' };
   if (dialog.kind === 'return') return { return_category: 'QUALITY_REJECTION', expected_credit: '', batch: '', source_location: '', goods_receipt: data.receipts[0]?.id ?? '', quantity: '', reason: '', return_number: `RET-${Date.now().toString().slice(-8)}`, sku: data.skus[0]?.id ?? '' };
