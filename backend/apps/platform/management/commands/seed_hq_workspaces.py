@@ -760,6 +760,15 @@ class Command(BaseCommand):
         return users_by_label["operator"], users_by_label["supervisor"]
 
     def _catalogue(self, tenant):
+        # Nested demo seeders can add SKUs between runs. Keep the established
+        # inventory identity instead of choosing a new first catalogue row.
+        existing_batch = InventoryBatch.all_objects.filter(
+            tenant=tenant,
+            manufacturer_batch_number="HQ-DEMO-RELEASED-001",
+            sku__manufactured_product__tenant=tenant,
+        ).select_related("sku").first()
+        if existing_batch:
+            return existing_batch.sku
         sku = CommercialSKU.all_objects.filter(
             tenant=tenant,
             manufactured_product__tenant=tenant,

@@ -85,12 +85,18 @@ def test_hq_seed_builds_complete_and_open_procurement_journeys(
         model: model.all_objects.filter(tenant=tenant).count()
         for model in tracked_models
     }
+    inventory_before = list(InventoryLedgerEntry.all_objects.filter(
+        tenant=tenant, source_document_type="HQDemoSeed",
+    ).order_by("pk").values_list("pk", "sku_id"))
     call_command("seed_hq_workspaces", tenant_slug=tenant.slug, verbosity=0, allow_demo_seed=True)
     counts_after = {
         model: model.all_objects.filter(tenant=tenant).count()
         for model in tracked_models
     }
     assert counts_after == counts_before
+    assert list(InventoryLedgerEntry.all_objects.filter(
+        tenant=tenant, source_document_type="HQDemoSeed",
+    ).order_by("pk").values_list("pk", "sku_id")) == inventory_before
 
     platform_admin = django_user_model.objects.create_user(
         username="hq-procurement-platform-admin",

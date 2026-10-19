@@ -64,10 +64,22 @@ def test_access_snapshot_refuses_historical_window(world, report_id):  # noqa: F
 
 
 def test_unsupported_accounting_forecasts_and_certification_remain_honest():
-    for report_id in ["fin-gl", "fin-vat", "inv-valuation", "an-demand-forecast", "reg-ppb", "cd-register", "sec-secret-scan"]:
+    for report_id in ["fin-gl", "fin-vat", "an-demand-forecast", "reg-ppb", "cd-register", "sec-secret-scan"]:
         result = availability(report_id)
         assert result["available"] is False
         assert "required" in result["availability_note"]
+
+
+@pytest.mark.parametrize("report_id", ["inv-valuation", "exec-inventory-value"])
+def test_inventory_valuation_reports_disclose_missing_acquisition_costs(world, report_id):  # noqa: F811
+    assert availability(report_id)["available"]
+    result = query_report(report_id, world["tenant"].pk, world["operator"], None)
+    assert result.rows
+    assert all(row[-2:] == ["UNVALUED", "UNVALUED"] for row in result.rows)
+    assert "unvalued lines" in result.basis
+    reader = user(world["tenant"], "valuation-report-reader", ["reports.view"])
+    with pytest.raises(PermissionError):
+        query_report(report_id, world["tenant"].pk, reader, None)
 
 
 def test_role_capability_mutations_are_audited_by_real_identity_api(world):  # noqa: F811

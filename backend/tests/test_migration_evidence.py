@@ -90,6 +90,12 @@ RELEASE_MIGRATIONS = [
     "backend/apps/prescription/migrations/0018_fiscal_print_documents.py",
     "backend/apps/prescription/migrations/0019_expand_payment_provider_codes.py",
     "backend/apps/prescription/migrations/0020_prescription_intake_evidence.py",
+    # Tenant item setup, custody lots, approved inventory exceptions and returns.
+    "backend/apps/inventory/migrations/0007_inventorybatchcost_inventorychangerequest_and_more.py",
+    "backend/apps/medicines/migrations/0006_commercialsku_product_kind_and_more.py",
+    "backend/apps/procurement/migrations/0009_supplierreturn_approved_by_and_more.py",
+    "backend/apps/procurement/migrations/0010_supplierreturn_uq_supplier_return_credit_reference.py",
+    "backend/apps/procurement/migrations/0011_supplierreturn_return_category.py",
 ]
 
 
