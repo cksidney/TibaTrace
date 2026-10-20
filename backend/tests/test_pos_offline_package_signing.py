@@ -135,6 +135,7 @@ def test_verification_fails_closed_without_a_signing_key(tenant, package, settin
         ("findings_digest", "0" * 64),
         ("nonce", str(uuid.uuid4())),
     ],
+    ids=["expires_at", "context_hash", "permitted_actions", "tenant_id", "branch_id", "device_id", "findings_digest", "nonce"],
 )
 def test_any_mutation_of_the_signed_payload_invalidates_it(tenant, package, field, value):
     """Everything security-relevant is inside the signature.
@@ -170,6 +171,7 @@ def test_signature_is_domain_separated():
         ("expected_context_hash", "different-ctx", "OFFLINE_PACKAGE_STALE_CONTEXT"),
         ("expected_branch_id", str(uuid.uuid4()), "OFFLINE_PACKAGE_WRONG_BRANCH"),
     ],
+    ids=["expected_device_id", "expected_context_hash", "expected_branch_id"],
 )
 def test_package_is_bound_to_its_issued_context(tenant, package, kwarg, value, code):
     result = verify(tenant, package, **{kwarg: value})

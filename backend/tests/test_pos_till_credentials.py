@@ -99,11 +99,17 @@ class TestPinPolicy:
 
 class TestPinStorage:
     def test_pin_is_never_stored_in_the_clear(self, tenant):
+        from django.contrib.auth.hashers import identify_hasher
+
         credential = make_credential(tenant, make_operator(tenant), pin="8351")
-        assert "8351" not in credential.pin_hash
+        credential.refresh_from_db()
         assert credential.pin_hash != "8351"
-        # And nothing else on the row carries it either.
-        assert "8351" not in str(credential.__dict__)
+        assert identify_hasher(credential.pin_hash)
+        assert credential.check_pin("8351") is True
+        assert credential.check_pin("8352") is False
+        # Random UUIDs and hash output can coincidentally contain four digits.
+        # Stored values must never equal the plaintext PIN.
+        assert "8351" not in [value for value in credential.__dict__.values() if isinstance(value, str)]
 
     def test_pin_verifies(self, tenant):
         credential = make_credential(tenant, make_operator(tenant), pin="8351")
