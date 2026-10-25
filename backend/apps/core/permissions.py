@@ -46,3 +46,13 @@ class PlatformOwnerRequired(BasePermission):
     def has_permission(self, request, view):
         user = request.user
         return bool(user and user.is_authenticated and (user.is_platform_admin or user.is_superuser))
+
+
+def require_tenant_capability(actor, tenant_id, *capabilities):
+    """Require a named, active actor even for direct service calls."""
+    from django.core.exceptions import PermissionDenied
+
+    if not tenant_id or not actor or not actor.is_authenticated or not actor.is_active or not any(
+        actor.has_capability(capability, tenant_id=tenant_id) for capability in capabilities
+    ):
+        raise PermissionDenied("The required tenant capability is not assigned.")

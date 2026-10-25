@@ -35,7 +35,12 @@ def feed_connection(*, tenant, provider):
     return config
 
 
-def feed_adapter(*, tenant, provider):
+def feed_adapter(*, tenant, provider, branch=None, actor=None):
+    if provider == "DHA" and branch is not None and actor is not None:
+        from apps.integrations.dha_models import DhaConnection
+        if DhaConnection.all_objects.filter(tenant=tenant, branch=branch).exists():
+            from apps.integrations.dha_rx import tenant_feed
+            return tenant_feed(tenant, branch, actor)
     config = feed_connection(tenant=tenant, provider=provider)
     if any(not isinstance(config.get(name), dict) or not config[name] for name in ("patient_map", "prescriber_map", "product_map")):
         raise ValidationError("Tenant patient, prescriber and product mappings are required before feed activation.")
@@ -59,11 +64,11 @@ def feed_adapter(*, tenant, provider):
     return adapter, safe_config
 
 
-def feed_readiness(tenant):
+def feed_readiness(tenant, branch=None, actor=None):
     result = []
     for provider in PROVIDERS:
         try:
-            feed_adapter(tenant=tenant, provider=provider)
+            feed_adapter(tenant=tenant, provider=provider, branch=branch, actor=actor)
             ready = True
         except Exception:  # a connector configuration error must not break manual intake
             ready = False

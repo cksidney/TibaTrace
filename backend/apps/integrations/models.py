@@ -38,6 +38,9 @@ from django.utils import timezone
 
 from apps.core.models import StrictTenantManager, TimestampedModel
 
+# Django discovers these tenant-owned models alongside the platform provider models.
+from apps.integrations.dha_models import DhaCallback, DhaConnection, DhaExchange, DhaVisit  # noqa: F401
+
 
 class ProviderType(models.TextChoices):
     DHA_HIE = "DHA_HIE", "DHA Health Information Exchange"

@@ -205,7 +205,7 @@ class PosPrescriptionIntakeViewSet(RequireAlignedPosClientMixin, viewsets.ViewSe
             "stores": list(InventoryLocation.all_objects.filter(tenant=tenant, branch=branch, status="ACTIVE", quarantine_capability=False,
                 damaged_goods_capability=False, expiry_hold_capability=False, returns_capability=False, location_type__in=["STORE", "PHARMACY"]).values("id", "name")),
             "orders": list(SalesOrder.all_objects.filter(tenant=tenant, branch=branch, status="APPROVED", total__gt=0).order_by("-created_at").values("id", "order_number", "total")[:50]),
-            "feeds": feed_readiness(tenant), "max_file_bytes": MAX_FILE_BYTES, "max_total_bytes": MAX_TOTAL_BYTES, "max_files": MAX_FILES})
+            "feeds": feed_readiness(tenant, branch=branch, actor=request.user), "max_file_bytes": MAX_FILE_BYTES, "max_total_bytes": MAX_TOTAL_BYTES, "max_files": MAX_FILES})
 
     @action(detail=False, methods=["get"])
     def reconcile(self, request):
@@ -221,17 +221,19 @@ class PosPrescriptionIntakeViewSet(RequireAlignedPosClientMixin, viewsets.ViewSe
         submitted = FeedImportSerializer(data=request.data)
         submitted.is_valid(raise_exception=True)
         provider, reference = submitted.validated_data["provider"], submitted.validated_data["reference"]
+        from apps.integrations.dha_rx import canonical_source_reference
+        source_reference = _domain(lambda: canonical_source_reference(tenant, branch, provider, reference))
         key = submitted.validated_data["idempotency_key"]
         original = PrescriptionIntakeReceipt.all_objects.filter(tenant=tenant, idempotency_key=key).select_related("prescription").first()
         if original:
             files = _domain(lambda: decode_attachments(submitted.validated_data["attachments"]))
             saved_files = source_documents(original.prescription)
-            if (original.provider_code != provider or original.source_key != f"{provider}:{reference}"
+            if (original.provider_code != provider or original.source_key != f"{provider}:{source_reference}"
                 or original.actor_id != request.user.pk or original.device_id != device or original.branch_id != branch.pk
                 or sorted((row["name"], row["hash"]) for row in files) != sorted((row["name"], row["sha256"]) for row in saved_files)):
                 raise ValidationError("This import retry key belongs to a different command.")
             return Response(self.representation(original.prescription, request, detail=True), status=200)
-        adapter, config = _domain(lambda: feed_adapter(tenant=tenant, provider=provider))
+        adapter, config = _domain(lambda: feed_adapter(tenant=tenant, provider=provider, branch=branch, actor=request.user))
         try:
             payload = adapter.fetch_prescription(reference)
         except Exception:
@@ -239,6 +241,8 @@ class PosPrescriptionIntakeViewSet(RequireAlignedPosClientMixin, viewsets.ViewSe
         normalized = FeedPrescriptionSerializer(data=payload)
         normalized.is_valid(raise_exception=True)
         data = normalized.validated_data
+        if provider == "DHA" and hasattr(adapter, "patient_map"):
+            config["patient_map"] = adapter.patient_map
         if data["reference"] != reference:
             raise ValidationError("The provider returned a different prescription reference.")
         def mapped(mapping, value):
@@ -248,14 +252,14 @@ class PosPrescriptionIntakeViewSet(RequireAlignedPosClientMixin, viewsets.ViewSe
             return result
         command = {"device_id": device, "idempotency_key": key,
             "patient": mapped("patient_map", data["patient_reference"]), "practitioner": mapped("prescriber_map", data["prescriber_reference"]),
-            "prescription_number": f"RX-{provider[:3]}-{hashlib.sha256((str(tenant.pk) + reference).encode()).hexdigest()[:16].upper()}",
+            "prescription_number": f"RX-{provider[:3]}-{hashlib.sha256((str(tenant.pk) + source_reference).encode()).hexdigest()[:16].upper()}",
             "prescription_date": data["prescription_date"], "prescription_type": data["prescription_type"], "original_available": True,
             "items": [{"sku": mapped("product_map", row["product_reference"]), "quantity": row["quantity"], "directions": row["directions"]} for row in data["items"]],
             "attachments": submitted.validated_data["attachments"], "notes": ""}
         checked = RxIntakeSerializer(data=command)
         checked.is_valid(raise_exception=True)
         rx = _domain(lambda: PosPrescriptionIntakeService.receive(tenant=tenant, branch=branch, actor=request.user,
-            device_id=device, command=checked.validated_data, provider_code=provider, external_reference=reference))
+            device_id=device, command=checked.validated_data, provider_code=provider, external_reference=source_reference))
         return Response(self.representation(rx, request, detail=True), status=201)
 
     @action(detail=True, methods=["post"])

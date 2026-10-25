@@ -3,6 +3,7 @@ import type { FormEvent } from 'react';
 
 import { Icon } from './icons.js';
 import { EtimsWorkspaceTab } from './EtimsWorkspaceTab.js';
+import { DhaWorkspace } from './DhaWorkspace.js';
 
 interface IntegrationWorkspaceProps {
   csrfToken: string;
@@ -103,7 +104,7 @@ interface ConnectivityResult {
   }[];
 }
 
-type IntegrationTab = 'providers' | 'etims' | 'activations' | 'compliance' | 'reports' | 'evidence' | 'dlq' | 'rules';
+type IntegrationTab = 'providers' | 'dha' | 'etims' | 'activations' | 'compliance' | 'reports' | 'evidence' | 'dlq' | 'rules';
 type DialogState =
   | { readonly kind: 'provider' }
   | { readonly kind: 'activation'; readonly provider: ProviderConfiguration }
@@ -152,6 +153,7 @@ const NEXT_STATES: Partial<Record<ProviderState, readonly ProviderState[]>> = {
 const TERMINAL_STATES = new Set<ProviderState>(['REJECTED', 'REVOKED', 'DECOMMISSIONED']);
 const TABS: readonly { readonly id: IntegrationTab; readonly label: string }[] = [
   { id: 'providers', label: 'Providers' },
+  { id: 'dha', label: 'Tenant DHA connections' },
   { id: 'etims', label: 'KRA eTIMS VSCU' },
   { id: 'activations', label: 'Activation workflow' },
   { id: 'compliance', label: 'Compliance status' },
@@ -380,6 +382,7 @@ export function IntegrationWorkspace({ csrfToken }: IntegrationWorkspaceProps) {
       </div>
 
       {loading ? <p className="muted-cell">Loading live integration records…</p> : null}
+      {activeTab === 'dha' ? <DhaWorkspace csrfToken={csrfToken} /> : null}
 
       {activeTab === 'providers' ? <section aria-labelledby="integration-tab-providers" className="integration-provider-list" id="integration-panel-providers" role="tabpanel" tabIndex={0}>
         <div className="integration-section-head"><div><p className="eyebrow">Provider registry</p><h3>Configurations and health</h3></div><button className="primary-button" onClick={() => openDialog({ kind: 'provider' })} type="button"><Icon name="plus" /> Add provider</button></div>

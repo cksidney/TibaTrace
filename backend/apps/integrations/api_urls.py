@@ -101,6 +101,7 @@ tenant_router.register(
 )
 
 urlpatterns = [
+    path("dha/", include("apps.integrations.dha_api")),
     # Tenant surfaces
     path("premises-verifications/", TenantPremisesVerificationView.as_view(), name="tenant-premises-list"),
     path("premises-verifications/submit/", TenantPremisesVerificationSubmitView.as_view(), name="tenant-premises-submit"),

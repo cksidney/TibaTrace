@@ -55,6 +55,8 @@ RELEASE_MIGRATIONS = [
     "backend/apps/integrations/migrations/0003_activation_state_update.py",
     "backend/apps/integrations/migrations/0004_financial_provider_templates.py",
     "backend/apps/integrations/migrations/0005_activation_request_state_choices.py",
+    # Tenant/branch DHA connections, encrypted consent and durable exchange journals.
+    "backend/apps/integrations/migrations/0006_dhaconnection_dhacallback_dhavisit_dhaexchange_and_more.py",
     "backend/apps/integrations/migrations/__init__.py",
     "backend/apps/inventory/recalls/migrations/0001_initial.py",
     "backend/apps/inventory/recalls/migrations/__init__.py",

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import uuid
 
 from django.core.exceptions import ValidationError
@@ -39,6 +40,18 @@ class TenantContextMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
+        # This single route authenticates DHA's provisioned callback bearer,
+        # not an application JWT. Its view resolves tenant/facility from the
+        # connection and rejects client-supplied scope and suspended tenants.
+        if request.method == "POST" and re.fullmatch(
+            r"/api/nif/dha/callbacks/[0-9a-f-]{36}/(claim|preauth|authorization)/", request.path
+        ):
+            request.tenant_id, request.tenant = None, None
+            context = set_current_tenant_id(None)
+            try:
+                return self.get_response(request)
+            finally:
+                reset_current_tenant_id(context)
         # DRF authenticates after middleware. Resolve Bearer identity here too,
         # before accepting a workspace header or enforcing tenant lifecycle.
         # Never decode claims without signature/expiry/revocation validation.

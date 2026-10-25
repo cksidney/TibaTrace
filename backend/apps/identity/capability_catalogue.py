@@ -10,6 +10,7 @@ from __future__ import annotations
 from apps.identity.models import Role
 
 CAPABILITY_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("DHA integrations", ("dha.configure", "dha.identity", "dha.terminology", "dha.exchange", "dha.claims", "dha.emergency")),
     (
         "Identity & access",
         (
