@@ -44,3 +44,9 @@ data and zero active DHA connections or provider traffic.
 The exchange worker locks only its own row rather than the nullable visit join.
 This preserves atomic queue claiming and supports PostgreSQL-backed execution.
 The superseded rc68 candidate was not deployed.
+
+The rc69 image-build attempt also failed before publication: Trivy's default
+Google mirror returned 404 while downloading its vulnerability database. No
+image was published and no production change was made. Superseded by rc70, which
+selects Trivy's official GHCR vulnerability database and retains the fail-closed
+scan gate.
