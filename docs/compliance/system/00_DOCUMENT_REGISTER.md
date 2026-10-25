@@ -1,9 +1,9 @@
 # TibaTrace System Compliance Documentation Register
 
-**Document set:** TibaTrace / DawaTrace hosted pharmacy and healthcare platform  
-**Prepared:** 17 October 2026  
-**Repository snapshot:** `45bf133` on `codex/workflow-gap-closure`  
-**Latest formal release record in this repository:** production rc52, dated 16 October 2026; RC57 was reported deployed 17 October, but its manifest/runtime evidence is not in this document set  
+**Document set:** TibaTrace / DawaTrace hosted pharmacy and healthcare platform<br>
+**Updated:** 26 October 2026; production audit boundary remains 25 October<br>
+**Reviewed production source:** rc71, `2965194a29311314e8a5772adfeee5af8c14a8f2`<br>
+**Current deployment evidence:** all server image labels/digests, exact-source CI and signed provenance verified; restricted operational evidence packet linked in document 21<br>
 **Approval state:** Working drafts; system-owner, legal and independent-assessment approvals remain outstanding. Tenant-specific controller DPIAs are separate.
 
 This register links the requested system documents and says what each one actually establishes. It does not certify TibaTrace, Esenai Group Ltd, or a tenant as compliant. Product controls, organizational controls, customer configuration, and independent test evidence are kept distinct.
@@ -31,9 +31,12 @@ The bundled `TibaTrace_System_Documentation_Word.zip` predates the updates in th
 | 15 | [Access Control Policy](15_ACCESS_CONTROL_POLICY.md) | Policy draft grounded in capability/tenant controls |
 | 16 | [Data Retention and Disposal Policy](16_DATA_RETENTION_AND_DISPOSAL_POLICY.md) | Draft; seven-year baseline stated, record-class triggers and operational purge evidence required |
 | 17 | [Penetration Testing Report](17_PENETRATION_TESTING_REPORT.md) | No independent penetration test evidence found; this is a transparent status report, not a test result |
-| 18 | [Vulnerability Assessment Report](18_VULNERABILITY_ASSESSMENT_REPORT.md) | Limited documentary/source assessment; not a full vulnerability scan or penetration test |
+| 18 | [Vulnerability Assessment Report](18_VULNERABILITY_ASSESSMENT_REPORT.md) | rc71 CI scan and limited runtime/source review; independent assessment declared by owner, report not attached |
 | 19 | [TibaTrace system DPIA evidence checklist](19_TIBATRACE_SYSTEM_DPIA_EVIDENCE_CHECKLIST.md) | System-owner evidence checklist; tenant-specific controller DPIAs remain separate |
 | 20 | [TibaTrace system DPIA gap closure register](20_DPIA_GAP_CLOSURE_REGISTER.md) | Prioritized closure evidence, owners and verification tests; not an approval |
+| 21 | [Current DPIA review](21_DPIA_CURRENT_REVIEW_2026-10-25.md) | Current controls, risk scores, restricted evidence index and approval blockers |
+| 22 | [Kenya hosting acceptance plan](22_KENYA_HOSTING_ACCEPTANCE_PLAN.md) | Not executed; owner confirmed Kenya hosting needs arranging |
+| 23 | [Identifier key remediation and rollout](23_IDENTIFIER_KEY_REMEDIATION_AND_ROLLOUT.md) | Local source safeguards and validation; independent keys/rotation are not deployed |
 
 ## Reading the statuses
 
@@ -44,13 +47,28 @@ The bundled `TibaTrace_System_Documentation_Word.zip` predates the updates in th
 
 ## Facts that govern this document set
 
-1. The last production release with a complete formal verification record in the repository is **rc52** (`e9cac5d`, 16 October 2026). RC57 was reported deployed and verified on 17 October 2026 in the deployment task, but its exact release manifest and runtime evidence are not attached to this compliance set. Attach those before representing RC57 as verified evidence here; do not use candidate source as proof of deployed behavior.
-2. The rc52 record documents passing release CI, dependency/image scans without findings, a pre-deployment database backup, runtime checks, and access-control checks. The record is not a penetration-test report or a recurring backup/restore service-level commitment.
-3. External provider setup is documented as templates only until approved endpoints, contracts, credentials in the secret manager, and acceptance evidence exist. No live national-registry, insurer, or mobile-money connection is asserted here.
-4. Disease/IDSR reporting and KNHTS terminology materials below are specifications and gap statements. They do not claim that TibaTrace currently submits reports to MoH, KHIS, SHIELD, or KNHTS.
-5. Before external distribution of this system DPIA, the TibaTrace owner must confirm its legal identity, privacy contact, provider/controller/processor roles, own purposes, data locations, subprocessors, seven-year retention implementation and DHA certification status. Customer controllers separately document their own purposes and legal bases.
-6. The TibaTrace system/provider DPIA was revised on 17 October 2026 to map processing, data flows, principles, risks and closure gates to the ODPC DPIA template. It remains **not approved** until the system owner verifies live deployment, hosting, security, backup, seven-year retention implementation and Digital Health Agency evidence, then signs the residual-risk decision. Tenant-specific controller assessments are separate.
-7. DHA package files dated 1–2 August 2026 use rc2/rc5/rc10 baselines. Their readiness, compliance-count, scenario-execution and classification statements are historical internal drafts, not Agency findings or current product evidence. They were marked accordingly on 17 October; revalidate them against the exact release and official DHA requirements before submission.
+1. The DPIA is version 0.4 and remains NOT APPROVED. Current server evidence is
+   rc71; historical rc52/rc57 statements in older documents are not the current
+   deployment baseline. Native-client/device evidence remains separate.
+2. Matching Esenai Group Ltd incorporation and ODPC processor certificates were
+   visually reviewed. The owner supplied a privacy contact and nominated Sidney
+   Chepkwony as approval owner. Signatures and purpose/role review remain open.
+3. The live region is Hetzner Nuremberg, Germany. The owner confirmed Kenya hosting
+   needs arranging. Correct this in all submitted notices, architecture and flow
+   inventories and execute document 22 before closing the localization gap.
+4. The owner declares DHA certification, a passed security assessment and an
+   existing restore exercise; the matching reports/reference numbers remain to
+   be attached. Do not invent an issuer decision or independent test conclusion.
+5. Current runtime evidence verifies selected TLS/security settings, clinical
+   object keyring and inactive DHA/RX/checkout paths. Malware scanning is deferred;
+   retention lifecycle, privileged MFA, key lifecycle/at-rest custody, full
+   independent assurance and coordinated separate-copy recovery remain open.
+6. Seven years is the owner's retention baseline, not a completed class-specific
+   trigger/exception/hold/backup schedule. No irreversible disposal rules have
+   been adopted from an unspecified trigger.
+7. The restricted packet is git ignored. The old Word ZIP and August DHA packages
+   are historical drafts and must not be submitted as current approved evidence.
+   Regenerate submission copies only after the relevant approval/evidence gates.
 
 ## Source of truth
 
@@ -79,4 +97,4 @@ For implementation details, use the source and current locked manifests. Dated r
 - [Kenya MoH SHIELD surveillance overview](https://shield.health.go.ke/about)
 - [MoH and WHO IDSR 3rd-generation guideline training notice](https://www.health.go.ke/joint-effort-moh-and-who-training-boosts-disease-surveillance-four-kenyan-counties)
 
-These references were checked on 17 October 2026. Applicable law and guidance must be rechecked before formal approval or certification submission.
+The General Regulations, current DHA guidance and Hetzner region mapping were checked on 25 October 2026 for the current review. Older reference checks remain historical; the scanned ODPC DPIA guidance could not be fully retrieved in this review. Recheck applicable law and certificate scope before formal submission.

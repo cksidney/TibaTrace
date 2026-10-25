@@ -1,6 +1,6 @@
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.db import models
+from django.db import models, transaction
 from django.db.models import Q
 
 from apps.core.models import StrictTenantManager, TenantConsistencyMixin, TimestampedModel
@@ -90,6 +90,7 @@ class PatientIdentifier(TenantConsistencyMixin, TimestampedModel):
     value = models.CharField(max_length=255, blank=True, default="")
     identifier_type = models.CharField(max_length=40, choices=IDENTIFIER_TYPES, default="OTHER")
     value_hash = models.CharField(max_length=64, blank=True, default="")
+    lookup_key_id = models.CharField(max_length=64, blank=True, default="", editable=False)
     protected_value = models.TextField(blank=True, default="")
     last_four = models.CharField(max_length=4, blank=True, default="")
     verification_status = models.CharField(
@@ -129,6 +130,85 @@ class PatientIdentifier(TenantConsistencyMixin, TimestampedModel):
     def masked_value(self):
         suffix = self.last_four or (self.value[-4:] if self.value else "")
         return f"••••{suffix}" if suffix else "PROTECTED"
+
+    @classmethod
+    def matching_value(cls, *, tenant_id, value, system=None, identifier_type=None):
+        """Internal tenant-scoped exact lookup across retained digest versions."""
+        from apps.patients.identifier_crypto import SYSTEM_SCOPED_TYPES
+        from apps.patients.identifier_crypto import PatientIdentifierProtector as protector
+
+        normalized = protector.normalize(value)
+        _, _, lookup, _, legacy = protector.configuration()
+        known_versions = [*lookup, ""] if legacy else list(lookup)
+        tenant_rows = cls.all_objects.filter(tenant_id=tenant_id, patient__tenant_id=tenant_id)
+        if tenant_rows.exclude(lookup_key_id__in=known_versions).exists():
+            raise ValidationError("Historical identifier lookup keys are unavailable. Restore the retained keys or complete migration.")
+        condition = Q(value=str(value).strip())
+        types = [identifier_type] if identifier_type else [choice[0] for choice in cls.IDENTIFIER_TYPES]
+        for kind in types:
+            systems = [system] if system is not None else (tenant_rows.filter(identifier_type=kind).values_list("system", flat=True).distinct() if kind in SYSTEM_SCOPED_TYPES else [""])
+            for namespace in systems:
+                versions, historical = protector.lookup_digests(tenant_id=tenant_id, identifier_type=kind, value=value, system=namespace)
+                clause = Q(identifier_type=kind, value_hash__in=[*versions.values(), *historical])
+                if kind in SYSTEM_SCOPED_TYPES:
+                    clause &= Q(system=namespace)
+                condition |= clause
+                if kind not in SYSTEM_SCOPED_TYPES:
+                    condition |= Q(identifier_type=kind, value=normalized)
+        rows = tenant_rows.filter(condition)
+        if system is not None:
+            rows = rows.filter(system=system)
+        if identifier_type:
+            rows = rows.filter(identifier_type=identifier_type)
+        return rows
+
+    def value_for_exchange(self):
+        """Internal converter access; caller must enforce exchange/read authority."""
+        from apps.patients.identifier_crypto import PatientIdentifierProtector
+
+        return PatientIdentifierProtector.verified_plaintext(self)
+
+    @transaction.atomic
+    def save(self, *args, **kwargs):
+        from apps.patients.identifier_crypto import SYSTEM_SCOPED_TYPES
+        from apps.patients.identifier_crypto import PatientIdentifierProtector as protector
+        from apps.tenancy.models import Tenant
+
+        # Serializes identity writes/rotation without conflicting with tenant
+        # foreign-key key-share locks held by concurrent patient intake.
+        if not self.tenant_id:
+            raise ValidationError("Patient identifier tenant scope is required.")
+        Tenant.objects.select_for_update(no_key=True).get(pk=self.tenant_id)
+        _, _, lookup, _, legacy = protector.configuration()
+        known_versions = [*lookup, ""] if legacy else list(lookup)
+        others = PatientIdentifier.all_objects.filter(tenant_id=self.tenant_id).exclude(pk=self.pk)
+        if others.exclude(lookup_key_id__in=known_versions).exists():
+            raise ValidationError("Historical identifier lookup keys are unavailable. Complete key provisioning or migration before identity writes.")
+        plaintext = protector.verified_plaintext(self)
+        versions, historical = protector.lookup_digests(tenant_id=self.tenant_id, identifier_type=self.identifier_type, value=plaintext, system=self.system)
+        duplicates = others.filter(identifier_type=self.identifier_type)
+        if self.identifier_type in SYSTEM_SCOPED_TYPES:
+            duplicates = duplicates.filter(system=self.system)
+        if duplicates.filter(
+            Q(value_hash__in=[*versions.values(), *historical]) | Q(value=self.value) & ~Q(value="")
+        ).exists():
+            raise ValidationError("This patient identifier is already registered in the tenant.")
+        for old in duplicates.filter(lookup_key_id=""):
+            old_value = protector.verified_plaintext(old)
+            matches = old_value == plaintext if self.identifier_type in SYSTEM_SCOPED_TYPES else protector.normalize(old_value) == protector.normalize(plaintext)
+            if matches:
+                raise ValidationError("This patient identifier is already registered in the tenant.")
+        crypto_fields = ("value", "protected_value", "value_hash", "lookup_key_id", "last_four")
+        if self.value or not self.protected_value or not self.value_hash:
+            for field, value in protector.storage_fields(tenant_id=self.tenant_id, identifier_type=self.identifier_type, value=plaintext, system=self.system).items():
+                setattr(self, field, value)
+        elif not self.lookup_key_id:
+            # Compatible with callers that prepared a new versioned ciphertext
+            # before the lookup-version field was supplied.
+            self.lookup_key_id = next((kid for kid, digest in versions.items() if digest == self.value_hash), "")
+        if kwargs.get("update_fields") is not None:
+            kwargs["update_fields"] = set(kwargs["update_fields"]) | set(crypto_fields)
+        return super().save(*args, **kwargs)
 
 
 class PatientAllergy(TenantConsistencyMixin, TimestampedModel):

@@ -131,6 +131,10 @@ def test_production_settings_require_and_accept_document_keyring():
         "DAWATRACE_CSRF_TRUSTED_ORIGINS": "https://example.test",
         "DAWATRACE_FHIR_PUBLIC_BASE_URL": "https://example.test/fhir/",
         "DAWATRACE_DATABASE_URL": "sqlite:///:memory:",
+        "DAWATRACE_PATIENT_IDENTIFIER_KEYS": json.dumps({"id-test": base64.urlsafe_b64encode(b"I" * 32).decode()}),
+        "DAWATRACE_PATIENT_IDENTIFIER_ACTIVE_KEY_ID": "id-test",
+        "DAWATRACE_PATIENT_IDENTIFIER_LOOKUP_KEYS": json.dumps({"lookup-test": base64.urlsafe_b64encode(b"J" * 32).decode()}),
+        "DAWATRACE_PATIENT_IDENTIFIER_ACTIVE_LOOKUP_KEY_ID": "lookup-test",
     }
     missing_keyring_env = base_env | {
         "DAWATRACE_DOCUMENT_ENCRYPTION_KEYS": "{}",

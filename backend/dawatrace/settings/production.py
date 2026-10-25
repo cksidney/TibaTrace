@@ -1,6 +1,7 @@
 from django.core.exceptions import ImproperlyConfigured
 
 from apps.documents.encryption import DocumentEncryptionError, validate_document_keyring
+from apps.patients.identifier_crypto import IdentifierProtectionError, validate_identifier_keyrings
 
 from .base import *
 
@@ -21,6 +22,15 @@ except DocumentEncryptionError as exc:
     raise ImproperlyConfigured(
         "A valid active clinical-document encryption keyring is required in production settings."
     ) from exc
+
+try:
+    validate_identifier_keyrings(
+        DAWATRACE_PATIENT_IDENTIFIER_KEYS, DAWATRACE_PATIENT_IDENTIFIER_ACTIVE_KEY_ID,
+        DAWATRACE_PATIENT_IDENTIFIER_LOOKUP_KEYS, DAWATRACE_PATIENT_IDENTIFIER_ACTIVE_LOOKUP_KEY_ID,
+        DAWATRACE_PATIENT_IDENTIFIER_LEGACY_SECRET_KEYS,
+    )
+except IdentifierProtectionError as exc:
+    raise ImproperlyConfigured("Valid independent patient identifier encryption and lookup keyrings are required in production settings.") from exc
 
 if DAWATRACE_ENV == "production":
     if not ALLOWED_HOSTS:

@@ -11,7 +11,7 @@ from apps.fhir.kenya_hie import (
     SYSTEM_LOCAL_PATIENT_REFERENCE,
     extract_client_registry_id,
 )
-from apps.patients.models import Patient
+from apps.patients.models import Patient, PatientIdentifier
 
 
 class PatientConverter(BaseFHIRConverter):
@@ -20,7 +20,10 @@ class PatientConverter(BaseFHIRConverter):
     def to_fhir(self, domain_object: Patient, context: Dict[str, Any]) -> ConversionResult:
         result = ConversionResult()
         try:
-            identifiers = [Identifier(system=row.system, value=row.value) for row in domain_object.identifiers.all()]
+            if str(context.get("tenant_id")) != str(domain_object.tenant_id):
+                raise ValueError("FHIR Patient tenant context is required.")
+            identifiers = [Identifier(system=row.system, value=row.value_for_exchange()) for row in
+                           PatientIdentifier.all_objects.filter(tenant_id=domain_object.tenant_id, patient=domain_object)]
             identifiers.insert(
                 0,
                 Identifier(

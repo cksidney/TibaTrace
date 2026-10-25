@@ -64,10 +64,15 @@ def extract_client_registry_id(patient: Any) -> str | None:
     identifiers = getattr(patient, "identifiers", None)
     if identifiers is None:
         return None
-    rows = identifiers.all() if hasattr(identifiers, "all") else identifiers
+    if getattr(patient, "_meta", None) and patient._meta.label_lower == "patients.patient":
+        from apps.patients.models import PatientIdentifier
+
+        rows = PatientIdentifier.all_objects.filter(tenant_id=patient.tenant_id, patient_id=patient.pk)
+    else:
+        rows = identifiers.all() if hasattr(identifiers, "all") else identifiers
     for row in rows:
         system = str(getattr(row, "system", "") or "")
-        value = str(getattr(row, "value", "") or "").strip()
+        value = str(row.value_for_exchange() if callable(getattr(row, "value_for_exchange", None)) else getattr(row, "value", "") or "").strip()
         if not value:
             continue
         if system in {SYSTEM_CLIENT_REGISTRY_ID, CLIENT_REGISTRY_BASE} or CLIENT_REGISTRY_HOST in system:

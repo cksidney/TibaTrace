@@ -1,9 +1,18 @@
 # TibaTrace Penetration Testing Report — Assessment Status
 
-**Status:** No independent penetration test result found in the reviewed repository  
-**Report date:** 17 October 2026  
-**Test window/provider:** Not conducted / not supplied  
+**Status:** No independent penetration test result found in the reviewed repository<br>
+**Report date:** 25 October 2026<br>
+**Test window/provider:** Owner states assessment Passed; independent report/provider/scope/date not supplied<br>
 **Disposition:** This document is a transparent status report and test charter. It is not evidence that TibaTrace passed a penetration test.
+
+## Current owner declaration
+
+On 25 October the owner stated that a security assessment passed. The requested
+report path/provider/date was not supplied. This review does not dispute that
+statement, but cannot establish independence, test scope, release, exclusions,
+findings or retest from it. Attach the actual report and reconcile it to rc71 (or
+assess the delta from its tested release). Current CI scans and provenance are in
+the restricted [DPIA evidence packet](21_DPIA_CURRENT_REVIEW_2026-10-25.md).
 
 ## 1. Executive statement
 
@@ -32,12 +41,12 @@ The signed report must identify tester and independence, authorization, dates, t
 
 ## 4. Existing security evidence is not a penetration test
 
-The rc52 release record reports CI test coverage, tenant/owner access checks, dependency and runtime image scans without findings, release checksums and image provenance. These are valuable release gates but do not replace manual exploitation attempts or an independent penetration test. The subsequent rc53 candidate work has no production verification record in the reviewed document set.
+The rc71 pipeline has exact-source SQLite/PostgreSQL coverage, application checks, dependency/runtime scans, image provenance and verified deployed labels. These are release gates; they do not replace manual exploitation attempts or an independent penetration test. The backend runtime report contains an UNKNOWN advisory, so no zero-finding claim is made.
 
 ## 5. Approval and next action
 
-**Status:** Open  
-**Owner:** Esenai security/service owner (to assign)  
-**Target date/provider:** `[to schedule]`  
-**Test authorization:** `[signed scope required]`  
+**Status:** Open<br>
+**Owner:** Esenai security/service owner (to assign)<br>
+**Target date/provider:** `[to schedule]`<br>
+**Test authorization:** `[signed scope required]`<br>
 **Final disposition:** Pending independent test and remediation retest

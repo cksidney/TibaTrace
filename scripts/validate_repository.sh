@@ -268,6 +268,8 @@ if [[ "${MODE}" == "full" ]]; then
     record_step "docker_container_build" "docker build --file docker/backend.Dockerfile" "true" "PASSED" "0" "$((END_TIME - START_TIME))" "" ""
 
     START_TIME=$(date +%s)
+    # Disposable validation keys, generated independently and never printed.
+    read -r validation_document_key validation_identifier_key validation_lookup_key <<< "$("${PYTHON}" -c 'import base64, secrets; print(" ".join(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode() for _ in range(3)))')"
     docker run --rm \
       --entrypoint python \
       -e DJANGO_SETTINGS_MODULE=dawatrace.settings.production \
@@ -278,10 +280,17 @@ if [[ "${MODE}" == "full" ]]; then
       -e DAWATRACE_DATABASE_URL=sqlite:////tmp/dawatrace-runtime.sqlite3 \
       -e DAWATRACE_REDIS_URL=locmem:// \
       -e DAWATRACE_OBJECT_SIGNING_KEY=container-runtime-validation-signing-key \
+      -e DAWATRACE_DOCUMENT_ENCRYPTION_KEYS="{\"validation-document\":\"${validation_document_key}\"}" \
+      -e DAWATRACE_DOCUMENT_ENCRYPTION_ACTIVE_KEY_ID=validation-document \
+      -e DAWATRACE_PATIENT_IDENTIFIER_KEYS="{\"validation-identifier\":\"${validation_identifier_key}\"}" \
+      -e DAWATRACE_PATIENT_IDENTIFIER_ACTIVE_KEY_ID=validation-identifier \
+      -e DAWATRACE_PATIENT_IDENTIFIER_LOOKUP_KEYS="{\"validation-lookup\":\"${validation_lookup_key}\"}" \
+      -e DAWATRACE_PATIENT_IDENTIFIER_ACTIVE_LOOKUP_KEY_ID=validation-lookup \
       -e DAWATRACE_SECURE_SSL_REDIRECT=false \
       -e DAWATRACE_FHIR_PUBLIC_BASE_URL=https://tibatrace.example.test/api/fhir/r4/ \
       dawatrace/backend:validation \
       manage.py check
+    unset validation_document_key validation_identifier_key validation_lookup_key
     END_TIME=$(date +%s)
     record_step "docker_container_runtime" "docker run --rm --entrypoint python dawatrace/backend:validation manage.py check" "true" "PASSED" "0" "$((END_TIME - START_TIME))" "" ""
   else

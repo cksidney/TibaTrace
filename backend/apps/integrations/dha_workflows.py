@@ -48,7 +48,6 @@ def safe_response(value):
 
 def create_visit(connection, actor, patient):
     from apps.patients.models import PatientIdentifier
-    from apps.patients.services import PatientIdentifierProtector
     authorize(connection, actor, "dha.exchange")
     operational(connection)
     if patient.tenant_id != connection.tenant_id or not patient.is_active or patient.is_deceased:
@@ -59,8 +58,7 @@ def create_visit(connection, actor, patient):
     if len(identifiers) != 1:
         raise ValidationError("Resolve and verify one Client Registry identifier for this patient first.")
     identifier = identifiers[0]
-    cr_id = (PatientIdentifierProtector.reveal(tenant_id=connection.tenant_id, protected_value=identifier.protected_value)
-             if identifier.protected_value else identifier.value)
+    cr_id = identifier.value_for_exchange()
     puid = connection.configuration.get("practitioner_map", {}).get(str(actor.pk))
     if not cr_id or not puid:
         raise ValidationError("Verified patient CR and requesting practitioner PUID mappings are required.")

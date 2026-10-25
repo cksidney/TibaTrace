@@ -1,25 +1,25 @@
 # Encryption Implementation Specification
 
-**Status:** As-built source specification with production evidence gaps  
-**Source snapshot:** working tree based on `45bf133`, 17 October 2026; the object-encryption code described here is an unshipped local change and has no production release evidence
+**Status:** As-built source specification with production evidence gaps<br>
+**Reviewed source/runtime:** rc71, `2965194a29311314e8a5772adfeee5af8c14a8f2`, 25 October 2026. See [current review](21_DPIA_CURRENT_REVIEW_2026-10-25.md) for restricted runtime evidence and remaining gaps.
 
 ## 1. Current controls
 
 | Data/transport | Current implementation evidenced in source/docs | Limit |
 |---|---|---|
-| Public browser/API transport | HTTPS at Caddy; Django production settings enable redirect, HSTS, secure session/CSRF cookies and security headers | Verify active DNS, Caddy, certificates, TLS policy and headers per deployment |
-| PostgreSQL transport | Documented Esenai host requires PostgreSQL TLS; Django production expects secure production settings | Retain active connection/DB TLS evidence and certificate validation configuration |
+| Public browser/API transport | HTTPS at Caddy; Django production settings enable redirect, HSTS, secure session/CSRF cookies and security headers | Live public HTTPS/certificate, HSTS, nosniff and frame denial observed; retest per deployment |
+| PostgreSQL transport | Documented Esenai host requires PostgreSQL TLS; Django production expects secure production settings | Live TLS 1.3 observed with sslmode=require; hostname verification is not required by this setting; verify-full and trust-chain plan remain to assess |
 | Patient identifiers | `PatientIdentifierProtector` normalizes values; Fernet encrypts the value; HMAC-SHA256 digest supports lookup; plaintext value is cleared; UI keeps last four | Key is deterministically derived from Django `SECRET_KEY` and tenant ID; no separate KMS/HSM/versioned key ring is evidenced |
 | Passwords | Django authentication password-hashing framework | Confirm deployed hasher configuration and upgrade policy from runtime settings |
 | Windows POS credentials | Windows DPAPI protection is documented for native client credential material | Device recovery/rotation and local cache scope require client-specific validation |
 | Android POS credentials | Android Keystore-backed token handling is documented; release cleartext is disabled | Confirm signing/release configuration and device reset/revocation behavior |
-| Clinical attachments | Source now encrypts new object bytes with AES-256-GCM using an external, versioned keyring and the tenant/object key as authenticated context; SHA-256 verifies plaintext, reads remain capability/token/tenant-bound and audited | Production key provisioning and rotation evidence are not attached. Legacy objects remain readable for migration and are not encrypted until `migrate_clinical_objects_encryption --apply` is run and verified. Host-volume and backup encryption remain independent requirements |
-| Backups | rc52 record documents a pre-deployment database backup with integrity/restore-inventory checks | Recurring backup encryption, key custody, off-host copy, retention and full restore exercise are not proven by that release record |
+| Clinical attachments | Source now encrypts new object bytes with AES-256-GCM using an external, versioned keyring and the tenant/object key as authenticated context; SHA-256 verifies plaintext, reads remain capability/token/tenant-bound and audited | Live keyring valid; no stored clinical documents at audit, so no legacy migration/readback/rotation population to verify. Host/database at-rest and recovery/key custody remain open |
+| Backups | Encrypted rc71 release DB/environment/clinical-object archives have verified inventories; backup key and archives are on the same VPS | Recurring coordinated schedule, separate protected copy/key custody, retention and full restore report remain open; owner says a separate restore exercise exists |
 | Secrets | Production rejects unsafe default secret; secret file is outside releases and is documented with restrictive permissions | Runtime secret manager, access audit, rotation and break-glass process require operational evidence |
 
 ## 2. Patient identifier cryptography
 
-The source implementation uses:
+The reviewed rc71 implementation uses:
 
 1. Normalize the identifier by trimming, upper-casing and removing whitespace.
 2. Derive a Fernet key from `SHA-256(SECRET_KEY + ":patient-identifier:" + tenant_id)`, URL-safe Base64 encoded. Fernet provides authenticated encryption with AES-128-CBC and HMAC-SHA256 through the `cryptography` library.
@@ -41,13 +41,24 @@ Clinical-object keys are configured as a JSON key-ID map in the protected deploy
 
 Patient identifier keys remain deterministically derived from Django `SECRET_KEY`; this is not a managed, versioned keyring. The attachment keyring does not close that separate key-lifecycle finding. Do not describe either construction as KMS-managed encryption.
 
+### 26 October source remediation, not deployed
+
+The local remediation replaces this patient-identifier root dependency with
+independently provisioned versioned encryption and lookup keyrings, tenant/purpose
+separation, explicit legacy compatibility and atomic tenant-scoped rotation. It
+also protects direct FHIR writes and preserves external identifier namespace and
+case. See [implementation and controlled rollout](23_IDENTIFIER_KEY_REMEDIATION_AND_ROLLOUT.md)
+for configuration, tests and migration/rollback requirements. This does not
+change the rc71 runtime evidence or close host/database encryption, separate key
+custody, recovery or independent-review findings.
+
 ## 4. Clinical object encryption and legacy migration
 
 `LocalClinicalObjectStorage` encrypts newly stored files using AES-256-GCM. The authenticated context binds ciphertext to its tenant-qualified object key. SHA-256 and stored size are checked after decryption, and replacement writes use an atomic temporary file with restrictive permissions. Document downloads continue to require signed actor/tenant-bound short-lived tokens and a read capability.
 
-The deployment environment must provide a valid active keyring; production settings and the upload path fail closed without one. The migration command performs a complete integrity-checked dry run by default, then atomically encrypts legacy plaintext objects or rotates objects to the active key when run with `--apply`. It is idempotent and does not delete objects. The command has not been run against production in this assessment. Run it only after a protected database/object backup, then verify the dry-run/apply record, readback and key/backup retention. Application encryption does not prove that production or backup volumes are themselves encrypted; verify those separately.
+The deployment environment must provide a valid active keyring; production settings and the upload path fail closed without one. The migration command performs a complete integrity-checked dry run by default, then atomically encrypts legacy plaintext objects or rotates objects to the active key when run with `--apply`. It is idempotent and does not delete objects. The audit found no stored clinical objects, so no production migration was needed or claimed. Before using it for a future population, run only after a protected database/object backup and verify dry-run/apply, readback and key/backup retention. Application encryption does not prove that production or backup volumes are themselves encrypted; verify those separately.
 
-Production attachment uploads also fail closed unless a configured malware scanner returns `CLEAN`; the inspected default scanner returns `NOT_CONFIGURED`.
+Production requires CLEAN only when the required-scan policy is enabled. The current required-scan flag is false and no scanner endpoint is configured, following the earlier owner deferral; deferred uploads are NOT_SCANNED. This remains an open DPIA control gap, not a clean-scan result.
 
 ## 5. Cryptographic operations and approval
 
@@ -57,5 +68,5 @@ Production attachment uploads also fail closed unless a configured malware scann
 - Validate TLS certificates and modern protocol/cipher policy at the edge and database boundary.
 - Document every key rotation before execution, with verified backup, dual-read strategy, canary, rollback and integrity checks.
 
-**Security owner approval:** pending  
-**Deployment evidence attached:** pending (TLS configuration, production keyring/custody, legacy migration, host/database/backup encryption, backup restore and rotation exercise)
+**Security owner approval:** pending<br>
+**Deployment evidence:** TLS and runtime object keyring verified in restricted packet; no stored objects at audit. Host/database at-rest proof, separate key custody, rotation/recovery, scanner operation and complete restore remain pending.

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
 import re
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 
 from apps.audit.service import log_audit
 from apps.fhir.exceptions import FHIRReferenceResolutionError, FHIRSecurityError
@@ -25,13 +28,17 @@ class FHIRReferenceResolver:
 
     @staticmethod
     def _audit(tenant_id: str, resource_type: str, lookup: str, result: str, user_id=None) -> None:
+        # Identifier/conditional references can contain national IDs or other
+        # PHI. Keep a tenant-qualified opaque correlation value, never the input.
+        digest = hmac.new(str(settings.SECRET_KEY).encode(),
+                          f"fhir-reference-audit:v1:{tenant_id}:{resource_type}:{lookup}".encode(), hashlib.sha256).hexdigest()
         log_audit(
             tenant_id=tenant_id,
             action="FHIR_REFERENCE_RESOLVE",
             model_name=resource_type,
-            object_id=lookup[:120],
+            object_id=f"reference:{digest}",
             user_id=user_id,
-            metadata={"result": result},
+            metadata={"result": result, "lookup_protection": "HMAC-SHA256"},
         )
 
     @classmethod
@@ -212,8 +219,12 @@ class FHIRReferenceResolver:
                 "Identifier-based resolution is not supported for this resource type.",
                 code="not-supported",
             )
-        instance = resolver(system=system, value=value, tenant_id=tenant_id)
         lookup = f"{system}|{value}" if system else value
+        try:
+            instance = resolver(system=system, value=value, tenant_id=tenant_id)
+        except ValidationError:
+            cls._audit(tenant_id, resource_type, lookup, "invalid", user_id)
+            raise FHIRReferenceResolutionError("Identifier reference cannot be safely resolved; review its system, mappings and protection configuration.", code="invalid") from None
         if instance is None:
             cls._audit(tenant_id, resource_type, lookup, "not_found", user_id)
             raise FHIRReferenceResolutionError(

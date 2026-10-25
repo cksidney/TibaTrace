@@ -1,7 +1,7 @@
 # TibaTrace Privacy Policy — Draft
 
-**Status:** Draft for controller/legal review; not approved for publication  
-**Effective date:** To be set by the publishing data controller  
+**Status:** Draft for controller/legal review; not approved for publication<br>
+**Effective date:** To be set by the publishing data controller<br>
 **Controller/contact:** Must be completed before publication
 
 > Do not publish this draft until the named controller, privacy contact, lawful bases, data-sharing recipients, hosting locations, and retention periods have been verified. A tenant may be the controller for patient records while Esenai Group Ltd acts as its processor under contract; the actual relationship must be confirmed for each processing activity.
@@ -10,8 +10,8 @@
 
 For patient-care records entered by a pharmacy or healthcare organization, that organization generally decides why and how the records are used. It is expected to act as data controller. TibaTrace is the software service. Esenai Group Ltd is identified as the vendor in system documentation and may act as a processor when it handles records only on the tenant's instructions. The parties' contracts and actual activities determine the legal roles.
 
-**Controller:** `[Legal name and address of tenant/controller]`  
-**Privacy/DPO contact:** `[Approved email, phone, and postal address]`  
+**Controller:** `[Legal name and address of tenant/controller]`<br>
+**Privacy/DPO contact:** `[Approved email, phone, and postal address]`<br>
 **Service provider:** Esenai Group Ltd, `[registered address and privacy contact to confirm]`
 
 ## Personal information the service may process
@@ -41,7 +41,7 @@ National registry, insurer, payment, terminology, or surveillance exchanges must
 
 ## Where information is stored and transferred
 
-The documented deployment uses a hosted API, PostgreSQL, Redis, and tenant-keyed clinical document storage, accessed over HTTPS. The actual server country, backup location, support access, and any subprocessors must be stated by the service provider and controller before this policy is published. Any transfer outside Kenya requires a documented assessment and safeguards under applicable law.
+The documented deployment uses a hosted API, PostgreSQL, Redis, and tenant-keyed clinical document storage, accessed over HTTPS. The audited server country on 25 October 2026 is Germany (Hetzner Nuremberg); the application database target, clinical-object volume and inspected release backups are on that VPS. The owner confirmed Kenya hosting needs arranging. Correct the final notice after the [Kenya deployment acceptance](22_KENYA_HOSTING_ACCEPTANCE_PLAN.md); support countries and all subprocessors still require complete disclosure before publication. Any transfer outside Kenya requires a documented assessment and safeguards under applicable law.
 
 ## Security
 
@@ -55,7 +55,7 @@ The TibaTrace system owner has stated a seven-year retention baseline. The perio
 
 Subject to applicable law, a person may ask the controller to confirm whether their data is processed, access it, correct inaccurate details, object to or restrict processing, request deletion where applicable, or request portability. Some records may need to be retained or processing may continue where the law permits or requires it. The controller will verify identity, route the request to the correct tenant, record the decision, and respond within applicable legal timelines.
 
-**Submit a request to:** `[Controller privacy contact]`  
+**Submit a request to:** `[Controller privacy contact]`<br>
 If the concern is not resolved, a person may contact the [Office of the Data Protection Commissioner](https://www.odpc.go.ke/).
 
 ## Children and representatives

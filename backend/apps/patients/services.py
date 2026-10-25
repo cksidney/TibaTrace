@@ -1,16 +1,11 @@
 from __future__ import annotations
 
-import base64
-import hashlib
-import hmac
-
-from cryptography.fernet import Fernet, InvalidToken
-from django.conf import settings
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 from django.utils import timezone
 
 from apps.audit.service import log_audit
+from apps.patients.identifier_crypto import PatientIdentifierProtector
 from apps.patients.models import (
     Patient,
     PatientAllergy,
@@ -33,37 +28,6 @@ def _has_capability(actor, tenant_id, *capabilities):
 def _require_capability(actor, tenant_id, *capabilities):
     if not _has_capability(actor, tenant_id, *capabilities):
         raise PermissionDenied(f"Capability {capabilities[0]} is required.")
-
-
-class PatientIdentifierProtector:
-    @staticmethod
-    def _fernet(tenant_id):
-        material = f"{settings.SECRET_KEY}:patient-identifier:{tenant_id}".encode()
-        return Fernet(base64.urlsafe_b64encode(hashlib.sha256(material).digest()))
-
-    @staticmethod
-    def normalize(value):
-        return "".join(str(value or "").strip().upper().split())
-
-    @classmethod
-    def digest(cls, *, tenant_id, identifier_type, value):
-        normalized = f"{identifier_type}:{cls.normalize(value)}".encode()
-        key = f"{settings.SECRET_KEY}:{tenant_id}".encode()
-        return hmac.new(key, normalized, hashlib.sha256).hexdigest()
-
-    @classmethod
-    def protect(cls, *, tenant_id, value):
-        normalized = cls.normalize(value)
-        if not normalized:
-            raise ValidationError({"value": "An identifier value is required."})
-        return cls._fernet(tenant_id).encrypt(normalized.encode()).decode()
-
-    @classmethod
-    def reveal(cls, *, tenant_id, protected_value):
-        try:
-            return cls._fernet(tenant_id).decrypt(protected_value.encode()).decode()
-        except (InvalidToken, ValueError) as exc:
-            raise ValidationError("The protected identifier cannot be decrypted.") from exc
 
 
 class PatientGovernanceService:
@@ -137,23 +101,16 @@ class PatientGovernanceService:
             )
         if issue_date and expiry_date and expiry_date < issue_date:
             raise ValidationError({"expiry_date": "An identifier cannot expire before it was issued."})
-        normalized = PatientIdentifierProtector.normalize(value)
+        protected_fields = PatientIdentifierProtector.storage_fields(
+            tenant_id=patient.tenant_id, identifier_type=identifier_type,
+            value=value, system=system or identifier_type,
+        )
         identifier = PatientIdentifier.all_objects.create(
             tenant_id=patient.tenant_id,
             patient=patient,
             system=system or identifier_type,
-            value="",
             identifier_type=identifier_type,
-            value_hash=PatientIdentifierProtector.digest(
-                tenant_id=patient.tenant_id,
-                identifier_type=identifier_type,
-                value=normalized,
-            ),
-            protected_value=PatientIdentifierProtector.protect(
-                tenant_id=patient.tenant_id,
-                value=normalized,
-            ),
-            last_four=normalized[-4:],
+            **protected_fields,
             verification_status=verification_status,
             issuing_authority=issuing_authority,
             issue_date=issue_date,
@@ -194,6 +151,9 @@ class PatientGovernanceService:
         if verification_status not in {"VERIFIED", "REJECTED", "EXPIRED"}:
             raise ValidationError({"verification_status": "Choose a review outcome."})
 
+        from apps.tenancy.models import Tenant
+
+        Tenant.objects.select_for_update(no_key=True).get(pk=identifier.tenant_id)
         locked = PatientIdentifier.all_objects.select_for_update().get(
             pk=identifier.pk,
             tenant_id=identifier.tenant_id,
@@ -250,10 +210,7 @@ class PatientGovernanceService:
         reason = str(reason or "").strip()
         if not reason:
             raise ValidationError({"reason": "An access reason is required."})
-        value = PatientIdentifierProtector.reveal(
-            tenant_id=identifier.tenant_id,
-            protected_value=identifier.protected_value,
-        )
+        value = PatientIdentifierProtector.verified_plaintext(identifier)
         log_audit(
             tenant_id=identifier.tenant_id,
             action="PATIENT_IDENTIFIER_REVEALED",

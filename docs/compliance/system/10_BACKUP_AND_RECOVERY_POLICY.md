@@ -1,8 +1,20 @@
 # TibaTrace Backup and Recovery Policy — Draft
 
-**Status:** Operating policy draft; service owner approval and job evidence required  
-**Policy owner:** Esenai infrastructure owner (to assign)  
+**Status:** Operating policy draft; service owner approval and job evidence required<br>
+**Policy owner:** Esenai infrastructure owner (to assign)<br>
 **Systems:** PostgreSQL, clinical object volume, release/configuration metadata, audit and integration configuration
+
+## Current evidence: 25 October 2026
+
+The rc71 predeployment backup contains encrypted PostgreSQL, environment and
+clinical-object archives with successful decrypt/inventory checks. Its manifest
+expressly states that it is not a full restore rehearsal. The inspected keys and
+archives share the primary Germany VPS. Selected root cron/system-timer metadata
+did not establish a coordinated TibaTrace DB/object schedule; those checks are not
+an exhaustive scheduler audit. The owner says full restore evidence exists, but
+its separate report/reference is still required. No RPO/RTO, off-host-copy or full
+recovery pass is inferred. See [current review](21_DPIA_CURRENT_REVIEW_2026-10-25.md)
+and the [Kenya plan](22_KENYA_HOSTING_ACCEPTANCE_PLAN.md).
 
 ## 1. Policy
 
@@ -32,7 +44,7 @@ The production owner must fill and approve these values before calling the polic
 | RPO / RTO | `[approved values linked to Disaster Recovery Plan]` |
 | Restore exercise | `[frequency, environment, evidence location, approver]` |
 
-Every production schema-changing release must have a verified pre-deployment backup and a documented rollback/recovery decision. The rc52 release record documents a release-specific PostgreSQL backup and checksum/restore-inventory checks. It does not prove the recurring schedule above, a complete database-plus-object restore, or an approved retention SLA.
+Every production schema-changing release must have a verified pre-deployment backup and a documented rollback/recovery decision. The current rc71 record documents encrypted release-specific archives and integrity/inventory checks. It does not prove the recurring schedule above, a complete database-plus-object restore, or an approved retention SLA.
 
 ## 4. Backup security
 
@@ -51,7 +63,7 @@ Every production schema-changing release must have a verified pre-deployment bac
 3. Restore PostgreSQL to a new isolated database; validate database integrity, migrations, tenant counts and critical ledgers without modifying the original evidence.
 4. Restore the matching clinical-object snapshot. Verify file count, tenant directory structure, stored size and SHA-256 values against metadata.
 5. Restore approved configuration and secrets from the secret manager; validate TLS, hostnames, permissions and provider disabled/active states.
-6. Start API, worker, beat and HQ against the restored data. Validate health, login, tenant isolation, required workflows, asynchronous queues, documents, audit and payment/stock reconciliation.
+6. Start restored services with external provider egress and outbox delivery denied, scheduler disabled initially and public users excluded. Validate health, login, tenant isolation, required workflows, documents, key recovery, audit, retention/hold reapplication and payment/stock reconciliation. Exercise queues with synthetic isolated adapters; do not duplicate live payment/exchange delivery.
 7. Obtain security owner, database owner and affected clinical/tenant owner approval before switching traffic. Maintain the prior state for evidence and rollback.
 8. Record the recovery point, elapsed times, data loss, validation results, authorizations, incidents and corrective actions.
 

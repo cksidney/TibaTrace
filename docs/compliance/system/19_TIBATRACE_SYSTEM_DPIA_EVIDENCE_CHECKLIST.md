@@ -1,23 +1,36 @@
 # TibaTrace system DPIA evidence checklist
 
-**Purpose:** Complete the product-owner evidence for the TibaTrace system/provider DPIA. This is not a tenant-specific controller assessment.  
-**Status:** Evidence collection for the system owner; DPIA remains **Not Approved** until the approval gate is met.  
+**Purpose:** Complete the product-owner evidence for the TibaTrace system/provider DPIA. This is not a tenant-specific controller assessment.<br>
+**Status:** Evidence collection for the system owner; DPIA remains **Not Approved** until the approval gate is met.<br>
 **Handling:** Store in the restricted TibaTrace compliance repository. Use aggregate scale figures and configuration locations. Do not include patient records, credentials, API keys or passwords.
 
 The system owner has stated that TibaTrace operates within applicable law and provided a **seven-year retention baseline**. This checklist converts those statements into auditable system evidence. If a fact is unknown, mark it **OPEN**, name an owner, and state whether the related product feature or integration remains disabled. Use the [DPIA gap closure register](20_DPIA_GAP_CLOSURE_REGISTER.md) for priority, closure test and execution order.
+
+## Current evidence update: 25 October 2026
+
+Use the [current review](21_DPIA_CURRENT_REVIEW_2026-10-25.md) and v0.4
+[closure register](20_DPIA_GAP_CLOSURE_REGISTER.md) for current dispositions.
+Matching incorporation and ODPC processor documents are now reviewed; contact and
+approval owner supplied; rc71 server/CI/provenance, selected runtime controls and
+aggregate current scale verified. The live host is Germany and the owner confirmed
+Kenya hosting needs arranging. Seven years remains a baseline without triggers.
+DHA/security/restore conclusions are owner-declared pending attached reports.
+The detailed tables below are the remaining evidence workbook, not a claim that
+items already supplied are wholly unknown. Private evidence/contacts are in the
+restricted packet indexed by document 21; do not publish that packet.
 
 ## A. System owner and product identity
 
 | Required evidence | Owner entry / status |
 |---|---|
-| Registered legal name of TibaTrace owner/operator, registration number and address | `[OPEN — verify from current corporate records]` |
-| ODPC registration role(s), number, date and scope | `[OPEN — attach current proof]` |
-| Named system DPO/privacy lead and contact; appointment analysis if none | `[OPEN]` |
+| Registered legal name of TibaTrace owner/operator, registration number and address | `[PARTIAL — matching incorporation certificate reviewed; current address/issuer confirmation and contract role review remain]` |
+| ODPC registration role(s), number, date and scope | `[DOCUMENT REVIEWED — Data Processor 890-695D-435E; valid 15 October 2026 to 15 October 2028; issuer check/additional role applicability remain]` |
+| Named system DPO/privacy lead and contact; appointment analysis if none | `[PARTIAL — owner supplied contact; appointment/route verification remains]` |
 | Named service owner, security/operations lead, product/clinical lead and legal reviewer | `[OPEN]` |
 | Processor/controller role analysis per provider purpose, based on contracts and actual operations | `[OPEN — attach approved ROPA and current DPA/service terms]` |
-| Current production release/image digests, environments, modules and platform boundaries | `[OPEN — verify from live deployment inventory]` |
+| Current production release/image digests, environments, modules and platform boundaries | `[PARTIAL — rc71 hosted server identity/digests verified; native-client/device scope remains]` |
 | Design capacity/target scale and expected data-subject and event volumes; source/date/assumptions | `[OPEN — aggregate forecast; no patient-level data]` |
-| System-level assessment owner, date, version, review date and change triggers | `[OPEN]` |
+| System-level assessment owner, date, version, review date and change triggers | `[RECORDED — v0.4, 25 October 2026, Esenai Group Ltd / owner-nominated Sidney Chepkwony; triggers in DPIA section 9; signed decision pending]` |
 
 ## B. System purposes and processing roles
 
@@ -83,7 +96,7 @@ Attach evidence for the exact live release/environment; source-code behavior and
 | Tenant isolation and role/capability checks | Release-specific tests, denial monitoring, privileged-access inventory/review | `[OPEN]` |
 | Privileged authentication and device lifecycle | MFA evidence or approved compensating control; joiner/mover/leaver and lost-device revocation test | `[OPEN]` |
 | Encryption in transit and at rest | Live TLS/database/storage/backup configuration and key custody/rotation evidence | `[OPEN]` |
-| Clinical attachment protection | Active application keyring and legacy migration evidence; host/volume encryption proof; scanner status/test; authorization and access audit | `[PARTIAL — encryption and migration code present; production keyring/migration and host evidence OPEN]` |
+| Clinical attachment protection | Active application keyring and legacy migration evidence; host/volume encryption proof; scanner status/test; authorization and access audit | `[PARTIAL — live object keyring valid; no stored objects at audit; host/DB at-rest, key custody/rotation and deferred scanner remain OPEN]` |
 | Audit, monitoring and support access | Event coverage, remote protection/retention, named support access and review evidence | `[OPEN]` |
 | Backup, restore and continuity | Backup schedule/locations/retention, full restore exercise, approved RTO/RPO and owner | `[OPEN]` |
 | Incident response | Named contacts, processor-to-controller escalation, tabletop record and lessons closed | `[OPEN]` |
@@ -106,7 +119,7 @@ Customer facility licenses, clinical purposes and controller lawful bases are ou
 
 | Stakeholder | Name/role | Date/method | Feedback and change to assessment |
 |---|---|---|---|
-| TibaTrace service/system owner | `[OPEN]` | `[OPEN]` | `[OPEN]` |
+| TibaTrace service/system owner | Esenai Group Ltd / Sidney Chepkwony (owner-nominated approver) | 25 October 2026 / chat declarations | Identity/contact supplied; Kenya hosting correction recorded; consultation/sign-off incomplete |
 | System DPO/privacy lead or appointment reviewer | `[OPEN]` | `[OPEN]` | `[OPEN]` |
 | Clinical/pharmacy product lead | `[OPEN]` | `[OPEN]` | `[OPEN]` |
 | Security/operations lead | `[OPEN]` | `[OPEN]` | `[OPEN]` |
@@ -116,7 +129,7 @@ Customer facility licenses, clinical purposes and controller lawful bases are ou
 
 | Accountable system sign-off | Name/legal entity | Decision and residual-risk treatment | Signature/date |
 |---|---|---|---|
-| System owner/provider representative | `[OPEN]` | `[OPEN]` | `[OPEN]` |
+| System owner/provider representative | Esenai Group Ltd / Sidney Chepkwony | Pending residual-risk review | Pending |
 | System DPO/privacy lead | `[OPEN]` | `[OPEN]` | `[OPEN]` |
 | Security/operations owner | `[OPEN]` | `[OPEN]` | `[OPEN]` |
 | Clinical/product owner | `[OPEN]` | `[OPEN]` | `[OPEN]` |

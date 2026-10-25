@@ -2,7 +2,10 @@
 """:"
 exec "${PYTHON:-python}" "$0" "$@"
 """
+import base64
+import json
 import os
+import secrets
 import sys
 from pathlib import Path
 
@@ -14,6 +17,14 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "dawatrace.settings.production")
 os.environ.setdefault("DAWATRACE_ENV", "production")
 os.environ.setdefault("DAWATRACE_SECRET_KEY", "smoke-test-secret-key-must-be-sufficiently-long")
 os.environ.setdefault("DAWATRACE_OBJECT_SIGNING_KEY", "smoke-test-object-signing-key")
+# Ephemeral smoke-test keys only. Application runtime settings have no fallback.
+for ring, active, label in (
+    ("DAWATRACE_DOCUMENT_ENCRYPTION_KEYS", "DAWATRACE_DOCUMENT_ENCRYPTION_ACTIVE_KEY_ID", "smoke-document"),
+    ("DAWATRACE_PATIENT_IDENTIFIER_KEYS", "DAWATRACE_PATIENT_IDENTIFIER_ACTIVE_KEY_ID", "smoke-identifier"),
+    ("DAWATRACE_PATIENT_IDENTIFIER_LOOKUP_KEYS", "DAWATRACE_PATIENT_IDENTIFIER_ACTIVE_LOOKUP_KEY_ID", "smoke-lookup"),
+):
+    os.environ.setdefault(ring, json.dumps({label: base64.urlsafe_b64encode(secrets.token_bytes(32)).decode()}))
+    os.environ.setdefault(active, label)
 os.environ.setdefault("DAWATRACE_ALLOWED_HOSTS", "tibatrace.example.test")
 os.environ.setdefault("DAWATRACE_CSRF_TRUSTED_ORIGINS", "https://tibatrace.example.test")
 os.environ.setdefault("DAWATRACE_DATABASE_URL", "sqlite:///:memory:")

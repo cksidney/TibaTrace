@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import uuid
 
+from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Q
 
+from apps.fhir.kenya_hie import SYSTEM_LOCAL_PATIENT_REFERENCE
 from apps.fhir.services.search_utils import bounded_count, reference_id
 from apps.organizations.models import Location, LocationIdentifier, Organization, OrganizationIdentifier
 from apps.patients.models import Patient, PatientIdentifier
@@ -78,12 +80,15 @@ class PatientLookupService:
 
     @staticmethod
     def get_by_identifier(system, value, tenant_id):
-        row = PatientIdentifier.all_objects.select_related("patient").filter(
-            tenant_id=tenant_id, system=system, value=value, patient__tenant_id=tenant_id
-        ).first()
-        if row:
-            return row.patient
-        return Patient.all_objects.filter(tenant_id=tenant_id, internal_reference_id=value).first()
+        rows = PatientIdentifier.matching_value(tenant_id=tenant_id, system=system or None, value=value)
+        ids = list(rows.values_list("patient_id", flat=True).distinct()[:2])
+        if len(ids) > 1:
+            raise ValidationError("Patient identifier is ambiguous; supply the authoritative system and resolve duplicate mappings.")
+        if ids:
+            return Patient.all_objects.get(tenant_id=tenant_id, pk=ids[0])
+        if not system or system == SYSTEM_LOCAL_PATIENT_REFERENCE:
+            return Patient.all_objects.filter(tenant_id=tenant_id, internal_reference_id=value).first()
+        return None
 
     @staticmethod
     def search(params, tenant_id):
@@ -92,10 +97,11 @@ class PatientLookupService:
             queryset = queryset.filter(id=params["_id"])
         if params.get("identifier"):
             system, value = _token(params["identifier"])
-            identifiers = PatientIdentifier.all_objects.filter(tenant_id=tenant_id, value=value)
-            if system:
-                identifiers = identifiers.filter(system=system)
-            queryset = queryset.filter(Q(internal_reference_id=value) | Q(id__in=identifiers.values("patient_id")))
+            identifiers = PatientIdentifier.matching_value(tenant_id=tenant_id, value=value, system=system or None)
+            condition = Q(id__in=identifiers.values("patient_id"))
+            if not system or system == SYSTEM_LOCAL_PATIENT_REFERENCE:
+                condition |= Q(internal_reference_id=value)
+            queryset = queryset.filter(condition)
         if params.get("name"):
             queryset = queryset.filter(Q(first_name__icontains=params["name"]) | Q(last_name__icontains=params["name"]))
         if params.get("birthdate"):
@@ -110,6 +116,9 @@ class PatientLookupService:
         tenant_id = context.get("tenant_id")
         if not tenant_id:
             raise ValueError("Tenant ID is missing in context.")
+        from apps.tenancy.models import Tenant
+
+        Tenant.objects.select_for_update(no_key=True).get(pk=tenant_id)
         resource_id = domain_command.get("id")
         patient = Patient.all_objects.select_for_update().filter(id=resource_id, tenant_id=tenant_id).first() if resource_id else None
         if resource_id and not patient and context.get("operation") == "update":
