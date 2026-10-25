@@ -390,7 +390,9 @@ def resource_preserved(expected, actual):
 
 def execute(exchange):
     with transaction.atomic():
-        exchange = DhaExchange.all_objects.select_for_update().select_related("connection__tenant", "connection__branch", "actor", "visit").get(pk=exchange.pk)
+        # Lock the exchange itself: visit is nullable and PostgreSQL cannot
+        # lock the nullable side of its outer join.
+        exchange = DhaExchange.all_objects.select_for_update(of=("self",)).select_related("connection__tenant", "connection__branch", "actor", "visit").get(pk=exchange.pk)
         if exchange.state not in {"PENDING", "RETRY"}:
             return exchange
         if exchange.next_attempt_at and exchange.next_attempt_at > timezone.now():

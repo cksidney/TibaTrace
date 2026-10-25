@@ -1,5 +1,8 @@
 # TibaTrace 1.0.0-rc68 — tenant DHA integration, disabled by default
 
+Superseded before deployment by rc69 after PostgreSQL queue-lock validation.
+rc68 was not deployed to production.
+
 Adds tenant/branch DHA configuration, owner-reviewed activation, national registry
 and terminology calls, consent and visit handling, reviewed prescription intake,
 supply-derived FHIR exchange, claims adapters, callbacks and reconciliation.
