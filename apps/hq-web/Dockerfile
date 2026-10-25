@@ -18,10 +18,10 @@ RUN npm run build --workspace @dawatrace/shared
 COPY apps/hq-web apps/hq-web
 RUN npm run build --workspace @dawatrace/hq-web
 
-FROM nginx:stable-alpine-slim@sha256:32463212baf0e7d91aded2e9b843a4f2b9e017804b8c9d5bae7b51dcef64389c
+FROM nginx:1.30.6-alpine3.24-slim@sha256:dede8895648b461178c3bc604f7eed4423efe5220b2c4d839f5eb3d34ac3f8f7
 
-# The official base predates these security fixes. Exact package pins fail
-# closed if the trusted Alpine repository cannot supply the reviewed repairs.
+# Keep these base-library patch levels pinned; the build fails if the trusted
+# Alpine repository cannot supply the reviewed versions.
 RUN apk add --no-cache --upgrade pcre2=10.49-r0 zlib=1.3.2-r1
 
 ARG DAWATRACE_VERSION=0.1.0-alpha.1

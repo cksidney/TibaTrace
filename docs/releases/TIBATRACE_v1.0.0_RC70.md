@@ -49,3 +49,8 @@ and a failed scan continues to block publication.
 The exchange worker locks only its own row rather than the nullable visit join.
 This preserves atomic queue claiming and supports PostgreSQL-backed execution.
 The superseded rc68 candidate was not deployed.
+
+The rc70 scan successfully downloaded the vulnerability database, then blocked
+publication because its pinned nginx base contained three high-severity findings.
+No image was published and no production change was made. Superseded by rc71,
+which updates the pinned nginx base to 1.30.6.
