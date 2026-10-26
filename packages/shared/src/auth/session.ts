@@ -72,6 +72,29 @@ export class PosApiSession {
   }
 
   async login(username: string, password: string, otpCode?: string): Promise<PosSessionTokens> {
+    const tokens = await this.authenticate(username, password, otpCode);
+    await this.storage.save(tokens);
+    this.tokens = tokens;
+    return tokens;
+  }
+
+  async verifyCurrentOperator(username: string, password: string, otpCode?: string): Promise<boolean> {
+    const current = this.tokens;
+    if (!current) return false;
+    let verified: PosSessionTokens;
+    try {
+      verified = await this.authenticate(username, password, otpCode);
+    } catch (error) {
+      if (error instanceof PosAuthenticationError && (error.status === 401 || error.status === 403)) return false;
+      throw error;
+    }
+    if (this.tokens !== current || verified.userId !== current.userId || verified.tenantId !== current.tenantId) return false;
+    await this.storage.save(verified);
+    this.tokens = verified;
+    return true;
+  }
+
+  private async authenticate(username: string, password: string, otpCode?: string): Promise<PosSessionTokens> {
     const response = await this.fetcher(`${this.baseUrl}/api/identity/token/`, {
       method: 'POST',
       headers: {
@@ -85,10 +108,7 @@ export class PosApiSession {
       throw new PosAuthenticationError(errorMessage(payload), response.status);
     }
 
-    const tokens = readLoginResponse(payload);
-    this.tokens = tokens;
-    await this.storage.save(tokens);
-    return tokens;
+    return readLoginResponse(payload);
   }
 
   async logout(): Promise<void> {

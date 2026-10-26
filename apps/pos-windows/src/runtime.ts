@@ -98,18 +98,7 @@ export function createPosRuntime(): PosRuntime {
       await session.login(username, password, otpCode);
       return unauthenticatedInfo();
     },
-    verify: async (username, password, otpCode) => {
-      const current = session.current;
-      if (!current) return false;
-      const response = await fetch('/api/identity/token/', {
-        method: 'POST',
-        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password, ...(otpCode ? { otp_code: otpCode } : {}) }),
-      });
-      if (!response.ok) return false;
-      const payload = (await response.json()) as { user_id?: unknown; tenant_id?: unknown };
-      return payload.user_id === current.userId && payload.tenant_id === current.tenantId;
-    },
+    verify: (username, password, otpCode) => session.verifyCurrentOperator(username, password, otpCode),
     logout: () => session.logout(),
     fetch: session.fetch.bind(session) as typeof fetch,
     offline: {

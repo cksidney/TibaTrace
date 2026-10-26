@@ -209,7 +209,10 @@ async function login(payload: LoginPayload) {
 async function verifyOperator(payload: LoginPayload): Promise<boolean> {
   const current = await requireSession();
   const verified = await authenticate(payload);
-  return verified.userId === current.userId && verified.tenantId === current.tenantId;
+  const live = await sessionStore.load();
+  if (!live || live.access !== current.access || verified.userId !== current.userId || verified.tenantId !== current.tenantId) return false;
+  await sessionStore.save(verified);
+  return true;
 }
 
 async function authenticate(payload: LoginPayload): Promise<StoredPosSession> {

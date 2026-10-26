@@ -154,16 +154,7 @@ export function createAndroidPosRuntime(): AndroidPosRuntime {
     fingerprint,
     activation,
     async verify(username, password, otpCode) {
-      const current = this.session.current;
-      if (!current) return false;
-      const response = await fetch(`${apiBaseUrl}/api/identity/token/`, {
-        method: 'POST',
-        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: username.trim(), password, ...(otpCode ? { otp_code: otpCode } : {}) }),
-      });
-      if (!response.ok) return false;
-      const payload = (await response.json()) as { user_id?: unknown; tenant_id?: unknown };
-      return payload.user_id === current.userId && payload.tenant_id === current.tenantId;
+      return this.session.verifyCurrentOperator(username.trim(), password, otpCode);
     },
   };
 }

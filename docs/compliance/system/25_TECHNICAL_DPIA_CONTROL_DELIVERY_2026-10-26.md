@@ -1,6 +1,6 @@
 # Technical DPIA control delivery — 26 October 2026
 
-**Status:** Engineering changes under validation; not deployed or independently assessed.<br>
+**Status:** Engineering controls tested; production rollout and independent assessment remain outstanding.<br>
 **Current production:** rc74, `27469e1993d85606001787fb058052fe1cb6b4b6`.<br>
 **DPIA decision:** NOT APPROVED.<br>
 **Operator constraints:** Malware scanning stays deferred. DHA, national-provider,
@@ -16,7 +16,7 @@ EMR/RX-feed, payment and tax integration activation stays disabled.
 | DPIA-09 | Restricted account/role/MFA and POS-session review export; no password, seed, recovery code or token hashes exported | Named reviewer decisions, resolved leaver/privilege/device findings and approved review frequency |
 | DPIA-10 | Ed25519 signed audit checkpoint with cumulative ordered content hashes, previous-checkpoint linkage and separate trusted-public-key verification; clinical metadata stays out of the exported checkpoint | Approved separate signing-key custody, protected external append-only destination, delivery monitoring, continuity/source completeness checks and operating evidence |
 | DPIA-11 | Versioned backup runner with writer quiescing/resume, encrypted DB/config/clinical archives, ciphertext and manifest authentication, verification-only mode and no automatic pruning | Approved destination, separate recovery-key custody, recurring schedule, monitoring, maintenance window, capacity, retention and full isolated production-scope restore |
-| DPIA-08/11 | Synthetic PostgreSQL recovery runner restores the database, encrypted objects, identifier lookup keys and MFA seeds after removing the originals; rejects wrong keys/tampered archives; provider configurations remain absent | Exact production-major CI result, independently witnessed production-scope recovery, measured/approved RPO/RTO, separate failure-domain recovery and restoration of applicable holds/deletions |
+| DPIA-08/11 | Synthetic PostgreSQL recovery runner restores the database, encrypted objects, identifier lookup keys and MFA seeds after removing the originals; rejects wrong keys/tampered archives; provider configurations remain absent | Production-major CI is passed; independently witnessed production-scope recovery, measured/approved RPO/RTO, separate failure-domain recovery and restoration of applicable holds/deletions |
 | DPIA-03/10 | Compatible dependency patches for Electron, Vite/Vitest and affected transitive packages; security audit remains fail-closed for unexpected severe findings | Release/native installation and independent assessor scope; one narrowly allowed Metro `image-size` build-tool issue remains pending a compatible upstream fix |
 
 Source controls are not live protection until a validated release and its
@@ -152,14 +152,25 @@ passed five tests for governed reset, seed rewrap, private access export, audit
 signature modification and backup authentication. Runtime collector tests passed
 11 cases, with its PostgreSQL-only control skipped locally under SQLite.
 
-The isolated synthetic PostgreSQL 18 rehearsal restored DB, objects and identifier/
-MFA keys, matched before/after checks and rejected wrong keys/tampering. Its
-2.913-second synthetic restore measurement is not a production RTO; production
-RPO/RTO and separate custody were not measured or proved. PostgreSQL 16 CI and
-its row-lock/concurrency checks remain required before release. New final
-regression results and exact-source CI are recorded separately in restricted
-engineering evidence; do not treat this source document as an independent
-assessment.
+[PostgreSQL 16 validation run 40274892085](https://github.com/cksidney/TibaTrace/actions/runs/40274892085)
+passed all eight business shards and exact-source coverage: **2,546 tests, zero
+failures, errors or skips**, including row-lock concurrency and read-only controls.
+Its backend source is `ebd1d7992e86b247a83e479f2fb465911cfd091c`. The separate
+PostgreSQL 16 coordinated synthetic restore passed, matched before/after checks
+and rejected wrong keys/tampering. Its 2.012-second synthetic recovery measurement
+is not a production RTO; production RPO/RTO, separate custody and independent
+witness were not proved. The prior PostgreSQL 18 local exercise is retained as
+supplementary engineering evidence.
+
+The final native-only follow-up saves renewed tokens after verifying the same
+operator and tenant, and rejects an in-flight verification if sign-out changed
+the session. Its seven shared authentication tests and Windows/Android typechecks
+and suites passed. OTP/recovery input is sent only in the authentication request
+and is excluded from session storage. Backend source was unchanged by this
+follow-up. Exact release/image gates and installed-client acceptance are still
+required before production rollout. Restricted evidence is retained in
+`artifacts/generated/compliance/dpia-technical-closure-2026-10-26/`; no independent
+assessment is claimed.
 
 The dependency gate reports only the existing narrowly allowed Metro image-size
 build-tool advisories. Runtime/native patches still require release and device

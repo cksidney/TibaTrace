@@ -27,6 +27,46 @@ const initial: PosSessionTokens = {
 };
 
 describe('PosApiSession', () => {
+  it('sends the MFA code once and renews only the same operator session without storing the code', async () => {
+    const storage = new MemoryStorage();
+    storage.value = initial;
+    const calls: Array<{ body: BodyInit | null | undefined }> = [];
+    const session = new PosApiSession({ baseUrl: 'https://tibatrace.example', storage,
+      fetcher: async (_input, init) => {
+        calls.push({ body: init?.body });
+        return Response.json({ access: 'access-with-fresh-mfa', refresh: 'refresh-with-fresh-mfa', tenant_id: initial.tenantId, user_id: initial.userId });
+      },
+    });
+    await session.restore();
+    expect(await session.verifyCurrentOperator('cashier', 'synthetic-password', '654321')).toBe(true);
+    expect(JSON.parse(String(calls[0]?.body)).otp_code).toBe('654321');
+    expect(storage.value?.access).toBe('access-with-fresh-mfa');
+    expect(JSON.stringify(storage.value)).not.toContain('654321');
+  });
+
+  it('keeps the existing operator when re-verification returns a different account or tenant', async () => {
+    const storage = new MemoryStorage(); storage.value = initial;
+    const session = new PosApiSession({ baseUrl: 'https://tibatrace.example', storage,
+      fetcher: async () => Response.json({ access: 'other-access', refresh: 'other-refresh', tenant_id: 'other-tenant', user_id: 'other-user' }),
+    });
+    await session.restore();
+    expect(await session.verifyCurrentOperator('other', 'synthetic-password', '123456')).toBe(false);
+    expect(session.current).toEqual(initial); expect(storage.value).toEqual(initial);
+  });
+
+  it('does not revive a session signed out while MFA verification was in flight', async () => {
+    const storage = new MemoryStorage(); storage.value = initial;
+    let finish!: (value: Response) => void;
+    const session = new PosApiSession({ baseUrl: 'https://tibatrace.example', storage,
+      fetcher: () => new Promise<Response>(resolve => { finish = resolve; }),
+    });
+    await session.restore();
+    const attempt = session.verifyCurrentOperator('cashier', 'synthetic-password', '123456');
+    await session.logout();
+    finish(Response.json({ access: 'renewed', refresh: 'renewed-refresh', tenant_id: initial.tenantId, user_id: initial.userId }));
+    expect(await attempt).toBe(false); expect(storage.value).toBeNull();
+  });
+
   it('persists login and injects bearer and tenant headers', async () => {
     const storage = new MemoryStorage();
     const calls: Array<{ url: string; init?: RequestInit }> = [];
