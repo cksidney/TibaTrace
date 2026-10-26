@@ -40,7 +40,7 @@ class MfaView(APIView):
     @transaction.atomic
     def post(self, request, operation):
         from django.contrib.auth import get_user_model
-        request.user = get_user_model().objects.select_for_update().get(pk=request.user.pk)
+        request.user = get_user_model().objects.select_for_update(no_key=True).get(pk=request.user.pk)
         payload = MfaInput(data=request.data)
         payload.is_valid(raise_exception=True)
         data = payload.validated_data

@@ -52,6 +52,11 @@ class SignInThrottle(AnonRateThrottle):
 
     scope = "signin"
 
+    def get_cache_key(self, request, view):
+        # Partial/authenticated browser sessions must not exempt a credential
+        # endpoint from guessing limits.
+        return self.cache_format % {'scope': self.scope, 'ident': self.get_ident(request)}
+
 
 class SignInSerializer(serializers.Serializer):
     username = serializers.CharField(max_length=150)

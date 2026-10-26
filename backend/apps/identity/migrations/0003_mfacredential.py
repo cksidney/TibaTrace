@@ -19,6 +19,7 @@ class Migration(migrations.Migration):
                 ('user', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, primary_key=True, serialize=False, to=settings.AUTH_USER_MODEL)),
                 ('protected_secret', models.TextField(blank=True)),
                 ('enabled_at', models.DateTimeField(blank=True, null=True)),
+                ('enrollment_required', models.BooleanField(default=False)),
                 ('version', models.UUIDField(default=uuid.uuid4, editable=False)),
                 ('last_step', models.BigIntegerField(default=-1)),
                 ('recovery_hashes', models.JSONField(blank=True, default=list)),

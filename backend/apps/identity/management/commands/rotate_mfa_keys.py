@@ -24,7 +24,7 @@ class Command(BaseCommand):
         planned = []
         try:
             _, active = mfa.configuration()
-            rows = list(mfa.MfaCredential.objects.select_for_update().select_related('user').exclude(protected_secret=''))
+            rows = list(mfa.MfaCredential.objects.select_for_update(of=('self',)).select_related('user').exclude(protected_secret=''))
             for row in rows:
                 plaintext = mfa._unseal(row)
                 planned.append((row, mfa._seal(row.user, plaintext)))

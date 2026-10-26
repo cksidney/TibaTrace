@@ -21,7 +21,7 @@ class Command(BaseCommand):
     @transaction.atomic
     def handle(self, *args, **options):
         try:
-            target = User.objects.select_for_update().get(pk=options['user_id'])
+            target = User.objects.select_for_update(no_key=True).get(pk=options['user_id'])
             operator = User.objects.get(pk=options['operator_id'], is_active=True)
         except (User.DoesNotExist, ValueError):
             raise CommandError('An existing target and active platform operator are required.') from None

@@ -30,6 +30,7 @@ class MfaCredential(models.Model):
     user = models.OneToOneField(settings.AUTH_USER_MODEL, primary_key=True, on_delete=models.CASCADE)
     protected_secret = models.TextField(blank=True)
     enabled_at = models.DateTimeField(null=True, blank=True)
+    enrollment_required = models.BooleanField(default=False)
     version = models.UUIDField(default=uuid.uuid4, editable=False)
     last_step = models.BigIntegerField(default=-1)
     recovery_hashes = models.JSONField(default=list, blank=True)
@@ -53,7 +54,7 @@ def credential_for(user):
 
 def required(user, credential=None):
     credential = credential if credential is not None else credential_for(user)
-    return bool((credential and credential.enabled_at) or
+    return bool((credential and (credential.enabled_at or credential.enrollment_required)) or
                 (getattr(settings, 'TIBATRACE_PRIVILEGED_MFA_REQUIRED', False) and privileged(user)))
 
 
@@ -115,7 +116,7 @@ def begin_enrollment(user, nonce):
 
     # Lock the parent even when the credential has not yet been created.
     from django.contrib.auth import get_user_model
-    get_user_model().objects.select_for_update().get(pk=user.pk)
+    get_user_model().objects.select_for_update(no_key=True).get(pk=user.pk)
     credential, _ = MfaCredential.objects.get_or_create(user=user)
     credential = MfaCredential.objects.select_for_update().get(pk=user.pk)
     if credential.enabled_at:
@@ -175,6 +176,7 @@ def verify(user, code, *, enrollment_nonce=None):
     codes = None
     if enrolling:
         credential.enabled_at = now
+        credential.enrollment_required = True
         credential.pending_expires_at = None
         credential.pending_nonce_hash = ''
         credential.version = uuid.uuid4()
