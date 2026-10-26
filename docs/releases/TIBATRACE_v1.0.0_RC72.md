@@ -1,5 +1,9 @@
 # TibaTrace 1.0.0-rc72 — independent patient identifier keyrings
 
+**Status:** Withdrawn before image publication and production deployment. The
+rc72 workflow was cancelled after review found its malware-scanning instructions
+did not match the approved live RX-upload configuration. Superseded by rc73.
+
 This release adds independent, versioned encryption and lookup keyrings for
 patient identifiers, tenant-scoped key derivation, explicit legacy compatibility,
 and controlled identifier rotation. FHIR identifier intake and reference lookup
@@ -39,9 +43,11 @@ disabled unless separately configured and approved per tenant. This release
 does not enable live integrations or certify TibaTrace. No Windows or Android
 installer change is included.
 
-The existing malware-scan deferral remains a separate open control gap. Do not
-represent an unscanned attachment as clean; keep RX source uploads disabled until
-the approved scanner and its clean/infected/unavailable paths are verified.
+The existing malware-scan deferral remains a separate open control gap. The
+reviewed live configuration keeps `DAWATRACE_DOCUMENT_MALWARE_SCAN_REQUIRED=false`
+and `DAWATRACE_RX_SOURCE_UPLOADS_ENABLED=true`. This release preserves that state:
+deferred attachments remain `NOT_SCANNED`, never `CLEAN`, with the existing user
+notice and audit provenance. No scanner is installed or activated by this release.
 
 ## Release and production acceptance
 
