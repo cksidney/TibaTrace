@@ -1,7 +1,7 @@
 # Encryption Implementation Specification
 
 **Status:** As-built source specification with production evidence gaps<br>
-**Production evidence:** rc71, `2965194a29311314e8a5772adfeee5af8c14a8f2`, 25 October 2026. **Source update:** commit `f8ea5cd`, local and not deployed, reviewed 26 October. See [current review](21_DPIA_CURRENT_REVIEW_2026-10-25.md) and [rollout guide](23_IDENTIFIER_KEY_REMEDIATION_AND_ROLLOUT.md).
+**Current production evidence:** rc74, `27469e1993d85606001787fb058052fe1cb6b4b6`, 26 October 2026; [deployment acceptance](../../releases/RC74_DEPLOYMENT_2026-10-26.md). The [25 October review](21_DPIA_CURRENT_REVIEW_2026-10-25.md) is the historical rc71 snapshot. See the [rollout guide](23_IDENTIFIER_KEY_REMEDIATION_AND_ROLLOUT.md) for future migrations/rotations.
 
 ## 1. Current controls
 
@@ -9,12 +9,12 @@
 |---|---|---|
 | Public browser/API transport | HTTPS at Caddy; Django production settings enable redirect, HSTS, secure session/CSRF cookies and security headers | Live public HTTPS/certificate, HSTS, nosniff and frame denial observed; retest per deployment |
 | PostgreSQL transport | Documented Esenai host requires PostgreSQL TLS; Django production expects secure production settings | Live TLS 1.3 observed with sslmode=require; hostname verification is not required by this setting; verify-full and trust-chain plan remain to assess |
-| Patient identifiers | Deployed rc71 uses Fernet/HMAC with tenant binding; local commit `f8ea5cd` adds separate versioned encryption and lookup keyrings and legacy-compatible rotation | New keyring is not deployed or independently reviewed; provision, migrate, read back and recover before claiming production protection |
+| Patient identifiers | rc74 uses separate versioned encryption/lookup keyrings with tenant/purpose binding and explicit legacy-read compatibility; provisioning, additive migration and synthetic readback verified | Independent review, separate custody, ongoing rotation and full isolated recovery remain open |
 | Passwords | Django authentication password-hashing framework | Confirm deployed hasher configuration and upgrade policy from runtime settings |
 | Windows POS credentials | Windows DPAPI protection is documented for native client credential material | Device recovery/rotation and local cache scope require client-specific validation |
 | Android POS credentials | Android Keystore-backed token handling is documented; release cleartext is disabled | Confirm signing/release configuration and device reset/revocation behavior |
 | Clinical attachments | Source now encrypts new object bytes with AES-256-GCM using an external, versioned keyring and the tenant/object key as authenticated context; SHA-256 verifies plaintext, reads remain capability/token/tenant-bound and audited | Live keyring valid; no stored clinical documents at audit, so no legacy migration/readback/rotation population to verify. Host/database at-rest and recovery/key custody remain open |
-| Backups | Encrypted rc71 release DB/environment/clinical-object archives have verified inventories; backup key and archives are on the same VPS | Recurring coordinated schedule, separate protected copy/key custody, retention and full restore report remain open; owner says a separate restore exercise exists |
+| Backups | Encrypted rc74 pre/post DB/environment/clinical-data archives have verified inventories and active configuration readback; backup key and archives are on the same VPS | Recurring coordinated schedule, separate protected copy/key custody, retention and full restore report remain open; owner says a separate restore exercise exists |
 | Secrets | Production rejects unsafe default secret; secret file is outside releases and is documented with restrictive permissions | Runtime secret manager, access audit, rotation and break-glass process require operational evidence |
 
 ## 2. Patient identifier cryptography
@@ -39,18 +39,20 @@ Clinical-object keys are configured as a JSON key-ID map in the protected deploy
 - tested restore of encrypted data and re-encryption after restore where required;
 - explicit key ownership when a tenant leaves service and lawful deletion/return process.
 
-For rc71, patient identifier keys remain deterministically derived from Django `SECRET_KEY`; this is not a managed, versioned keyring. The local `f8ea5cd` implementation changes the source design but is not yet production evidence. Neither construction should be described as KMS-managed encryption.
+Historical rc71 patient identifier keys were derived from Django `SECRET_KEY`. rc74 replaces that root dependency with separately provisioned, versioned encryption and lookup keys; historical service secrets remain explicit legacy-read material. No KMS-managed encryption is claimed.
 
-### 26 October source remediation, not deployed
+### 26 October deployed remediation
 
-The local remediation replaces this patient-identifier root dependency with
+The rc74 remediation replaces this patient-identifier root dependency with
 independently provisioned versioned encryption and lookup keyrings, tenant/purpose
 separation, explicit legacy compatibility and atomic tenant-scoped rotation. It
 also protects direct FHIR writes and preserves external identifier namespace and
 case. See [implementation and controlled rollout](23_IDENTIFIER_KEY_REMEDIATION_AND_ROLLOUT.md)
-for configuration, tests and migration/rollback requirements. This does not
-change the rc71 runtime evidence or close host/database encryption, separate key
-custody, recovery or independent-review findings.
+for configuration, tests and migration/rollback requirements. Production
+provisioning, migration, synthetic readback and encrypted configuration recovery
+are recorded in rc74 acceptance. The historical rc71 record is preserved;
+host/database encryption, separate custody, full recovery and independent review
+remain open.
 
 ## 4. Clinical object encryption and legacy migration
 

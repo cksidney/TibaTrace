@@ -2,8 +2,8 @@
 
 **Prepared:** 26 October 2026, Africa/Nairobi<br>
 **Scope:** DPIA-08 identifier lifecycle and related FHIR storage/lookup paths<br>
-**State:** Implemented and locally validated; not deployed or independently assessed<br>
-**Production evidence boundary:** rc71, `2965194a29311314e8a5772adfeee5af8c14a8f2`, as recorded in the [25 October review](21_DPIA_CURRENT_REVIEW_2026-10-25.md). That dated evidence packet has not been replaced by these source changes.<br>
+**State:** Deployed and operationally verified in rc74; independent security assessment and full restore remain open<br>
+**Production evidence boundary:** rc74, `27469e1993d85606001787fb058052fe1cb6b4b6`; see [26 October deployment acceptance](../../releases/RC74_DEPLOYMENT_2026-10-26.md). The [25 October review](21_DPIA_CURRENT_REVIEW_2026-10-25.md) remains a historical rc71 assessment.<br>
 **DPIA decision:** NOT APPROVED; this remediation addresses part of one finding.
 
 ## Implemented safeguards
@@ -83,8 +83,11 @@ separate governed action, never an automatic side effect of rotation.
 
 ## Controlled rollout
 
-This is a procedure to execute after the release and operational prerequisites,
-not evidence that deployment or a production rotation has occurred.
+The rc74 rollout completed with encrypted pre/post backups, independent key
+provisioning, the additive migration, tenant preflights and synthetic acceptance.
+There were no production identifiers to rotate; no population rewrite is claimed.
+The procedure below remains required for future populations and key rotations.
+A full isolated restore and independent review are still outstanding.
 
 1. Complete full release CI, including PostgreSQL 16 matching production,
    vulnerability scans and immutable image provenance. Confirm tenant inventory,

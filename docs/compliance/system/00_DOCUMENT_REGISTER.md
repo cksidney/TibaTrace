@@ -1,9 +1,9 @@
 # TibaTrace System Compliance Documentation Register
 
 **Document set:** TibaTrace / DawaTrace hosted pharmacy and healthcare platform<br>
-**Updated:** 26 October 2026; production audit boundary remains 25 October<br>
-**Reviewed production source:** rc71, `2965194a29311314e8a5772adfeee5af8c14a8f2`<br>
-**Current deployment evidence:** all server image labels/digests, exact-source CI and signed provenance verified; restricted operational evidence packet linked in document 21<br>
+**Updated:** 26 October 2026; rc74 deployment acceptance added; the 25 October assessment remains historical evidence<br>
+**Current production source:** rc74, `27469e1993d85606001787fb058052fe1cb6b4b6`<br>
+**Current deployment evidence:** [rc74 acceptance](../../releases/RC74_DEPLOYMENT_2026-10-26.md); server identity, exact-source CI, signed provenance, migration, synthetic key/FHIR checks and protected recovery archives verified<br>
 **Approval state:** Working drafts; system-owner, legal and independent-assessment approvals remain outstanding. Tenant-specific controller DPIAs are separate.
 
 This register links the requested system documents and says what each one actually establishes. It does not certify TibaTrace, Esenai Group Ltd, or a tenant as compliant. Product controls, organizational controls, customer configuration, and independent test evidence are kept distinct.
@@ -17,7 +17,7 @@ The bundled `TibaTrace_System_Documentation_Word.zip` predates the updates in th
 | 1 | [Data Protection Impact Assessment](01_DATA_PROTECTION_IMPACT_ASSESSMENT.md) | Not approved; TibaTrace system/provider DPIA; system-owner production evidence, health-sector proof and sign-off remain blockers |
 | 2 | [Privacy Policy](02_PRIVACY_POLICY.md) | Public-facing draft; controller/contact/retention details require confirmation |
 | 3 | [System Architecture Diagram](03_SYSTEM_ARCHITECTURE.md) | As-built architecture with deployment evidence boundary stated |
-| 4 | [System User Manual](04_SYSTEM_USER_MANUAL.md) | Operational guide; server baseline rc71, but installed native-client versions still need release-inventory confirmation |
+| 4 | [System User Manual](04_SYSTEM_USER_MANUAL.md) | Operational guide; server baseline rc74; installed native-client versions still need release-inventory confirmation |
 | 5 | [Technical Specifications](05_TECHNICAL_SPECIFICATIONS.md) | Repository and documented production specification |
 | 6 | [Information Security Policy](06_INFORMATION_SECURITY_POLICY.md) | Policy draft for Esenai and tenant review/approval |
 | 7 | [Incident Response Plan](07_INCIDENT_RESPONSE_PLAN.md) | Operational plan draft; named responders and contacts required |
@@ -36,7 +36,7 @@ The bundled `TibaTrace_System_Documentation_Word.zip` predates the updates in th
 | 20 | [TibaTrace system DPIA gap closure register](20_DPIA_GAP_CLOSURE_REGISTER.md) | Prioritized closure evidence, owners and verification tests; not an approval |
 | 21 | [DPIA review snapshot](21_DPIA_CURRENT_REVIEW_2026-10-25.md) | Dated 25 October production controls, risk scores, restricted evidence index and approval blockers |
 | 22 | [Kenya hosting acceptance plan](22_KENYA_HOSTING_ACCEPTANCE_PLAN.md) | Not executed; owner confirmed Kenya hosting needs arranging |
-| 23 | [Identifier key remediation and rollout](23_IDENTIFIER_KEY_REMEDIATION_AND_ROLLOUT.md) | Local source safeguards and validation; independent keys/rotation are not deployed |
+| 23 | [Identifier key remediation and rollout](23_IDENTIFIER_KEY_REMEDIATION_AND_ROLLOUT.md) | Deployed in rc74; key provisioning, migration and synthetic readback verified; independent assessment and full recovery remain open |
 | 24 | [DPIA remaining action plan](24_DPIA_REMAINING_ACTION_PLAN_2026-10-26.md) | Ordered owner checklist with required evidence and closure criteria; no approval implied |
 
 ## Reading the statuses
@@ -49,8 +49,8 @@ The bundled `TibaTrace_System_Documentation_Word.zip` predates the updates in th
 ## Facts that govern this document set
 
 1. The DPIA is version 0.4 and remains NOT APPROVED. Current server evidence is
-   rc71; historical rc52/rc57 statements in older documents are not the current
-   deployment baseline. Native-client/device evidence remains separate.
+   rc74; the 25 October rc71 assessment and older rc52/rc57 statements describe
+   historical deployments. Native-client/device evidence remains separate.
 2. Matching Esenai Group Ltd incorporation and ODPC processor certificates were
    visually reviewed. The owner supplied a privacy contact and nominated Sidney
    Chepkwony as approval owner. Signatures and purpose/role review remain open.
@@ -67,10 +67,11 @@ The bundled `TibaTrace_System_Documentation_Word.zip` predates the updates in th
 6. Seven years is the owner's retention baseline, not a completed class-specific
    trigger/exception/hold/backup schedule. No irreversible disposal rules have
    been adopted from an unspecified trigger.
-7. Commit `f8ea5cd` contains local source changes for independently versioned
-   patient-identifier encryption/lookup keys and protected FHIR intake. It is not
-   deployed and does not change the rc71 assessment boundary. Follow documents 23
-   and 24 before release or marking DPIA-08 closed.
+7. The identifier remediation from `f8ea5cd` is deployed in rc74. Independent
+   keyrings, additive migration, synthetic key/FHIR acceptance and encrypted
+   configuration readback are verified. The 25 October rc71 assessment remains
+   historical; DPIA-08 stays PARTIAL pending independent review, storage/custody,
+   rotation lifecycle and full recovery evidence. Follow documents 23 and 24.
 8. The owner says TibaTrace is DHA certified, its security assessment passed and a
    restore exercise exists. The certificate reference and the security/restore
    reports were not located in the reviewed evidence; record these as declarations

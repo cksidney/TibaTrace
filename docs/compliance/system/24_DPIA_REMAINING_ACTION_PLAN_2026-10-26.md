@@ -2,8 +2,8 @@
 
 **Updated:** 26 October 2026<br>
 **Decision:** DPIA remains **NOT APPROVED**; this plan does not grant regulatory approval or certification.<br>
-**Production boundary:** server release `1.0.0-rc71`, commit `2965194a29311314e8a5772adfeee5af8c14a8f2`, Hetzner Nuremberg, Germany.<br>
-**Unshipped source:** local commit `f8ea5cd` adds versioned patient-identifier keys and FHIR intake safeguards. It is not deployed and is not production evidence.
+**Production boundary:** server release `1.0.0-rc74`, commit `27469e1993d85606001787fb058052fe1cb6b4b6`, Hetzner Nuremberg, Germany.<br>
+**Deployment update:** the identifier remediation is deployed; [rc74 acceptance](../../releases/RC74_DEPLOYMENT_2026-10-26.md) records key provisioning, migration, synthetic readback, release checks and encrypted configuration recovery. Independent review and a full restore remain outstanding.
 
 This is the working checklist for the documents in this folder. Findings and closure tests remain in the [DPIA gap closure register](20_DPIA_GAP_CLOSURE_REGISTER.md); the evidence boundary and risk decision remain in the [DPIA](01_DATA_PROTECTION_IMPACT_ASSESSMENT.md) and [25 October review](21_DPIA_CURRENT_REVIEW_2026-10-25.md). A declaration or code change closes a row only after the specified evidence is checked.
 
@@ -22,7 +22,7 @@ These are **review-ready working documents, not a complete approved submission**
 | Retention | Owner's seven-year baseline recorded | Approved record-class start events/exceptions/holds and tested retention/deletion lifecycle |
 | Security assessment | Owner says Passed; report not located | Signed independent report, tested version/scope, findings and retest evidence |
 | Recovery | Owner says exercise exists; report not located | Full database + clinical-object + key restore report, measured RPO/RTO, recurring schedule and separate failure domain |
-| Identifier keys | Source change in local `f8ea5cd`; not deployed | Independent review, production key provisioning, safe rollout/migration, readback/restore and exact release verification |
+| Identifier keys | Deployed in rc74; key provisioning, migration, synthetic readback and encrypted configuration readback verified | Independent review, separate key custody, ongoing rotation lifecycle and full isolated recovery exercise |
 | Malware scanning | Deliberately deferred; no scanner endpoint configured | Activate and verify ClamAV or another approved scanner; otherwise restrict affected uploads under an approved time-bound exception. Deferred scanning does not support a DPIA pass for those uploads |
 | Integrations | DHA/national-provider/RX/checkout activation is off in reviewed production | Tenant-specific purpose, controller approval, credentials, endpoint, contracts, test/conformance and go-live approval before enabling |
 | Policies/manuals | Drafts exist | Named owners approve them and operational records demonstrate they are followed |
@@ -72,9 +72,15 @@ The seven-year period is an owner-stated baseline only. For each record class—
 
 **Close when:** the schedule is signed and its implementation and synthetic lifecycle evidence match it.
 
-### 5. Deploy and verify the source-only identifier remediation safely
+### 5. Complete identifier assurance after the verified rc74 rollout
 
 **Owners:** release/security engineers, infrastructure owner, independent reviewer.
+
+The deployment, normal release gates, independent runtime keyrings, additive
+migration, synthetic readback and encrypted configuration recovery check are
+complete in rc74. There were no identifiers requiring population rotation.
+The checklist remains the evidence standard for independent review and future
+rotations; full recovery and custody findings stay open.
 
 1. Review [identifier-key rollout](23_IDENTIFIER_KEY_REMEDIATION_AND_ROLLOUT.md) and commit `f8ea5cd`; confirm current branch/source and change set before release.
 2. Complete independent code/security review and the normal release gates against the exact source. Prepare tested rollback and a protected backup before changing configuration or schema.
