@@ -4,7 +4,7 @@
 **Policy owner:** Esenai infrastructure owner (to assign)<br>
 **Systems:** PostgreSQL, clinical object volume, release/configuration metadata, audit and integration configuration
 
-## Current evidence: 25 October 2026
+## Current evidence: 25 October 2026; status rechecked 26 October
 
 The rc71 predeployment backup contains encrypted PostgreSQL, environment and
 clinical-object archives with successful decrypt/inventory checks. Its manifest

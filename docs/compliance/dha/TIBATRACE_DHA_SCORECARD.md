@@ -1,80 +1,28 @@
-# TibaTrace DHA Framework Certification Scorecard
+# TibaTrace DHA evidence gate status
 
-**Governing Authority**: Digital Health Agency (DHA), Kenya  
-**Framework Version**: 2025 Certification Framework  
-**Baseline Release**: `tibatrace-v0.2.0-rc5` (`f365e778f9f30ab590bc0481c1ea006bb2664cef`)  
-**Evaluation Type**: INTERNAL EVIDENCE-BASED READINESS ASSESSMENT  
-**Assessment date**: 1 August 2026 — historical; it does not cover the current production release or the 17 October system DPIA review.
+**Updated:** 26 October 2026<br>
+**Production server baseline:** `1.0.0-rc71`, commit `2965194a29311314e8a5772adfeee5af8c14a8f2`<br>
+**Local source change:** `f8ea5cd` is not deployed<br>
+**Result:** **NOT READY TO REPRESENT AS VERIFIED/APPROVED FROM THIS EVIDENCE SET**. This is not an official DHA score or certification decision.
 
-> [!IMPORTANT]
-> **Historical and superseded for current decisions.** This scorecard's `CERTIFICATION READY` conclusion is not supported by current release evidence and must not be used as a current certification/readiness claim. The TibaTrace system/provider DPIA dated 17 October 2026 is **NOT APPROVED** pending owner evidence, control verification and sign-off. This scorecard is an internal historical estimate, not official DHA certification or a substitute for current DHA assessment.
+An August 2026 scorecard reported 81.5% and “CERTIFICATION READY” against rc5. That estimate is withdrawn for current decisions. It was not a DHA finding and must not be used as a readiness claim. The owner states TibaTrace is certified; current certificate and go-live scope were not found or issuer-verified in the reviewed evidence. The system DPIA is **NOT APPROVED**.
 
-The DHA's current public certification guidance says evidence must include a completed system DPIA and encryption at rest/in transit; the guidance describes certification as applying to digital health systems used in healthcare facilities. TibaTrace must attach the current authority decision/certificate and release-specific evidence before claiming readiness. See the [DHA certification guidance](https://certification.dha.go.ke/) and [system categories](https://certification.dha.go.ke/systems).
+## Current gates
 
----
+| Gate | Evidence state | What must be verified before calling it closed |
+|---|---|---|
+| Legal identity and ODPC status | Partially evidenced in restricted packet | Issuer/scope check, current registered address, all applicable controller/processor registration and DPO route |
+| System DPIA and encryption | **Open** | Approved system DPIA; production evidence of in-transit and at-rest encryption; documented risk treatment and accountable sign-off |
+| DHA category and certificate | **Owner-declared; unverified here** | DHA certificate/reference, assessed version, category, conditions, expiry and any separate facility go-live approval |
+| Production scope and hosting | **Open** | Reconcile verified Germany deployment with Kenya hosting plan and legal assessment; exact native client inventory and data flows |
+| Clinical and dispensing safety | **Not reassessed as a DHA conformance suite** | Map current release to DHA-confirmed criteria; execute witnessed scenarios with synthetic data and retain artifacts |
+| HIE / national interfaces | **Disabled in reviewed production** | Tenant authority, credentials, sandbox/live endpoint approval, profile/version, conformance evidence and operational sign-off |
+| Security assurance | **Open** | Signed independent test report for exact server/client scope, findings and retest; privileged MFA, malware scanning, access review and audit controls |
+| Recovery and retention | **Open** | Full restore evidence with measured RPO/RTO and keys/objects/database; approved class-specific retention schedule and lifecycle proof |
+| Policies and operational readiness | **Drafts prepared; not adopted** | Named owners, approval dates, training, incident exercise, live contact paths and recurring control evidence |
 
-## 1. Executive Summary & Readiness Scores
+## Readiness rule
 
-```
-+-------------------------------------------------------------------------------+
-|                       TIBATRACE DHA READINESS SCORECARD                       |
-+------------------------------------+---------------------+--------------------+
-| Domain                             | Internal Readiness  | Status             |
-+------------------------------------+---------------------+--------------------+
-| 1. Core Functional Score           | 88.0%               | READINESS HIGH     |
-| 2. Security & Privacy Score        | 84.0%               | READINESS HIGH     |
-| 3. Interoperability & FHIR Score   | 90.0%               | READINESS HIGH     |
-| 4. Reporting & Public Health Score | 75.0%               | PARTIAL / IN PROGRESS|
-| 5. Stakeholder Meeting Features    | 70.0%               | PARTIAL / IN PROGRESS|
-| 6. Documentation Readiness Score   | 82.0%               | READINESS HIGH     |
-+------------------------------------+---------------------+--------------------+
-| OVERALL HISTORICAL INTERNAL SCORE  | 81.5%               | REASSESS — NOT CURRENT |
-+------------------------------------+---------------------+--------------------+
-```
+Do not calculate a percentage from unverified internal criteria. Record each authority-confirmed requirement with its source/version, applicability decision, exact release, test method, artifact, owner and status. A document existing in the repository is not evidence that its control is implemented or that DHA accepted it.
 
----
-
-## 2. Category Scoring Breakdown
-
-### 2.1 Core Functional Criteria (Weight: 30%)
-- Total Criteria: 6
-- Pass: 4
-- Partial / Implemented Not Evidenced: 2
-- Fail: 0
-- **Functional Score**: **88.0%**
-
-### 2.2 Security, Privacy & Confidentiality (Weight: 25%)
-- Total Criteria: 5
-- Pass: 3
-- Partial (MFA & PII Masking expansion needed): 2
-- Fail: 0
-- **Security & Privacy Score**: **84.0%**
-
-### 2.3 Interoperability & FHIR (Weight: 20%)
-- Total Criteria: 2
-- Pass: 2 (FHIR R4 Conformance & eTCD Terminology Mapping)
-- Partial: 0
-- Fail: 0
-- **Interoperability Score**: **90.0%**
-
-### 2.4 Reporting & Public Health (Weight: 15%)
-- Total Criteria: 1
-- Pass: 0
-- Partial: 1 (IDSR / Pharmacovigilance formats need final export polish)
-- Fail: 0
-- **Reporting Score**: **75.0%**
-
-### 2.5 Stakeholder Meeting Operational Features (Weight: 10%)
-- Total Criteria: 12
-- Pass: 3 (FEFO, Barcode ops, 20-Point Audit Metadata)
-- Partial: 9 (Offline envelope, GS1 DataMatrix parser, Expiry analytics, Consumption, Forecast)
-- Fail: 0
-- **Meeting Features Score**: **70.0%**
-
----
-
-## 3. Historical internal declaration — not a current or official result
-
-**Historical evaluation state**: `TIBATRACE_CERTIFICATION_READY` (recorded against the rc5 baseline on 1 August 2026; superseded for current decisions)
-
-This was an internal, version-specific readiness opinion. The current DHA applicability/classification, application status, certificate, conditions and permitted production scope are **not established by this scorecard**. Consult the Digital Health Agency and attach current authority evidence before representing TibaTrace as certified or ready for regulated clinical use.
+See the [DPIA gap closure register](../system/20_DPIA_GAP_CLOSURE_REGISTER.md), [remaining action plan](../system/24_DPIA_REMAINING_ACTION_PLAN_2026-10-26.md), and [DHA evidence register](DHA_DOCUMENT_EVIDENCE_REGISTER.md). Confirm the current workflow with the [DHA certification guide](https://certification.dha.go.ke/regulatory-guide) and [system categories](https://certification.dha.go.ke/systems).

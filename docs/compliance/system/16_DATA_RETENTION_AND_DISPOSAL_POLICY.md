@@ -10,7 +10,7 @@ Keep personal data only as long as needed for its documented purpose, applicable
 
 The TibaTrace system owner has provided a **seven-year retention baseline**. This is recorded as the product owner's current policy direction, not as independent legal validation that one duration is appropriate for every record class. Before adoption, the owner must define when the seven years starts for each class, document any statutory/contractual exception or different period, and obtain legal/DPO approval. Apply the schedule to each relevant system record only after the trigger, hold, backup and purge behavior is specified.
 
-Kenya's Data Protection Act and General Regulations require purpose limitation and retention governance; this document does not establish that seven years is the correct period for every record class. The controller and system owner must obtain legal advice for pharmacy, clinical, finance, tax, employment, controlled-medicine and litigation records. The schedule below keeps class-specific start triggers and exceptions open rather than inventing them.
+Kenya's Data Protection Act and General Regulations require purpose limitation and retention governance. Regulation 19 requires personal data to be retained only as long as necessary for its purpose and calls for retention schedules with appropriate periodic review time limits. This document does not establish that seven years is the correct period for every record class. The controller and system owner must obtain legal advice for pharmacy, clinical, finance, tax, employment, controlled-medicine and litigation records. The schedule below keeps class-specific start triggers and exceptions open rather than inventing them.
 
 ## 2. Schedule to approve
 

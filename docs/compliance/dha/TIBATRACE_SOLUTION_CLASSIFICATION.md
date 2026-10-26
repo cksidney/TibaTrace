@@ -1,66 +1,25 @@
-# TibaTrace Solution Classification
+# TibaTrace solution classification — provisional for DHA confirmation
 
-**System Designation**: Enterprise Digital Pharmacy, Medicines Management, Clinical Dispensing and Health Supply Chain Platform  
-**Governing Framework**: Kenya Digital Health Certification Framework 2025 (Digital Health Agency, Kenya)  
-**Baseline Release**: `tibatrace-v0.2.0-rc5` (`f365e778f9f30ab590bc0481c1ea006bb2664cef`)  
+**Updated:** 26 October 2026<br>
+**Production server baseline:** `1.0.0-rc71`, commit `2965194a29311314e8a5772adfeee5af8c14a8f2`<br>
+**Decision authority:** Kenya Digital Health Agency (DHA)<br>
+**Status:** Internal description only; no DHA category determination is attached. The system DPIA remains **NOT APPROVED**.
 
-> **Provisional internal classification draft; not an Agency determination.** This inventory is based on the rc5 product description. Verify the features and intended uses against the current release and obtain DHA's official classification before submitting or claiming category coverage. The current TibaTrace system DPIA remains **NOT APPROVED**.
+## Product description for category discussion
 
----
+TibaTrace is a multi-tenant pharmacy operations and clinical dispensing platform with HQ web, Windows/Android POS, patient and prescription workflows, stock and sales management, and integration scaffolding. It is designed for clinical and pharmacy use. The audited server release is rc71; installed native-client versions were not verified. DHA, HIE, RX and checkout activation paths were disabled in the reviewed production configuration.
 
-## 1. System Scope & Classification Overview
+## Questions to resolve with DHA
 
-For internal planning only, TibaTrace appears to be a pharmacy system with clinical dispensing and health-information exchange functions that should be discussed with DHA. This document does not establish its official DHA category. The product owner must verify each listed function and interface against the current build and get an Agency determination.
+Ask DHA to determine the applicable system category or categories for the actual intended use. Pharmacy-system classification is the primary question. Ask whether any EMR/HIS or other category applies to the specific patient, prescription, dispensing or exchange features. Provide the current architecture, data flows, production version, deployment locations, intended facilities and integrations; do not self-assign an official category from this note.
 
-```
-+-----------------------------------------------------------------------------------+
-|                            TIBATRACE ENTERPRISE PLATFORM                          |
-+------------------------------------+----------------------------------------------+
-|     PATIENT-FACING SURFACES        |         HEALTHCARE WORKER SURFACES           |
-| - Patient Identity & Safety Banner | - HQ Web Back-Office Workspace               |
-| - Patient Education & Counselling  | - Windows POS Dispensary & Retail Desktop    |
-| - SMS/WhatsApp Collection Proofs   | - Android POS Mobile Dispensary App          |
-| - Consent & Data Access Rights     | - Clinical Review & Pharmacist Override      |
-+------------------------------------+----------------------------------------------+
-|                        SHARED PLATFORM ENGINE & INFRASTRUCTURE                   |
-| - FHIR R4 Interoperability Gateway | - Durable Action Journal & Offline Safety    |
-| - CDS Drug Interaction Engine      | - Append-Only Immutable Audit Trail          |
-| - Multi-Tenant & Multi-Branch RBAC | - FEFO Inventory & GS1 Traceability Module   |
-+-----------------------------------------------------------------------------------+
-```
+The owner states the product is DHA certified. This file does not verify that statement. Obtain the certificate and confirm named product/operator, category, assessed version, dates, conditions, approved interfaces and facility/production scope. If any information differs, ask DHA to resolve it in writing before representing the scope.
 
----
+## Evidence to take to the classification review
 
-## 2. Solution Component Mapping
+- [System architecture](../system/03_SYSTEM_ARCHITECTURE.md), [technical specification](../system/05_TECHNICAL_SPECIFICATIONS.md) and exact release identity.
+- [System DPIA](../system/01_DATA_PROTECTION_IMPACT_ASSESSMENT.md), currently NOT APPROVED, with [remaining closure plan](../system/24_DPIA_REMAINING_ACTION_PLAN_2026-10-26.md).
+- [DHA evidence register](DHA_DOCUMENT_EVIDENCE_REGISTER.md), with certificate/reference verification still outstanding.
+- [Current traceability matrix](TIBATRACE_DHA_TRACEABILITY_MATRIX.md), which identifies evidence gaps and does not claim criterion-level compliance.
 
-| Subsystem / Surface | Technology Stack | Scope & Classification | Primary Users | Applicable DHA Criteria |
-|---|---|---|---|---|
-| **Backend REST & FHIR API** | Python / Django REST Framework | Core Platform, CDS Engine, Multi-Tenant Engine, Interoperability Gateway | System Services, POS Apps, HQ Web, External HIE | `DHA-FUNC-001..006`, `DHA-SEC-001..005`, `DHA-INT-001..002` |
-| **HQ Web Back-Office** | React / TypeScript | Administrative, Procurement, Enterprise Analytics, Tenant Governance | Pharmacy Managers, Supply Chain Officers, Administrators | `DHA-FUNC-006`, `DHA-REPORT-001`, `DHA-SEC-002` |
-| **Windows POS App** | Electron / React / TypeScript | Healthcare-Worker Clinical Dispensing & Retail Checkout Desktop | Pharmacists, Pharmaceutical Technologists, Cashiers | `DHA-FUNC-002..005`, `TT-MTG-OFFLINE-001`, `TT-MTG-GS1-001` |
-| **Android POS App** | React Native / TypeScript | Mobile Dispensary & Outward Handover Handheld | Ward Pharmacists, Mobile Dispensary Staff | `DHA-FUNC-002..005`, `TT-MTG-OFFLINE-001` |
-| **Patient Safety & Banner** | React / React Native shared components | Patient-Facing Identity & Allergy Verification | Patients & Attending Pharmacists | `DHA-FUNC-001`, `DHA-SEC-004` |
-| **FHIR R4 Gateway** | Django / HIE Adapters | Interoperability Exchange (Kenya HIE & e-Claims) | National HIE, Insurers, SHA | `DHA-INT-001..002` |
-
----
-
-## 3. Surface Category Breakdown
-
-### 3.1 Patient-Facing Components
-- **Patient Identity Verification**: Renders full patient name, birth date, and national unique identifier (AfyaYangu UPI) on dedicated patient-facing counter displays.
-- **Medication Safety & Counselling**: Displays structured dosage instructions, storage warnings, side-effect notes, and interaction guidance during handover.
-- **Privacy & Masking Controls**: Applies dynamic masking on external displays and printed receipts in accordance with the Kenya Data Protection Act 2019.
-
-### 3.2 Non-Patient-Facing / Healthcare-Worker Components
-- **Clinical Dispensing & Screening**: Evaluates prescriptions against CDS interaction databases, contraindications, and patient allergy logs.
-- **Pharmacist Review & Override**: Offers structured clinical decision logging for pharmacists approving overrides.
-- **Inventory & FEFO Allocation**: Enforces server-authoritative First-Expiry-First-Out stock selection and batch quarantine controls.
-- **Offline Operations**: Enables governed offline dispensing on POS terminals with multi-constraint safety envelopes.
-
----
-
-## 4. Architectural Boundaries & Isolation
-
-1. **Tenant Isolation**: Every database table includes `tenant_id` foreign keys indexed and filtered via request-level middleware (`X-Tenant-ID`).
-2. **Branch Isolation**: POS terminals operate within a strict `branch_id` context preventing unauthorized inter-branch inventory movements.
-3. **Data Protection Boundary**: Patient PII/PHI data dereferencing is restricted to authorized clinical roles; audit logs and export files enforce dynamic redaction.
+Recheck the official [DHA certification guide](https://certification.dha.go.ke/regulatory-guide) and [system categories](https://certification.dha.go.ke/systems) at the time of submission. This provisional description is not a DHA ruling or certification claim.

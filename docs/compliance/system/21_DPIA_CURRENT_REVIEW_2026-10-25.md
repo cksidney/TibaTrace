@@ -5,6 +5,8 @@
 **Decision:** NOT APPROVED; remediation and accountable review required<br>
 **Accountable owner:** Esenai Group Ltd; owner-nominated approval owner Sidney Chepkwony
 
+**Record integrity note:** This document remains the dated 25 October production-evidence snapshot. Local source commit `f8ea5cd` and the 26 October document updates do not amend its rc71 facts. See the [remaining action plan](24_DPIA_REMAINING_ACTION_PLAN_2026-10-26.md) for later source status and next steps.
+
 ## Evidence established
 
 The operator's local incorporation certificate names ESENAI GROUP LTD, company

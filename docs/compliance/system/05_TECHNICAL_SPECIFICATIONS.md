@@ -1,8 +1,8 @@
 # TibaTrace Technical Specifications
 
-**Specification basis:** source snapshot `45bf133`, 17 October 2026  
-**Latest documented production release:** `tibatrace-v1.0.0-rc52`, source `e9cac5d`  
-**Status:** As-built repository reference; production values must be confirmed against the active release and deployment environment.
+**Specification basis:** reviewed repository source, 26 October 2026<br>
+**Production server baseline:** `1.0.0-rc71`, commit `2965194a29311314e8a5772adfeee5af8c14a8f2`<br>
+**Status:** Production-specific claims are bounded by the rc71 review. Local source commit `f8ea5cd` is unshipped; native-client versions and tenant configurations require separate confirmation.
 
 ## Product surfaces
 
@@ -40,7 +40,7 @@ The database uses shared-schema, row-level tenancy. Tenant context is establishe
 
 ## Availability and release
 
-The production deployment uses API, worker, beat and HQ containers, PostgreSQL, Redis, a clinical-object volume and shared Caddy. Deployment is a controlled release-directory switch using immutable images. The rc52 release record reports verified migrations, health, tenant/owner access tests and a pre-deployment database backup. It does not define a contractual availability percentage, RTO or RPO.
+The audited production deployment uses API, worker, beat and HQ containers, PostgreSQL, Redis, a clinical-object volume and shared Caddy on a Hetzner Nuremberg, Germany VPS. rc71 release evidence covers the deployed server artifacts and verification; it does not establish a contractual availability percentage, approved RTO/RPO, physical client versions, host/database at-rest encryption, or a Kenya serving copy. DHA/RX/checkout exchange remains disabled. Source commit `f8ea5cd` is not included in production.
 
 ## External integrations
 

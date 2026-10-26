@@ -3,6 +3,8 @@
 **Status:** Draft for service-owner/controller approval  
 **Applies to:** HQ, Windows/Android POS, APIs, database/admin access, backups, CI/CD and provider credentials
 
+**Production evidence note, 26 October 2026:** the rc71 review did not find in-application privileged MFA. MFA enrollment/recovery/revocation and recurring access/device reviews remain closure items; this draft is not evidence that they are active.
+
 ## 1. Principles
 
 - Every human has a unique account; every service has a named service identity.
@@ -53,7 +55,7 @@ The capability catalogue and workflow-level RBAC matrices are authoritative for 
 
 ## 5. Authentication and session controls
 
-Use the configured HQ session/CSRF flow and native POS token/device flows. Protect passwords, PINs, tokens, session cookies and recovery channels. Revoke sessions after suspected compromise, role termination or device loss. Authentication rate limits and device/session checks must be maintained by the release process. MFA status for current production must be verified and is not asserted here.
+Use the configured HQ session/CSRF flow and native POS token/device flows. Protect passwords, PINs, tokens, session cookies and recovery channels. Revoke sessions after suspected compromise, role termination or device loss. Authentication rate limits and device/session checks must be maintained by the release process. No in-application privileged MFA was found in the reviewed rc71 production boundary; do not claim it is enabled until its enrollment, challenge, recovery and revocation paths are verified.
 
 ## 6. Monitoring and violations
 

@@ -2,7 +2,7 @@
 
 **Status:** Plan draft; RTO/RPO, contacts, and exercise evidence outstanding  
 **Plan owner:** Esenai service owner (to assign)  
-**Last reviewed:** 17 October 2026
+**Last reviewed:** 26 October 2026; production baseline rc71 in Hetzner Nuremberg, Germany. Owner reports a restore exercise, but its record has not been located or verified.
 
 ## 1. Purpose and recovery objective
 

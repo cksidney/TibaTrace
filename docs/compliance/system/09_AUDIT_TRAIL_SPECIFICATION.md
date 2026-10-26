@@ -1,6 +1,6 @@
 # Audit Trail Specification
 
-**Status:** As-built application specification; production retention/export controls require confirmation  
+**Status:** As-built application specification; production retention/export controls require confirmation; reviewed 26 October 2026<br>
 **Source:** `backend/apps/audit/`, `backend/apps/documents/`, domain audit services
 
 ## 1. Purpose
@@ -38,4 +38,4 @@ Use UTC-capable timestamps with the deployment timezone configured consistently;
 
 ## 6. Evidence and limitations
 
-The rc52 release evidence and application tests provide release-specific evidence of tenant and owner route behavior. They do not demonstrate external immutable storage, ongoing audit review, retention enforcement, or complete coverage of every read request. Before certification, build an event-to-control matrix from the current code and confirm every high-risk action is covered.
+The rc71 release evidence and application checks provide release-specific evidence for the audited server. They do not demonstrate external immutable storage, ongoing audit review, retention enforcement, or complete coverage of every read request. Build an event-to-control matrix from the exact release and confirm every high-risk action is covered before relying on the audit trail for certification.

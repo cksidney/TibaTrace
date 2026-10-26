@@ -1,54 +1,21 @@
-# TibaTrace DHA & Stakeholder Gap Remediation Plan
+# TibaTrace DHA and privacy remediation plan
 
-**Framework Baseline**: Kenya Digital Health Agency Certification Framework 2025  
-**Assessment Date**: 2026-08-01  
-**Target Release for Full Compliance**: `tibatrace-v0.2.0-rc2` / `v0.3.0`  
+**Updated:** 26 October 2026<br>
+**System DPIA:** NOT APPROVED<br>
+**Production server:** rc71, `2965194a29311314e8a5772adfeee5af8c14a8f2`<br>
+**DHA status:** Owner says certified; the certificate/scope was not verified in reviewed evidence.
 
-> **Historical remediation draft; targets and gap states are stale.** This plan was prepared in August 2026 for old release targets and is not the current TibaTrace compliance status. Use the [current system DPIA gap closure register](../system/20_DPIA_GAP_CLOSURE_REGISTER.md) and verify all remaining DHA criteria against the current build. The current TibaTrace system DPIA remains **NOT APPROVED**.
+The prior August 2026 plan targeted rc2/0.3 and included speculative feature and legal claims. Those targets and “gap” labels are withdrawn. Use the current evidence rather than that historic roadmap.
 
----
+## Work sequence
 
-## 1. Remediation Priority Framework
+1. **Verify authority and organizational evidence.** Follow the certificate, ODPC and independent report checklist in [DHA evidence register](DHA_DOCUMENT_EVIDENCE_REGISTER.md). Assign privacy, legal, clinical, security, release and integration owners.
+2. **Resolve production hosting and disclosures.** Record the Germany production host, complete the Kenya hosting/legal applicability decision, inventory all data recipients and support/storage countries, and reconcile contracts/notices/live configuration.
+3. **Complete the system DPIA.** Fill purpose/role/legal basis or instruction, scale/vulnerable population, necessity, retention, data flow and risk treatment; record consultation and required ODPC process. Keep the finding-level [closure register](../system/20_DPIA_GAP_CLOSURE_REGISTER.md) current.
+4. **Approve retention and operational controls.** Define signed class-specific triggers/exceptions/holds before deletion implementation; close privileged MFA, malware scanning, storage-at-rest, key custody, incident and recovery findings with production evidence.
+5. **Review and release source changes safely.** Follow the local identifier-key rollout record. `f8ea5cd` is not deployed. Provision keys through the approved secret manager, review, test, deploy and independently verify the exact release before updating DPIA evidence.
+6. **Obtain criterion-level DHA mapping.** Ask DHA to confirm system category, applicable current criteria, certificate/version scope and whether any change or facility approval is required. Maintain a release-specific evidence matrix; do not use historical percentages.
+7. **Validate tenant integrations only when authorized.** Keep DHA/HIE, RX, payment/tax and other exchanges disabled until each tenant has supplied valid credentials through secure configuration and documented legal, contract, security, mapping, sandbox/conformance and go-live approvals.
+8. **Submit/sign the final assessment.** After mitigation, obtain reviewer consultation, legal determination on prior ODPC consultation, complete evidence, residual-risk decisions and dated accountable signatures. No elapsed-time or internal-document rule substitutes for a regulator decision.
 
-- **P0 — Critical Certification Blocker / Patient Safety Risk**: Must be resolved before submission to DHA test lab.
-- **P1 — Mandatory High-Risk Gap**: Required for full score compliance under core framework sections.
-- **P2 — Mandatory Medium-Risk Gap**: Operational enhancement or secondary workflow.
-- **P3 — Non-Core Enhancement**: Nice-to-have feature or future roadmap item.
-- **EXTERNAL — Organisational / Legal Action**: Action required outside source code (ODPC registration, PPB licensing, CREST audit).
-
----
-
-## 2. Priority Remediation Matrix
-
-### 2.1 Priority P0 Gaps (Critical Certification Blockers)
-
-| Gap ID | Requirement | Current State | Target State | Action Required | Owner | Target Milestone |
-|---|---|---|---|---|---|---|
-| **GAP-P0-01** | `TT-MTG-OFFLINE-001` | Basic offline queue exists | Multi-envelope offline safety framework | Implement strict 24h duration, 50 transaction count, and KSH 100k limits in `@dawatrace/shared` offline evaluator. | POS Team | `v0.2.0-rc2` |
-| **GAP-P0-02** | `TT-MTG-GS1-001` | Single GTIN field on SKU | Standalone GS1 module in `packages/shared/src/gs1/` | Add native GS1 DataMatrix 2D parser for AI 01, AI 10, AI 17, AI 21 and checksum validator. | Supply Chain Lead | `v0.2.0-rc2` |
-
----
-
-### 2.2 Priority P1 Gaps (Mandatory High-Risk Requirements)
-
-| Gap ID | Requirement | Current State | Target State | Action Required | Owner | Target Milestone |
-|---|---|---|---|---|---|---|
-| **GAP-P1-01** | `DHA-FUNC-001` | Patient model exists | Verified UPI / AfyaYangu integration | Add validation against Kenya National Unique Patient Identifier format rules. | Core Backend | `v0.2.0-rc2` |
-| **GAP-P1-02** | `DHA-FUNC-006` | Basic insurance fields | Full e-Claims pre-authorisation integration | Complete SHA/e-Claim pre-authorisation payload mapping in `ClaimsExchangeService`. | Billing Lead | `v0.2.0-rc2` |
-| **GAP-P1-03** | `DHA-SEC-001` | Standard user login | Enforced MFA for admin & clinical override | Implement TOTP/SMS MFA middleware for high-privilege endpoints. | Security Lead | `v0.2.0-rc2` |
-| **GAP-P1-04** | `DHA-SEC-004` / `TT-MTG-PRIVACY-001` | Basic UI masking | Dynamic role-based PII masking & link expiry | Expand `PrivacyMaskingEngine` across export renderers; enforce 15-minute download link expiration. | Privacy Lead | `v0.2.0-rc2` |
-| **GAP-P1-05** | `DHA-REPORT-001` | Standard CSV/PDF export | IDSR & Pharmacovigilance regulatory reports | Build dedicated IDSR and adverse reaction PDF/Excel report generators in HQ Web. | Analytics Lead | `v0.2.0-rc2` |
-| **GAP-P1-06** | `TT-MTG-SEARCH-001` | Generic substring search | Restricted parameterised search | Update `ProductSearchService` to enforce strict query parameter filters. | Catalogue Lead | `v0.2.0-rc2` |
-| **GAP-P1-07** | `TT-MTG-RESERVE-001` | Simple basket holds | Complete 7-stage stock reservation lifecycle | Implement `InventoryReservation` state machine and background expiry worker. | Inventory Lead | `v0.2.0-rc2` |
-| **GAP-P1-08** | `TT-MTG-EXPIRY-001` | Expiry date snapshots | Interactive Expiry Dashboard with heatmaps | Create Expiry Intelligence Workspace in HQ Web with financial risk calculations. | Analytics Lead | `v0.2.0-rc2` |
-| **GAP-P1-09** | `TT-MTG-CONSUMPTION-001` | Basic sales reports | Multi-granularity consumption analytics | Implement `ConsumptionAnalyticsService` supporting breakdown by insurer, diagnosis, and programme. | Analytics Lead | `v0.2.0-rc2` |
-
----
-
-### 2.3 Priority P2 Gaps & External Organisational Actions
-
-| Gap ID | Requirement | Current State | Target State | Action Required | Owner | Target Milestone |
-|---|---|---|---|---|---|---|
-| **GAP-P2-01** | `TT-MTG-FORECAST-001` | Reorder point calculation | AI-ready predictive demand forecasting | Implement `DemandForecastService` incorporating lead time and lost demand estimation. | Data Science | `v0.3.0` |
-| **GAP-EXT-01** | `DHA-DOC-001` | Unregistered | ODPC Registration | Register TibaTrace corporate entity as Data Controller & Data Processor with ODPC Kenya. | Legal Counsel | External |
-| **GAP-EXT-02** | `DHA-DOC-002` | Internal security audit | CREST Penetration Test Report | Commission third-party OWASP/CREST penetration audit. | CISO | External |
+The detailed owner actions and closure conditions are in the [DPIA remaining action plan](../system/24_DPIA_REMAINING_ACTION_PLAN_2026-10-26.md). The DHA [regulatory guide](https://certification.dha.go.ke/regulatory-guide) and [system categories](https://certification.dha.go.ke/systems) must be rechecked when submitting; DHA determines its current category/process. This document is an internal plan, not a regulator-approved CAPA or certification result.

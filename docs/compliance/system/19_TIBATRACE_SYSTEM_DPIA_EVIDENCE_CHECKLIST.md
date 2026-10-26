@@ -19,6 +19,8 @@ The detailed tables below are the remaining evidence workbook, not a claim that
 items already supplied are wholly unknown. Private evidence/contacts are in the
 restricted packet indexed by document 21; do not publish that packet.
 
+**Source update, 26 October:** local commit `f8ea5cd` implements versioned identifier-key and protected FHIR-intake changes; it is not deployed and does not alter the rc71 production evidence. The owner-declared DHA certificate, independent security report and restore report still need scoped evidence. Follow the [remaining action plan](24_DPIA_REMAINING_ACTION_PLAN_2026-10-26.md).
+
 ## A. System owner and product identity
 
 | Required evidence | Owner entry / status |

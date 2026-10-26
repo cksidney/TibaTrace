@@ -1,8 +1,8 @@
 # TibaTrace System Architecture
 
 **Type:** As-built reference diagram  
-**Repository snapshot:** `45bf133`, 17 October 2026  
-**Production evidence:** rc52 release record, 16 October 2026; verify live runtime before deployment-specific use
+**Repository snapshot:** source after 26 October 2026 documentation update<br>
+**Production evidence boundary:** server rc71, commit `2965194a29311314e8a5772adfeee5af8c14a8f2`; current live host is Hetzner Nuremberg, Germany. Local commit `f8ea5cd` is not deployed.
 
 ```mermaid
 flowchart LR
@@ -73,7 +73,7 @@ flowchart LR
 
 ## Deployment evidence boundary
 
-The checked-in rc52 record says the API/HQ, runtime revisions, health endpoints, database migrations and tenant/owner access behavior were checked in production. The repository also contains rc53 candidate changes. This diagram does not establish that those later changes are deployed. It also does not establish the physical server country, external storage encryption, organization recovery objectives, or a live national-system integration.
+The rc71 review establishes the server release and Germany region; owner-confirmed Kenya hosting is not yet arranged. This diagram does not prove physical/database at-rest encryption, approved recovery objectives, native-client version, or a live national-system integration. DHA/RX/checkout activation remains disabled in the reviewed production configuration. Local identifier-key changes in `f8ea5cd` have not changed production behavior.
 
 ## Related implementation references
 

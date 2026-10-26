@@ -1,6 +1,7 @@
 # Kenya hosting and DPIA acceptance plan
 
 **Date:** 25 October 2026<br>
+**Reviewed:** 26 October 2026; still not executed<br>
 **Status:** NOT EXECUTED - Kenya capacity/provider and contract evidence required<br>
 **Accountable owner:** Esenai Group Ltd / Sidney Chepkwony<br>
 **Current state:** audited production rc71 VPS is in Hetzner Nuremberg, Germany.

@@ -1,115 +1,40 @@
-# TibaTrace DHA Certification Test Plan & Scenarios
+# TibaTrace DHA certification test plan — unexecuted draft
 
-**Governing Framework**: Kenya Digital Health Certification Framework 2025  
-**Baseline Release**: `tibatrace-v0.2.0-rc5` (`f365e778f9f30ab590bc0481c1ea006bb2664cef`)  
+**Updated:** 26 October 2026<br>
+**Current production server baseline:** `1.0.0-rc71`, commit `2965194a29311314e8a5772adfeee5af8c14a8f2`<br>
+**Test target:** To be set to the exact DHA-approved submission build and client versions before execution<br>
+**Status:** Plan only. No tests in this document are represented as executed or passed by DHA or an independent laboratory. The system DPIA remains **NOT APPROVED**.
 
-> **Historical internal test plan; no execution or certification evidence.** The scenarios below were drafted against the rc5 baseline and are not a report of tests run by DHA or an independent laboratory. Their example identities are test fixtures, not verified real people. Re-map and execute an authorized test plan against the exact current release before submitting results. The current TibaTrace system DPIA remains **NOT APPROVED**.
+The previous scenario set was drafted against rc5, included unverified endpoints/test identities and cannot be used as current certification evidence. Obtain DHA's applicable criteria and system category first. Then map each criterion to a versioned test, environment, expected result, artifact and reviewer. The [DHA guide](https://certification.dha.go.ke/regulatory-guide) and current DHA instructions control the actual submission process.
 
----
+## Test controls
 
-## 1. Certification Test Strategy
+- Use a segregated sandbox and synthetic identities only; do not demonstrate with live patient records or production secrets.
+- Record server commit/image digest, database migration level, POS installer hashes and OS/device models for each run.
+- Use only DHA/tenant-authorized endpoints and test credentials. Keep national exchanges disabled in production until separate approval.
+- Capture request/response metadata with sensitive payloads redacted, audit events, screenshots and logs in restricted evidence storage.
+- Record pass, fail, blocked or not applicable per DHA-confirmed criterion. A source test or local simulation is not an external conformance result.
 
-This document proposes 20 end-to-end certification scenarios for internal test planning against a historical DHA framework baseline. It does not establish that any scenario was executed or passed.
+## Proposed scenario coverage to map to DHA criteria
 
-Each scenario defines:
-- **Preconditions**: Required tenant, branch, operator role, and initial database state.
-- **Steps**: Exact sequence of API calls or UI interactions.
-- **Expected Results**: Verifiable success criteria and audit outputs.
-- **Evidence Capture**: Generated logs, database rows, or FHIR payloads.
+| Area | Scenario families | Minimum observable result/evidence |
+|---|---|---|
+| Identity and tenant boundary | Create/search a synthetic patient; duplicate/ambiguous identifiers; cross-tenant access denial | Correct tenant-scoped result, explicit denial, no unintended identifier disclosure; audit record |
+| Prescription intake | Authorized direct entry and supported file intake; invalid, oversized, malformed and duplicate input | Provenance/source captured; invalid input rejected safely; access and upload state recorded |
+| Clinical screening | Allergy/interaction warnings, contraindication and pharmacist review/override | Correct severity and gate; authorized rationale recorded; prohibited actor cannot override |
+| Dispensing workflow | Prescription state transitions, preparation, final check, payment, supply, cancellation/reversal | Valid transition only; inventory and clinical history reconcile; attributable audit events |
+| Inventory and product traceability | Batch/expiry, quarantine/recall, FEFO and stock adjustment | Expired/quarantined stock blocked; movement and user attribution recorded |
+| POS financial controls | Cash/card/M-PESA adapter simulation, split/failed/duplicate payment, refund/void and receipt | Idempotent payment state; no false settlement; immutable receipt/refund linkage; no real charge in sandbox |
+| Access/security | Authentication, role/capability denial, session expiry/revocation, MFA, export authorization | Least privilege and fail-closed behavior; no data after revocation; security event captured |
+| Privacy/retention | Masking, data export/request routing, expiry/hold and restoration | Minimized disclosure; authorized rights workflow; deletion/hold survives restore as designed |
+| Upload protection | Clean, infected, timeout/unavailable and too-large files | Only CLEAN file becomes available; other outcomes remain quarantined/rejected and visible as not scanned/failed |
+| FHIR/DHA exchange | Valid/invalid profile, authorization failure, retry, duplicate, timeout, receiver rejection | Correct profile/version and consent/authority; safe retry/idempotency; error and audit trace; sandbox receiver acknowledgment |
+| Audit/continuity | High-risk action audit, service interruption, backup/restore and key recovery | Attributable event; measured RPO/RTO; database, object and key recovery reconciled |
+| Native client and devices | Supported Windows/Android install/signature, offline boundary, printer/barcode and lock/logout | Signed known build; no secret/data leakage; documented device-specific pass/fail and recovery |
 
----
+## Execution record template
 
-## 2. Mandatory Test Scenarios (DHA-SCN-001..020)
+For every DHA-confirmed criterion, preserve: criterion ID/source/version; applicability decision; exact system/client versions and configuration; preconditions and synthetic fixture IDs; steps; expected and actual results; pass/fail/blocked; sanitized logs/screenshots/test report; defect/remediation/retest references; tester and independent witness; date; and artifact hash/location. Obtain DHA acceptance where its process requires it.
 
-### Scenario 1: Patient-Linked Prescription Dispensing (DHA-SCN-001)
-- **Preconditions**: Active tenant `TENANT-KE-01`, branch `NAIROBI-HQ`, operator `PHARMACIST-01`.
-- **Steps**:
-  1. Load prescription `RX-2026-8801` for patient `Grace Kamau` (`UPI: Afya-9982-11`).
-  2. Perform CDS screening check (`/api/pos/clinical-screening/evaluate/`).
-  3. Prepare medicine lines (`AMOX-500`, 30 capsules).
-  4. Collect payment and confirm collection.
-- **Expected Result**: Episode transitions through `AUTHORIZED -> PREPARED -> CHECKED -> PAID -> SUPPLIED`.
-- **Evidence**: `DispensingEpisode` DB row, `AuditEvent` log.
-
-### Scenario 2: Drug-Interaction Blocker (DHA-SCN-002)
-- **Preconditions**: Patient with active prescription for `Warfarin 5mg`.
-- **Steps**:
-  1. Add `Aspirin 75mg` to prescription lines.
-  2. Trigger CDS evaluation.
-- **Expected Result**: System returns `BLOCKING` status with finding `Severe Drug Interaction: Warfarin + Aspirin`. UI `ClinicalRail` locks supply button.
-- **Evidence**: `PosClinicalFinding` with `severity='BLOCKING'`.
-
-### Scenario 3: Pharmacist Review and Override (DHA-SCN-003)
-- **Preconditions**: Active blocking finding from Scenario 2.
-- **Steps**:
-  1. Operator clicks "Request Pharmacist Review".
-  2. Licensed Pharmacist (`PHARMACIST-01`) opens `ClinicalReviewWorkspace`.
-  3. Enters clinical justification: *"Co-administration monitored under INR protocol."*
-  4. Submits override with license number snapshot.
-- **Expected Result**: `PosClinicalOverride` object created; clinical rail status updates to `SAFE`; supply unblocked.
-- **Evidence**: `PosClinicalOverride` DB row, audit event with pharmacist ID.
-
-### Scenario 4: Patient Allergy Warning (DHA-SCN-004)
-- **Preconditions**: Patient `Grace Kamau` has recorded allergy `Penicillin (Severe anaphylaxis)`.
-- **Steps**:
-  1. Prescribe `Amoxicillin 500mg`.
-  2. Run CDS evaluation.
-- **Expected Result**: System flags `KNOWN_ALLERGY` violation; status set to `BLOCKING`.
-- **Evidence**: Allergy finding in CDS screening payload.
-
-### Scenario 5: Batch and Expiry Traceability (DHA-SCN-005)
-- **Preconditions**: Inventory contains batch `B-9901` (Expiry: 2025-12-31, Expired) and batch `B-9902` (Expiry: 2027-06-30).
-- **Steps**:
-  1. Scan batch `B-9901` during preparation.
-- **Expected Result**: `BatchVerification` rejects batch with reason `"Batch expired - cannot be supplied"`. Scanning `B-9902` succeeds.
-- **Evidence**: `BatchVerificationResponse` JSON.
-
-### Scenario 6: Controlled-Medicine Workflow (DHA-SCN-006)
-- **Preconditions**: Prescription includes controlled substance `Morphine 10mg Inj`.
-- **Steps**:
-  1. Transition line to `PREPARED`.
-  2. Trigger controlled verification modal.
-  3. Enter witness practitioner ID (`PRACT-4402`) and patient ID proof (`ID-992834`).
-- **Expected Result**: dual-verification recorded; controlled register updated.
-- **Evidence**: `ControlledMedicineRegister` DB row.
-
-### Scenario 7: Insurance Eligibility and Claim (DHA-SCN-007)
-- **Preconditions**: Insured patient under `SHA-NHIF-SCHEME`.
-- **Steps**:
-  1. Verify pre-authorisation code `PRE-88201`.
-  2. Calculate commercial pricing and patient copay.
-- **Expected Result**: System splits total (e.g. Total: KSH 2,500 -> Insurer: KSH 2,000, Copay: KSH 500).
-- **Evidence**: `SalesInvoice` copay breakdown.
-
-### Scenario 8: Privacy and Access Restriction (DHA-SCN-008)
-- **Preconditions**: Non-clinical cashier logged in on POS.
-- **Steps**:
-  1. Attempt to view full clinical notes or patient medical history.
-- **Expected Result**: HTTP 403 Forbidden returned; PII data masked on UI screen.
-- **Evidence**: Redacted response payload.
-
-### Scenario 9: Cross-Tenant Data Isolation (DHA-SCN-009)
-- **Preconditions**: Tenant `TENANT-A` attempts to query episode belonging to `TENANT-B`.
-- **Steps**:
-  1. Issue GET request `/api/pos/dispensing/episodes/EP-TENANT-B/` with header `X-Tenant-ID: TENANT-A`.
-- **Expected Result**: System returns HTTP 404 Not Found.
-- **Evidence**: Tenant middleware audit log.
-
-### Scenario 10: Audit Trail Reconstruction (DHA-SCN-10)
-- **Preconditions**: Completed dispensing episode `EP-8801`.
-- **Steps**:
-  1. Query `AuditEvent` trail by correlation ID `CORR-99201`.
-- **Expected Result**: Returns 20 mandatory metadata fields for every step from loaded -> payment -> collection.
-- **Evidence**: Audit JSON export.
-
-### Scenarios 11-20 Summary
-- **Scenario 11 (FHIR Exchange)**: Validates MedicationDispense FHIR bundle against Kenya profile.
-- **Scenario 12 (Report Export)**: Tests PDF/Excel generation with dynamic watermark.
-- **Scenario 13 (Pharmacovigilance Notification)**: Submits adverse reaction report to MoH/PPB endpoint.
-- **Scenario 14 (Backup Restoration)**: Verifies point-in-time snapshot recovery.
-- **Scenario 15 (Service Recovery)**: Tests system resilience after database failover.
-- **Scenario 16 (Offline POS Resync)**: Tests offline envelope locking and journal sync.
-- **Scenario 17 (Breach Simulation)**: Tests automated account lockout on suspicious access.
-- **Scenario 18 (Access Revocation)**: Revokes user credentials and verifies immediate session invalidation.
-- **Scenario 19 (Change-Log Verification)**: Audits release tag commit signature and migration lineage.
-- **Scenario 20 (Data Export Request)**: Generates patient-directed data portability package under ODPC guidelines.
+**Execution outcome:** Not run; no result can be inferred from this plan.<br>
+**Approvals:** Product owner, clinical safety lead, security/privacy reviewer and DHA test authority — pending.

@@ -1,7 +1,7 @@
 # Kenya National Health Terminology Service Compliance Documentation
 
 **Status:** Current integration/conformance gap assessment; no KNHTS connection or certification asserted  
-**Assessment date:** 17 October 2026
+**Assessment date:** 26 October 2026. No live KNHTS connection or conformance was verified at rc71; tenant DHA/national integrations remain disabled pending credentials, approvals and test acceptance.
 
 ## 1. Authority and current reference
 

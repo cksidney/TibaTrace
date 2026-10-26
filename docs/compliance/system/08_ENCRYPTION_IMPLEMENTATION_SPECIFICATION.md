@@ -1,7 +1,7 @@
 # Encryption Implementation Specification
 
 **Status:** As-built source specification with production evidence gaps<br>
-**Reviewed source/runtime:** rc71, `2965194a29311314e8a5772adfeee5af8c14a8f2`, 25 October 2026. See [current review](21_DPIA_CURRENT_REVIEW_2026-10-25.md) for restricted runtime evidence and remaining gaps.
+**Production evidence:** rc71, `2965194a29311314e8a5772adfeee5af8c14a8f2`, 25 October 2026. **Source update:** commit `f8ea5cd`, local and not deployed, reviewed 26 October. See [current review](21_DPIA_CURRENT_REVIEW_2026-10-25.md) and [rollout guide](23_IDENTIFIER_KEY_REMEDIATION_AND_ROLLOUT.md).
 
 ## 1. Current controls
 
@@ -9,7 +9,7 @@
 |---|---|---|
 | Public browser/API transport | HTTPS at Caddy; Django production settings enable redirect, HSTS, secure session/CSRF cookies and security headers | Live public HTTPS/certificate, HSTS, nosniff and frame denial observed; retest per deployment |
 | PostgreSQL transport | Documented Esenai host requires PostgreSQL TLS; Django production expects secure production settings | Live TLS 1.3 observed with sslmode=require; hostname verification is not required by this setting; verify-full and trust-chain plan remain to assess |
-| Patient identifiers | `PatientIdentifierProtector` normalizes values; Fernet encrypts the value; HMAC-SHA256 digest supports lookup; plaintext value is cleared; UI keeps last four | Key is deterministically derived from Django `SECRET_KEY` and tenant ID; no separate KMS/HSM/versioned key ring is evidenced |
+| Patient identifiers | Deployed rc71 uses Fernet/HMAC with tenant binding; local commit `f8ea5cd` adds separate versioned encryption and lookup keyrings and legacy-compatible rotation | New keyring is not deployed or independently reviewed; provision, migrate, read back and recover before claiming production protection |
 | Passwords | Django authentication password-hashing framework | Confirm deployed hasher configuration and upgrade policy from runtime settings |
 | Windows POS credentials | Windows DPAPI protection is documented for native client credential material | Device recovery/rotation and local cache scope require client-specific validation |
 | Android POS credentials | Android Keystore-backed token handling is documented; release cleartext is disabled | Confirm signing/release configuration and device reset/revocation behavior |
@@ -19,7 +19,7 @@
 
 ## 2. Patient identifier cryptography
 
-The reviewed rc71 implementation uses:
+The deployed rc71 implementation used:
 
 1. Normalize the identifier by trimming, upper-casing and removing whitespace.
 2. Derive a Fernet key from `SHA-256(SECRET_KEY + ":patient-identifier:" + tenant_id)`, URL-safe Base64 encoded. Fernet provides authenticated encryption with AES-128-CBC and HMAC-SHA256 through the `cryptography` library.
@@ -39,7 +39,7 @@ Clinical-object keys are configured as a JSON key-ID map in the protected deploy
 - tested restore of encrypted data and re-encryption after restore where required;
 - explicit key ownership when a tenant leaves service and lawful deletion/return process.
 
-Patient identifier keys remain deterministically derived from Django `SECRET_KEY`; this is not a managed, versioned keyring. The attachment keyring does not close that separate key-lifecycle finding. Do not describe either construction as KMS-managed encryption.
+For rc71, patient identifier keys remain deterministically derived from Django `SECRET_KEY`; this is not a managed, versioned keyring. The local `f8ea5cd` implementation changes the source design but is not yet production evidence. Neither construction should be described as KMS-managed encryption.
 
 ### 26 October source remediation, not deployed
 

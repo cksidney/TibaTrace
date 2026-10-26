@@ -1,56 +1,46 @@
-# TibaTrace DHA Change and Recertification Governance Policy
+# TibaTrace DHA change and certification-governance policy — draft
 
-**Governing Authority**: Digital Health Agency (DHA), Kenya  
-**Framework Version**: 2025 Certification Framework  
-**Baseline Release**: `tibatrace-v0.2.0-rc5` (`f365e778f9f30ab590bc0481c1ea006bb2664cef`)  
+**Updated:** 26 October 2026<br>
+**Policy status:** Draft; not adopted or signed<br>
+**Production evidence baseline:** server `1.0.0-rc71`, commit `2965194a29311314e8a5772adfeee5af8c14a8f2`<br>
+**DHA certificate status:** Owner-declared; reference and conditions not verified in reviewed evidence.
 
-> **Historical template; approval and current regulatory mapping are open.** This draft is scoped to an old release baseline and is not evidence of an adopted company policy or DHA decision. The system owner must approve it and verify the current DHA change/recertification requirements before use. The current TibaTrace system DPIA remains **NOT APPROVED**.
+This draft sets internal evidence controls for changes to a system that may be in a DHA-regulated category. It does not state that every change requires recertification or impose a regulatory deadline. DHA's current certificate conditions and written instructions govern; obtain DHA's determination when scope is unclear. The previous rc5 policy and unsupported annual/30-day assertions are withdrawn.
 
----
+## 1. Scope and roles
 
-## 1. Purpose and Scope
+Apply to changes to the TibaTrace server, database/schema, clinical workflow, patient identity, security/access, encryption, retention, hosting, native clients, integrations and operational controls. Assign a change owner, release owner, privacy/DPO reviewer, clinical safety reviewer and security reviewer as applicable. The accountable operator approves internal release; DHA, facility and tenant/controller approval remain separate where required.
 
-This policy governs ongoing maintenance, change management, and recertification compliance for TibaTrace. Under the Kenya Digital Health Agency (DHA) 2025 Framework, any material change to system architecture, security controls, clinical decision engines, data structures, or interoperability interfaces requires formal notification and potential re-audit.
+## 2. Change assessment
 
----
+Before approval, record:
 
-## 2. Change Classification & Recertification Triggers
+- change summary, reason, affected service/tenants/data and risk/clinical impact;
+- source branch/commit, build artifacts, configuration and migration/rollback plan;
+- whether processing purpose, data categories, recipients, location, retention or access changes;
+- whether patient safety, privacy risk, certificate scope, assessed version or integration conformance changes;
+- DPIA/security/clinical/privacy review and tests required;
+- whether the current DHA certificate/conditions or DHA's written instruction require notification, amendment, testing or reassessment; retain the exact authority reference;
+- tenant/controller approvals and credentials process for any tenant-specific exchange.
 
-### 2.1 Material Changes (Mandatory DHA Recertification Trigger)
-A **Material Change** alters the security, clinical safety, data processing, or interoperability posture of TibaTrace and requires formal re-audit by DHA:
+If this assessment indicates new high-risk processing or a material DPIA change, update the DPIA before enabling that purpose. If certification scope is uncertain, keep the feature/connection disabled while requesting DHA direction.
 
-1. **Clinical Safety Engine**: Modifications to CDS interaction rules, allergy screening logic, or pharmacist override workflow.
-2. **Security & Access Control**: Changes to authentication mechanisms, RBAC permission models, multi-tenant isolation middleware, or encryption protocols.
-3. **Interoperability & Data Models**: Alterations to FHIR R4 mapping profiles, national HIE gateway endpoints, or eTCD terminology bindings.
-4. **Data Protection & Privacy**: Changes affecting PII/PHI storage, data retention, or patient consent handling under the Data Protection Act 2019.
+## 3. Release and evidence controls
 
-### 2.2 Minor Operational Changes (Internal Governance Only)
-Changes that do not alter core compliance posture (e.g., UI theme updates, performance tuning without schema changes, bug fixes covered by existing test cases) require internal change log documentation only.
+1. Preserve the old release record. Do not rewrite historical production evidence after a later deployment.
+2. Run the normal engineering, security, privacy, clinical, migration, backup and rollback gates for the exact source.
+3. Record server and client versions, immutable artifact hashes, database migrations, deployment environment, tenant configuration and approvers.
+4. Update the traceability matrix only with current criterion source/version, actual result and linked evidence. A source test alone does not prove production operation or DHA acceptance.
+5. Obtain DHA written direction/approval and tenant/facility authorization before changing a regulated interface or expanding the approved scope.
+6. After release, verify live configuration, health, access controls, audit, integration state and rollback readiness; capture dated evidence and re-evaluate residual risk.
 
----
+## 4. Review and retention
 
-## 3. Corrective and Preventive Action (CAPA) Lifecycle
+The policy owner must set an internal review cadence when adopting this policy. Revisit it after a security/privacy incident, significant architecture or purpose change, certificate condition, DHA direction, new facility/interface or material legal change. Keep the change record and authority correspondence under the approved evidence-retention schedule.
 
-```
-[ Incident / Finding Identified ]
-               │
-               ▼
-[ Root Cause Analysis (RCA) ] ──► [ CAPA Ticket Created (P0/P1/P2) ]
-                                            │
-                                            ▼
-[ Security & Clinical Safety Review ] ──► [ Code & Test Implementation ]
-                                            │
-                                            ▼
-[ Automated CI Certification Gate ] ──► [ DHA Change Log Update ]
-```
+**Policy owner:** Esenai Group Ltd accountable service owner — to assign<br>
+**Privacy/legal review:** pending<br>
+**Clinical/security review:** pending<br>
+**Approval date/signature:** pending
 
-1. **Identification**: Security vulnerability findings, clinical edge-case bugs, or DHA audit findings trigger a formal CAPA ticket.
-2. **Implementation & Testing**: Remediation changes must include automated test coverage and pass `./scripts/validate_dha_certification.sh`.
-3. **Evidence Refresh**: Updated traceability matrices (`docs/compliance/dha/TIBATRACE_DHA_TRACEABILITY_MATRIX.md`) and scorecards are published before release tagging.
-
----
-
-## 4. Recertification Audit Schedule
-
-- **Annual Routine Recertification**: Full re-assessment scheduled every 12 months from original DHA certification issuance.
-- **Triggered Immediate Recertification**: Submitted within 30 days of deploying any Material Change to production.
+Check the [DHA regulatory guide](https://certification.dha.go.ke/regulatory-guide) and exact certificate conditions at the time of each submission. This draft is not a DHA change approval or recertification decision.

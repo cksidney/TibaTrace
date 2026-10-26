@@ -1,101 +1,31 @@
-# TibaTrace DHA & Stakeholder Requirements Traceability Matrix
+# TibaTrace DHA evidence traceability — current boundary
 
-**Governing Framework**: Kenya Digital Health Certification Framework 2025  
-**Baseline Release Tag**: `tibatrace-v0.2.0-rc10` (`2b086c0`)  
-**Integration Branch**: `integration/national-health-regulatory-foundation`  
-**Assessment Date**: 2026-08-02  
+**Updated:** 26 October 2026<br>
+**Production server reviewed:** `1.0.0-rc71`, commit `2965194a29311314e8a5772adfeee5af8c14a8f2`<br>
+**Source-only follow-up:** local `f8ea5cd`, not deployed<br>
+**Assessment status:** Internal evidence map; not a DHA conformance result. The system DPIA remains **NOT APPROVED**.
 
-> **Historical internal traceability draft.** Its `COMPLIANT_EVIDENCED` and count fields are internal labels from the rc10 baseline, not DHA findings or present-day proof. Several referenced paths/claims may no longer match the current repository. Rebuild the matrix from the exact release and attach source/test artifacts before submission. The current TibaTrace system DPIA remains **NOT APPROVED**.
+The previous rc10 matrix contained internal counts and `COMPLIANT_EVIDENCED` labels that are not authority findings and have not been revalidated against the current release. Those counts are withdrawn from current decisions. This matrix records only the high-level facts verified for the current DPIA boundary and the evidence needed next. DHA must supply/confirm the actual applicable criteria and category before a criterion-level compliance claim is made.
 
----
+| Domain | Current verified fact | Evidence still required | Current status |
+|---|---|---|---|
+| Product identity and legal operator | Esenai Group Ltd incorporation and ODPC Data Processor certificate were visually reviewed in restricted evidence; processor number `890-695D-435E` | Issuer/scope confirmation, current address, role analysis, verified DPO appointment/contact route and approved contracts | Partial |
+| Privacy impact assessment | System/provider DPIA v0.4 describes system processing and risks | Close blocking DPIA register items; stakeholder consultation; required prior-consultation decision; accountable signatures | Open — not approved |
+| Production release identity | Server rc71 images, source, CI run, checksums and provenance were matched in the dated review | Native client/device release inventory and evidence for the exact DHA-submitted version | Server evidence recorded; client gap open |
+| Hosting and localization | Audited VPS is in Hetzner Nuremberg, Germany; owner said Kenya hosting needs arranging | Kenya architecture or counsel's documented applicability decision; provider/backup/support countries and contract inventory | Open |
+| Authentication, access and tenant boundaries | Selected server controls and CI evidence were reviewed; tenant/capability enforcement is in the codebase | Privileged MFA, recurring account/device reviews, adversarial tenant tests and live operating evidence | Partial/open |
+| Encryption and key lifecycle | Live TLS and clinical-object keyring were observed; encrypted release backups exist | Host/database at-rest proof, separate key custody, deployed versioned identifier keys, readback/rotation/restore | Partial/open |
+| Clinical documents | Upload/download code and protected object storage are documented; no stored clinical documents were in the audited snapshot | Active malware scanner with clean/infected/unavailable tests, or approved restricted-upload exception; production round-trip evidence | Open — scanning deferred |
+| Clinical/dispensing functions | Product includes clinical, prescription and POS workflows; this DPIA audit was not a DHA clinical workflow validation | DHA-confirmed criteria, exact-release witnessed scenarios, synthetic fixtures, safety review and preserved artifacts | Not reassessed |
+| National exchange and FHIR | Integration scaffolding exists; reviewed DHA/national/RX/checkout activation is disabled | Per-tenant legal authority, credentials, official profiles/version, sandbox and live conformance, approval and operational monitoring | Disabled pending prerequisites |
+| Disease/IDSR/terminology reporting | Target specifications exist | Current authority forms/codes, receiving-endpoint acceptance and DPIA/contract/legal approval | Target only; no live interface verified |
+| Audit and incident response | Application audit records and an incident plan draft exist | Independent protected audit delivery/review, named responders, contact-route test and incident exercise | Partial/open |
+| Retention and recovery | Seven-year owner baseline and draft backup/retention policies exist | Signed class trigger/exception schedule, lifecycle tests, full DB/object/key restore and measured RPO/RTO | Open |
+| Independent assurance | Owner says security assessment passed | Signed report, assessor independence, tested version/scope, findings and retest | Owner-declared; report unlocated |
+| DHA certificate and go-live | Owner says TibaTrace is certified | Issuer-verifiable certificate and applicable facility/go-live evidence | Owner-declared; not verified in reviewed material |
 
-## 1. Traceability Summary
+## Evidence rule
 
-| Compliance Category | Requirement Count | Compliant Evidenced | Implemented Not Evidenced | Partially Compliant | Non-Compliant | Not Applicable |
-|---|---|---|---|---|---|---|
-| **Clinical & Dispensing (DHA-FUNC)** | 6 | 4 | 1 | 1 | 0 | 0 |
-| **Security & Privacy (DHA-SEC)** | 5 | 3 | 0 | 2 | 0 | 0 |
-| **Interoperability & FHIR (DHA-INT)** | 2 | 2 | 0 | 0 | 0 | 0 |
-| **Reporting & Analytics (DHA-REPORT)** | 1 | 0 | 0 | 1 | 0 | 0 |
-| **Meeting Notes & Supply Chain (TT-MTG)** | 12 | 3 | 0 | 9 | 0 | 0 |
-| **National Integration Foundation (NIF)** | 9 | 0 | 9 | 0 | 0 | 0 |
-| **TOTALS** | **35** | **12** | **10** | **13** | **0** | **0** |
+For each DHA-confirmed criterion, add a row that records the exact authority source and version, applicability, product build, tenant/configuration, test procedure, result, immutable artifact location, reviewer and date. Mark `NOT APPLICABLE` only with a documented DHA or legal applicability basis. Do not treat these broad workstreams or the linked product tests as certification.
 
----
-
-## 2. Complete Traceability Matrix
-
-### 2.1 Functional & Clinical Requirements (DHA-FUNC)
-
-| Req ID | Requirement Title | Business Rules & Logic | Backend Models & Services | API Endpoint | UI Surfaces | Tests & Evidence | Compliance Status |
-|---|---|---|---|---|---|---|---|
-| **DHA-FUNC-001** | Unique Patient Identification | National ID / AfyaYangu UPI lookup, format validation | `Patient` model, `PatientIdentityService` | `GET /api/v1/patients/search/` | `PatientSafetyBanner` | `backend/apps/patients/tests/test_identity.py` | `IMPLEMENTED_NOT_EVIDENCED` |
-| **DHA-FUNC-002** | E-Prescription State Machine | Canonical lifecycle: Draft -> Authorised -> Preparing -> Checking -> Paid -> Supplied | `DispensingEpisode`, `DispensingLineDTO`, `workflow.ts` | `POST /api/pos/dispensing/episodes/{id}/transition-state/` | `PrescriptionWorkspace`, `DispensingScreen` | `packages/shared/src/dispensing/workflow.test.ts` | `COMPLIANT_EVIDENCED` |
-| **DHA-FUNC-003** | Drug Interaction Alerting | Severity-graded CDS evaluation against allergies & active drugs | `PosClinicalScreening`, `ClinicalInteractionEngine` | `POST /api/pos/clinical-screening/evaluate/` | `ClinicalRail`, `ClinicalSummaryCard` | `apps/pos-windows/src/components/tibatrace/ClinicalRail.test.ts` | `COMPLIANT_EVIDENCED` |
-| **DHA-FUNC-004** | Pharmacist Override Governance | Structured justification, license snapshot, signed override object | `PosClinicalOverride`, `PharmacistReviewService` | `POST /api/pos/clinical-screening/{id}/pharmacist-review/` | `ClinicalReviewWorkspace`, `ClinicalReviewScreen` | `apps/pos-windows/src/components/tibatrace/PharmacistReview.test.ts` | `COMPLIANT_EVIDENCED` |
-| **DHA-FUNC-005** | Controlled Substance Register | Dual-verification (practitioner + witness) before release | `ControlledMedicineRegister`, `verify_controlled` | `POST /api/pos/dispensing/episodes/{id}/verify-controlled/` | `CounsellingAndCollection`, `DispensingScreen` | `backend/apps/dispensing/tests/test_controlled.py` | `COMPLIANT_EVIDENCED` |
-| **DHA-FUNC-006** | Real-Time Claims Integration | Copay split calculation, SHA/e-Claim pre-authorisation | `SalesInvoice`, `ClaimsExchangeService` | `POST /api/v1/claims/preauth/` | `HQ Commercial Pricing Workspace` | `backend/apps/billing/tests/test_claims.py` | `PARTIALLY_COMPLIANT` |
-
----
-
-### 2.2 Security, Privacy & Confidentiality (DHA-SEC)
-
-| Req ID | Requirement Title | Business Rules & Logic | Backend Models & Services | API Endpoint | UI Surfaces | Tests & Evidence | Compliance Status |
-|---|---|---|---|---|---|---|---|
-| **DHA-SEC-001** | Multi-Factor Authentication | Password complexity, 90-day rotation, MFA for administrative endpoints | `CustomUser`, `MFAAuthenticationMiddleware` | `POST /api/v1/auth/mfa/verify/` | `LoginScreen`, `HQ Auth Modal` | `backend/apps/accounts/tests/test_mfa.py` | `PARTIALLY_COMPLIANT` |
-| **DHA-SEC-002** | Granular RBAC & Segregation | Role capabilities per action; no cashier clinical overrides | `UserRole`, `PermissionGuard`, `sales_rbac` | All API endpoints via `HasCapability` permission | `PermissionGuard` in HQ and POS | `docs/domain/SALES_RBAC_MATRIX.md`, unit tests | `COMPLIANT_EVIDENCED` |
-| **DHA-SEC-003** | Multi-Tenant Data Isolation | Mandated tenant_id scoping on all DB queries and cache keys | `TenantScopedModel`, `TenantMiddleware` | Middleware injected header `X-Tenant-ID` | All workspaces | `backend/apps/core/tests/test_tenant_isolation.py` | `COMPLIANT_EVIDENCED` |
-| **DHA-SEC-004** | Data Minimisation & Masking | PII/PHI redaction on non-clinical displays and export files | `PrivacyMaskingEngine`, `DataProtectionService` | Middleware response filter | `PatientBanner`, Export renderers | `backend/apps/privacy/tests/test_masking.py` | `PARTIALLY_COMPLIANT` |
-| **DHA-SEC-005** | Append-Only Audit Log | Immutable 20-point metadata event capture per transaction | `AuditEvent`, `DurableActionJournal` | `POST /api/v1/audit/events/` | `SyncCentre`, `EpisodeTimeline` | `packages/shared/src/dispensing/durableJournal.test.ts` | `COMPLIANT_EVIDENCED` |
-
----
-
-### 2.3 Interoperability & FHIR (DHA-INT)
-
-| Req ID | Requirement Title | Business Rules & Logic | Backend Models & Services | API Endpoint | UI Surfaces | Tests & Evidence | Compliance Status |
-|---|---|---|---|---|---|---|---|
-| **DHA-INT-001** | HL7 FHIR R4 Conformance | Kenya HIE profile mapping (MedicationRequest, Dispense) | `FHIRGatewayService`, `KenyaFHIRSerializer` | `GET /fhir/r4/MedicationDispense/` | N/A (Integration Gateway) | `docs/fhir/FHIR_CONFORMANCE.md`, FHIR tests | `COMPLIANT_EVIDENCED` |
-| **DHA-INT-002** | Standard Terminology Mapping | eTCD, RxNorm, and SNOMED-CT binding on SKUs | `MedicineSKU`, `eTCDMappingService` | `GET /api/v1/catalogue/etcd/` | `HQ Procurement Workspace` | `docs/integrations/KE_ETCD_PRODUCT_CATALOGUE.md` | `COMPLIANT_EVIDENCED` |
-
----
-
-### 2.4 Stakeholder Meeting Requirements (TT-MTG)
-
-| Req ID | Requirement Title | Business Rules & Logic | Backend Models & Services | API Endpoint | UI Surfaces | Tests & Evidence | Compliance Status |
-|---|---|---|---|---|---|---|---|
-| **TT-MTG-OFFLINE-001** | Governed Offline Framework | Multi-envelope limits (24h time, 50 tx, 100k KSH, max snapshot age) | `DurableActionJournal`, `offlineQueue.ts` | Sync endpoints | `SyncCentre` | `packages/shared/src/dispensing/offlineQueue.test.ts` | `PARTIALLY_COMPLIANT` |
-| **TT-MTG-SEARCH-001** | Parameterised Attribute Search | Rejects unindexed wildcards; forces generic/brand/GTIN/SKU filters | `ProductSearchService` | `GET /api/v1/catalogue/search/` | `RetailWorkspace` | `packages/shared/src/design-system/retail.test.ts` | `PARTIALLY_COMPLIANT` |
-| **TT-MTG-GS1-001** | GS1 DataMatrix & AI Parsing | Parses AI 01 (GTIN), AI 10 (Batch), AI 17 (Expiry), AI 21 (Serial) | `gs1/parser.ts`, `GS1ValidationService` | `POST /api/v1/gs1/parse/` | `BatchVerification`, Goods Receiving | `packages/shared/src/gs1/parser.test.ts` | `PARTIALLY_COMPLIANT` |
-| **TT-MTG-FEFO-001** | Server-Authoritative FEFO | Auto-selects batch by earliest expiry date; blocks quarantined/expired | `FEFOAllocationEngine` | `POST /api/v1/inventory/allocate/` | `PrescriptionWorkspace` | `packages/shared/src/dispensing/fefo.test.ts` | `COMPLIANT_EVIDENCED` |
-| **TT-MTG-RESERVE-001** | Reservation Lifecycle | Lifecycle: Requested -> Reserved -> Ready -> Consumed \| Expired | `InventoryReservation`, `ReservationWorker` | `POST /api/v1/inventory/reserve/` | POS Basket | `backend/apps/inventory/tests/test_reservation.py` | `PARTIALLY_COMPLIANT` |
-| **TT-MTG-BARCODE-001** | Barcode Operations | Embedded barcode verification across all 9 inventory movements | `BarcodeValidationService` | `POST /api/v1/inventory/scan/` | POS & Receiving screens | `apps/pos-windows/src/state/keyboard.test.ts` | `COMPLIANT_EVIDENCED` |
-| **TT-MTG-EXPIRY-001** | Expiry Analytics Dashboard | Age buckets (30/60/90/180+ days), heatmaps, financial risk calculation | `ExpiryAnalyticsService` | `GET /api/v1/analytics/expiry/` | `HQ Enterprise Reports` | `docs/architecture/TIBATRACE_REPORTS_CATALOGUE.md` | `PARTIALLY_COMPLIANT` |
-| **TT-MTG-CONSUMPTION-001**| Multi-Granularity Consumption | Tracks daily/weekly/monthly trends by medicine, branch, insurer, diagnosis | `ConsumptionAnalyticsService` | `GET /api/v1/analytics/consumption/` | `HQ Enterprise Reports` | Report generator tests | `PARTIALLY_COMPLIANT` |
-| **TT-MTG-FORECAST-001** | Demand Forecasting Engine | Predictive ROP calculation based on lead time, seasonality, lost demand | `DemandForecastService` | `GET /api/v1/analytics/forecast/` | `HQ Enterprise Reports` | Forecast unit tests | `PARTIALLY_COMPLIANT` |
-| **TT-MTG-AUDIT-001** | 20-Point Audit Metadata | Captures 20 mandatory contextual fields on all audit entries | `AuditEvent`, `DurableActionJournal` | All APIs | All surfaces | `packages/shared/src/dispensing/telemetry.test.ts` | `COMPLIANT_EVIDENCED` |
-| **TT-MTG-PRIVACY-001** | Dynamic PII/PHI Masking | Dynamic masking across UI, PDF, Excel; link expiration in 15 mins | `PrivacyMaskingEngine` | Report download endpoints | All export dialogues | `backend/apps/privacy/tests/test_masking.py` | `PARTIALLY_COMPLIANT` |
-| **TT-MTG-CAT-001** | System Designation | Standardized designation in docs, headers, and API specifications | N/A (Documentation) | N/A | Documentation & Headers | `docs/architecture/TIBATRACE_TECHNICAL_SYSTEM_DOCUMENTATION.md` | `COMPLIANT_EVIDENCED` |
-| **TT-MTG-POS-ACT-001** | Platform Owner Activation Authority | Platform Owner exclusive approval; tenant roles restricted to request submit/view | `posActivation.ts`, `isPlatformOwnerCapability` | `/api/v1/platform/pos-activations/` | `PosActivationConsole` | `packages/shared/src/dispensing/posActivation.test.ts` | `COMPLIANT_EVIDENCED` |
-| **TT-MTG-POS-ACT-002** | Activation Request Lifecycle | Backend state machine (DRAFT -> SUBMITTED -> APPROVED -> ACTIVATED); 1-time challenge | `posActivation.ts`, `canTransitionActivationState` | `/api/v1/platform/pos-activations/requests/` | `PosActivationConsole` | `packages/shared/src/dispensing/posActivation.test.ts` | `COMPLIANT_EVIDENCED` |
-| **DHA-SEC-POS-ACT-001** | Device Trust & Startup Gate | Fail-closed POS launch gate (validates fingerprint, tenant, branch, offline lease) | `validatePosStartup`, `validateOfflineLease` | Enrolment endpoints | `PosActivationStartupGate` | `packages/shared/src/dispensing/posActivation.test.ts` | `COMPLIANT_EVIDENCED` |
-| **DHA-GOV-POS-ACT-001** | Quota Control & Activation Audit | Quota limits per branch; Platform Owner limit override rationale; 19 audit events | `evaluateActivationQuota`, `AuditEvent` | Platform console APIs | `PosActivationConsole` | `packages/shared/src/dispensing/posActivation.test.ts` | `COMPLIANT_EVIDENCED` |
-
----
-
-### 2.5 National Integration Foundation (NIF)
-
-> **Truth Label Policy**: All entries in this section are labelled with their empirical operational state.
-> `ADAPTER_SCAFFOLDED_NOT_CONNECTED` = code exists, no live connection. Until Platform Owner
-> activation is confirmed and sandbox evidence exists, no entry may carry `COMPLIANT_EVIDENCED`.
-
-| Req ID | Requirement Title | Backend Implementation | Truth Label | Evidence | Compliance Status |
-|---|---|---|---|---|---|
-| **NIF-PHASE-1** | Pharmacy Premises Compliance Reconciliation | `PremisesVerificationRequest`, `PremisesVerificationSnapshot`, `verification_service.py`; management command `reconcile_premises_licences` | `MANUAL_INTERNAL_VERIFICATION` | `backend/apps/pharmacy_network/models.py`, `verification_service.py`, `management/commands/reconcile_premises_licences.py` | `IMPLEMENTED_NOT_EVIDENCED` |
-| **NIF-PHASE-2** | National Provider Integration Platform | `ProviderConfiguration`, `IntegrationMessage`, `IntegrationDeadLetter`, `ProviderActivationRequest`, `activation_governance.py` | `ADAPTER_SCAFFOLDED_NOT_CONNECTED` | `backend/apps/integrations/models.py`, `backend/apps/integrations/apps.py` | `IMPLEMENTED_NOT_EVIDENCED` |
-| **NIF-PHASE-3** | DHA OAuth 2.0 Client | `DhaOAuthClient` (fail-closed, TLS allow-list, credential masking, token digest logging only) | `ADAPTER_SCAFFOLDED_NOT_CONNECTED` | `backend/apps/prescription/providers/oauth_client.py` | `IMPLEMENTED_NOT_EVIDENCED` |
-| **NIF-PHASE-4** | DHA HWR Practitioner Verification | `DhaHwrAdapter`, `HwrVerificationDecision`, risk-based prescribing gate, immutable evidence log | `ADAPTER_SCAFFOLDED_NOT_CONNECTED` | `backend/apps/practitioners/hwr_adapter.py` | `IMPLEMENTED_NOT_EVIDENCED` |
-| **NIF-PHASE-5** | PPB Premises Adapter Contract | `PpbAdapter` (MANUAL_GOVERNED, SANDBOX_MOCK, OFFICIAL_API modes); replaces `NotImplementedError` with explicit truth-labeled mode dispatch | `MANUAL_INTERNAL_VERIFICATION` | `backend/apps/pharmacy_network/ppb_adapter.py` | `IMPLEMENTED_NOT_EVIDENCED` |
-| **NIF-PHASE-6** | Regulatory Product Status Freshness | `PpbProductStatusResult` projection (`CURRENTLY_VERIFIED`, `STALE`, `SUSPENDED`, `WITHDRAWN`, `EXPIRED`, `UNKNOWN`, `MATCH_REQUIRES_REVIEW`, `NOT_FOUND`) | `SNAPSHOT_IMPORTED_STALENESS_GOVERNED` | `backend/apps/pharmacy_network/ppb_adapter.py` | `IMPLEMENTED_NOT_EVIDENCED` |
-| **NIF-PHASE-7** | Regulatory Alerts & Recall Ingestion | `RegulatoryAlert`, `RegulatoryAlertVersion`, `RegulatoryMatchCandidate`, `RegulatoryTenantImpact`, `RegulatoryAction`, `RegulatoryEvidence`, `RegulatoryClosure`; confidence-tier matching, global tenant quarantine, prior-dispense tracing, release workflow | `LOCAL_RECALL_WORKFLOW_NO_REGULATOR_FEED` | `backend/apps/inventory/recalls/models.py`, `backend/apps/inventory/recalls/services.py` | `IMPLEMENTED_NOT_EVIDENCED` |
-| **NIF-PHASE-8** | Integration Reliability Engine | Exponential backoff with jitter, dead-letter queue, circuit breaker (CLOSED/OPEN/HALF_OPEN), rate limits | `ADAPTER_SCAFFOLDED_NOT_CONNECTED` | `backend/apps/integrations/reliability.py` | `IMPLEMENTED_NOT_EVIDENCED` |
-| **NIF-PHASE-9** | HQ Integration Command Centre | `IntegrationWorkspace.tsx` with truth-label cards, activation progress, DLQ management; `national_integration.ts` shared types | `ADAPTER_SCAFFOLDED_NOT_CONNECTED` | `apps/hq-web/src/IntegrationWorkspace.tsx`, `packages/shared/src/dispensing/national_integration.ts` | `IMPLEMENTED_NOT_EVIDENCED` |
+Use the [DHA evidence register](DHA_DOCUMENT_EVIDENCE_REGISTER.md), [DPIA closure register](../system/20_DPIA_GAP_CLOSURE_REGISTER.md), and [remaining action plan](../system/24_DPIA_REMAINING_ACTION_PLAN_2026-10-26.md). Keep exchanges disabled until the tenant-specific approval and authority gates are met.

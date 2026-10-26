@@ -1,216 +1,48 @@
-# TibaTrace Release Packaging Workflow
+# TibaTrace server release and deployment workflow
 
-**Status:** Proposed. No established workflow was recovered — see *Findings*.
-**Applies to:** `tibatrace.esenai.co.ke` on `159.69.34.39`, deployment root `/opt/tibatrace`.
+**Current process:** GitHub Production Images workflow builds, validates and publishes immutable server images. Production activation is a separate, operator-controlled SSH deployment; the workflow does not deploy to the VPS.<br>
+**Production host:** `tibatrace.esenai.co.ke` at `159.69.34.39`; release root `/opt/tibatrace`.
 
----
+## 1. Prepare an exact release source
 
-## Findings: what actually happened for releases 62f74e7 → 24a1602 → 92282eb
+1. Set `VERSION` and add `docs/releases/TIBATRACE_v<VERSION>.md`.
+2. Review the source diff and migration plan. Exclude local secrets, generated artifacts and unrelated worktree changes.
+3. Confirm the repository variable `DEPLOYMENT_BASELINE_SHA` names the source commit actually running in production. The Production Images workflow inventories migrations relative to this value. Update it after each verified activation; do not guess the baseline.
+4. Commit the complete source and create the matching annotated `tibatrace-v<VERSION>` tag. The tag must match `VERSION` exactly.
 
-I looked for an established process — packaging scripts, CI jobs, rsync/scp
-wrappers, manifests, tag conventions — and found none that produces
-`releases/<version>-<sha>-<timestamp>/`. The evidence says these bundles were
-assembled by hand:
+## 2. Build and validate in GitHub Actions
 
-| Evidence | What it shows |
-|---|---|
-| Release dirs contain `debug_test.py`, `fix_tests.py`, `extra_alloc.py`, `extra_models.py`, `extra_services_2.py` | Whole-repo copies, not curated bundles |
-| Ownership `UNKNOWN:staff` (uid 501, gid `staff`) on `24a1602` and `62f74e7` | Copied from a macOS machine via `scp`/`rsync` as a non-root user |
-| Only metadata file is `VERSION` (`0.1.0-alpha.1`) | No manifest, no commit SHA, no build timestamp, no checksums, no SBOM |
-| `tibatrace-hq-web:…-92282eb-…` carries `revision=unknown`, `created=unknown` | Built without `--build-arg SOURCE_REVISION/BUILD_TIME`; an ad-hoc `docker build` |
-| `tibatrace-backend:…-24a1602-…` carries `revision=24a1602141145…` | That one *was* built with the documented build args — inconsistent practice |
-| No registry prefix on any image tag; no `docker save`/`load` artefacts | Images are built **on the production VPS** from the uploaded source tree |
-| `scripts/` contains only `package_pos_android_release.sh`, `package_pos_windows_release.sh`, `package_pos_windows.ps1` | Packaging exists for POS clients only, never for the server |
-| `.github/workflows/` has `ci.yml`, `fhir-*.yml`, `windows-release.yml` | CI tests and packages the Windows POS; it does not build or publish server images |
-| `Makefile` `docker-build` target tags `dawatrace/backend:phase3` | A stale local-dev target, unrelated to production tags |
+Push the annotated tag. The `Production Images` workflow is the only production image builder. It runs the exact-source SQLite and PostgreSQL business suites, frontend checks/tests/builds, migration inventory and consistency checks, runtime startup checks, dependency and container scans, SBOM generation and signed provenance. It publishes only after every gate passes.
 
-Building images on the VPS is the root cause of the disk-headroom problem: the
-backend and HQ builder stages compete for space with five other production
-applications on a single 38 GB filesystem.
+Retrieve the `release-evidence-<VERSION>-<SHA>` artifact. Verify its `SHA256SUMS`, release manifest, OCI source/version/revision labels, image digests, migration inventory, SBOMs and GitHub attestations. Use immutable `ghcr.io/...@sha256:...` references in production, never `latest` or a mutable release tag.
 
-### Answers to the ten discovery questions
+If any gate fails or evidence is missing, do not deploy. Fix the source, create a new candidate commit/version/tag and rerun the full workflow; do not bypass or reuse a failed publication.
 
-1. **Where images are built** — on the production VPS, from the uploaded source tree.
-2. **Local, CI, or VPS** — VPS. CI never builds server images.
-3. **Registry or tar** — neither. Local `docker build`, local tags, no registry, no `docker save`.
-4. **How `releases/<version>-<sha>-<ts>/` is created** — manual `scp`/`rsync` of a whole working tree, directory named by hand.
-5. **Which files belong in the bundle** — undefined. Current bundles carry the entire repository including scratch files.
-6. **How production `.env` is referenced** — `deploy-server.sh` takes `$1` or defaults to `<script_dir>/.env.production`; in practice the compose project is invoked with `--env-file /opt/tibatrace/secrets/.env.production`. The env file lives outside the release dirs and survives releases.
-7. **How `current` is changed** — manually repointed (`current -> releases/…-92282eb-…`). Nothing automates it, and nothing verifies the running containers match it.
-8. **How rollback works** — implicitly, by repointing `current` and re-running compose with an older `DAWATRACE_IMAGE`. Undocumented and untested.
-9. **How migrations are applied** — `deploy-server.sh` runs `docker compose --profile maintenance run --rm migrate` before starting services.
-10. **How image integrity is verified** — it is not. No checksums, no signatures, no SBOM.
+## 3. Prepare production safely
 
----
+Before changing the live environment:
 
-## Proposed workflow
+- Confirm the live image labels, release pointer, schema and `DEPLOYMENT_BASELINE_SHA` agree.
+- Check available disk, memory, backup space and Docker image retention. Do not build images on the shared production VPS. Preserve the running and immediate rollback release/images; remove no unrelated service data or volumes.
+- Create a root-only, checksummed backup of PostgreSQL, production configuration/secret references and the clinical-object volume. Verify archive integrity and restore inventory before deployment. Keep the environment backup mode `0600` and never print/copy secret values into release evidence.
+- Review the candidate migration against current production. Record forward/rollback behavior. Never reverse a migration or restore an old database over newer accepted transactions without a reviewed recovery plan.
+- Update the protected production secret file atomically, with a root-only backup and restrictive permissions. Provision required encryption and lookup keys before starting a release that requires them; preserve legacy keys needed by existing data and backups.
+- Keep malware scanning, patient uploads, DHA/HIE, RX and checkout settings at their approved current states. Do not mark unscanned files clean or enable an integration as part of a server release without separate authorization and acceptance.
 
-Designed to fix the three defects above: build off-host, produce a verifiable
-bundle, and make activation and rollback explicit. **Not yet executed.**
+## 4. Activate the immutable release
 
-### 1. Build off-host
+Create a versioned release directory containing the tagged `deploy/tibatrace/` configuration, `VERSION`, release notes and verified release evidence. Set the production image variables to the published immutable digests. Run the release's composed-configuration check before migrations.
 
-Build on the developer Mac, a clean Linux builder, or CI — never on the
-production VPS while headroom is under 10 GB.
+Use `deploy/tibatrace/deploy-server.sh /opt/tibatrace/secrets/.env.production` from the new release directory. The script validates Compose, runs the maintenance migration profile, and starts TibaTrace Redis, API, worker, beat and HQ. It does not create the backup; that must be completed first.
 
-```bash
-git fetch --tags origin
-git checkout tibatrace-v0.2.0-rc1
-SHA=$(git rev-parse HEAD)          # must equal 95c90243ec768c4d18ee4da29bfad48e4b2500f3
-SHORT=$(git rev-parse --short=7 HEAD)
-VERSION=$(cat VERSION)
-TS=$(date -u +%Y%m%dT%H%M%SZ)
-TAG="${VERSION}-${SHORT}-${TS}"
+For key/data migrations requiring tenant-by-tenant review, run the documented dry run and inspect only aggregate counts before applying. Follow the release note and approved maintenance plan. Retain the old keys and release images until all required data and backups can be read with the new release and recovery has been verified.
 
-docker build --file docker/backend.Dockerfile \
-  --build-arg DAWATRACE_VERSION="$VERSION" \
-  --build-arg SOURCE_REVISION="$SHA" \
-  --build-arg BUILD_TIME="$TS" \
-  --tag "tibatrace-backend:${TAG}" .
+## 5. Accept or roll back
 
-docker build --file apps/hq-web/Dockerfile \
-  --build-arg DAWATRACE_VERSION="$VERSION" \
-  --build-arg SOURCE_REVISION="$SHA" \
-  --build-arg BUILD_TIME="$TS" \
-  --tag "tibatrace-hq-web:${TAG}" .
-```
+Acceptance must record exact source, image digests, migration state, health, worker response, public HTTPS/HQ asset identity, tenant boundary/read-only checks, key configuration IDs (never values), business-data invariants, integration states and backup/recovery references. Verify that no test clinical, stock or financial writes remain.
 
-Both `--build-arg SOURCE_REVISION` values are mandatory. An image whose
-`org.opencontainers.image.revision` reads `unknown` must never reach production —
-that is exactly how the current ambiguity arose.
+After successful acceptance, update the production pointer and the GitHub `DEPLOYMENT_BASELINE_SHA` to the exact deployed source. Preserve the prior release and images. If acceptance fails, stop further activation and use the reviewed rollback procedure. Database migrations are not automatically reversed; follow the release-specific recovery plan.
 
-### 2. Assemble the bundle
+## 6. Current capacity note
 
-The bundle carries only what deployment needs, not the working tree:
-
-```
-tibatrace-<TAG>/
-├── RELEASE_MANIFEST.json      # version, git SHA, tag, build time, image digests
-├── VERSION
-├── deploy/tibatrace/          # compose files, deploy-server.sh, Caddyfiles, README
-├── images/
-│   ├── tibatrace-backend-<TAG>.tar.zst
-│   └── tibatrace-hq-web-<TAG>.tar.zst
-├── migrations/PLAN.txt        # output of `migrate --plan` from the release image
-├── sbom/dawatrace-backend.cdx.json   # `make sbom`
-├── SHA256SUMS
-└── ROLLBACK.md
-```
-
-`RELEASE_MANIFEST.json` must record `git_sha`, `git_tag`, `version`,
-`build_time`, both image tags, and both image digests
-(`docker image inspect --format '{{index .RepoDigests 0}}'` or the local
-`Id` when there is no registry).
-
-### 3. Checksum and sign
-
-```bash
-( cd "tibatrace-${TAG}" && find . -type f ! -name SHA256SUMS -print0 \
-    | sort -z | xargs -0 sha256sum > SHA256SUMS )
-```
-
-Sign `RELEASE_MANIFEST.json` with the repository's approved signing mechanism.
-**Do not** sign with `TIBATRACE_RELEASE_SECRET_KEY` — despite its name, that is
-the MinIO/S3 *secret access key* used by `boto3` to presign installer
-downloads (`backend/apps/platform/release_storage.py`), not an artefact signing
-key. The document/object signing key is `DAWATRACE_OBJECT_SIGNING_KEY`, which is
-a separate secret and must not be reused for release signing either.
-
-### 4. Transfer and verify
-
-```bash
-tar -I 'zstd -19' -cf "tibatrace-${TAG}.tar.zst" "tibatrace-${TAG}"
-sha256sum "tibatrace-${TAG}.tar.zst"                       # record locally
-scp "tibatrace-${TAG}.tar.zst" root@159.69.34.39:/opt/tibatrace/incoming/
-```
-
-On the host, verify **before** unpacking, then verify the inner checksums:
-
-```bash
-cd /opt/tibatrace/incoming
-sha256sum -c <<< "<recorded-sum>  tibatrace-${TAG}.tar.zst"
-tar -I zstd -xf "tibatrace-${TAG}.tar.zst" -C /opt/tibatrace/releases/
-cd "/opt/tibatrace/releases/tibatrace-${TAG}" && sha256sum -c SHA256SUMS
-```
-
-### 5. Load images
-
-```bash
-zstd -dc images/tibatrace-backend-${TAG}.tar.zst  | docker load
-zstd -dc images/tibatrace-hq-web-${TAG}.tar.zst   | docker load
-docker image inspect "tibatrace-backend:${TAG}" \
-  --format '{{index .Config.Labels "org.opencontainers.image.revision"}}'
-```
-
-The printed revision must equal the release SHA. Delete the `.tar.zst` files
-from `incoming/` once loaded, to return the space.
-
-### 6. Activate
-
-Activation is a deliberate, separate step. Update `DAWATRACE_IMAGE` and
-`TIBATRACE_HQ_IMAGE` in `/opt/tibatrace/secrets/.env.production` (backing the
-file up first, preserving mode 600), repoint `current`, then:
-
-```bash
-cd /opt/tibatrace/current/deploy/tibatrace
-./deploy-server.sh /opt/tibatrace/secrets/.env.production
-```
-
-That script validates the composed config, runs the `migrate` maintenance
-profile once, brings up `redis api worker beat hq`, and prints `ps`.
-
-**Invariant that would have prevented the current ambiguity:** after every
-deployment, assert that `current`, `DAWATRACE_IMAGE`, `TIBATRACE_HQ_IMAGE` and
-every running container's `org.opencontainers.image.revision` all resolve to the
-same commit. Any drift is a failed deployment, not a partial success.
-
-### 7. Rollback
-
-Keep at least one prior release directory and its images. To roll back: restore
-the previous `.env.production` from `/opt/tibatrace/secrets/`, repoint `current`
-to the previous release directory, and re-run `deploy-server.sh`. Migrations are
-**not** automatically reversed — check `ROLLBACK.md` in the bundle for whether
-the release's migrations are backward-compatible with the previous image before
-rolling back.
-
----
-
-## Why clean container builds are mandatory
-
-The v0.2.0-rc1 release was blocked by a defect that every local check passed.
-
-`apps/hq-web/Dockerfile` copied `packages/shared/package.json` but never the
-package's source, and never built it. `hq-web` imports
-`@dawatrace/shared/money.js`, which the exports map resolves to
-`packages/shared/dist/money.js` — and `dist/` is gitignored, so it does not
-exist in a container. The build failed with
-`Rolldown failed to resolve import "@dawatrace/shared/money.js"`.
-
-The Dockerfile had always been incomplete. This release was simply the first to
-import a shared subpath. What hid it was **stale local artefacts**: `npm run
-build` succeeded on a developer machine because an earlier run had left
-`packages/shared/dist` on disk. `scripts/validate_workspaces.sh` compounded it
-by building `apps/` before `packages/` — it sorted both trees together and
-`apps` sorts first — so even a full workspace build never produced the shared
-package first.
-
-Three rules follow, and they are now enforced rather than advisory:
-
-1. **A release is only buildable if it builds in a clean container.** Workspace
-   builds are a development convenience; they are not release evidence.
-   `.github/workflows/production-images.yml` builds both server images from a
-   clean checkout for `linux/amd64` on every pull request, on `main`, and on
-   every `tibatrace-v*` tag.
-2. **Generated output must never enter the build context.** `.dockerignore`
-   excludes `apps/**/dist` and `packages/**/dist`, so the image builds the
-   shared package itself instead of inheriting whatever a developer left behind.
-3. **Every release image must carry its exact revision.** CI fails the build if
-   `org.opencontainers.image.revision` is empty or `unknown`. The HQ image
-   currently in production reports `unknown`, which is precisely how the
-   provenance of a running component became unverifiable.
-
-## Retention policy
-
-Keep the running release plus one prior release (directory *and* both images).
-Anything older is removable. Never delete `/opt/tibatrace/backups`,
-`/opt/tibatrace/secrets`, or any Docker volume.
+The shared VPS was recently observed with 1.4 GB free on a 38 GB root filesystem. Recheck disk and memory immediately before transfer, backup and image pull. The host has unrelated production applications; do not reclaim their images, volumes, logs or data. If required headroom is unavailable, arrange approved capacity or remove only individually verified obsolete TibaTrace artifacts while retaining the live release and rollback target.

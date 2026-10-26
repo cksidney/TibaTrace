@@ -1,8 +1,8 @@
 # TibaTrace System User Manual
 
-**Applies to:** workflow set verified in production rc52 (16 October 2026)  
+**Applies to:** operational workflows documented against the product; deployed server baseline rc71 (25 October 2026). Native-client binary versions and physical devices require separate release-inventory verification.<br>
 **Audience:** platform owners, tenant administrators, pharmacy managers, cashiers, pharmacists, inventory and reporting staff  
-**Companion:** [existing end-to-end guide](../../TIBATRACE_USER_GUIDE.md); that guide's header names rc13, so use this manual and current release notes for newer payment/POS behavior.
+**Companion:** [existing end-to-end guide](../../TIBATRACE_USER_GUIDE.md); that guide is historical. Confirm each workflow against the current tenant configuration and exact installed client before operational use.
 
 ## 1. Before you begin
 
@@ -107,4 +107,4 @@ Clinical or regulatory uncertainty should be escalated to the responsible pharma
 
 ## 9. Version note
 
-The rc52 production record documents Windows POS 1.0.10. The rc53 note describes a later Windows 1.0.11 candidate, but this repository review did not find a corresponding production verification record. Check the currently published installer catalogue and release acceptance before distributing this manual or installing a newer client.
+The server rc71 record does not establish which Windows or Android client versions are installed at each site. Check the signed installer catalogue, tenant/device inventory and release acceptance record before distributing this manual as version-specific or installing a newer client.

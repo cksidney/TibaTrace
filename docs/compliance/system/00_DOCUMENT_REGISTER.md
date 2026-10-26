@@ -17,7 +17,7 @@ The bundled `TibaTrace_System_Documentation_Word.zip` predates the updates in th
 | 1 | [Data Protection Impact Assessment](01_DATA_PROTECTION_IMPACT_ASSESSMENT.md) | Not approved; TibaTrace system/provider DPIA; system-owner production evidence, health-sector proof and sign-off remain blockers |
 | 2 | [Privacy Policy](02_PRIVACY_POLICY.md) | Public-facing draft; controller/contact/retention details require confirmation |
 | 3 | [System Architecture Diagram](03_SYSTEM_ARCHITECTURE.md) | As-built architecture with deployment evidence boundary stated |
-| 4 | [System User Manual](04_SYSTEM_USER_MANUAL.md) | User manual for documented rc52 workflows; verify newer client release before distribution |
+| 4 | [System User Manual](04_SYSTEM_USER_MANUAL.md) | Operational guide; server baseline rc71, but installed native-client versions still need release-inventory confirmation |
 | 5 | [Technical Specifications](05_TECHNICAL_SPECIFICATIONS.md) | Repository and documented production specification |
 | 6 | [Information Security Policy](06_INFORMATION_SECURITY_POLICY.md) | Policy draft for Esenai and tenant review/approval |
 | 7 | [Incident Response Plan](07_INCIDENT_RESPONSE_PLAN.md) | Operational plan draft; named responders and contacts required |
@@ -34,9 +34,10 @@ The bundled `TibaTrace_System_Documentation_Word.zip` predates the updates in th
 | 18 | [Vulnerability Assessment Report](18_VULNERABILITY_ASSESSMENT_REPORT.md) | rc71 CI scan and limited runtime/source review; independent assessment declared by owner, report not attached |
 | 19 | [TibaTrace system DPIA evidence checklist](19_TIBATRACE_SYSTEM_DPIA_EVIDENCE_CHECKLIST.md) | System-owner evidence checklist; tenant-specific controller DPIAs remain separate |
 | 20 | [TibaTrace system DPIA gap closure register](20_DPIA_GAP_CLOSURE_REGISTER.md) | Prioritized closure evidence, owners and verification tests; not an approval |
-| 21 | [Current DPIA review](21_DPIA_CURRENT_REVIEW_2026-10-25.md) | Current controls, risk scores, restricted evidence index and approval blockers |
+| 21 | [DPIA review snapshot](21_DPIA_CURRENT_REVIEW_2026-10-25.md) | Dated 25 October production controls, risk scores, restricted evidence index and approval blockers |
 | 22 | [Kenya hosting acceptance plan](22_KENYA_HOSTING_ACCEPTANCE_PLAN.md) | Not executed; owner confirmed Kenya hosting needs arranging |
 | 23 | [Identifier key remediation and rollout](23_IDENTIFIER_KEY_REMEDIATION_AND_ROLLOUT.md) | Local source safeguards and validation; independent keys/rotation are not deployed |
+| 24 | [DPIA remaining action plan](24_DPIA_REMAINING_ACTION_PLAN_2026-10-26.md) | Ordered owner checklist with required evidence and closure criteria; no approval implied |
 
 ## Reading the statuses
 
@@ -66,7 +67,15 @@ The bundled `TibaTrace_System_Documentation_Word.zip` predates the updates in th
 6. Seven years is the owner's retention baseline, not a completed class-specific
    trigger/exception/hold/backup schedule. No irreversible disposal rules have
    been adopted from an unspecified trigger.
-7. The restricted packet is git ignored. The old Word ZIP and August DHA packages
+7. Commit `f8ea5cd` contains local source changes for independently versioned
+   patient-identifier encryption/lookup keys and protected FHIR intake. It is not
+   deployed and does not change the rc71 assessment boundary. Follow documents 23
+   and 24 before release or marking DPIA-08 closed.
+8. The owner says TibaTrace is DHA certified, its security assessment passed and a
+   restore exercise exists. The certificate reference and the security/restore
+   reports were not located in the reviewed evidence; record these as declarations
+   until the artifacts and scope are checked.
+9. The restricted packet is git ignored. The old Word ZIP and August DHA packages
    are historical drafts and must not be submitted as current approved evidence.
    Regenerate submission copies only after the relevant approval/evidence gates.
 
@@ -81,7 +90,7 @@ For implementation details, use the source and current locked manifests. Dated r
 - `docs/releases/RC52_RELEASE_VERIFICATION_2026-10-16.md`
 - `docs/releases/TIBATRACE_v1.0.0_RC53.md`
 - `docs/operations/EXTERNAL_INTEGRATION_ONBOARDING.md`
-- `docs/TIBATRACE_USER_GUIDE.md` (existing detailed guide; its header names rc13, so check the newer manual here for rc52 behavior)
+- `docs/TIBATRACE_USER_GUIDE.md` (legacy guide; check the current manual and exact release notes before distribution)
 
 ## External legal and standards references
 
@@ -97,4 +106,4 @@ For implementation details, use the source and current locked manifests. Dated r
 - [Kenya MoH SHIELD surveillance overview](https://shield.health.go.ke/about)
 - [MoH and WHO IDSR 3rd-generation guideline training notice](https://www.health.go.ke/joint-effort-moh-and-who-training-boosts-disease-surveillance-four-kenyan-counties)
 
-The General Regulations, current DHA guidance and Hetzner region mapping were checked on 25 October 2026 for the current review. Older reference checks remain historical; the scanned ODPC DPIA guidance could not be fully retrieved in this review. Recheck applicable law and certificate scope before formal submission.
+The General Regulations, DHA guidance and Hetzner region mapping were checked for the 25 October 2026 production review. The scanned ODPC DPIA guidance could not be fully retrieved. Recheck applicable law, current DHA instructions and certificate scope before formal submission.

@@ -1,6 +1,6 @@
 # TibaTrace Information Security Policy — Draft
 
-**Status:** Draft for adoption by Esenai service owner and tenant controllers  
+**Status:** Draft for adoption by Esenai service owner and tenant controllers; reviewed against rc71 evidence on 26 October 2026<br>
 **Policy owner:** Esenai Group Ltd security lead (name to assign)  
 **Review cadence:** At least annually and after a material incident or architecture change
 
@@ -68,7 +68,7 @@ An exception must name the risk, affected system/data, compensating controls, ac
 
 ## 6. Measures and review evidence
 
-Keep current evidence for: access reviews, privileged accounts, security scans, patch actions, release approvals, backup jobs and restore tests, incident exercises, third-party contracts, endpoint status, security training and approved exceptions. The rc52 release record is historical release evidence only; it does not replace recurring controls.
+Keep current evidence for: access reviews, privileged accounts, security scans, patch actions, release approvals, backup jobs and restore tests, incident exercises, third-party contracts, endpoint status, security training and approved exceptions. The rc71 release record is point-in-time evidence only; it does not replace recurring controls. Privileged MFA, malware scanning, host/database at-rest protection and separate key custody remain open in the reviewed production boundary.
 
 ## 7. Approval
 
