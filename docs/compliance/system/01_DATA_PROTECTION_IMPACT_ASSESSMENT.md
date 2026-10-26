@@ -6,7 +6,17 @@
 **25 October assessment basis (historical):** deployed `1.0.0-rc71`, commit `2965194a29311314e8a5772adfeee5af8c14a8f2`. Live API, worker, scheduler and HQ labels match the release. Full CI, SQLite/PostgreSQL coverage, image scans, release checksums and signed image provenance were verified. Read-only production control and aggregate-scale evidence is held in a restricted local packet; see the [current review](21_DPIA_CURRENT_REVIEW_2026-10-25.md). Native POS binaries and individual devices were not re-assessed.<br>
 **Assessment owner:** Esenai Group Ltd; Sidney Chepkwony is the owner-nominated approval owner. Nomination is not approval or a signature.
 
-**26 October deployment addendum:** release rc74, `27469e1993d85606001787fb058052fe1cb6b4b6`, is deployed and verified. Independent identifier encryption/lookup keyrings, the additive migration, tenant preflights, rolled-back synthetic key/FHIR checks and encrypted configuration readback passed. See [rc74 acceptance](../../releases/RC74_DEPLOYMENT_2026-10-26.md). The 25 October rc71 snapshot remains historical evidence. DPIA-08 stays PARTIAL for independent review, storage encryption/custody, rotation lifecycle and full isolated recovery. The system DPIA remains NOT APPROVED; owner-declared DHA/security/restore claims still need scoped evidence.
+**26 October identifier deployment addendum:** release rc74, `27469e1993d85606001787fb058052fe1cb6b4b6`, was deployed and verified. Independent identifier encryption/lookup keyrings, the additive migration, tenant preflights, rolled-back synthetic key/FHIR checks and encrypted configuration readback passed. See [rc74 acceptance](../../releases/RC74_DEPLOYMENT_2026-10-26.md). The 25 October rc71 snapshot remains historical evidence. DPIA-08 stays PARTIAL for independent review, storage encryption/custody, rotation lifecycle and full isolated recovery. The system DPIA remains NOT APPROVED; owner-declared DHA/security/restore claims still need scoped evidence.
+
+**Current server, rc75 deployment addendum:** `39f3e0651fc21f1e9f017db6e9bbaaf3992640bf`
+is deployed and accepted. [rc75 acceptance](../../releases/RC75_DEPLOYMENT_2026-10-26.md)
+records exact-source CI/provenance, the additive MFA table, authenticated production
+backup, rolled-back synthetic MFA checks, live assets/health and unchanged business
+and integration states. Live MFA keys/enrollment/enforcement remain inactive;
+native rollout, recurring access/audit/backup operations, separate custody and
+independent assurance remain open. Scanning stays deferred and integrations stay
+disabled. This deployment does not change the NOT APPROVED decision or residual
+risk ratings; use the [owner checklist](26_OWNER_EVIDENCE_AND_APPROVALS_REQUIRED.md).
 
 ## 1. Decision and scope
 

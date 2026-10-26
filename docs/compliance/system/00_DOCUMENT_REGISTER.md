@@ -1,9 +1,9 @@
 # TibaTrace System Compliance Documentation Register
 
 **Document set:** TibaTrace / DawaTrace hosted pharmacy and healthcare platform<br>
-**Updated:** 26 October 2026; rc74 deployment acceptance added; the 25 October assessment remains historical evidence<br>
-**Current production source:** rc74, `27469e1993d85606001787fb058052fe1cb6b4b6`<br>
-**Current deployment evidence:** [rc74 acceptance](../../releases/RC74_DEPLOYMENT_2026-10-26.md); server identity, exact-source CI, signed provenance, migration, synthetic key/FHIR checks and protected recovery archives verified<br>
+**Updated:** 26 October 2026; rc75 deployment acceptance added; the 25 October assessment remains historical evidence<br>
+**Current production source:** rc75, `39f3e0651fc21f1e9f017db6e9bbaaf3992640bf`<br>
+**Current deployment evidence:** [rc75 acceptance](../../releases/RC75_DEPLOYMENT_2026-10-26.md); exact-source CI/provenance, additive migration, rolled-back synthetic MFA checks, live assets/health and authenticated backup verified; MFA activation remains pending<br>
 **Approval state:** Working drafts; system-owner, legal and independent-assessment approvals remain outstanding. Tenant-specific controller DPIAs are separate.
 
 This register links the requested system documents and says what each one actually establishes. It does not certify TibaTrace, Esenai Group Ltd, or a tenant as compliant. Product controls, organizational controls, customer configuration, and independent test evidence are kept distinct.
@@ -17,7 +17,7 @@ The bundled `TibaTrace_System_Documentation_Word.zip` predates the updates in th
 | 1 | [Data Protection Impact Assessment](01_DATA_PROTECTION_IMPACT_ASSESSMENT.md) | Not approved; TibaTrace system/provider DPIA; system-owner production evidence, health-sector proof and sign-off remain blockers |
 | 2 | [Privacy Policy](02_PRIVACY_POLICY.md) | Public-facing draft; controller/contact/retention details require confirmation |
 | 3 | [System Architecture Diagram](03_SYSTEM_ARCHITECTURE.md) | As-built architecture with deployment evidence boundary stated |
-| 4 | [System User Manual](04_SYSTEM_USER_MANUAL.md) | Operational guide; server baseline rc74; installed native-client versions still need release-inventory confirmation |
+| 4 | [System User Manual](04_SYSTEM_USER_MANUAL.md) | Operational guide; server baseline rc75; installed native-client versions still need release-inventory confirmation |
 | 5 | [Technical Specifications](05_TECHNICAL_SPECIFICATIONS.md) | Repository and documented production specification |
 | 6 | [Information Security Policy](06_INFORMATION_SECURITY_POLICY.md) | Policy draft for Esenai and tenant review/approval |
 | 7 | [Incident Response Plan](07_INCIDENT_RESPONSE_PLAN.md) | Operational plan draft; named responders and contacts required |
@@ -38,7 +38,7 @@ The bundled `TibaTrace_System_Documentation_Word.zip` predates the updates in th
 | 22 | [Kenya hosting acceptance plan](22_KENYA_HOSTING_ACCEPTANCE_PLAN.md) | Not executed; owner confirmed Kenya hosting needs arranging |
 | 23 | [Identifier key remediation and rollout](23_IDENTIFIER_KEY_REMEDIATION_AND_ROLLOUT.md) | Deployed in rc74; key provisioning, migration and synthetic readback verified; independent assessment and full recovery remain open |
 | 24 | [DPIA remaining action plan](24_DPIA_REMAINING_ACTION_PLAN_2026-10-26.md) | Ordered owner checklist with required evidence and closure criteria; no approval implied |
-| 25 | [Technical control delivery](25_TECHNICAL_DPIA_CONTROL_DELIVERY_2026-10-26.md) | MFA/access/audit/backup source tested; PostgreSQL 16 suites and synthetic recovery passed; not deployed |
+| 25 | [Technical control delivery](25_TECHNICAL_DPIA_CONTROL_DELIVERY_2026-10-26.md) | Server controls deployed in rc75; MFA enrollment/enforcement, native rollout, separate custody and operational approvals remain pending |
 | 26 | [Exact owner evidence and approvals](26_OWNER_EVIDENCE_AND_APPROVALS_REQUIRED.md) | Required artifacts, scopes, reviewers and retention worksheet; owner action remains open |
 
 ## Reading the statuses
@@ -51,7 +51,7 @@ The bundled `TibaTrace_System_Documentation_Word.zip` predates the updates in th
 ## Facts that govern this document set
 
 1. The DPIA is version 0.4 and remains NOT APPROVED. Current server evidence is
-   rc74; the 25 October rc71 assessment and older rc52/rc57 statements describe
+   rc75; the 25 October rc71 assessment and older rc52/rc57 statements describe
    historical deployments. Native-client/device evidence remains separate.
 2. Matching Esenai Group Ltd incorporation and ODPC processor certificates were
    visually reviewed. The owner supplied a privacy contact and nominated Sidney

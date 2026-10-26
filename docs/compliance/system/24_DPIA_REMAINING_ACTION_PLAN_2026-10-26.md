@@ -2,15 +2,16 @@
 
 **Updated:** 26 October 2026<br>
 **Decision:** DPIA remains **NOT APPROVED**; this plan does not grant regulatory approval or certification.<br>
-**Production boundary:** server release `1.0.0-rc74`, commit `27469e1993d85606001787fb058052fe1cb6b4b6`, Hetzner Nuremberg, Germany.<br>
-**Deployment update:** the identifier remediation is deployed; [rc74 acceptance](../../releases/RC74_DEPLOYMENT_2026-10-26.md) records key provisioning, migration, synthetic readback, release checks and encrypted configuration recovery. Independent review and a full restore remain outstanding.
+**Production boundary:** server release `1.0.0-rc75`, commit `39f3e0651fc21f1e9f017db6e9bbaaf3992640bf`, Hetzner Nuremberg, Germany.<br>
+**Deployment update:** [rc75 acceptance](../../releases/RC75_DEPLOYMENT_2026-10-26.md) records release gates/provenance, additive MFA migration, authenticated backup, rolled-back synthetic MFA checks and live health/assets. The [rc74 identifier acceptance](../../releases/RC74_DEPLOYMENT_2026-10-26.md) remains valid. MFA keys/enrollment/enforcement, native rollout, independent review, separate custody and a full production restore remain outstanding.
 
 This is the working checklist for the documents in this folder. Findings and closure tests remain in the [DPIA gap closure register](20_DPIA_GAP_CLOSURE_REGISTER.md); the evidence boundary and risk decision remain in the [DPIA](01_DATA_PROTECTION_IMPACT_ASSESSMENT.md) and [25 October review](21_DPIA_CURRENT_REVIEW_2026-10-25.md). A declaration or code change closes a row only after the specified evidence is checked.
 
 The next technical controls are documented in [technical delivery](25_TECHNICAL_DPIA_CONTROL_DELIVERY_2026-10-26.md).
 For exactly what the owner must supply and approve, use the
 [artifact and approval checklist](26_OWNER_EVIDENCE_AND_APPROVALS_REQUIRED.md).
-MFA/recovery/audit/backup changes are source work until deployed and accepted.
+MFA/recovery/audit/backup server code is deployed and accepted in rc75.
+Operational activation, custody, schedules and independent assurance remain open.
 
 ## What is already prepared
 

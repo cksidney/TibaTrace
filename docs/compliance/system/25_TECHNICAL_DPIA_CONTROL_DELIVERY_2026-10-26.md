@@ -1,7 +1,7 @@
 # Technical DPIA control delivery — 26 October 2026
 
-**Status:** Engineering controls tested; production rollout and independent assessment remain outstanding.<br>
-**Current production:** rc74, `27469e1993d85606001787fb058052fe1cb6b4b6`.<br>
+**Status:** Server controls deployed and accepted in rc75; operational activation and independent assessment remain outstanding.<br>
+**Current production:** rc75, `39f3e0651fc21f1e9f017db6e9bbaaf3992640bf`.<br>
 **DPIA decision:** NOT APPROVED.<br>
 **Operator constraints:** Malware scanning stays deferred. DHA, national-provider,
 EMR/RX-feed, payment and tax integration activation stays disabled.
@@ -10,7 +10,7 @@ EMR/RX-feed, payment and tax integration activation stays disabled.
 
 | Finding | Engineering delivery | Operational evidence still required |
 |---|---|---|
-| DPIA-09 | HQ authenticator enrollment/confirmation; encrypted versioned seeds; replay rejection; persisted account throttling; single-use recovery hashes; password plus second factor for reset/recovery regeneration; session/JWT/refresh enforcement; stale-proof revocation; temporary-password and admin-route guards | Exact-source release gates, separate MFA encryption keys, confirmed privileged-account enrollment, recovery custody, approved enforcement change and recurring access review |
+| DPIA-09 | HQ authenticator enrollment/confirmation; encrypted versioned seeds; replay rejection; persisted account throttling; single-use recovery hashes; password plus second factor for reset/recovery regeneration; session/JWT/refresh enforcement; stale-proof revocation; temporary-password and admin-route guards | Separate MFA encryption keys, confirmed privileged-account enrollment, recovery custody, approved enforcement change and recurring access review |
 | DPIA-09 | Windows/Android password sign-in and workstation unlock can supply an optional OTP/recovery code; MFA-protected users cannot use PIN sessions to bypass the second factor | Signed/released native clients, device install/upgrade evidence and actual login/unlock checks. Existing installed packages do not gain this source change automatically |
 | DPIA-08/09 | Atomic MFA seed rewrap with retained keys; governed console reset requiring a different platform operator and references to approval/identity evidence | Verify the actual approval and identity-check records, key custodians, retained backup keys, compromise response and witnessed recovery |
 | DPIA-09 | Restricted account/role/MFA and POS-session review export; no password, seed, recovery code or token hashes exported | Named reviewer decisions, resolved leaver/privilege/device findings and approved review frequency |
@@ -19,9 +19,12 @@ EMR/RX-feed, payment and tax integration activation stays disabled.
 | DPIA-08/11 | Synthetic PostgreSQL recovery runner restores the database, encrypted objects, identifier lookup keys and MFA seeds after removing the originals; rejects wrong keys/tampered archives; provider configurations remain absent | Production-major CI is passed; independently witnessed production-scope recovery, measured/approved RPO/RTO, separate failure-domain recovery and restoration of applicable holds/deletions |
 | DPIA-03/10 | Compatible dependency patches for Electron, Vite/Vitest and affected transitive packages; security audit remains fail-closed for unexpected severe findings | Release/native installation and independent assessor scope; one narrowly allowed Metro `image-size` build-tool issue remains pending a compatible upstream fix |
 
-Source controls are not live protection until a validated release and its
-configuration are deployed. No live MFA flag, scanner setting or tenant
-integration was activated by this engineering work.
+[rc75 deployment acceptance](../../releases/RC75_DEPLOYMENT_2026-10-26.md) records
+exact-tag CI, signed image provenance, the additive migration, authenticated
+production backup, rolled-back synthetic MFA acceptance and live health/assets.
+MFA enforcement remains false, its keyring is unconfigured and no live accounts
+were enrolled. No scanner, tenant integration or recurring operational job was
+activated. Installed native clients still require a separate signed rollout.
 
 ## MFA activation procedure
 
@@ -92,7 +95,9 @@ least 32 independently random bytes. Keep it outside the backup destination and
 under approved separate custody. The backup combines AES-256-CBC/PBKDF2 encryption
 with purpose-separated HMAC-SHA256 authentication of every ciphertext and the
 manifest. Verify authentication before recovery; never decrypt a modified or
-unauthenticated archive. This new runner is not claimed to have run in production.
+unauthenticated archive. The runner completed the authenticated pre-rc75
+production backup and resumed writers. The recovery point and key remain on the
+same host; separate custody, recurring operation and a full restore remain open.
 
 ```sh
 python3 backup-runtime.py --recovery-key-file /protected/backup.key \
@@ -167,13 +172,23 @@ operator and tenant, and rejects an in-flight verification if sign-out changed
 the session. Its seven shared authentication tests and Windows/Android typechecks
 and suites passed. OTP/recovery input is sent only in the authentication request
 and is excluded from session storage. Backend source was unchanged by this
-follow-up. Exact release/image gates and installed-client acceptance are still
-required before production rollout. Restricted evidence is retained in
+follow-up. Exact release/image gates passed for the rc75 server rollout.
+Installed-client acceptance remains open.
+Restricted engineering evidence is retained in
 `artifacts/generated/compliance/dpia-technical-closure-2026-10-26/`; no independent
 assessment is claimed.
 
+The final [rc75 release run 40295977977](https://github.com/cksidney/TibaTrace/actions/runs/40295977977)
+passed exact-source coverage for 2,546 PostgreSQL 16 tests with no failures,
+errors or skips, and 2,546 SQLite tests with three PostgreSQL-only skips and no
+failures/errors. Its synthetic PostgreSQL 16 recovery passed (2.641 seconds for
+the tiny synthetic restore; not a production RTO). The production aggregate
+collector reports the expected MFA-enforcement/enrollment and deferred-scanner
+gaps; it does not grant a DPIA pass. Aggregate deployment evidence is retained in
+`artifacts/generated/compliance/rc75-deployment-2026-10-26/`.
+
 The dependency gate reports only the existing narrowly allowed Metro image-size
-build-tool advisories. Runtime/native patches still require release and device
+build-tool advisories. Native patches still require signed release and device
 acceptance. No independent penetration assessment is claimed.
 
 ## Evidence and approvals
