@@ -43,66 +43,7 @@ RELEASE_MIGRATION = "backend/apps/platform/migrations/0002_posrelease_client_ali
 
 #: The full list of migrations this release introduces over the deployed baseline.
 RELEASE_MIGRATIONS = [
-    "backend/apps/procurement/migrations/0014_alter_qualitydecision_batch_and_more.py",
-    "backend/apps/procurement/migrations/0013_batchqualityrelease_and_more.py",
-    "backend/apps/inventory/migrations/0008_replenishmentpolicy_and_more.py",
-    "backend/apps/pos_transactions/migrations/0006_postransactionline_unit_evidence.py",
-    "backend/apps/procurement/migrations/0012_receivingscan_unit_evidence_and_more.py",
-    "backend/apps/audit/migrations/0003_platformauditevent.py",
-    "backend/apps/medicines/migrations/0004_legacy_catalogue_setup.py",
-    "backend/apps/integrations/migrations/0001_initial.py",
-    "backend/apps/integrations/migrations/0002_claim_fields.py",
-    "backend/apps/integrations/migrations/0003_activation_state_update.py",
-    "backend/apps/integrations/migrations/0004_financial_provider_templates.py",
-    "backend/apps/integrations/migrations/0005_activation_request_state_choices.py",
-    # Tenant/branch DHA connections, encrypted consent and durable exchange journals.
-    "backend/apps/integrations/migrations/0006_dhaconnection_dhacallback_dhavisit_dhaexchange_and_more.py",
-    "backend/apps/integrations/migrations/__init__.py",
-    "backend/apps/inventory/recalls/migrations/0001_initial.py",
-    "backend/apps/inventory/recalls/migrations/__init__.py",
-    "backend/apps/inventory/migrations/0005_recall_ledger_events.py",
-    "backend/apps/notifications/migrations/0002_nif_notifications.py",
-    "backend/apps/pharmacy_network/migrations/0003_nif_premises_verification.py",
-    "backend/apps/platform/migrations/0002_posrelease_client_alignment.py",
-    # Stage 1 demo foundation.
-    "backend/apps/tenancy/migrations/0003_tenant_is_demo.py",
-    "backend/apps/platform/migrations/0003_demo_scenario_ownership.py",
-    # Stage 2A master data: departments and their memberships. Additive only --
-    # two new tables, no alteration to an existing one.
-    "backend/apps/organizations/migrations/0002_departments.py",
-    "backend/apps/platform/migrations/0004_demo_story_metadata.py",
-    "backend/apps/platform/migrations/0005_posactivationrequest.py",
-    # Cash-only retail settlement: immutable receipt table and validation constraints.
-    "backend/apps/pos_transactions/migrations/0002_retailcashreceipt.py",
-    # Stage 2A service closure: segregation of duties on supplier qualifications.
-    # Additive only -- four nullable columns, no alteration to existing data.
-    "backend/apps/procurement/migrations/0005_supplier_qualification_governance.py",
-    # Stage 2B.1: records who raised a purchase order, so approval segregation
-    # of duties can be enforced. Additive -- one nullable column.
-    "backend/apps/procurement/migrations/0006_purchaseorder_created_by.py",
-    # Stage 2B.2A: per-batch quality decisions -- inspector, evidence and one
-    # decision per batch. Additive: three nullable columns and a constraint.
-    "backend/apps/procurement/migrations/0007_batch_quality_decision.py",
-    # Stage 2B.2B: partially released quality status choices.
-    "backend/apps/procurement/migrations/0008_alter_receivedbatch_quality_status.py",
-    # Governed stocktakes, legacy completion, cash refunds and refund print documents.
-    "backend/apps/inventory/migrations/0006_stocktake_scope_and_revisions.py",
-    "backend/apps/medicines/migrations/0005_legacy_item_completion.py",
-    "backend/apps/pos_transactions/migrations/0003_retailrefundrequest_retailrefundline_and_more.py",
-    "backend/apps/prescription/migrations/0016_alter_posprintdocument_document_type.py",
-    "backend/apps/sales/migrations/0005_commercial_quantity_breaks.py",
-    "backend/apps/pos_transactions/migrations/0004_checkout_payments.py",
-    "backend/apps/pos_transactions/migrations/0005_original_method_refunds.py",
-    "backend/apps/prescription/migrations/0017_checkout_payments.py",
-    "backend/apps/prescription/migrations/0018_fiscal_print_documents.py",
-    "backend/apps/prescription/migrations/0019_expand_payment_provider_codes.py",
-    "backend/apps/prescription/migrations/0020_prescription_intake_evidence.py",
-    # Tenant item setup, custody lots, approved inventory exceptions and returns.
-    "backend/apps/inventory/migrations/0007_inventorybatchcost_inventorychangerequest_and_more.py",
-    "backend/apps/medicines/migrations/0006_commercialsku_product_kind_and_more.py",
-    "backend/apps/procurement/migrations/0009_supplierreturn_approved_by_and_more.py",
-    "backend/apps/procurement/migrations/0010_supplierreturn_uq_supplier_return_credit_reference.py",
-    "backend/apps/procurement/migrations/0011_supplierreturn_return_category.py",
+    "backend/apps/patients/migrations/0003_patientidentifier_lookup_key_id.py",
 ]
 
 
@@ -306,7 +247,7 @@ def test_git_baseline_matches_the_declared_release_migration():
     # The deployed baseline moves as releases ship. This test pins the
     # *mechanism* -- that git and the declared list agree -- not a frozen list,
     # which went stale the moment the next release added a migration.
-    baseline = "24a160214114575bdbbb3059b10ad4e323f3daec"
+    baseline = "2965194a29311314e8a5772adfeee5af8c14a8f2"
     result = subprocess.run(
         ["git", "diff", "--name-only", "--diff-filter=A", baseline,
          "--", "backend/apps/*/migrations/*.py"],
