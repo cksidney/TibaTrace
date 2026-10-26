@@ -71,14 +71,14 @@ export class PosApiSession {
     return this.tokens;
   }
 
-  async login(username: string, password: string): Promise<PosSessionTokens> {
+  async login(username: string, password: string, otpCode?: string): Promise<PosSessionTokens> {
     const response = await this.fetcher(`${this.baseUrl}/api/identity/token/`, {
       method: 'POST',
       headers: {
         Accept: 'application/json',
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ username, password, ...(otpCode ? { otp_code: otpCode } : {}) }),
     });
     const payload = await readJson(response);
     if (!response.ok) {

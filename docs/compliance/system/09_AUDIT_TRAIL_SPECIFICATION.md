@@ -39,3 +39,16 @@ Use UTC-capable timestamps with the deployment timezone configured consistently;
 ## 6. Evidence and limitations
 
 The rc71 release evidence and application checks provide release-specific evidence for the audited server. They do not demonstrate external immutable storage, ongoing audit review, retention enforcement, or complete coverage of every read request. Build an event-to-control matrix from the exact release and confirm every high-risk action is covered before relying on the audit trail for certification.
+
+
+## 26 October source checkpoint tooling
+
+`python manage.py audit_checkpoint` produces a restricted Ed25519 signed
+checkpoint over ordered audit-table content hashes, with optional previous-file
+linkage and a separately trusted public-key verification command. Raw clinical
+metadata and object/actor references are not exported. This is new source work,
+not evidence of deployed external log protection. A signature protects the
+checkpoint; privileged source deletion before generation remains outside its
+assurance. Separate custody, continuity checks, database roles and monitored
+append-only delivery still require operational acceptance. See
+[technical delivery](25_TECHNICAL_DPIA_CONTROL_DELIVERY_2026-10-26.md).

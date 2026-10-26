@@ -155,5 +155,6 @@ class ServiceAccount(TimestampedModel):
 
 # Till credentials and sessions. Kept in their own modules for readability;
 # imported here so Django discovers them as identity models.
+from .mfa import MfaCredential  # noqa: E402,F401
 from .pos_authentication import PosSession  # noqa: E402,F401
 from .pos_credentials import PosCredential  # noqa: E402,F401

@@ -7,6 +7,11 @@
 
 This is the working checklist for the documents in this folder. Findings and closure tests remain in the [DPIA gap closure register](20_DPIA_GAP_CLOSURE_REGISTER.md); the evidence boundary and risk decision remain in the [DPIA](01_DATA_PROTECTION_IMPACT_ASSESSMENT.md) and [25 October review](21_DPIA_CURRENT_REVIEW_2026-10-25.md). A declaration or code change closes a row only after the specified evidence is checked.
 
+The next technical controls are documented in [technical delivery](25_TECHNICAL_DPIA_CONTROL_DELIVERY_2026-10-26.md).
+For exactly what the owner must supply and approve, use the
+[artifact and approval checklist](26_OWNER_EVIDENCE_AND_APPROVALS_REQUIRED.md).
+MFA/recovery/audit/backup changes are source work until deployed and accepted.
+
 ## What is already prepared
 
 The repository contains the system DPIA, privacy notice, system architecture, user manual, technical specification, security and incident policies, encryption and audit specifications, backup and disaster-recovery plans, public-health/terminology specifications, access and retention policies, security assessment status reports, evidence checklist, gap register, current review, Kenya hosting acceptance plan, identifier-key rollout guide, this action plan, and a DHA evidence register, classification, requirements catalogue, traceability matrix, scorecard, test plan, demonstration script, and change-governance draft.
@@ -97,7 +102,7 @@ Also obtain evidence for database/host/object/backup at-rest encryption, separat
 **Owners:** security and infrastructure owners.
 
 1. Enable privileged-user MFA with enrolment, challenge, recovery, revocation and tested emergency access; run and retain periodic user/device/leaver reviews.
-2. Activate ClamAV or another approved private malware scanner. Test clean, infected, timeout/unavailable, oversize and retry cases. Require a clean verdict before making an attachment available. Until then, disable/restrict affected uploads or use a named, time-limited exception approved by privacy/security; `NOT_SCANNED` is not `CLEAN`.
+2. Keep malware scanning deferred under the current operator instruction. Record its owner, scope, compensating controls, review/expiry and privacy/security risk decision in the exception record. Future scanner activation needs separate authorization and clean/infected/timeout/oversize/retry acceptance. Deferred uploads remain `NOT_SCANNED`; they do not establish a clean verdict.
 3. Place backups and key recovery material in a separate failure domain with approved access, retention and monitoring. Verify recurring coordinated backups for database, objects, configuration and keys.
 4. Run a witnessed full restore; record dataset/version, integrity checks, measured RPO/RTO, gaps, follow-up and approver. Check whether the owner's claimed exercise meets this scope before treating it as evidence.
 5. Commission or attach independent penetration/security assessment mapped to the exact server and client versions. Close findings and retest. Exercise incident response and verify contact/escalation routes.

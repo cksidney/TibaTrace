@@ -16,6 +16,13 @@ its separate report/reference is still required. No RPO/RTO, off-host-copy or fu
 recovery pass is inferred. See [current review](21_DPIA_CURRENT_REVIEW_2026-10-25.md)
 and the [Kenya plan](22_KENYA_HOSTING_ACCEPTANCE_PLAN.md).
 
+**26 October addendum:** rc74 pre/post encrypted backups and configuration
+readback are verified in [deployment acceptance](../../releases/RC74_DEPLOYMENT_2026-10-26.md).
+A reusable authenticated backup runner and synthetic recovery rehearsal are now
+source work described in [technical delivery](25_TECHNICAL_DPIA_CONTROL_DELIVERY_2026-10-26.md).
+They do not establish a live recurring schedule, separate custody or a witnessed
+production restore. Those approvals/evidence remain required.
+
 ## 1. Policy
 
 Backups must allow authorized recovery of the system and its records after human error, infrastructure failure, ransomware, release failure or data corruption. A successful backup command is not proof of recoverability. Backup copies must be encrypted, access controlled, separated from routine application credentials, integrity checked and periodically restored in an isolated environment.

@@ -2,8 +2,8 @@
 
 /**
  * Enforce high/critical npm-audit findings while narrowly recording two
- * unpatched advisories confined to the POS Android build-tool dependency
- * tree. `braces` has no release newer than vulnerable 3.0.3. `image-size`
+ * image-size advisories confined to the POS Android build-tool dependency
+ * tree. `image-size`
  * 2.0.4 is patched, but Metro 0.84.4 requires the incompatible 1.x API; npm's
  * proposed compatible fix downgrades React Native to 0.72.17. These parsers
  * are used by the build toolchain, not the shipped HQ/backend applications.
@@ -60,7 +60,6 @@ const knownPosAndroidBuildToolPackages = new Set([
   '@react-native/community-cli-plugin',
   '@react-native/metro-config',
   '@react-native/virtualized-lists',
-  'braces',
   'fast-glob',
   'image-size',
   'micromatch',
@@ -71,7 +70,6 @@ const knownPosAndroidBuildToolPackages = new Set([
   'react-native',
 ]);
 const expectedAdvisories = new Set([
-  'https://github.com/advisories/GHSA-vfj7-8cjw-p6xm',
   'https://github.com/advisories/GHSA-w3rx-r6r6-pgpr',
   'https://github.com/advisories/GHSA-5p2g-fcmc-qvqq',
 ]);

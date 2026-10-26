@@ -12,6 +12,7 @@ whitenoise==6.8.2
 python-dotenv==1.2.2
 django-cors-headers==4.6.0
 cryptography==50.0.2
+pyotp==2.9.0
 fhir.resources==6.5.0
 pydantic==1.10.26
 requests==2.33.0

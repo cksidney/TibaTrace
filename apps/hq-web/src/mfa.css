@@ -1,0 +1,12 @@
+.mfa-screen { min-height: 100dvh; display: grid; place-items: center; padding: 24px; background: var(--canvas); color: var(--ink); }
+.mfa-card { width: min(100%, 520px); padding: 28px; background: var(--panel); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--shadow); }
+.mfa-card h1 { margin: 8px 0 16px; font-size: 1.65rem; line-height: 1.2; }
+.mfa-card p { line-height: 1.55; }
+.mfa-brand { width: 48px; height: 48px; object-fit: contain; }
+.mfa-qr { width: 216px; max-width: 100%; background: white; border-radius: 12px; justify-self: center; }
+.mfa-secret { display: block; overflow-wrap: anywhere; padding: 12px 0; }
+.mfa-codes { display: grid; gap: 8px; padding: 16px; margin: 16px 0; border: 1px solid #dce3e9; border-radius: 10px; background: #f5f7fa; color: #152b3d; }
+.mfa-codes code { overflow-wrap: anywhere; font-size: .85rem; }
+.mfa-check { display: flex; gap: 10px; align-items: start; margin: 16px 0; }
+.mfa-check input { margin-top: 4px; }
+.mfa-footer { display: flex; gap: 12px; justify-content: space-between; margin-top: 20px; }

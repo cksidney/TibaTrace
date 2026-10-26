@@ -3050,6 +3050,25 @@ export interface SessionState {
   readonly authenticated: boolean;
   readonly csrf_token: string;
   readonly user?: SessionUser;
+  readonly mfa?: { readonly required: boolean; readonly enrolled: boolean; readonly verified: boolean; readonly reauthenticate: boolean };
+}
+
+export interface MfaResult {
+  readonly secret?: string;
+  readonly qr_svg?: string;
+  readonly recovery_codes?: readonly string[] | null;
+}
+
+export async function mfaCommand(operation: 'enroll' | 'confirm' | 'verify' | 'reset' | 'recovery',
+  data: { current_password?: string; code?: string }, csrfToken: string): Promise<MfaResult> {
+  const response = await fetch(`/api/identity/mfa/${operation}/`, {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+    body: JSON.stringify(data),
+  });
+  const result = await response.json() as MfaResult & { detail?: string };
+  if (!response.ok) throw new Error(result.detail ?? 'MFA request failed. Please try again.');
+  return result;
 }
 
 /** Raised when sign-in is refused. Carries the server's own wording. */

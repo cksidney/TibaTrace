@@ -43,7 +43,7 @@ RELEASE_MIGRATION = "backend/apps/platform/migrations/0002_posrelease_client_ali
 
 #: The full list of migrations this release introduces over the deployed baseline.
 RELEASE_MIGRATIONS = [
-    "backend/apps/patients/migrations/0003_patientidentifier_lookup_key_id.py",
+    "backend/apps/identity/migrations/0003_mfacredential.py",
 ]
 
 
@@ -247,7 +247,7 @@ def test_git_baseline_matches_the_declared_release_migration():
     # The deployed baseline moves as releases ship. This test pins the
     # *mechanism* -- that git and the declared list agree -- not a frozen list,
     # which went stale the moment the next release added a migration.
-    baseline = "2965194a29311314e8a5772adfeee5af8c14a8f2"
+    baseline = "27469e1993d85606001787fb058052fe1cb6b4b6"
     result = subprocess.run(
         ["git", "diff", "--name-only", "--diff-filter=A", baseline,
          "--", "backend/apps/*/migrations/*.py"],

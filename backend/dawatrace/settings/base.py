@@ -190,7 +190,7 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        "apps.identity.authentication.MfaJWTAuthentication",
         "rest_framework.authentication.SessionAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
@@ -202,6 +202,7 @@ REST_FRAMEWORK = {
         # no throttle is an offline attack conducted online.
         "signin": "10/min",
         "password_reset": "10/min",
+        "mfa": "20/min",
     },
 }
 
@@ -224,6 +225,14 @@ SIMPLE_JWT = {
     "USER_ID_FIELD": "id",
     "USER_ID_CLAIM": "user_id",
 }
+
+# Enforce only after operators enroll, verify recovery, and approve rollout.
+TIBATRACE_PRIVILEGED_MFA_REQUIRED = env_bool('TIBATRACE_PRIVILEGED_MFA_REQUIRED', False)
+TIBATRACE_MFA_ACTIVE_KEY_ID = env('TIBATRACE_MFA_ACTIVE_KEY_ID', '')
+try:
+    TIBATRACE_MFA_ENCRYPTION_KEYS = json.loads(env('TIBATRACE_MFA_ENCRYPTION_KEYS', '{}'))
+except ValueError:
+    raise ValueError('TIBATRACE_MFA_ENCRYPTION_KEYS must contain a JSON keyring.') from None
 
 CORS_ALLOWED_ORIGINS = env_list("DAWATRACE_CORS_ALLOWED_ORIGINS")
 CORS_ALLOW_CREDENTIALS = True

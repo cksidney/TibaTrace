@@ -56,16 +56,29 @@ class TenantContextMiddleware:
         # before accepting a workspace header or enforcing tenant lifecycle.
         # Never decode claims without signature/expiry/revocation validation.
         from rest_framework.exceptions import AuthenticationFailed
-        from rest_framework_simplejwt.authentication import JWTAuthentication
+
+        from apps.identity.authentication import MfaJWTAuthentication
 
         try:
-            authenticated = JWTAuthentication().authenticate(request)
+            authenticated = MfaJWTAuthentication().authenticate(request)
         except AuthenticationFailed:
             response = JsonResponse({"detail": "Invalid or expired authentication."}, status=401)
             response["WWW-Authenticate"] = 'Bearer realm="api"'
             return response
         if authenticated is not None:
             request.user, request.auth = authenticated
+        # Resolve MFA before any tenant, admin or business workflow. An
+        # authenticated password session is restricted until the second factor.
+        if authenticated is None and getattr(request.user, 'is_authenticated', False):
+            from apps.identity.mfa import session_status
+            mfa_state = session_status(request)
+            allowed = (request.path == '/api/identity/session/' or request.path.startswith('/api/identity/mfa/')
+                       or request.path.startswith('/api/identity/token/')
+                       or (request.path == '/api/identity/password/change/' and not mfa_state['enrolled'])
+                       or request.path == '/admin/logout/')
+            if mfa_state['required'] and not mfa_state['verified'] and not allowed:
+                return JsonResponse({'detail': 'Complete MFA verification in HQ before continuing.',
+                                     'code': 'mfa_required'}, status=403)
         header_tenant = str(request.headers.get("X-Tenant-ID") or "").strip()
         user = getattr(request, "user", None)
         user_tenant = str(getattr(user, "tenant_id", "") or "").strip()
@@ -102,6 +115,7 @@ class TenantContextMiddleware:
         password_routes = (
             "/api/identity/session/", "/api/identity/me/", "/api/identity/password/",
             "/api/identity/token/", "/api/health/",
+            "/api/identity/mfa/",
         )
         if (
             getattr(user, "is_authenticated", False)

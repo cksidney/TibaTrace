@@ -25,8 +25,8 @@ interface Window {
     readonly buildNumber?: number;
     readonly auth: {
       restore(): Promise<TibaTraceSessionInfo>;
-      login(username: string, password: string): Promise<TibaTraceSessionInfo>;
-      verify(username: string, password: string): Promise<boolean>;
+      login(username: string, password: string, otpCode?: string): Promise<TibaTraceSessionInfo>;
+      verify(username: string, password: string, otpCode?: string): Promise<boolean>;
       logout(): Promise<TibaTraceSessionInfo>;
     };
     readonly api: {

@@ -10,8 +10,8 @@ import type {
 
 export interface PosRuntime {
   restore(): Promise<TibaTraceSessionInfo>;
-  login(username: string, password: string): Promise<TibaTraceSessionInfo>;
-  verify(username: string, password: string): Promise<boolean>;
+  login(username: string, password: string, otpCode?: string): Promise<TibaTraceSessionInfo>;
+  verify(username: string, password: string, otpCode?: string): Promise<boolean>;
   logout(): Promise<void>;
   readonly fetch: typeof fetch;
   readonly offline: OfflineStore;
@@ -59,8 +59,8 @@ export function createPosRuntime(): PosRuntime {
     };
     return {
       restore: () => window.tibatrace!.auth.restore(),
-      login: (username, password) => window.tibatrace!.auth.login(username, password),
-      verify: (username, password) => window.tibatrace!.auth.verify(username, password),
+      login: (username, password, otpCode) => window.tibatrace!.auth.login(username, password, otpCode),
+      verify: (username, password, otpCode) => window.tibatrace!.auth.verify(username, password, otpCode),
       logout: async () => {
         await window.tibatrace!.auth.logout();
       },
@@ -94,17 +94,17 @@ export function createPosRuntime(): PosRuntime {
       await session.restore();
       return unauthenticatedInfo();
     },
-    login: async (username, password) => {
-      await session.login(username, password);
+    login: async (username, password, otpCode) => {
+      await session.login(username, password, otpCode);
       return unauthenticatedInfo();
     },
-    verify: async (username, password) => {
+    verify: async (username, password, otpCode) => {
       const current = session.current;
       if (!current) return false;
       const response = await fetch('/api/identity/token/', {
         method: 'POST',
         headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username, password, ...(otpCode ? { otp_code: otpCode } : {}) }),
       });
       if (!response.ok) return false;
       const payload = (await response.json()) as { user_id?: unknown; tenant_id?: unknown };

@@ -24,18 +24,22 @@ it back either.
 """
 from __future__ import annotations
 
+import time
+
 from django.contrib.auth import authenticate, login, logout, update_session_auth_hash
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as PasswordValidationError
 from django.db import transaction
 from django.middleware.csrf import get_token
 from django.utils.decorators import method_decorator
-from django.views.decorators.csrf import ensure_csrf_cookie
+from django.views.decorators.csrf import csrf_protect, ensure_csrf_cookie
 from rest_framework import serializers, status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle
 from rest_framework.views import APIView
+
+from apps.identity import mfa
 
 
 class SignInThrottle(AnonRateThrottle):
@@ -87,6 +91,7 @@ class SessionUserSerializer(serializers.Serializer):
 
 
 @method_decorator(ensure_csrf_cookie, name="get")
+@method_decorator(csrf_protect, name="dispatch")
 class SessionView(APIView):
     """The browser session: read it, create it, end it.
 
@@ -101,6 +106,11 @@ class SessionView(APIView):
             return [AllowAny()]
         return [IsAuthenticated()]
 
+    def finalize_response(self, request, response, *args, **kwargs):
+        response = super().finalize_response(request, response, *args, **kwargs)
+        response['Cache-Control'] = 'no-store'
+        return response
+
     def get_throttles(self):
         return [SignInThrottle()] if self.request.method == "POST" else []
 
@@ -113,6 +123,7 @@ class SessionView(APIView):
                 "authenticated": True,
                 "csrf_token": token,
                 "user": SessionUserSerializer(request.user).data,
+                "mfa": mfa.session_status(request),
             }
         )
 
@@ -149,6 +160,9 @@ class SessionView(APIView):
             )
 
         login(request, user)
+        for key in ('mfa_version', 'mfa_verified_at', 'mfa_enrollment_nonce'):
+            request.session.pop(key, None)
+        request.session['mfa_password_at'] = int(time.time())
         # Rotated by Django on login, which is what stops a session fixed
         # before authentication from carrying over afterwards.
         return Response(
@@ -156,6 +170,7 @@ class SessionView(APIView):
                 "authenticated": True,
                 "csrf_token": get_token(request),
                 "user": SessionUserSerializer(user).data,
+                "mfa": mfa.session_status(request),
             }
         )
 

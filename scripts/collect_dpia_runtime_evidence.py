@@ -140,6 +140,29 @@ def collect(*, verify_objects=False):
         required_scan = bool(getattr(settings, "DAWATRACE_DOCUMENT_MALWARE_SCAN_REQUIRED", True))
         scanner_configured = bool(getattr(settings, "DAWATRACE_MALWARE_SCANNER_HOST", ""))
         privileged = User.objects.filter(is_active=True).filter(Q(is_superuser=True) | Q(is_platform_admin=True) | Q(is_staff=True))
+        try:
+            mfa = importlib.import_module('apps.identity.mfa')
+        except ModuleNotFoundError as exc:
+            if exc.name != 'apps.identity.mfa':
+                raise
+            mfa_controls = {'implemented': False, 'privileged_enforcement': False,
+                            'active_privileged_without_mfa': privileged.count()}
+        else:
+            protected_users = [user for user in User.objects.filter(is_active=True).iterator() if mfa.privileged(user)]
+            protected_ids = [user.pk for user in protected_users]
+            enabled = mfa.MfaCredential.objects.filter(user_id__in=protected_ids, enabled_at__isnull=False).count()
+            try:
+                mfa.configuration()
+                valid = True
+            except ValidationError:
+                valid = False
+            mfa_controls = {'implemented': True,
+                'privileged_enforcement': bool(settings.TIBATRACE_PRIVILEGED_MFA_REQUIRED),
+                'keyring_valid': valid, 'active_privileged_including_identity_managers': len(protected_ids),
+                'active_privileged_enrolled': enabled, 'active_privileged_without_mfa': len(protected_ids)-enabled,
+                'enabled_credentials_missing_ciphertext': mfa.MfaCredential.objects.filter(enabled_at__isnull=False, protected_secret='').count(),
+                'seed_integrity': 'NOT_DECRYPTED_BY_AGGREGATE_COLLECTOR; use governed rotation preflight',
+                'operational_enrollment_recovery_and_access_review': 'DATED_OWNER_EVIDENCE_REQUIRED'}
         tls_policy = settings.DATABASES["default"].get("OPTIONS", {}).get("sslmode")
         report = {
             "schema_version": 1,
@@ -171,6 +194,7 @@ def collect(*, verify_objects=False):
                 "object_checks": dict(object_checks),
             },
             "patient_identifiers": _identifier_controls(identifiers),
+            "multi_factor_authentication": mfa_controls,
             "aggregate_scale": {
                 "tenants": Tenant.objects.count(),
                 "designated_demo_tenants": Tenant.objects.filter(is_demo=True).count(),
@@ -206,6 +230,9 @@ def collect(*, verify_objects=False):
             ],
         }
         failures = []
+        if (not mfa_controls.get('privileged_enforcement') or not mfa_controls.get('keyring_valid')
+                or mfa_controls.get('active_privileged_without_mfa') or mfa_controls.get('enabled_credentials_missing_ciphertext')):
+            failures.append('PRIVILEGED_MFA_ENFORCEMENT_OR_ENROLLMENT_GAP')
         if not required_scan or not scanner_configured:
             failures.append("MALWARE_SCAN_DEFERRED_OR_NOT_CONFIGURED")
         if not keyring_valid:

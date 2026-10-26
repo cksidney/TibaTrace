@@ -42,6 +42,7 @@ interface ApiResponse {
 }
 
 interface LoginPayload {
+  readonly otpCode?: string;
   readonly username: string;
   readonly password: string;
 }
@@ -221,7 +222,7 @@ async function authenticate(payload: LoginPayload): Promise<StoredPosSession> {
   const response = await net.fetch(`${API_BASE_URL}/api/identity/token/`, {
     method: 'POST',
     headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password }),
+    body: JSON.stringify({ username, password, ...(payload.otpCode ? { otp_code: String(payload.otpCode).slice(0, 80) } : {}) }),
     redirect: 'error',
   });
   const payloadBody = await readJson(response);

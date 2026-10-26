@@ -78,8 +78,8 @@ export function App() {
     return (
       <SignInScreen
         initialError={error}
-        onSignIn={async (username, password) => {
-          const signedIn = await runtime.login(username, password);
+        onSignIn={async (username, password, otpCode) => {
+          const signedIn = await runtime.login(username, password, otpCode);
           setError('');
           setSession(signedIn);
         }}
@@ -692,8 +692,8 @@ export function OperationsConsole({
       {locked ? (
         <WorkstationLock
           initialUsername={session.username ?? ''}
-          onUnlock={async (username, password) => {
-            if (!(await runtime.verify(username, password))) {
+          onUnlock={async (username, password, otpCode) => {
+            if (!(await runtime.verify(username, password, otpCode))) {
               throw new Error('Those credentials do not match the operator who locked this workstation.');
             }
             setLocked(false);
@@ -744,11 +744,12 @@ function WorkstationLock({
   onSignOut,
 }: {
   readonly initialUsername: string;
-  readonly onUnlock: (username: string, password: string) => Promise<void>;
+  readonly onUnlock: (username: string, password: string, otpCode?: string) => Promise<void>;
   readonly onSignOut: () => Promise<void>;
 }) {
   const [username, setUsername] = useState(initialUsername);
   const [password, setPassword] = useState('');
+  const [otpCode, setOtpCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -775,11 +776,12 @@ function WorkstationLock({
           event.preventDefault();
           setBusy(true);
           setError('');
-          void onUnlock(username.trim(), password)
+          void onUnlock(username.trim(), password, otpCode)
             .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)))
             .finally(() => {
               setBusy(false);
               setPassword('');
+                  setOtpCode('');
             });
         }}
         style={{
@@ -805,6 +807,7 @@ function WorkstationLock({
         <label style={{ display: 'grid', gap: spacing.xs, fontSize: fontSize.caption }}>Password
           <input autoFocus type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required maxLength={256} style={lockInput} />
         </label>
+        <label style={{ display: 'grid', gap: spacing.xs }}>Authenticator / recovery code (if enabled)<input autoComplete="one-time-code" value={otpCode} maxLength={80} onChange={event => setOtpCode(event.target.value)} style={lockInput} /></label>
         <button type="submit" disabled={busy || !username.trim() || !password} style={lockPrimary(busy || !username.trim() || !password)}>
           {busy ? 'Verifying…' : 'Unlock workstation'}
         </button>
@@ -864,10 +867,11 @@ function SignInScreen({
   onSignIn,
 }: {
   readonly initialError: string;
-  readonly onSignIn: (username: string, password: string) => Promise<void>;
+  readonly onSignIn: (username: string, password: string, otpCode?: string) => Promise<void>;
 }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [otpCode, setOtpCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(initialError);
   const viewport = useViewport();
@@ -947,7 +951,7 @@ function SignInScreen({
             event.preventDefault();
             setBusy(true);
             setError('');
-            void onSignIn(username.trim(), password)
+            void onSignIn(username.trim(), password, otpCode)
               .catch((cause: unknown) =>
                 setError(cause instanceof Error ? cause.message : String(cause)),
               )
@@ -994,6 +998,7 @@ function SignInScreen({
               style={lockInput}
             />
           </label>
+          <label style={{ display: 'grid', gap: spacing.xs }}>Authenticator / recovery code (if enabled)<input autoComplete="one-time-code" value={otpCode} maxLength={80} onChange={event => setOtpCode(event.target.value)} style={lockInput} /></label>
           <button
             type="submit"
             disabled={busy || !username.trim() || !password}

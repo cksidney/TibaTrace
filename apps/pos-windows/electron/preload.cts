@@ -8,10 +8,10 @@ contextBridge.exposeInMainWorld('tibatrace', {
   buildNumber: clientMetadata.buildNumber,
   auth: {
     restore: () => ipcRenderer.invoke('auth:restore'),
-    login: (username: string, password: string) =>
-      ipcRenderer.invoke('auth:login', { username, password }),
-    verify: (username: string, password: string) =>
-      ipcRenderer.invoke('auth:verify', { username, password }),
+    login: (username: string, password: string, otpCode?: string) =>
+      ipcRenderer.invoke('auth:login', { username, password, otpCode }),
+    verify: (username: string, password: string, otpCode?: string) =>
+      ipcRenderer.invoke('auth:verify', { username, password, otpCode }),
     logout: () => ipcRenderer.invoke('auth:logout'),
   },
   api: {

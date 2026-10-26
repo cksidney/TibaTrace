@@ -125,8 +125,8 @@ export default function App() {
       ) : (
         <LoginScreen
           initialError={error}
-          onLogin={async (username, password) => {
-            await runtime.session.login(username, password);
+          onLogin={async (username, password, otpCode) => {
+            await runtime.session.login(username, password, otpCode);
             setError('');
             setAuthenticated(true);
           }}
@@ -567,8 +567,8 @@ function PosWorkspace({ onLogout }: { readonly onLogout: () => Promise<void> }) 
       ) : null}
       <WorkstationLockModal
         visible={locked}
-        onUnlock={async (username, password) => {
-          if (!(await runtime.verify(username, password))) {
+        onUnlock={async (username, password, otpCode) => {
+          if (!(await runtime.verify(username, password, otpCode))) {
             throw new Error('Those credentials do not match the operator who locked this device.');
           }
           setLocked(false);
@@ -585,11 +585,12 @@ function WorkstationLockModal({
   onSignOut,
 }: {
   readonly visible: boolean;
-  readonly onUnlock: (username: string, password: string) => Promise<void>;
+  readonly onUnlock: (username: string, password: string, otpCode?: string) => Promise<void>;
   readonly onSignOut: () => Promise<void>;
 }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [otpCode, setOtpCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -605,17 +606,20 @@ function WorkstationLockModal({
           <TextInput autoCapitalize="none" autoComplete="username" value={username} onChangeText={setUsername} style={styles.input} />
           <Text style={styles.label}>Password</Text>
           <TextInput autoComplete="password" secureTextEntry value={password} onChangeText={setPassword} style={styles.input} />
+          <Text style={styles.label}>Authenticator / recovery code (if enabled)</Text>
+          <TextInput accessibilityLabel="Authenticator or recovery code" autoCapitalize="none" autoCorrect={false} value={otpCode} onChangeText={setOtpCode} maxLength={80} style={styles.input} />
           <Pressable
             accessibilityRole="button"
             disabled={busy || !username.trim() || !password}
             onPress={() => {
               setBusy(true);
               setError('');
-              void onUnlock(username.trim(), password)
+              void onUnlock(username.trim(), password, otpCode)
                 .catch((cause: unknown) => setError(describe(cause)))
                 .finally(() => {
                   setBusy(false);
                   setPassword('');
+                  setOtpCode('');
                 });
             }}
             style={[styles.primary, (busy || !username.trim() || !password) && styles.primaryDisabled]}
@@ -706,10 +710,11 @@ function LoginScreen({
   onLogin,
 }: {
   readonly initialError: string;
-  readonly onLogin: (username: string, password: string) => Promise<void>;
+  readonly onLogin: (username: string, password: string, otpCode?: string) => Promise<void>;
 }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [otpCode, setOtpCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(initialError);
 
@@ -756,15 +761,17 @@ function LoginScreen({
           onChangeText={setPassword}
           style={styles.input}
         />
+        <Text style={styles.label}>Authenticator / recovery code (if enabled)</Text>
+        <TextInput accessibilityLabel="Authenticator or recovery code" autoCapitalize="none" autoCorrect={false} value={otpCode} onChangeText={setOtpCode} maxLength={80} style={styles.input} />
         <Pressable
           accessibilityRole="button"
           disabled={busy || !username.trim() || !password}
           onPress={() => {
             setBusy(true);
             setError('');
-            void onLogin(username.trim(), password)
+            void onLogin(username.trim(), password, otpCode)
               .catch((cause: unknown) => setError(describe(cause)))
-              .finally(() => setBusy(false));
+              .finally(() => { setBusy(false); setPassword(''); setOtpCode(''); });
           }}
           style={[styles.primary, (busy || !username.trim() || !password) && styles.primaryDisabled]}
         >

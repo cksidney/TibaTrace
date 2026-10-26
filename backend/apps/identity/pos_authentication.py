@@ -178,6 +178,9 @@ class TillAuthenticationService:
 
         if credential.user.must_change_password:
             raise TillAuthenticationFailed("Change your temporary system password in HQ before using the till.")
+        from apps.identity.mfa import required
+        if required(credential.user):
+            raise TillAuthenticationFailed("This account requires password and MFA sign-in. A till PIN cannot replace MFA.")
 
         credential.record_success()
 
@@ -212,6 +215,9 @@ class TillAuthenticationService:
         )
         if session is None or not session.is_active:
             return None
+        from apps.identity.mfa import required
+        if required(session.credential.user):
+            return None
         session.last_seen_at = timezone.now()
         session.save(update_fields=["last_seen_at", "updated_at"])
         return session
@@ -236,6 +242,9 @@ class TillAuthenticationService:
             raise TillAuthenticationFailed("The till session has expired. Sign in again.")
 
         user = session.credential.user
+        from apps.identity.mfa import required
+        if required(user):
+            raise TillAuthenticationFailed("This account requires password and MFA sign-in.")
         if not user.is_active or user.must_change_password:
             raise TillAuthenticationFailed("Sign in to HQ and complete your password change before using the till.")
 

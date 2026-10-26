@@ -2,11 +2,13 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
+from apps.identity.api.mfa_views import MfaView
 from apps.identity.api.session_views import (
     PasswordChangeView,
     PasswordForgotView,
     PasswordResetConfirmView,
     SessionView,
+    SignInThrottle,
 )
 from apps.identity.api.views import (
     CapabilityMatrixView,
@@ -17,11 +19,16 @@ from apps.identity.api.views import (
     UserRoleViewSet,
     UserViewSet,
 )
-from apps.identity.authentication import DawaTraceTokenSerializer
+from apps.identity.authentication import DawaTraceTokenSerializer, MfaTokenRefreshSerializer
 
 
 class DawaTraceTokenView(TokenObtainPairView):
     serializer_class = DawaTraceTokenSerializer
+    throttle_classes = [SignInThrottle]
+
+
+class MfaTokenRefreshView(TokenRefreshView):
+    serializer_class = MfaTokenRefreshSerializer
 
 
 router = DefaultRouter()
@@ -32,8 +39,9 @@ router.register("service-accounts", ServiceAccountViewSet, basename="identity-se
 
 urlpatterns = [
     path("token/", DawaTraceTokenView.as_view(), name="identity-token"),
-    path("token/refresh/", TokenRefreshView.as_view(), name="identity-token-refresh"),
+    path("token/refresh/", MfaTokenRefreshView.as_view(), name="identity-token-refresh"),
     path("session/", SessionView.as_view(), name="identity-session"),
+    path("mfa/<str:operation>/", MfaView.as_view(), name="identity-mfa"),
     path("password/forgot/", PasswordForgotView.as_view(), name="identity-password-forgot"),
     path("password/reset/", PasswordResetConfirmView.as_view(), name="identity-password-reset"),
     path("password/change/", PasswordChangeView.as_view(), name="identity-password-change"),

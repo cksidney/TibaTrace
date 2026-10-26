@@ -1,7 +1,35 @@
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from rest_framework import serializers
+from rest_framework.exceptions import AuthenticationFailed
+from rest_framework_simplejwt.authentication import JWTAuthentication
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer, TokenRefreshSerializer
+from rest_framework_simplejwt.tokens import RefreshToken
+
+from apps.identity import mfa
+
+
+class MfaJWTAuthentication(JWTAuthentication):
+    def get_user(self, validated_token):
+        user = super().get_user(validated_token)
+        if not mfa.token_allowed(user, validated_token):
+            raise AuthenticationFailed('Complete MFA sign-in again before using this token.')
+        return user
+
+
+class MfaTokenRefreshSerializer(TokenRefreshSerializer):
+    def validate(self, attrs):
+        from apps.identity.models import User
+        token = RefreshToken(attrs['refresh'])
+        try:
+            user = User.objects.filter(pk=token.get('user_id'), is_active=True).first()
+        except (TypeError, ValueError):
+            raise AuthenticationFailed('A valid current sign-in is required.') from None
+        if not user or not mfa.token_allowed(user, token):
+            raise AuthenticationFailed('Complete MFA sign-in again before refreshing this token.')
+        return super().validate(attrs)
 
 
 class DawaTraceTokenSerializer(TokenObtainPairSerializer):
+    otp_code = serializers.CharField(required=False, write_only=True, max_length=80)
     @classmethod
     def get_token(cls, user):
         token = super().get_token(user)
@@ -16,6 +44,20 @@ class DawaTraceTokenSerializer(TokenObtainPairSerializer):
             self.fail("no_active_account")
         if not self.user.tenant_id and not (self.user.is_platform_admin or self.user.is_superuser):
             self.fail("no_active_account")
+        if mfa.required(self.user):
+            import time
+
+            from django.core.exceptions import ValidationError
+            try:
+                proof = mfa.verify(self.user, attrs.get('otp_code', ''))
+            except ValidationError:
+                raise AuthenticationFailed('MFA configuration requires operations review.') from None
+            if proof is None:
+                raise AuthenticationFailed('An authenticator or unused recovery code is required. Enroll in HQ first.')
+            token = RefreshToken(data['refresh'])
+            token['mfa_version'] = proof['version']
+            token['mfa_verified_at'] = int(time.time())
+            data['refresh'], data['access'] = str(token), str(token.access_token)
         data["tenant_id"] = str(self.user.tenant_id or "")
         data["user_id"] = str(self.user.id)
         # The till shows who is dispensing. Without this the POS header rendered

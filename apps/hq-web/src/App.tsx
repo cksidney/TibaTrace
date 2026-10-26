@@ -1,3 +1,4 @@
+import { MfaSecurity } from './MfaSecurity.js';
 import { createPortal } from 'react-dom';
 import { InventoryOperations } from './InventoryOperations.js';
 import { CountSheetUpload } from './CountSheetUpload.js';
@@ -415,6 +416,7 @@ const viewMeta: Record<WorkspaceView, { readonly eyebrow: string; readonly title
 
 export function App() {
   const [session, setSession] = useState<SessionState | null>(null);
+  const [securityOpen, setSecurityOpen] = useState(false);
   const [overview, setOverview] = useState<HQOverview | null>(null);
   const [tenantOptions, setTenantOptions] = useState<HQOverview['network_items']>([]);
   const [selectedTenantId, setSelectedTenantId] = useState('');
@@ -437,7 +439,7 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (!session?.authenticated || session.user?.must_change_password) return undefined;
+    if (!session?.authenticated || session.user?.must_change_password || (session.mfa?.required && !session.mfa.verified)) return undefined;
     const controller = new AbortController();
     void (async () => {
       const user = session.user;
@@ -467,7 +469,7 @@ export function App() {
         if (!controller.signal.aborted) setError(reason);
       });
     return () => controller.abort();
-  }, [session?.authenticated, session?.user]);
+  }, [session?.authenticated, session?.user, session?.mfa]);
 
   const endSession = useCallback(async () => {
     await signOut(session?.csrf_token ?? '');
@@ -534,8 +536,14 @@ export function App() {
   if (!session.authenticated) {
     return <AuthenticationRequired csrfToken={session.csrf_token} onSignedIn={setSession} />;
   }
+  if (session.mfa?.enrolled && session.mfa.required && !session.mfa.verified) {
+    return <MfaSecurity session={session} onComplete={setSession} onSignOut={endSession} />;
+  }
   if (session.user?.must_change_password) {
     return <RequiredPasswordChange csrfToken={session.csrf_token} onChanged={async () => setSession(await readSession())} onSignOut={endSession} />;
+  }
+  if (securityOpen || (session.mfa?.required && !session.mfa.verified)) {
+    return <MfaSecurity session={session} onComplete={next => { setSession(next); setSecurityOpen(false); }} onSignOut={async () => { setSecurityOpen(false); await endSession(); }} />;
   }
   if (!overview) return <LoadingScreen />;
 
@@ -546,6 +554,7 @@ export function App() {
       overview={overview}
       onSelectTenant={selectTenant}
       onSignOut={endSession}
+      onSecurity={() => setSecurityOpen(true)}
       onRefresh={refresh}
       refreshFailed={refreshFailed}
       refreshing={refreshing}
@@ -556,6 +565,7 @@ export function App() {
 }
 
 export function Dashboard({
+  onSecurity = () => {},
   csrfToken,
   isPlatformAdmin,
   overview,
@@ -567,6 +577,7 @@ export function Dashboard({
   selectedTenantId,
   tenantOptions,
 }: {
+  readonly onSecurity?: () => void;
   readonly csrfToken: string;
   readonly isPlatformAdmin: boolean;
   readonly overview: HQOverview;
@@ -793,6 +804,7 @@ export function Dashboard({
                   overview={overview}
                   onClose={() => setUserMenuOpen(false)}
                   onSignOut={onSignOut}
+                  onSecurity={onSecurity}
                 />
               ) : null}
             </div>
@@ -10566,9 +10578,10 @@ function NotificationPopover({ overview }: { readonly overview: HQOverview }) {
   );
 }
 
-function UserMenu({ overview, onClose, onSignOut }: {
+function UserMenu({ overview, onClose, onSignOut, onSecurity = () => {} }: {
   readonly overview: HQOverview;
   readonly onClose: () => void;
+  readonly onSecurity?: () => void;
   readonly onSignOut: () => Promise<void>;
 }) {
   const [signingOut, setSigningOut] = useState(false);
@@ -10592,6 +10605,7 @@ function UserMenu({ overview, onClose, onSignOut }: {
         </div>
       </div>
       <div className="user-menu-items">
+        <button className="secondary-button" type="button" onClick={() => { onClose(); onSecurity(); }}>Authenticator &amp; recovery codes</button>
         {canOpenHqDestination(overview, '#access') ? <a href="#access" onClick={onClose}>
           <span className="user-menu-icon"><Icon name="security" /></span>
           <span><strong>Access overview</strong><small>Roles and permissions</small></span>

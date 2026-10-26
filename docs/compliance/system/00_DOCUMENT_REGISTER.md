@@ -38,6 +38,8 @@ The bundled `TibaTrace_System_Documentation_Word.zip` predates the updates in th
 | 22 | [Kenya hosting acceptance plan](22_KENYA_HOSTING_ACCEPTANCE_PLAN.md) | Not executed; owner confirmed Kenya hosting needs arranging |
 | 23 | [Identifier key remediation and rollout](23_IDENTIFIER_KEY_REMEDIATION_AND_ROLLOUT.md) | Deployed in rc74; key provisioning, migration and synthetic readback verified; independent assessment and full recovery remain open |
 | 24 | [DPIA remaining action plan](24_DPIA_REMAINING_ACTION_PLAN_2026-10-26.md) | Ordered owner checklist with required evidence and closure criteria; no approval implied |
+| 25 | [Technical control delivery](25_TECHNICAL_DPIA_CONTROL_DELIVERY_2026-10-26.md) | New MFA, access review, audit checkpoint and backup/recovery source under validation; not deployed |
+| 26 | [Exact owner evidence and approvals](26_OWNER_EVIDENCE_AND_APPROVALS_REQUIRED.md) | Required artifacts, scopes, reviewers and retention worksheet; owner action remains open |
 
 ## Reading the statuses
 

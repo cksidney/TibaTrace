@@ -87,6 +87,12 @@ def test_collector_does_not_contact_scanner_or_providers_and_never_approves(evid
 
 
 def test_clean_measured_controls_still_require_manual_review(evidence_records, settings, monkeypatch, capsys):
+    from apps.identity.mfa import MfaCredential, _seal
+    _, actor, _ = evidence_records
+    settings.TIBATRACE_MFA_ENCRYPTION_KEYS = {'synthetic-mfa': base64.urlsafe_b64encode(b'M' * 32).decode()}
+    settings.TIBATRACE_MFA_ACTIVE_KEY_ID = 'synthetic-mfa'
+    settings.TIBATRACE_PRIVILEGED_MFA_REQUIRED = True
+    MfaCredential.objects.create(user=actor, enabled_at=timezone.now(), protected_secret=_seal(actor, 'JBSWY3DPEHPK3PXP'))
     settings.DAWATRACE_DOCUMENT_MALWARE_SCAN_REQUIRED = True
     settings.DAWATRACE_MALWARE_SCANNER_HOST = "private-host-never-exported"
     monkeypatch.setattr("sys.argv", ["collect_dpia_runtime_evidence.py", "--fail-on-gaps"])
