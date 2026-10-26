@@ -1,6 +1,13 @@
+<!-- TIBATRACE DOCUMENT BRANDING START -->
+<p><img src="../brand/tibatrace-logo.jpeg" alt="TibaTrace logo" width="150"> &nbsp; <img src="../brand/esenai-group-logo.png" alt="Esenai Group logo" width="200"></p>
+
+**TibaTrace · Esenai Group Ltd**<br>
+Branding edition: 26 October 2026. Assessment dates, evidence scope and approval decisions below remain controlling.
+<!-- TIBATRACE DOCUMENT BRANDING END -->
+
 # TibaTrace System Compliance Documentation Register
 
-**Document set:** TibaTrace / DawaTrace hosted pharmacy and healthcare platform<br>
+**Document set:** TibaTrace hosted pharmacy and healthcare platform<br>
 **Updated:** 26 October 2026; rc75 deployment acceptance added; the 25 October assessment remains historical evidence<br>
 **Current production source:** rc75, `39f3e0651fc21f1e9f017db6e9bbaaf3992640bf`<br>
 **Current deployment evidence:** [rc75 acceptance](../../releases/RC75_DEPLOYMENT_2026-10-26.md); exact-source CI/provenance, additive migration, rolled-back synthetic MFA checks, live assets/health and authenticated backup verified; MFA activation remains pending<br>

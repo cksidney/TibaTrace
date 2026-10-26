@@ -1,3 +1,10 @@
+<!-- TIBATRACE DOCUMENT BRANDING START -->
+<p><img src="../brand/tibatrace-logo.jpeg" alt="TibaTrace logo" width="150"> &nbsp; <img src="../brand/esenai-group-logo.png" alt="Esenai Group logo" width="200"></p>
+
+**TibaTrace · Esenai Group Ltd**<br>
+Branding edition: 26 October 2026. Assessment dates, evidence scope and approval decisions below remain controlling.
+<!-- TIBATRACE DOCUMENT BRANDING END -->
+
 # TibaTrace DHA evidence traceability — current boundary
 
 **Updated:** 26 October 2026<br>

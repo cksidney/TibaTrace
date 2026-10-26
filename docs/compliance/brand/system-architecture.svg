@@ -1,0 +1,132 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1680" height="1330" viewBox="0 0 1680 1330">
+<metadata>flowchart LR
+  subgraph Users[People and external systems]
+    HQUser[Platform owner / tenant staff]
+    POSUser[Cashier / pharmacist]
+    External[Approved regulator, insurer, payment, or health exchange]
+  end
+
+  subgraph Clients[Client applications]
+    HQ[HQ web app&lt;br/&gt;React + TypeScript]
+    Win[Windows POS&lt;br/&gt;Electron + React]
+    Android[Android POS&lt;br/&gt;React Native]
+    BrowserPOS[Legacy browser POS routes]
+  end
+
+  Internet((Internet / HTTPS))
+  Edge[Shared Caddy edge&lt;br/&gt;TLS termination / reverse proxy]
+  HQStatic[HQ static web container]
+  API[Django REST API&lt;br/&gt;Gunicorn]
+  Worker[Celery worker]
+  Beat[Celery beat scheduler]
+  PG[(PostgreSQL&lt;br/&gt;system of record)]
+  Redis[(TibaTrace Redis&lt;br/&gt;cache / broker / results)]
+  Objects[(Clinical document volume&lt;br/&gt;tenant-keyed files + hashes)]
+  CI[GitHub Actions&lt;br/&gt;build / scan / attest]
+  Registry[GHCR immutable images]
+  Ops[Release directory / secrets / backups]
+
+  HQUser --&gt; HQ
+  POSUser --&gt; Win
+  POSUser --&gt; Android
+  POSUser --&gt; BrowserPOS
+  HQ --&gt; Internet
+  Win --&gt; Internet
+  Android --&gt; Internet
+  BrowserPOS --&gt; Internet
+  Internet --&gt; Edge
+  Edge --&gt; HQStatic
+  Edge --&gt; API
+  API --&gt; PG
+  API --&gt; Redis
+  API --&gt; Objects
+  Worker --&gt; PG
+  Worker --&gt; Redis
+  Beat --&gt; Redis
+  External -. configured, authenticated adapter only .-&gt; API
+  CI --&gt; Registry
+  Registry --&gt; Ops
+  Ops --&gt; Edge
+</metadata>
+<rect width="1680" height="1330" fill="white"/>
+<defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0L9 4.5L0 9z" fill="#45657F"/></marker></defs>
+<path d="M200 130V200" fill="none" stroke="#45657F" stroke-width="3" marker-end="url(#arrow)"/>
+<path d="M760 130V165H550V200" fill="none" stroke="#45657F" stroke-width="3" marker-end="url(#arrow)"/>
+<path d="M760 130V200" fill="none" stroke="#45657F" stroke-width="3" marker-end="url(#arrow)"/>
+<path d="M760 165H1270V200" fill="none" stroke="#45657F" stroke-width="3" marker-end="url(#arrow)"/>
+<path d="M200 320V365H800V400" fill="none" stroke="#45657F" stroke-width="3" marker-end="url(#arrow)"/>
+<path d="M550 320V365H800V400" fill="none" stroke="#45657F" stroke-width="3" marker-end="url(#arrow)"/>
+<path d="M910 320V365H800V400" fill="none" stroke="#45657F" stroke-width="3" marker-end="url(#arrow)"/>
+<path d="M1270 320V365H800V400" fill="none" stroke="#45657F" stroke-width="3" marker-end="url(#arrow)"/>
+<path d="M800 510V570" fill="none" stroke="#45657F" stroke-width="3" marker-end="url(#arrow)"/>
+<path d="M800 680V720H200V760" fill="none" stroke="#45657F" stroke-width="3" marker-end="url(#arrow)"/>
+<path d="M800 720H600V760" fill="none" stroke="#45657F" stroke-width="3" marker-end="url(#arrow)"/>
+<path d="M600 870V935H410V990" fill="none" stroke="#45657F" stroke-width="3" marker-end="url(#arrow)"/>
+<path d="M600 935H900V990" fill="none" stroke="#45657F" stroke-width="3" marker-end="url(#arrow)"/>
+<path d="M600 935H1390V990" fill="none" stroke="#45657F" stroke-width="3" marker-end="url(#arrow)"/>
+<path d="M1000 870V915H410V990" fill="none" stroke="#45657F" stroke-width="3" marker-end="url(#arrow)"/>
+<path d="M1000 915H900V990" fill="none" stroke="#45657F" stroke-width="3" marker-end="url(#arrow)"/>
+<path d="M1400 870V945H900V990" fill="none" stroke="#45657F" stroke-width="3" marker-end="url(#arrow)"/>
+<path d="M350 1240H440" fill="none" stroke="#45657F" stroke-width="3" marker-end="url(#arrow)"/>
+<path d="M750 1240H850" fill="none" stroke="#45657F" stroke-width="3" marker-end="url(#arrow)"/>
+<path d="M1160 1240H1640V625H980" fill="none" stroke="#45657F" stroke-width="3" marker-end="url(#arrow)"/>
+<path d="M1410 130H1620V738H600V760" fill="none" stroke="#45657F" stroke-width="3" marker-end="url(#arrow)" stroke-dasharray="9 7"/>
+<rect x="40" y="20" width="320" height="110" rx="14" fill="#F1F5F9" stroke="#B9C7D2" stroke-width="2"/>
+<text x="200.0" y="56" text-anchor="middle" font-family="Arial, sans-serif" font-size="27" font-weight="700" fill="#102A43">HQ staff</text>
+<text x="200.0" y="87" text-anchor="middle" font-family="Arial, sans-serif" font-size="25" font-weight="400" fill="#102A43">Platform owner / tenant</text>
+<rect x="600" y="20" width="320" height="110" rx="14" fill="#F1F5F9" stroke="#B9C7D2" stroke-width="2"/>
+<text x="760.0" y="56" text-anchor="middle" font-family="Arial, sans-serif" font-size="27" font-weight="700" fill="#102A43">POS staff</text>
+<text x="760.0" y="87" text-anchor="middle" font-family="Arial, sans-serif" font-size="25" font-weight="400" fill="#102A43">Cashier / pharmacist</text>
+<rect x="1210" y="20" width="400" height="110" rx="14" fill="#F1F5F9" stroke="#B9C7D2" stroke-width="2"/>
+<text x="1410.0" y="56" text-anchor="middle" font-family="Arial, sans-serif" font-size="27" font-weight="700" fill="#102A43">Approved external systems</text>
+<text x="1410.0" y="87" text-anchor="middle" font-family="Arial, sans-serif" font-size="25" font-weight="400" fill="#102A43">Regulator / insurer / exchange</text>
+<rect x="40" y="200" width="320" height="120" rx="14" fill="#F1F5F9" stroke="#B9C7D2" stroke-width="2"/>
+<text x="200.0" y="236" text-anchor="middle" font-family="Arial, sans-serif" font-size="27" font-weight="700" fill="#102A43">HQ web</text>
+<text x="200.0" y="267" text-anchor="middle" font-family="Arial, sans-serif" font-size="25" font-weight="400" fill="#102A43">React + TypeScript</text>
+<rect x="390" y="200" width="320" height="120" rx="14" fill="#F1F5F9" stroke="#B9C7D2" stroke-width="2"/>
+<text x="550.0" y="236" text-anchor="middle" font-family="Arial, sans-serif" font-size="27" font-weight="700" fill="#102A43">Windows POS</text>
+<text x="550.0" y="267" text-anchor="middle" font-family="Arial, sans-serif" font-size="25" font-weight="400" fill="#102A43">Electron + React</text>
+<rect x="750" y="200" width="320" height="120" rx="14" fill="#F1F5F9" stroke="#B9C7D2" stroke-width="2"/>
+<text x="910.0" y="236" text-anchor="middle" font-family="Arial, sans-serif" font-size="27" font-weight="700" fill="#102A43">Android POS</text>
+<text x="910.0" y="267" text-anchor="middle" font-family="Arial, sans-serif" font-size="25" font-weight="400" fill="#102A43">React Native</text>
+<rect x="1110" y="200" width="320" height="120" rx="14" fill="#F1F5F9" stroke="#B9C7D2" stroke-width="2"/>
+<text x="1270.0" y="236" text-anchor="middle" font-family="Arial, sans-serif" font-size="27" font-weight="700" fill="#102A43">Browser POS</text>
+<text x="1270.0" y="267" text-anchor="middle" font-family="Arial, sans-serif" font-size="25" font-weight="400" fill="#102A43">Legacy routes</text>
+<rect x="620" y="400" width="360" height="110" rx="14" fill="#EAF4FA" stroke="#B9C7D2" stroke-width="2"/>
+<text x="800.0" y="436" text-anchor="middle" font-family="Arial, sans-serif" font-size="27" font-weight="700" fill="#102A43">Internet</text>
+<text x="800.0" y="467" text-anchor="middle" font-family="Arial, sans-serif" font-size="25" font-weight="400" fill="#102A43">HTTPS</text>
+<rect x="620" y="570" width="360" height="110" rx="14" fill="#EAF4FA" stroke="#B9C7D2" stroke-width="2"/>
+<text x="800.0" y="606" text-anchor="middle" font-family="Arial, sans-serif" font-size="27" font-weight="700" fill="#102A43">Shared Caddy edge</text>
+<text x="800.0" y="637" text-anchor="middle" font-family="Arial, sans-serif" font-size="25" font-weight="400" fill="#102A43">TLS and reverse proxy</text>
+<rect x="40" y="760" width="320" height="110" rx="14" fill="#F1F5F9" stroke="#B9C7D2" stroke-width="2"/>
+<text x="200.0" y="796" text-anchor="middle" font-family="Arial, sans-serif" font-size="27" font-weight="700" fill="#102A43">HQ static container</text>
+<text x="200.0" y="827" text-anchor="middle" font-family="Arial, sans-serif" font-size="25" font-weight="400" fill="#102A43">Web assets</text>
+<rect x="440" y="760" width="320" height="110" rx="14" fill="#F1F5F9" stroke="#B9C7D2" stroke-width="2"/>
+<text x="600.0" y="796" text-anchor="middle" font-family="Arial, sans-serif" font-size="27" font-weight="700" fill="#102A43">Django REST API</text>
+<text x="600.0" y="827" text-anchor="middle" font-family="Arial, sans-serif" font-size="25" font-weight="400" fill="#102A43">Gunicorn</text>
+<rect x="840" y="760" width="320" height="110" rx="14" fill="#F1F5F9" stroke="#B9C7D2" stroke-width="2"/>
+<text x="1000.0" y="796" text-anchor="middle" font-family="Arial, sans-serif" font-size="27" font-weight="700" fill="#102A43">Celery worker</text>
+<text x="1000.0" y="827" text-anchor="middle" font-family="Arial, sans-serif" font-size="25" font-weight="400" fill="#102A43">Tenant-scoped tasks</text>
+<rect x="1240" y="760" width="320" height="110" rx="14" fill="#F1F5F9" stroke="#B9C7D2" stroke-width="2"/>
+<text x="1400.0" y="796" text-anchor="middle" font-family="Arial, sans-serif" font-size="27" font-weight="700" fill="#102A43">Celery beat</text>
+<text x="1400.0" y="827" text-anchor="middle" font-family="Arial, sans-serif" font-size="25" font-weight="400" fill="#102A43">Scheduler</text>
+<rect x="250" y="990" width="320" height="120" rx="14" fill="#F1F5F9" stroke="#B9C7D2" stroke-width="2"/>
+<text x="410.0" y="1026" text-anchor="middle" font-family="Arial, sans-serif" font-size="27" font-weight="700" fill="#102A43">PostgreSQL</text>
+<text x="410.0" y="1057" text-anchor="middle" font-family="Arial, sans-serif" font-size="25" font-weight="400" fill="#102A43">System of record</text>
+<rect x="740" y="990" width="320" height="120" rx="14" fill="#F1F5F9" stroke="#B9C7D2" stroke-width="2"/>
+<text x="900.0" y="1026" text-anchor="middle" font-family="Arial, sans-serif" font-size="27" font-weight="700" fill="#102A43">TibaTrace Redis</text>
+<text x="900.0" y="1057" text-anchor="middle" font-family="Arial, sans-serif" font-size="25" font-weight="400" fill="#102A43">Cache / broker / results</text>
+<rect x="1230" y="990" width="320" height="120" rx="14" fill="#F1F5F9" stroke="#B9C7D2" stroke-width="2"/>
+<text x="1390.0" y="1026" text-anchor="middle" font-family="Arial, sans-serif" font-size="27" font-weight="700" fill="#102A43">Clinical objects</text>
+<text x="1390.0" y="1057" text-anchor="middle" font-family="Arial, sans-serif" font-size="25" font-weight="400" fill="#102A43">Tenant files and hashes</text>
+<rect x="40" y="1180" width="310" height="120" rx="14" fill="#F1F5F9" stroke="#B9C7D2" stroke-width="2"/>
+<text x="195.0" y="1216" text-anchor="middle" font-family="Arial, sans-serif" font-size="27" font-weight="700" fill="#102A43">GitHub Actions</text>
+<text x="195.0" y="1247" text-anchor="middle" font-family="Arial, sans-serif" font-size="25" font-weight="400" fill="#102A43">Build / scan / attest</text>
+<rect x="440" y="1180" width="310" height="120" rx="14" fill="#F1F5F9" stroke="#B9C7D2" stroke-width="2"/>
+<text x="595.0" y="1216" text-anchor="middle" font-family="Arial, sans-serif" font-size="27" font-weight="700" fill="#102A43">GHCR images</text>
+<text x="595.0" y="1247" text-anchor="middle" font-family="Arial, sans-serif" font-size="25" font-weight="400" fill="#102A43">Immutable digests</text>
+<rect x="850" y="1180" width="310" height="120" rx="14" fill="#F1F5F9" stroke="#B9C7D2" stroke-width="2"/>
+<text x="1005.0" y="1216" text-anchor="middle" font-family="Arial, sans-serif" font-size="27" font-weight="700" fill="#102A43">Release operations</text>
+<text x="1005.0" y="1247" text-anchor="middle" font-family="Arial, sans-serif" font-size="25" font-weight="400" fill="#102A43">Secrets and backups</text>
+<text x="35" y="550" font-family="Arial, sans-serif" font-size="24" fill="#586575">Dashed route: configured and authenticated adapter only</text>
+</svg>

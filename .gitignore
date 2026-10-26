@@ -64,3 +64,9 @@ apps/pos-android/.metro-health-check*
 docs/exports/
 .pnpm-store/
 *.docx
+
+/tmp/document-branding/
+/output/docx/TibaTrace_Esenai_Group_*/
+/output/pdf/TibaTrace_Esenai_Group_*/
+/output/TibaTrace_Esenai_Group_Branded_Documents_*/
+/output/TibaTrace_Esenai_Group_Branded_Documents_*.zip
