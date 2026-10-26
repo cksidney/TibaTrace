@@ -81,7 +81,7 @@ python manage.py rotate_mfa_keys --operator-id PLATFORM_USER_ID \
 
 Do not use password reset or disable the enforcement flag as a lost-device
 workaround. Governed reset revokes existing proofs and requires enrollment again
-where the policy applies. These console commands require trusted infrastructure
+for previously enrolled accounts, even during optional rollout. These console commands require trusted infrastructure
 access; supplying a ticket reference does not itself prove that it was approved.
 
 ## Backup and audit operations

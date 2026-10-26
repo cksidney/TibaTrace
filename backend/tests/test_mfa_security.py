@@ -179,6 +179,18 @@ def test_expired_pending_enrollment_and_unenrolled_token_are_rejected(staff, clo
     assert not mfa.token_allowed(staff, {})
 
 
+def test_optional_enrollment_reset_never_revives_old_password_only_sessions(staff, clock):
+    old_browser = login(staff)
+    _, proof = enroll(staff, clock)
+    current = login(staff)
+    assert command(current, 'verify', code=proof['recovery_codes'][0]).status_code == 200
+    assert command(current, 'reset', current_password=PASSWORD, code=proof['recovery_codes'][1]).status_code == 200
+    credential = mfa.MfaCredential.objects.get(user=staff)
+    assert not credential.enabled_at and credential.enrollment_required
+    assert not mfa.token_allowed(staff, {})
+    assert old_browser.get('/api/identity/me/').status_code == 403
+
+
 @pytest.mark.django_db(transaction=True)
 def test_postgresql_concurrent_verification_consumes_code_once(tenant_a, settings):
     from concurrent.futures import ThreadPoolExecutor
