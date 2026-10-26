@@ -1,8 +1,8 @@
+from django.core.exceptions import PermissionDenied
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from apps.identity import mfa
-from apps.identity.models import User
 
 
 class Command(BaseCommand):
@@ -15,9 +15,11 @@ class Command(BaseCommand):
 
     @transaction.atomic
     def handle(self, *args, **options):
-        operator = User.objects.filter(pk=options['operator_id'], is_active=True).first()
-        if not operator or not (operator.is_superuser or operator.is_platform_admin):
-            raise CommandError('An active platform operator is required.')
+        from apps.audit.service import require_platform_actor
+        try:
+            operator = require_platform_actor(options['operator_id'])
+        except (PermissionDenied, ValueError):
+            raise CommandError('An active platform operator is required.') from None
         reference = options['approval_reference'].strip()
         if not reference or len(reference) > 160:
             raise CommandError('A bounded approval reference is required; no secrets.')

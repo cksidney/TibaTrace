@@ -1,6 +1,7 @@
 """Governed console recovery; password-reset flows never remove a second factor."""
 import uuid
 
+from django.core.exceptions import PermissionDenied
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
@@ -21,9 +22,10 @@ class Command(BaseCommand):
     @transaction.atomic
     def handle(self, *args, **options):
         try:
+            from apps.audit.service import require_platform_actor
+            operator = require_platform_actor(options['operator_id'])
             target = User.objects.select_for_update(no_key=True).get(pk=options['user_id'])
-            operator = User.objects.get(pk=options['operator_id'], is_active=True)
-        except (User.DoesNotExist, ValueError):
+        except (User.DoesNotExist, ValueError, PermissionDenied):
             raise CommandError('An existing target and active platform operator are required.') from None
         if target.pk == operator.pk or not (operator.is_platform_admin or operator.is_superuser):
             raise CommandError('A different active platform operator must perform recovery.')

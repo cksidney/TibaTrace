@@ -20,7 +20,8 @@ class MfaTokenRefreshSerializer(TokenRefreshSerializer):
         from apps.identity.models import User
         token = RefreshToken(attrs['refresh'])
         try:
-            user = User.objects.filter(pk=token.get('user_id'), is_active=True).first()
+            user = User.objects.filter(pk=token.get('user_id'), tenant_id=token.get('tenant_id') or None,
+                                       is_active=True).first()
         except (TypeError, ValueError):
             raise AuthenticationFailed('A valid current sign-in is required.') from None
         if not user or not mfa.token_allowed(user, token):

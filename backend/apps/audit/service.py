@@ -21,13 +21,19 @@ def log_audit(
     )
 
 
-def log_platform_audit(*, actor_id, action, model_name, object_id, metadata=None, outcome="SUCCESS"):
+def require_platform_actor(actor_id):
+    """Resolve only an active explicit platform operator for governed global actions."""
     from apps.identity.models import User
 
     # tenant-safety: platform-audit-authority-check
     actor = User.objects.filter(pk=actor_id, is_active=True).first()
     if not actor or not (actor.is_platform_admin or actor.is_superuser):
         raise PermissionDenied("Platform audit writes require explicit platform authority.")
+    return actor
+
+
+def log_platform_audit(*, actor_id, action, model_name, object_id, metadata=None, outcome="SUCCESS"):
+    actor = require_platform_actor(actor_id)
     return PlatformAuditEvent.objects.create(
         actor=actor,
         action=action,
